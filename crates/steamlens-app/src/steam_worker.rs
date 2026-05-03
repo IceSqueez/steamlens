@@ -10,7 +10,6 @@ use crate::manager::types::{AchievementData, StatData};
 pub enum SteamRequest {
     ConnectWithApp(u32),
     RequestUserStats,
-    LoadAchievementsAndStats,
     ApplyChanges {
         achievements_to_set: Vec<String>,
         achievements_to_clear: Vec<String>,
@@ -88,78 +87,22 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                 }
             }
 
-            SteamRequest::RequestUserStats => match &client {
-                Some(c) => {
-                    let steam_id = c.steam_id();
-                    match c.user_stats().request_user_stats(steam_id) {
-                        Ok(()) => send_reply(&tx, SteamReply::StatsRequested),
-                        Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
-                    }
-                }
-                None => send_reply(
-                    &tx,
-                    SteamReply::RequestStatsFailed("Not connected".to_owned()),
-                ),
-            },
-
-            SteamRequest::LoadAchievementsAndStats => {
+            SteamRequest::RequestUserStats => {
                 let Some(c) = &client else {
-                    send_reply(&tx, SteamReply::LoadFailed("Not connected".to_owned()));
+                    send_reply(
+                        &tx,
+                        SteamReply::RequestStatsFailed("Not connected".to_owned()),
+                    );
                     continue;
                 };
-
-                let stats_iface = c.user_stats();
-                let num = match stats_iface.num_achievements() {
-                    Ok(n) => n,
-                    Err(e) => {
-                        send_reply(&tx, SteamReply::LoadFailed(e.to_string()));
-                        continue;
+                let steam_id = c.steam_id();
+                match c.user_stats().request_user_stats(steam_id) {
+                    Ok(()) => {
+                        send_reply(&tx, SteamReply::StatsRequested);
+                        wait_for_stats_then_load(c, &tx);
                     }
-                };
-
-                let mut achievements = Vec::with_capacity(num as usize);
-                for i in 0..num {
-                    let id = match stats_iface.achievement_name(i) {
-                        Ok(n) => n,
-                        Err(_) => continue,
-                    };
-                    let display_name = stats_iface
-                        .achievement_display_attribute(&id, "name")
-                        .unwrap_or_else(|_| id.clone());
-                    let description = stats_iface
-                        .achievement_display_attribute(&id, "desc")
-                        .unwrap_or_default();
-                    let hidden_str = stats_iface
-                        .achievement_display_attribute(&id, "hidden")
-                        .unwrap_or_default();
-                    let is_hidden = hidden_str.trim() == "1";
-                    let (is_achieved, unlock_time) = stats_iface
-                        .achievement_and_unlock_time(&id)
-                        .unwrap_or((false, 0));
-                    let unlock_time = if unlock_time == 0 {
-                        None
-                    } else {
-                        Some(unlock_time)
-                    };
-
-                    achievements.push(AchievementData {
-                        id,
-                        display_name,
-                        description,
-                        is_hidden,
-                        is_achieved,
-                        unlock_time,
-                        permission: 0,
-                    });
+                    Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
                 }
-
-                send_reply(
-                    &tx,
-                    SteamReply::AchievementsAndStats {
-                        achievements,
-                        stats: Vec::new(),
-                    },
-                );
             }
 
             SteamRequest::ApplyChanges {
@@ -243,6 +186,104 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                 break;
             }
         }
+    }
+}
+
+fn load_achievements(c: &Client, tx: &mpsc::Sender<SteamReply>) {
+    let stats_iface = c.user_stats();
+    let num = match stats_iface.num_achievements() {
+        Ok(n) => n,
+        Err(e) => {
+            send_reply(tx, SteamReply::LoadFailed(e.to_string()));
+            return;
+        }
+    };
+
+    let mut achievements = Vec::with_capacity(num as usize);
+    for i in 0..num {
+        let id = match stats_iface.achievement_name(i) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let display_name = stats_iface
+            .achievement_display_attribute(&id, "name")
+            .unwrap_or_else(|_| id.clone());
+        let description = stats_iface
+            .achievement_display_attribute(&id, "desc")
+            .unwrap_or_default();
+        let hidden_str = stats_iface
+            .achievement_display_attribute(&id, "hidden")
+            .unwrap_or_default();
+        let is_hidden = hidden_str.trim() == "1";
+        let (is_achieved, unlock_time) = stats_iface
+            .achievement_and_unlock_time(&id)
+            .unwrap_or((false, 0));
+        let unlock_time = if unlock_time == 0 {
+            None
+        } else {
+            Some(unlock_time)
+        };
+
+        achievements.push(AchievementData {
+            id,
+            display_name,
+            description,
+            is_hidden,
+            is_achieved,
+            unlock_time,
+            permission: 0,
+        });
+    }
+
+    send_reply(
+        tx,
+        SteamReply::AchievementsAndStats {
+            achievements,
+            stats: Vec::new(),
+        },
+    );
+}
+
+fn wait_for_stats_then_load(c: &Client, tx: &mpsc::Sender<SteamReply>) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        match c.poll_callbacks() {
+            Ok(callbacks) => {
+                for cb in callbacks {
+                    match &cb {
+                        SteamCallback::UserStatsReceived { result, .. } => {
+                            if result.is_ok() {
+                                load_achievements(c, tx);
+                            } else {
+                                send_reply(
+                                    tx,
+                                    SteamReply::LoadFailed(format!(
+                                        "UserStatsReceived error: {}",
+                                        result.raw()
+                                    )),
+                                );
+                            }
+                            return;
+                        }
+                        _ => send_reply(tx, SteamReply::Callback(cb)),
+                    }
+                }
+            }
+            Err(e) => {
+                send_reply(tx, SteamReply::LoadFailed(format!("poll_callbacks: {e}")));
+                return;
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            send_reply(
+                tx,
+                SteamReply::LoadFailed(
+                    "Timed out waiting for UserStatsReceived callback".to_owned(),
+                ),
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
     }
 }
 

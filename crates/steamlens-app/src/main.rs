@@ -96,15 +96,6 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
                     w.send(SteamRequest::RequestUserStats);
                 }
             }
-            SteamReply::Callback(cb) => {
-                use steamlens_core::SteamCallback;
-                if let SteamCallback::UserStatsReceived { result, .. } = cb
-                    && result.is_ok()
-                    && let Some(w) = &app.worker
-                {
-                    w.send(SteamRequest::LoadAchievementsAndStats);
-                }
-            }
             _ => {}
         }
 

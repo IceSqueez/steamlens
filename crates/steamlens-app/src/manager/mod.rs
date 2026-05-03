@@ -119,7 +119,10 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             state.error_message = e;
             Task::none()
         }
-        SteamReply::StatsRequested => Task::none(),
+        SteamReply::StatsRequested => {
+            state.phase = ManagerPhase::LoadingData;
+            Task::none()
+        }
         SteamReply::RequestStatsFailed(e) => {
             state.phase = ManagerPhase::Error;
             state.error_message = e;
@@ -215,11 +218,7 @@ pub fn update(
             state.error_message = e;
             Task::none()
         }
-        ManagerMessage::StatsReceived => {
-            state.phase = ManagerPhase::LoadingData;
-            worker.send(SteamRequest::LoadAchievementsAndStats);
-            Task::none()
-        }
+        ManagerMessage::StatsReceived => Task::none(),
         ManagerMessage::StatsReceivedFailed(e) => {
             state.phase = ManagerPhase::Error;
             state.error_message = e;
