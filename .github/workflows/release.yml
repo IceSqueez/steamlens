@@ -28,7 +28,7 @@ jobs:
     needs: [test]
     uses: ./.github/workflows/_build-matrix.yml
     with:
-      bin_name: steamlens
+      bin_name: steamlens-app
       retention_days: 1
 
   publish:
