@@ -1,7 +1,7 @@
 // Integration tests for achievement listing and destructive reset.
 //
 // These tests require a live Steam client signed in on the host machine.
-// Both tests are #[ignore]d — you must opt in explicitly.
+// All tests are #[ignore]d — you must opt in explicitly.
 //
 // ── list_all (read-only, safe) ────────────────────────────────────────────────
 //
@@ -19,10 +19,10 @@
 //       __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME \
 //       -- --ignored --nocapture
 //
-//   WARNING: WIPES ALL ACHIEVEMENTS PERMANENTLY for the app specified by
-//   SteamAppId. Steam does not provide an undo mechanism. Only run this
-//   against a game whose achievement progress you are willing to lose.
-//   Suggested safe choices: Spacewar (480) — it is a Valve test app.
+//   WARNING: WIPES ALL ACHIEVEMENTS AND STATS PERMANENTLY for the app
+//   specified by SteamAppId. Steam does not provide an undo mechanism.
+//   Only run this against a game whose achievement progress you are willing
+//   to lose. Suggested safe choices: Spacewar (480) — it is a Valve test app.
 //
 // Three levels of opt-in for the destructive test:
 //   1. Long, intentionally inconvenient test name.
@@ -143,7 +143,7 @@ fn list_all() {
 
 #[test]
 #[allow(non_snake_case)]
-#[ignore = "DESTRUCTIVE: WIPES ALL ACHIEVEMENTS for SteamAppId permanently. \
+#[ignore = "DESTRUCTIVE: WIPES ALL ACHIEVEMENTS AND STATS for SteamAppId permanently. \
             Requires STEAMLENS_DESTRUCTIVE_OK=yes AND SteamAppId env vars. \
             Do not run on a game you care about."]
 fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
@@ -151,14 +151,14 @@ fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
         panic!(
             "Refusing to run destructive test. Set STEAMLENS_DESTRUCTIVE_OK=yes \
              AND SteamAppId=<your_test_app> if you really want this. \
-             Picking a beloved game's appid here will wipe its achievements."
+             Picking a beloved game's appid here will wipe its achievements and stats."
         );
     }
 
     let app_id = std::env::var("SteamAppId")
         .expect("SteamAppId env var must be set for the destructive test");
 
-    println!("Destructive test: clearing achievements for app {app_id}");
+    println!("Destructive test: resetting all achievements and stats for app {app_id}");
 
     let client = connect().expect("connect() must succeed with Steam running");
     let stats = client.user_stats();
@@ -179,28 +179,27 @@ fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
         .num_achievements()
         .expect("num_achievements must not fail after UserStatsReceived");
 
-    println!("Clearing {count} achievements...");
+    let first_name = (count > 0)
+        .then(|| stats.achievement_name(0).ok())
+        .flatten();
+    let before = first_name
+        .as_deref()
+        .and_then(|n| stats.get_achievement(n).ok());
 
-    let mut cleared = 0usize;
-    for i in 0..count {
-        let name = match stats.achievement_name(i) {
-            Ok(n) => n,
-            Err(e) => {
-                println!("  could not get name for index {i}: {e}");
-                continue;
-            }
-        };
-        match stats.clear_achievement(&name) {
-            Ok(()) => cleared += 1,
-            Err(e) => println!("  failed to clear {name}: {e}"),
-        }
-    }
+    println!(
+        "Before reset: {count} achievements defined, \
+         first={first_name:?} achieved={before:?}"
+    );
 
-    println!("Cleared {cleared}/{count}, calling store_stats()...");
+    stats
+        .reset_all_stats(true)
+        .expect("reset_all_stats must not fail after UserStatsReceived");
+
+    println!("ResetAllStats(true) staged — calling store_stats()...");
 
     stats
         .store_stats()
-        .expect("store_stats must not fail after clearing achievements");
+        .expect("store_stats must not fail after reset_all_stats");
 
     println!("StoreStats dispatched — waiting for UserStatsStored...");
 
@@ -213,4 +212,19 @@ fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
         stored.is_ok(),
         "UserStatsStored result must be Ok, got {stored:?}"
     );
+
+    let after = first_name
+        .as_deref()
+        .and_then(|n| stats.get_achievement(n).ok());
+
+    println!(
+        "After reset: first={first_name:?} achieved={after:?} \
+         (expect false; stat-driven achievements will stay locked on next game run)"
+    );
+
+    if let Some(false) = after {
+        println!("OK: first achievement is now locked.");
+    } else if after.is_none() {
+        println!("(no achievements defined for this app — reset dispatched successfully)");
+    }
 }

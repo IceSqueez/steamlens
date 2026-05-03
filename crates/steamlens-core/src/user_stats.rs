@@ -342,6 +342,41 @@ impl<'a> UserStats<'a> {
         }
     }
 
+    /// Resets all stats (and optionally all achievements) for the current app
+    /// to their default values in the local staging area.
+    ///
+    /// If `achievements_too` is `true`, all achievements are also cleared as a
+    /// side effect — achievements that depend on a stat counter will remain
+    /// locked even after the game re-reads those counters.
+    ///
+    /// This is the canonical "wipe everything" call. Per-achievement
+    /// [`Self::clear_achievement`] only clears the achievement flag without
+    /// touching the underlying stat — so a stat-driven achievement (e.g.
+    /// "complete 25 quests") immediately re-unlocks the next time the game
+    /// runs and observes the unchanged stat counter. Use this method for a
+    /// true reset that survives subsequent game launches.
+    ///
+    /// Like all writes, the change is staged locally until [`Self::store_stats`]
+    /// is called.
+    pub fn reset_all_stats(&self, achievements_too: bool) -> Result<(), SteamError> {
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 20 = ResetAllStats.  `achievements_too` is a bool passed in RSI
+        // (SysV-x64); Steam marshals it as a 1-byte value internally.  Returns
+        // bool in RAX; false means Steam rejected the call (e.g. stats not yet
+        // loaded — call RequestUserStats first).
+        let ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
+            ((*vtbl).reset_all_stats)(self.raw, achievements_too)
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(SteamError::CallFailed {
+                method: "ResetAllStats",
+            })
+        }
+    }
+
     /// Returns Steam's opaque image handle for the achievement icon.
     ///
     /// Pass the returned handle to `ISteamUtils::GetImageRGBA` (not yet
