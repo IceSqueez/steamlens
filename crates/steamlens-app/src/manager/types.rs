@@ -1,6 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
+pub struct AchievementIcon {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AchievementData {
     pub id: String,
     pub display_name: String,
@@ -9,6 +16,7 @@ pub struct AchievementData {
     pub is_achieved: bool,
     pub unlock_time: Option<u32>,
     pub permission: u32,
+    pub icon: Option<AchievementIcon>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

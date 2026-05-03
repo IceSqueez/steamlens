@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, column, container, mouse_area, opaque, pick_list, row, scrollable, space, stack, text,
-    text_input,
+    button, column, container, image, mouse_area, opaque, pick_list, row, scrollable, space, stack,
+    text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -406,29 +406,46 @@ fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
         );
     }
 
-    let icon_bg = if effective {
-        C_CURRENT_LINE
+    let icon_el: Element<'_, Message> = if let Some(ico) = &row.data.icon {
+        let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
+        let opacity = if effective { 1.0f32 } else { 0.45f32 };
+        image(handle)
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(48.0))
+            .opacity(opacity)
+            .into()
     } else {
-        Color {
-            r: C_CURRENT_LINE.r * 0.6,
-            g: C_CURRENT_LINE.g * 0.6,
-            b: C_CURRENT_LINE.b * 0.6,
-            a: 1.0,
-        }
-    };
-    let icon_placeholder = container(space())
+        let icon_bg = if effective {
+            C_CURRENT_LINE
+        } else {
+            Color {
+                r: C_CURRENT_LINE.r * 0.6,
+                g: C_CURRENT_LINE.g * 0.6,
+                b: C_CURRENT_LINE.b * 0.6,
+                a: 1.0,
+            }
+        };
+        container(
+            text(if effective { "\u{2713}" } else { "\u{25CB}" })
+                .size(18)
+                .color(if effective { C_GREEN } else { C_MUTED }),
+        )
         .width(Length::Fixed(48.0))
         .height(Length::Fixed(48.0))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
         .style(move |_theme| container::Style {
             background: Some(iced::Background::Color(icon_bg)),
             border: dracula_border_radius(4.0),
             ..container::Style::default()
-        });
+        })
+        .into()
+    };
 
     let text_padded: Element<'_, Message> =
         container(inner).padding(Padding::default().left(16)).into();
 
-    let content = row![icon_placeholder, text_padded]
+    let content = row![icon_el, text_padded]
         .align_y(Alignment::Start)
         .padding(Padding::from([8u16, 16]));
 

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use steamlens_core::{Client, StatKind, SteamCallback};
 
-use crate::manager::types::{AchievementData, ResetScope, StatData, StatValue};
+use crate::manager::types::{AchievementData, AchievementIcon, ResetScope, StatData, StatValue};
 
 pub enum SteamRequest {
     ConnectWithApp(u32),
@@ -256,6 +256,20 @@ fn load_achievements_and_stats(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamR
             Some(unlock_time)
         };
 
+        let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
+        let icon = if handle == 0 {
+            None
+        } else {
+            c.get_image(handle)
+                .ok()
+                .flatten()
+                .map(|img| AchievementIcon {
+                    width: img.width,
+                    height: img.height,
+                    rgba: img.rgba,
+                })
+        };
+
         achievements.push(AchievementData {
             id,
             display_name,
@@ -264,6 +278,7 @@ fn load_achievements_and_stats(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamR
             is_achieved,
             unlock_time,
             permission: 0,
+            icon,
         });
     }
 

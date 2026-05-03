@@ -410,6 +410,7 @@ mod tests {
             is_achieved: false,
             unlock_time: None,
             permission: 0,
+            icon: None,
         };
         let mut row = AchievementRow::from_data(data);
         row.is_dirty = true;
