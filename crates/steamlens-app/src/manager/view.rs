@@ -479,14 +479,14 @@ fn stats_tab(state: &ManagerState) -> Element<'_, Message> {
                 .size(13)
                 .color(C_MUTED)
                 .width(Length::FillPortion(3)),
-            text("Value")
+            text("Value / Max")
                 .size(13)
                 .color(C_MUTED)
                 .width(Length::FillPortion(2)),
-            text("Info")
+            text("Type")
                 .size(13)
                 .color(C_MUTED)
-                .width(Length::FillPortion(2)),
+                .width(Length::FillPortion(1)),
         ]
         .spacing(16)
         .padding(Padding::from([8u16, 16])),
@@ -515,16 +515,16 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
     let is_protected = row.data.permission != 0;
     let can_edit = editing_enabled && !is_protected;
 
-    let type_str = match row.data.value {
-        super::types::StatValue::Int(_) => "int",
-        super::types::StatValue::Float(_) => "float",
+    let type_badge = match row.data.value {
+        super::types::StatValue::Int(_) => "Int",
+        super::types::StatValue::Float(_) => "Float",
     };
-    let incr = if row.data.is_increment_only {
-        ", incr-only"
-    } else {
-        ""
+
+    let value_str = row.data.value.to_edit_string();
+    let value_display = match row.data.max_value {
+        Some(max) => format!("{value_str} / {max}"),
+        None => value_str,
     };
-    let info = format!("{type_str}{incr}");
 
     let value_col: Element<'_, Message> = if can_edit {
         text_input("", &row.edit_text)
@@ -536,9 +536,9 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
             .into()
     } else {
         container(
-            text(row.data.value.to_edit_string())
+            text(value_display)
                 .size(13)
-                .color(if is_protected { C_ORANGE } else { C_MUTED }),
+                .color(if is_protected { C_ORANGE } else { C_FG }),
         )
         .width(Length::FillPortion(2))
         .padding(Padding::from([6u16, 8]))
@@ -563,17 +563,16 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
     .width(Length::FillPortion(3))
     .into();
 
-    let main_row = row![
-        name_col,
-        value_col,
-        text(info)
-            .size(12)
-            .color(C_MUTED)
-            .width(Length::FillPortion(2)),
-    ]
-    .spacing(16)
-    .align_y(Alignment::Center)
-    .padding(Padding::from([8u16, 16]));
+    let type_col: Element<'_, Message> = text(type_badge)
+        .size(12)
+        .color(C_MUTED)
+        .width(Length::FillPortion(1))
+        .into();
+
+    let main_row = row![name_col, value_col, type_col]
+        .spacing(16)
+        .align_y(Alignment::Center)
+        .padding(Padding::from([8u16, 16]));
 
     let mut col_parts = column![main_row].spacing(0);
 
@@ -584,7 +583,17 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
         );
     }
 
-    container(col_parts).width(Length::Fill).into()
+    container(col_parts)
+        .width(Length::Fill)
+        .style(|_theme| container::Style {
+            border: iced::Border {
+                color: Color { a: 0.15, ..C_MUTED },
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 fn footer_bar(state: &ManagerState) -> Element<'_, Message> {

@@ -3,9 +3,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use steamlens_core::{Client, SteamCallback};
+use steamlens_core::{Client, StatKind, SteamCallback};
 
-use crate::manager::types::{AchievementData, ResetScope, StatData};
+use crate::manager::types::{AchievementData, ResetScope, StatData, StatValue};
 
 pub enum SteamRequest {
     ConnectWithApp(u32),
@@ -73,14 +73,17 @@ fn send_reply(tx: &mpsc::Sender<SteamReply>, reply: SteamReply) {
 
 fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
     let mut client: Option<Client> = None;
+    let mut connected_app_id: Option<u32> = None;
 
     for req in rx {
         match req {
             SteamRequest::ConnectWithApp(app_id) => {
                 client = None;
+                connected_app_id = None;
                 match steamlens_core::connect(app_id) {
                     Ok(c) => {
                         let steam_id = c.steam_id();
+                        connected_app_id = Some(app_id);
                         client = Some(c);
                         send_reply(&tx, SteamReply::Connected { steam_id });
                     }
@@ -96,11 +99,12 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                     );
                     continue;
                 };
+                let app_id = connected_app_id.unwrap_or(0);
                 let steam_id = c.steam_id();
                 match c.user_stats().request_user_stats(steam_id) {
                     Ok(()) => {
                         send_reply(&tx, SteamReply::StatsRequested);
-                        wait_for_stats_then_load(c, &tx);
+                        wait_for_stats_then_load(c, app_id, &tx);
                     }
                     Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
                 }
@@ -200,6 +204,7 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
 
             SteamRequest::Disconnect => {
                 drop(client.take());
+                let _ = connected_app_id.take();
                 send_reply(&tx, SteamReply::Disconnected);
                 break;
             }
@@ -207,8 +212,9 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
     }
 }
 
-fn load_achievements(c: &Client, tx: &mpsc::Sender<SteamReply>) {
+fn load_achievements_and_stats(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
     let stats_iface = c.user_stats();
+
     let num = match stats_iface.num_achievements() {
         Ok(n) => n,
         Err(e) => {
@@ -253,16 +259,43 @@ fn load_achievements(c: &Client, tx: &mpsc::Sender<SteamReply>) {
         });
     }
 
+    let descriptors = c.stat_descriptors(app_id).unwrap_or_default();
+
+    let mut stats = Vec::with_capacity(descriptors.len());
+    for desc in descriptors {
+        let value = match desc.kind {
+            StatKind::Int => {
+                let v = stats_iface.get_stat_int(&desc.name).unwrap_or(0);
+                StatValue::Int(v)
+            }
+            StatKind::Float => {
+                let v = stats_iface.get_stat_float(&desc.name).unwrap_or(0.0);
+                StatValue::Float(v)
+            }
+        };
+        stats.push(StatData {
+            display_name: desc.name.clone(),
+            id: desc.name,
+            value,
+            original_value: value,
+            max_value: desc.max_value,
+            min_value: desc.min_value,
+            default_value: desc.default_value,
+            is_increment_only: false,
+            permission: 0,
+        });
+    }
+
     send_reply(
         tx,
         SteamReply::AchievementsAndStats {
             achievements,
-            stats: Vec::new(),
+            stats,
         },
     );
 }
 
-fn wait_for_stats_then_load(c: &Client, tx: &mpsc::Sender<SteamReply>) {
+fn wait_for_stats_then_load(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
     let expected_user = c.steam_id();
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
@@ -276,7 +309,7 @@ fn wait_for_stats_then_load(c: &Client, tx: &mpsc::Sender<SteamReply>) {
                             ..
                         } if *user_steam_id == expected_user => {
                             if result.is_ok() {
-                                load_achievements(c, tx);
+                                load_achievements_and_stats(c, app_id, tx);
                             } else {
                                 send_reply(
                                     tx,

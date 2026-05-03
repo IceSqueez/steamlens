@@ -33,6 +33,11 @@ pub struct StatData {
     pub display_name: String,
     pub value: StatValue,
     pub original_value: StatValue,
+    pub max_value: Option<u64>,
+    #[allow(dead_code)]
+    pub min_value: Option<i64>,
+    #[allow(dead_code)]
+    pub default_value: Option<i64>,
     pub is_increment_only: bool,
     pub permission: u32,
 }
