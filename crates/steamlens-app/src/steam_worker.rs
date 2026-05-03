@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use steamlens_core::{Client, SteamCallback};
 
-use crate::manager::types::{AchievementData, StatData};
+use crate::manager::types::{AchievementData, ResetScope, StatData};
 
 pub enum SteamRequest {
     ConnectWithApp(u32),
@@ -17,7 +17,8 @@ pub enum SteamRequest {
         stats_float: HashMap<String, f32>,
     },
     ResetAll {
-        achievements_too: bool,
+        scope: ResetScope,
+        stat_driven_progress_max: HashMap<String, u32>,
     },
     Disconnect,
 }
@@ -160,12 +161,16 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                 }
             }
 
-            SteamRequest::ResetAll { achievements_too } => {
+            SteamRequest::ResetAll {
+                scope,
+                stat_driven_progress_max,
+            } => {
                 let Some(c) = &client else {
                     send_reply(&tx, SteamReply::ResetFailed("Not connected".to_owned()));
                     continue;
                 };
                 let stats_iface = c.user_stats();
+                let achievements_too = scope == ResetScope::StatsAndAchievements;
                 if let Err(e) = stats_iface.reset_all_stats(achievements_too) {
                     send_reply(&tx, SteamReply::ResetFailed(format!("ResetAllStats: {e}")));
                     continue;
@@ -177,6 +182,19 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                     );
                     continue;
                 }
+                let stored = poll_until_store_confirmed(c, &tx);
+                if !stored {
+                    send_reply(
+                        &tx,
+                        SteamReply::ResetFailed(
+                            "Timed out waiting for StoreStats confirmation after reset".to_owned(),
+                        ),
+                    );
+                    continue;
+                }
+                // TODO: when stat enumeration is wired, loop IAP for each entry
+                // in stat_driven_progress_max if scope == StatsAndAchievements.
+                let _ = stat_driven_progress_max;
                 send_reply(&tx, SteamReply::ResetDone);
             }
 
@@ -321,6 +339,27 @@ fn wait_for_store_callback(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool {
                 send_reply(tx, SteamReply::SaveFailed(format!("poll_callbacks: {e}")));
                 return true;
             }
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn poll_until_store_confirmed(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        match c.poll_callbacks() {
+            Ok(callbacks) => {
+                for cb in callbacks {
+                    if let SteamCallback::UserStatsStored { result, .. } = &cb {
+                        return result.is_ok();
+                    }
+                    send_reply(tx, SteamReply::Callback(cb));
+                }
+            }
+            Err(_) => return false,
         }
         if std::time::Instant::now() >= deadline {
             return false;

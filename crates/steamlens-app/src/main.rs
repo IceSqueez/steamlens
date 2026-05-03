@@ -12,6 +12,7 @@ use steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 #[derive(Debug)]
 enum Screen {
+    Splash,
     Picker { app_id_input: String },
     SteamNotRunning { reason: String },
     Manager(Box<ManagerState>),
@@ -19,6 +20,7 @@ enum Screen {
 
 #[derive(Debug, Clone)]
 enum Message {
+    SplashDone,
     Exit,
     GoBack,
     AppIdInputChanged(String),
@@ -45,13 +47,17 @@ struct App {
 
 fn boot() -> (App, Task<Message>) {
     let app = App {
-        screen: Screen::Picker {
-            app_id_input: String::new(),
-        },
+        screen: Screen::Splash,
         worker: None,
         worker_rx: None,
     };
-    (app, Task::none())
+    let splash_task = Task::perform(
+        async {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        },
+        |()| Message::SplashDone,
+    );
+    (app, splash_task)
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -100,6 +106,12 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
+        Message::SplashDone => {
+            app.screen = Screen::Picker {
+                app_id_input: String::new(),
+            };
+            Task::none()
+        }
         Message::Exit => iced::exit(),
         Message::GoBack => {
             if let Screen::Manager(_) = &app.screen {
@@ -172,6 +184,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
 fn view(app: &App) -> Element<'_, Message> {
     match &app.screen {
+        Screen::Splash => splash_view(),
+
         Screen::Picker { app_id_input } => picker_view(app_id_input),
 
         Screen::SteamNotRunning { reason } => {
@@ -194,6 +208,29 @@ fn view(app: &App) -> Element<'_, Message> {
     }
 }
 
+fn splash_view() -> Element<'static, Message> {
+    use iced::widget::column;
+
+    let title = text("SteamLens")
+        .size(64)
+        .color(iced::Color::from_rgb(0.741, 0.576, 0.976));
+
+    let subtitle = text("Steam achievements & stats inspector")
+        .size(14)
+        .color(iced::Color::from_rgb(0.384, 0.447, 0.643));
+
+    let content = column![title, subtitle]
+        .spacing(12)
+        .align_x(iced::Alignment::Center);
+
+    container(content)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::Alignment::Center)
+        .align_y(iced::Alignment::Center)
+        .into()
+}
+
 fn picker_view(app_id_input: &str) -> Element<'_, Message> {
     let header = text("SteamLens").size(32);
     let subtitle = text("Enter a Steam App ID to inspect achievements and stats.").size(14);
@@ -211,9 +248,7 @@ fn picker_view(app_id_input: &str) -> Element<'_, Message> {
     ]
     .spacing(8);
 
-    let content = column![header, subtitle, input_row]
-        .spacing(16)
-        .padding(24);
+    let content = column![header, subtitle, input_row].spacing(16).padding(24);
 
     container(content)
         .width(Length::Fill)
@@ -285,17 +320,37 @@ mod tests {
 
     fn screen_name(app: &App) -> &'static str {
         match app.screen {
+            Screen::Splash => "Splash",
             Screen::Picker { .. } => "Picker",
             Screen::SteamNotRunning { .. } => "SteamNotRunning",
             Screen::Manager(_) => "Manager",
         }
     }
 
+    fn make_app_splash() -> App {
+        App {
+            screen: Screen::Splash,
+            worker: None,
+            worker_rx: None,
+        }
+    }
+
     #[test]
-    fn boot_starts_in_picker() {
+    fn boot_starts_in_splash() {
         let (app, _task) = boot();
-        assert!(matches!(app.screen, Screen::Picker { .. }));
+        assert!(matches!(app.screen, Screen::Splash));
         assert!(app.worker.is_none());
+    }
+
+    #[test]
+    fn splash_done_transitions_to_picker() {
+        let mut app = make_app_splash();
+        let _task = update(&mut app, Message::SplashDone);
+        assert!(
+            matches!(app.screen, Screen::Picker { .. }),
+            "expected Picker after SplashDone, got {}",
+            screen_name(&app)
+        );
     }
 
     #[test]

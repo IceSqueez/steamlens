@@ -741,28 +741,19 @@ fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
         ..container::Style::default()
     });
 
-    let confirm_enabled = state.reset_scope != ResetScope::Pending;
-    let confirm_btn = if confirm_enabled {
-        button(text("Reset \u{26A0}").size(13).color(Color::WHITE))
-            .on_press(msg(ManagerMessage::ResetConfirmed))
-            .padding(Padding::from([8u16, 16]))
-            .style(|_t, _s| button::Style {
-                background: Some(iced::Background::Color(C_RED)),
-                border: dracula_border_radius(4.0),
-                ..button::Style::default()
-            })
-    } else {
-        button(text("Reset \u{26A0}").size(13).color(Color {
-            a: 0.4,
-            ..Color::WHITE
-        }))
+    let confirm_label = match state.reset_scope {
+        ResetScope::StatsOnly => "Reset Stats \u{26A0}",
+        ResetScope::StatsAndAchievements => "Reset Stats + Achievements \u{26A0}",
+        ResetScope::Pending => "Reset \u{26A0}",
+    };
+    let confirm_btn = button(text(confirm_label).size(13).color(Color::WHITE))
+        .on_press(msg(ManagerMessage::ResetConfirmed))
         .padding(Padding::from([8u16, 16]))
         .style(|_t, _s| button::Style {
-            background: Some(iced::Background::Color(Color { a: 0.3, ..C_RED })),
+            background: Some(iced::Background::Color(C_RED)),
             border: dracula_border_radius(4.0),
             ..button::Style::default()
-        })
-    };
+        });
 
     let cancel_btn = button(text("Cancel").size(13))
         .on_press(msg(ManagerMessage::ResetCancelled))

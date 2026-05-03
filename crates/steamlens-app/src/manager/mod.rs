@@ -374,7 +374,7 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::ResetClicked => {
-            state.reset_scope = ResetScope::Pending;
+            state.reset_scope = ResetScope::StatsOnly;
             state.show_reset_modal = true;
             Task::none()
         }
@@ -383,10 +383,12 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::ResetConfirmed => {
-            let achievements_too = state.reset_scope == ResetScope::StatsAndAchievements;
             state.show_reset_modal = false;
             state.phase = ManagerPhase::Resetting;
-            worker.send(SteamRequest::ResetAll { achievements_too });
+            worker.send(SteamRequest::ResetAll {
+                scope: state.reset_scope,
+                stat_driven_progress_max: std::collections::HashMap::new(),
+            });
             Task::none()
         }
         ManagerMessage::ResetCancelled => {
