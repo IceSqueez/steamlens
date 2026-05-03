@@ -141,7 +141,7 @@ pub struct ISteamUserStats013 {
     _reserved_12_indicate_achievement_progress: usize,
     pub get_num_achievements: unsafe extern "C" fn(this: *mut c_void) -> u32,
     pub get_achievement_name: unsafe extern "C" fn(this: *mut c_void, index: u32) -> *const c_char,
-    _reserved_15_request_user_stats: usize,
+    pub request_user_stats: unsafe extern "C" fn(this: *mut c_void, steam_id: u64) -> u64,
     _reserved_16_get_user_stat_float: usize,
     _reserved_17_get_user_stat_int: usize,
     _reserved_18_get_user_achievement: usize,

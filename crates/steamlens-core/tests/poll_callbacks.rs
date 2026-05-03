@@ -9,12 +9,12 @@
 //!         -- --ignored --nocapture
 //!
 //! Expected behaviour with Steam running: the first few poll iterations may
-//! return one or more init callbacks (e.g. id=1701 SteamServersConnected).
-//! Later iterations return an empty `Vec`. The test must not panic or error.
+//! return one or more init callbacks (e.g. SteamServersConnected). Later
+//! iterations return an empty `Vec`. The test must not panic or error.
 
 use std::time::Duration;
 
-use steamlens_core::connect;
+use steamlens_core::{SteamCallback, connect};
 
 #[test]
 #[ignore = "requires Steam running; polls callbacks 5 times at 100 ms intervals"]
@@ -27,7 +27,27 @@ fn poll_five_iterations_does_not_error() {
             .unwrap_or_else(|e| panic!("poll_callbacks() failed on iteration {i}: {e}"));
 
         for cb in &callbacks {
-            println!("iteration={i} id={} size={} bytes", cb.id, cb.payload.len());
+            match cb {
+                SteamCallback::UserStatsReceived {
+                    game_id,
+                    result,
+                    user_steam_id,
+                } => {
+                    println!(
+                        "iteration={i} UserStatsReceived game_id={game_id} result={result:?} user={user_steam_id}"
+                    );
+                }
+                SteamCallback::UserStatsStored { game_id, result } => {
+                    println!("iteration={i} UserStatsStored game_id={game_id} result={result:?}");
+                }
+                SteamCallback::Unknown(raw) => {
+                    println!(
+                        "iteration={i} Unknown id={} size={} bytes",
+                        raw.id,
+                        raw.payload.len()
+                    );
+                }
+            }
         }
 
         std::thread::sleep(Duration::from_millis(100));
@@ -35,7 +55,7 @@ fn poll_five_iterations_does_not_error() {
 }
 
 #[test]
-#[ignore = "requires Steam running; verifies RawCallback fields are coherent"]
+#[ignore = "requires Steam running; verifies callback payloads are coherent"]
 fn callback_payloads_have_sensible_sizes() {
     let client = connect().expect("connect() must succeed with Steam running");
 
@@ -44,12 +64,14 @@ fn callback_payloads_have_sensible_sizes() {
             .poll_callbacks()
             .expect("poll_callbacks must not error");
         for cb in &callbacks {
-            assert!(
-                cb.payload.len() < 65536,
-                "callback payload suspiciously large: id={} size={} — likely a bad pointer copy",
-                cb.id,
-                cb.payload.len()
-            );
+            if let SteamCallback::Unknown(raw) = cb {
+                assert!(
+                    raw.payload.len() < 65536,
+                    "callback payload suspiciously large: id={} size={} — likely a bad pointer copy",
+                    raw.id,
+                    raw.payload.len()
+                );
+            }
         }
         std::thread::sleep(Duration::from_millis(100));
     }

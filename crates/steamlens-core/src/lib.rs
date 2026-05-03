@@ -8,9 +8,11 @@ mod client;
 mod error;
 mod ffi;
 mod raw_callback;
+mod steam_callback;
 mod user_stats;
 
 pub use client::{Client, connect};
 pub use error::SteamError;
 pub use raw_callback::RawCallback;
+pub use steam_callback::{SteamCallback, SteamResult};
 pub use user_stats::UserStats;

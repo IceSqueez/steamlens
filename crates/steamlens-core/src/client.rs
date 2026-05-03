@@ -8,7 +8,7 @@ use crate::ffi::interfaces::{
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
-use crate::raw_callback::RawCallback;
+use crate::steam_callback::{SteamCallback, callback_decode};
 use crate::user_stats::UserStats;
 
 const STEAM_CLIENT_VERSION: &str = "SteamClient018";
@@ -39,10 +39,12 @@ impl Client {
         UserStats::from_raw(self.steam_user_stats)
     }
 
-    /// Drain all pending Steam callbacks into a `Vec<RawCallback>`.
+    /// Drain all pending Steam callbacks and return them as typed [`SteamCallback`] values.
     ///
-    /// Each call to this method processes every callback that Steam has queued
-    /// since the previous poll. Callbacks are returned in arrival order.
+    /// Each call processes every callback that Steam has queued since the previous poll.
+    /// Callbacks are returned in arrival order. Known callback IDs are decoded into typed
+    /// variants; unrecognised or malformed payloads become `SteamCallback::Unknown` with
+    /// the raw id and payload bytes preserved.
     ///
     /// The method is intended to be called at ~10 Hz from an `iced::Subscription`
     /// tick on the UI thread. It is not safe to call from multiple threads
@@ -52,7 +54,7 @@ impl Client {
     /// normal case between Steam events. Never returns an error for an empty
     /// queue; a `Result` error indicates an FFI symbol resolution failure which
     /// is unrecoverable on this pipe.
-    pub fn poll_callbacks(&self) -> Result<Vec<RawCallback>, SteamError> {
+    pub fn poll_callbacks(&self) -> Result<Vec<SteamCallback>, SteamError> {
         let library = loader::shared()?;
         let mut out = Vec::new();
 
@@ -105,7 +107,10 @@ impl Client {
             // copied the payload above.
             library.free_last_callback(self.pipe)?;
 
-            out.push(RawCallback { id, payload });
+            out.push(callback_decode::decode(crate::raw_callback::RawCallback {
+                id,
+                payload,
+            }));
         }
 
         Ok(out)

@@ -313,6 +313,35 @@ impl<'a> UserStats<'a> {
         Ok(name)
     }
 
+    /// Queues an async request to load stats and achievements for the given Steam user.
+    ///
+    /// Returns immediately. The result arrives as a [`crate::SteamCallback::UserStatsReceived`]
+    /// in a subsequent [`crate::Client::poll_callbacks`] call. Until that callback arrives with
+    /// `result.is_ok()`, all `get_stat_*` and `get_achievement` methods return Steam's defaults
+    /// (0 / `false`).
+    ///
+    /// Pass the Steam ID of the local user (available via [`crate::Client::steam_id`]).
+    ///
+    /// Returns `CallFailed` when Steam returns an invalid call handle (0), which happens when
+    /// Steam is offline or the user is not signed in.
+    pub fn request_user_stats(&self, steam_id: u64) -> Result<(), SteamError> {
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 15 = RequestUserStats. `steam_id` is a plain u64 register argument (RSI on
+        // SysV-x64). Returns a SteamAPICall_t (u64) call handle; 0 means Steam rejected the
+        // request. We do not track the call handle — typed callbacks arrive via poll_callbacks.
+        let handle = unsafe {
+            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
+            ((*vtbl).request_user_stats)(self.raw, steam_id)
+        };
+        if handle == 0 {
+            Err(SteamError::CallFailed {
+                method: "RequestUserStats",
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Returns Steam's opaque image handle for the achievement icon.
     ///
     /// Pass the returned handle to `ISteamUtils::GetImageRGBA` (not yet
