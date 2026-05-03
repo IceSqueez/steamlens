@@ -9,13 +9,16 @@ use crate::ffi::interfaces::{
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
 use crate::raw_callback::RawCallback;
+use crate::user_stats::UserStats;
 
 const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
+const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 
 pub struct Client {
     steam_client: RawInterface,
     _steam_user: RawInterface,
+    steam_user_stats: RawInterface,
     pipe: HSteamPipe,
     user: HSteamUser,
     steam_id: u64,
@@ -25,6 +28,15 @@ pub struct Client {
 impl Client {
     pub fn steam_id(&self) -> u64 {
         self.steam_id
+    }
+
+    /// Returns the user-stats sub-interface for achievement and stat operations.
+    ///
+    /// Until `RequestUserStats` completes (Round 2), `get_*` methods return
+    /// Steam's defaults (typically 0 / `false`). `set_*` calls stage changes
+    /// locally; `store_stats` must be called to persist them.
+    pub fn user_stats(&self) -> UserStats<'_> {
+        UserStats::from_raw(self.steam_user_stats)
     }
 
     /// Drain all pending Steam callbacks into a `Vec<RawCallback>`.
@@ -167,9 +179,37 @@ pub fn connect() -> Result<Client, SteamError> {
         ((*vtbl).get_steam_id)(steam_user)
     };
 
+    let stats_version = CString::new(STEAM_USER_STATS_VERSION).map_err(|_| {
+        SteamError::InvalidInterfaceVersion {
+            version: STEAM_USER_STATS_VERSION.to_owned(),
+        }
+    })?;
+
+    // SAFETY: `user` and `pipe` are live handles from this `steam_client`.
+    // `stats_version.as_ptr()` is a NUL-terminated C string outliving the call.
+    // The returned pointer is to a Steam-owned `ISteamUserStats013` object;
+    // its vtable layout matches the struct we declared for that version string.
+    // Sub-interface pointers are not released — only user and pipe handles are.
+    let steam_user_stats = unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        ((*vtbl).get_isteam_user_stats)(steam_client, user, pipe, stats_version.as_ptr())
+    };
+    if steam_user_stats.is_null() {
+        // SAFETY: release in reverse-init order before returning the error.
+        unsafe {
+            let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+            ((*vtbl).release_user)(steam_client, pipe, user);
+            ((*vtbl).release_steam_pipe)(steam_client, pipe);
+        }
+        return Err(SteamError::InterfaceUnavailable {
+            version: STEAM_USER_STATS_VERSION.to_owned(),
+        });
+    }
+
     Ok(Client {
         steam_client,
         _steam_user: steam_user,
+        steam_user_stats,
         pipe,
         user,
         steam_id,

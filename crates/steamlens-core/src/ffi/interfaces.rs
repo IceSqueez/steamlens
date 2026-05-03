@@ -47,7 +47,12 @@ pub struct ISteamClient018 {
     _reserved_10_get_isteam_matchmaking: usize,
     _reserved_11_get_isteam_matchmaking_servers: usize,
     _reserved_12_get_isteam_generic_interface: usize,
-    _reserved_13_get_isteam_user_stats: usize,
+    pub get_isteam_user_stats: unsafe extern "C" fn(
+        this: *mut c_void,
+        user: HSteamUser,
+        pipe: HSteamPipe,
+        version: *const c_char,
+    ) -> *mut c_void,
     _reserved_14_get_isteam_game_server_stats: usize,
     _reserved_15_get_isteam_apps: usize,
     _reserved_16_get_isteam_networking: usize,
@@ -98,3 +103,71 @@ pub struct ISteamUser012 {
 
 pub type CreateInterfaceFn =
     unsafe extern "C" fn(version: *const c_char, return_code: *mut i32) -> *mut c_void;
+
+/// Vtable layout for `ISteamUserStats013` as vended by
+/// `GetISteamUserStats("STEAMUSERSTATS_INTERFACE_VERSION013")`.
+///
+/// Field order must match the canonical interface definition exactly —
+/// Steam dispatches by vtable index (positional), so reordering fields
+/// changes which method is called.
+#[repr(C)]
+pub struct ISteamUserStats013 {
+    pub get_stat_float:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: *mut f32) -> bool,
+    pub get_stat_int:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: *mut i32) -> bool,
+    pub set_stat_float:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: f32) -> bool,
+    pub set_stat_int:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: i32) -> bool,
+    _reserved_04_update_avg_rate_stat: usize,
+    pub get_achievement:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, achieved: *mut bool) -> bool,
+    pub set_achievement: unsafe extern "C" fn(this: *mut c_void, name: *const c_char) -> bool,
+    pub clear_achievement: unsafe extern "C" fn(this: *mut c_void, name: *const c_char) -> bool,
+    pub get_achievement_and_unlock_time: unsafe extern "C" fn(
+        this: *mut c_void,
+        name: *const c_char,
+        achieved: *mut bool,
+        unlock_time: *mut u32,
+    ) -> bool,
+    pub store_stats: unsafe extern "C" fn(this: *mut c_void) -> bool,
+    pub get_achievement_icon: unsafe extern "C" fn(this: *mut c_void, name: *const c_char) -> i32,
+    pub get_achievement_display_attribute: unsafe extern "C" fn(
+        this: *mut c_void,
+        name: *const c_char,
+        key: *const c_char,
+    ) -> *const c_char,
+    _reserved_12_indicate_achievement_progress: usize,
+    pub get_num_achievements: unsafe extern "C" fn(this: *mut c_void) -> u32,
+    pub get_achievement_name: unsafe extern "C" fn(this: *mut c_void, index: u32) -> *const c_char,
+    _reserved_15_request_user_stats: usize,
+    _reserved_16_get_user_stat_float: usize,
+    _reserved_17_get_user_stat_int: usize,
+    _reserved_18_get_user_achievement: usize,
+    _reserved_19_get_user_achievement_and_unlock_time: usize,
+    _reserved_20_reset_all_stats: usize,
+    _reserved_21_find_or_create_leaderboard: usize,
+    _reserved_22_find_leaderboard: usize,
+    _reserved_23_get_leaderboard_name: usize,
+    _reserved_24_get_leaderboard_entry_count: usize,
+    _reserved_25_get_leaderboard_sort_method: usize,
+    _reserved_26_get_leaderboard_display_type: usize,
+    _reserved_27_download_leaderboard_entries: usize,
+    _reserved_28_download_leaderboard_entries_for_users: usize,
+    _reserved_29_get_downloaded_leaderboard_entry: usize,
+    _reserved_30_upload_leaderboard_score: usize,
+    _reserved_31_attach_leaderboard_ugc: usize,
+    _reserved_32_get_number_of_current_players: usize,
+    _reserved_33_request_global_achievement_percentages: usize,
+    _reserved_34_get_most_achieved_achievement_info: usize,
+    _reserved_35_get_next_most_achieved_achievement_info: usize,
+    _reserved_36_get_achievement_achieved_percent: usize,
+    _reserved_37_request_global_stats: usize,
+    _reserved_38_get_global_stat_float: usize,
+    _reserved_39_get_global_stat_integer: usize,
+    _reserved_40_get_global_stat_history_float: usize,
+    _reserved_41_get_global_stat_history_integer: usize,
+    _reserved_42_get_achievement_progress_limits_float: usize,
+    _reserved_43_get_achievement_progress_limits_integer: usize,
+}

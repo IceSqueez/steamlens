@@ -1,3 +1,4 @@
+use std::ffi::NulError;
 use std::path::PathBuf;
 
 use thiserror::Error;
@@ -35,6 +36,18 @@ pub enum SteamError {
 
     #[error("Failed to create Steam IPC pipe (SteamClient018::CreateSteamPipe returned 0)")]
     PipeCreationFailed,
+
+    #[error("Achievement or stat name contains an interior NUL byte: {source}")]
+    InvalidString {
+        #[source]
+        source: NulError,
+    },
+
+    #[error("Steam returned false for {method}")]
+    CallFailed { method: &'static str },
+
+    #[error("Achievement {name:?} not found or returned null from Steam")]
+    AchievementNotFound { name: String },
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {
