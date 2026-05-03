@@ -1,0 +1,8 @@
+allow-branch = ["master"]
+sign-commit = false
+push = true
+publish = false
+shared-version = false
+dependent-version = "upgrade"
+
+consolidate-commits = false
