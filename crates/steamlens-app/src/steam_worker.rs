@@ -245,13 +245,18 @@ fn load_achievements(c: &Client, tx: &mpsc::Sender<SteamReply>) {
 }
 
 fn wait_for_stats_then_load(c: &Client, tx: &mpsc::Sender<SteamReply>) {
+    let expected_user = c.steam_id();
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         match c.poll_callbacks() {
             Ok(callbacks) => {
                 for cb in callbacks {
                     match &cb {
-                        SteamCallback::UserStatsReceived { result, .. } => {
+                        SteamCallback::UserStatsReceived {
+                            result,
+                            user_steam_id,
+                            ..
+                        } if *user_steam_id == expected_user => {
                             if result.is_ok() {
                                 load_achievements(c, tx);
                             } else {
