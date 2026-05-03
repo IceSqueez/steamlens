@@ -162,8 +162,11 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                     continue;
                 }
 
+                let app_id = connected_app_id.unwrap_or(0);
                 let saved = wait_for_store_callback(c, &tx);
-                if !saved {
+                if saved {
+                    load_achievements_and_stats(c, app_id, &tx);
+                } else {
                     send_reply(
                         &tx,
                         SteamReply::SaveFailed(

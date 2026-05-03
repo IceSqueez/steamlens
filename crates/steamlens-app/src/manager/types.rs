@@ -54,6 +54,7 @@ pub struct StatData {
 pub struct AchievementRow {
     pub data: AchievementData,
     pub is_dirty: bool,
+    pub revealed: bool,
 }
 
 impl AchievementRow {
@@ -61,6 +62,7 @@ impl AchievementRow {
         Self {
             data,
             is_dirty: false,
+            revealed: false,
         }
     }
 

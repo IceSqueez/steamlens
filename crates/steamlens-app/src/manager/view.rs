@@ -353,11 +353,11 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
 fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
-    let is_hidden = row.data.is_hidden && !effective;
+    let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
 
     let (status_text, status_color) = if is_protected {
         ("\u{2298} Protected", C_ORANGE)
-    } else if is_hidden {
+    } else if spoiler_hidden {
         ("\u{25CC} Hidden", C_MUTED)
     } else if effective {
         ("\u{2713} Unlocked", C_GREEN)
@@ -365,13 +365,13 @@ fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
         ("\u{25CB} Locked", C_MUTED)
     };
 
-    let display_name = if is_hidden {
-        "???".to_owned()
+    let display_name = if spoiler_hidden {
+        "Hidden Achievement".to_owned()
     } else {
         row.data.display_name.clone()
     };
-    let description = if is_hidden {
-        "(hidden until unlocked)".to_owned()
+    let description = if spoiler_hidden {
+        "??? Unlock to reveal — or click Reveal to spoil.".to_owned()
     } else {
         row.data.description.clone()
     };
@@ -382,13 +382,37 @@ fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
         space().width(12).into()
     };
 
-    let name_row = iced::widget::row![
-        text(display_name).size(14).color(C_FG),
+    let reveal_btn: Option<Element<'_, Message>> = if spoiler_hidden {
+        let btn = button(text("Reveal").size(11).color(C_MUTED))
+            .on_press(msg(ManagerMessage::RevealHidden(row.data.id.clone())))
+            .padding(Padding::from([2u16, 8]))
+            .style(|_t, _s| button::Style {
+                background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
+                border: iced::Border {
+                    color: Color { a: 0.3, ..C_MUTED },
+                    width: 1.0,
+                    radius: 3.0.into(),
+                },
+                text_color: C_MUTED,
+                ..button::Style::default()
+            });
+        Some(btn.into())
+    } else {
+        None
+    };
+
+    let mut name_row_items: Vec<Element<'_, Message>> = vec![
+        text(display_name).size(14).color(C_FG).into(),
         dirty_dot,
-        space().width(Length::Fill),
-        text(status_text).size(12).color(status_color),
-    ]
-    .align_y(Alignment::Center);
+        space().width(Length::Fill).into(),
+    ];
+    if let Some(rb) = reveal_btn {
+        name_row_items.push(rb);
+        name_row_items.push(space().width(8).into());
+    }
+    name_row_items.push(text(status_text).size(12).color(status_color).into());
+
+    let name_row = iced::widget::Row::from_vec(name_row_items).align_y(Alignment::Center);
 
     let mut inner = column![name_row].spacing(4);
 

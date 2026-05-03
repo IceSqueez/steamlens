@@ -504,4 +504,76 @@ mod tests {
             "game_name must remain fallback when app_name is None"
         );
     }
+
+    #[test]
+    fn reveal_hidden_sets_revealed_true() {
+        use manager::types::{AchievementData, AchievementRow};
+        use manager::{ManagerMessage, ManagerPhase, update};
+        use steam_worker::SteamWorker;
+
+        let mut state = ManagerState::new(105600);
+        state.phase = ManagerPhase::Ready;
+        let data = AchievementData {
+            id: "ACH_SECRET".to_owned(),
+            display_name: "Secret".to_owned(),
+            description: "desc".to_owned(),
+            is_hidden: true,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+            icon: None,
+        };
+        state.achievements.push(AchievementRow::from_data(data));
+        assert!(
+            !state.achievements[0].revealed,
+            "precondition: revealed must be false"
+        );
+
+        let worker = SteamWorker::new_disconnected();
+        let _task = update(
+            &mut state,
+            ManagerMessage::RevealHidden("ACH_SECRET".to_owned()),
+            &worker,
+        );
+
+        assert!(
+            state.achievements[0].revealed,
+            "revealed must be true after RevealHidden"
+        );
+    }
+
+    #[test]
+    fn apply_then_reload_preserves_revealed_state() {
+        use manager::handle_steam_reply;
+        use manager::types::{AchievementData, AchievementRow};
+        use steam_worker::SteamReply;
+
+        let mut state = ManagerState::new(105600);
+        let data = AchievementData {
+            id: "ACH_HIDDEN".to_owned(),
+            display_name: "Spoiler".to_owned(),
+            description: "hidden".to_owned(),
+            is_hidden: true,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+            icon: None,
+        };
+        let mut row = AchievementRow::from_data(data.clone());
+        row.revealed = true;
+        state.achievements.push(row);
+
+        let _task = handle_steam_reply(
+            &mut state,
+            SteamReply::AchievementsAndStats {
+                achievements: vec![data],
+                stats: vec![],
+            },
+        );
+
+        assert!(
+            state.achievements[0].revealed,
+            "revealed state must survive AchievementsAndStats refresh"
+        );
+    }
 }

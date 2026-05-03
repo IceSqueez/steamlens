@@ -40,6 +40,7 @@ pub enum ManagerMessage {
     ResetFailed(String),
     BannerDismissed,
     DiscardChanges,
+    RevealHidden(String),
     SpinnerTick,
     FadeInTick(f32),
 }
@@ -136,9 +137,21 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             achievements,
             stats,
         } => {
+            let prev_revealed: std::collections::HashSet<String> = state
+                .achievements
+                .iter()
+                .filter(|r| r.revealed)
+                .map(|r| r.data.id.clone())
+                .collect();
             state.achievements = achievements
                 .into_iter()
-                .map(AchievementRow::from_data)
+                .map(|data| {
+                    let mut row = AchievementRow::from_data(data);
+                    if prev_revealed.contains(&row.data.id) {
+                        row.revealed = true;
+                    }
+                    row
+                })
                 .collect();
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
             state.phase = ManagerPhase::Ready;
@@ -229,9 +242,21 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::AchievementsLoaded(achievements, stats) => {
+            let prev_revealed: std::collections::HashSet<String> = state
+                .achievements
+                .iter()
+                .filter(|r| r.revealed)
+                .map(|r| r.data.id.clone())
+                .collect();
             state.achievements = achievements
                 .into_iter()
-                .map(AchievementRow::from_data)
+                .map(|data| {
+                    let mut row = AchievementRow::from_data(data);
+                    if prev_revealed.contains(&row.data.id) {
+                        row.revealed = true;
+                    }
+                    row
+                })
                 .collect();
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
             state.phase = ManagerPhase::Ready;
@@ -435,6 +460,12 @@ pub fn update(
                 row.edit_text = row.data.original_value.to_edit_string();
                 row.is_dirty = false;
                 row.edit_error = None;
+            }
+            Task::none()
+        }
+        ManagerMessage::RevealHidden(id) => {
+            if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
+                row.revealed = true;
             }
             Task::none()
         }
