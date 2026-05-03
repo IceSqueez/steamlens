@@ -95,8 +95,10 @@ impl Client {
                 // SAFETY: Steam guarantees that `param_ptr` points to a buffer
                 // of at least `param_size` bytes that is valid until
                 // `Steam_FreeLastCallback` is called on this pipe. We copy the
-                // bytes into an owned `Vec` before freeing. The cast from
-                // `i32` to `usize` is safe because we guard `param_size > 0`.
+                // bytes into an owned `Vec` before freeing. The cast from i32
+                // to usize is lossless for positive i32 on x86_64. We trust
+                // Steam to report `param_size` accurately for its own
+                // allocation — this is the standard FFI trust boundary.
                 unsafe { core::slice::from_raw_parts(param_ptr, param_size as usize).to_vec() }
             } else {
                 Vec::new()

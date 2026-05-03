@@ -46,6 +46,14 @@ impl SteamResult {
 /// Variants are produced by decoding raw callback payloads from Steam. Unknown
 /// or malformed payloads fall back to the `Unknown` variant — the raw bytes are
 /// preserved so callers can inspect or log them without data loss.
+///
+/// # Exhaustiveness
+///
+/// This enum is `#[non_exhaustive]`: new callback variants will be added as
+/// SteamLens wires additional Steam callback IDs. All `match` expressions must
+/// include a wildcard arm (`_ => { ... }` or `other => { ... }`) to handle
+/// variants added in future versions.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum SteamCallback {
     /// Steam has delivered the requested stats and achievements for a user.
