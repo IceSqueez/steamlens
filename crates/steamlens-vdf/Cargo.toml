@@ -1,0 +1,10 @@
+[package]
+name = "steamlens-vdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Binary KeyValue (VDF) parser for Steam cache files"
+
+[dependencies]

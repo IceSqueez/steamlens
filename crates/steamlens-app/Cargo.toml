@@ -1,0 +1,12 @@
+[package]
+name = "steamlens-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Desktop tool for inspecting and modifying Steam achievements and stats"
+readme = "../../README.md"
+
+[dependencies]
+iced.workspace = true

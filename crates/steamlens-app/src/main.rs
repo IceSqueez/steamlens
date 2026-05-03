@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use iced::{
     Element, Task,
     widget::{button, column, row, text},
-    window,
 };
 
 #[derive(Debug)]
@@ -24,9 +23,9 @@ enum Message {
     Exit,
 }
 
-fn update(state: &mut AppState, message: Message) -> Task<Message> {
+fn update(_state: &mut AppState, message: Message) -> Task<Message> {
     match message {
-        Message::Exit => window::get_latest().and_then(window::close),
+        Message::Exit => iced::exit(),
     }
 }
 
@@ -35,15 +34,19 @@ fn view(state: &AppState) -> Element<'_, Message> {
         row![
             text(state.current_dir.to_str().unwrap_or("unknown dir")).size(24),
             button(text("Exit").size(24)).on_press(Message::Exit),
-            button(text("Up").size(24)).on_press(Message::Exit)
         ]
         .spacing(8)
     ]
     .into()
 }
 
+fn theme(_state: &AppState) -> iced::Theme {
+    iced::Theme::Dracula
+}
+
 fn main() -> iced::Result {
-    iced::application("SteamLens", update, view)
-        .theme(|_x| iced::Theme::Dracula)
+    iced::application(AppState::default, update, view)
+        .title("SteamLens")
+        .theme(theme)
         .run()
 }

@@ -1,0 +1,15 @@
+[package]
+name = "steamlens-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Steam client interop layer for SteamLens"
+
+[dependencies]
+libloading = "0.9"
+thiserror = "2"
+
+[dev-dependencies]
+static_assertions = "1"
