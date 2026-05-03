@@ -4,7 +4,7 @@ use std::ffi::CString;
 
 use crate::error::SteamError;
 use crate::ffi::interfaces::{
-    CallbackMessage, HSteamPipe, HSteamUser, ISteamClient018, ISteamUser012,
+    CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamClient018, ISteamUser012,
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
@@ -15,20 +15,78 @@ use crate::user_stats::UserStats;
 const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
 const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
+const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
 
 pub struct Client {
     steam_client: RawInterface,
     _steam_user: RawInterface,
     steam_user_stats: RawInterface,
+    steam_apps: RawInterface,
     pipe: HSteamPipe,
     user: HSteamUser,
     steam_id: u64,
+    app_id: u32,
     _not_send: PhantomData<*const ()>,
 }
 
 impl Client {
     pub fn steam_id(&self) -> u64 {
         self.steam_id
+    }
+
+    pub fn app_id(&self) -> u32 {
+        self.app_id
+    }
+
+    /// Returns the human-readable display name for the connected app, or `None`
+    /// when `app_id` is 0, Steam has no entry for the app, or the returned
+    /// buffer is empty.
+    ///
+    /// Data is served from Steam's local appcache — no network request is made.
+    /// The returned string is owned and heap-allocated; no pointer into Steam's
+    /// memory is retained after this call returns.
+    pub fn app_name(&self) -> Option<String> {
+        if self.app_id == 0 || self.steam_apps.is_null() {
+            return None;
+        }
+
+        let key = c"name";
+        let mut buf = [0u8; 1024];
+
+        // SAFETY: `self.steam_apps` was vended as "STEAMAPPS_INTERFACE_VERSION001"
+        // so its vtable layout matches `ISteamApps001`. `self.app_id` is the
+        // app-specific ID stored at connect time. `key.as_ptr()` is a static
+        // NUL-terminated C string. `buf.as_mut_ptr()` is a valid, aligned,
+        // uniquely-owned buffer of `buf.len()` bytes — Steam writes at most
+        // `value_length` bytes into it. The written bytes are read immediately
+        // after the call before any other Steam call can occur. No pointer into
+        // Steam-owned memory is retained.
+        let written = unsafe {
+            let vtbl = opaque::vtable::<ISteamApps001>(self.steam_apps);
+            ((*vtbl).get_app_data)(
+                self.steam_apps,
+                self.app_id,
+                key.as_ptr(),
+                buf.as_mut_ptr().cast::<core::ffi::c_char>(),
+                buf.len() as i32,
+            )
+        };
+
+        if written <= 0 {
+            return None;
+        }
+
+        let len = (written as usize).min(buf.len());
+        let trimmed = buf[..len]
+            .iter()
+            .position(|&b| b == 0)
+            .map_or(&buf[..len], |nul| &buf[..nul]);
+
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        String::from_utf8(trimmed.to_vec()).ok()
     }
 
     /// Returns the user-stats sub-interface for achievement and stat operations.
@@ -284,13 +342,31 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         });
     }
 
+    let apps_version =
+        CString::new(STEAM_APPS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
+            version: STEAM_APPS_VERSION.to_owned(),
+        })?;
+
+    // SAFETY: `user` and `pipe` are live handles from this `steam_client`.
+    // `apps_version.as_ptr()` is a NUL-terminated C string outliving the call.
+    // The returned pointer is to a Steam-owned `ISteamApps001` object whose
+    // vtable layout matches the struct declared for that version string.
+    // Sub-interface pointers are not released — only user and pipe handles are.
+    // A null return is non-fatal: `app_name()` guards on `steam_apps.is_null()`.
+    let steam_apps = unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_version.as_ptr())
+    };
+
     Ok(Client {
         steam_client,
         _steam_user: steam_user,
         steam_user_stats,
+        steam_apps,
         pipe,
         user,
         steam_id,
+        app_id,
         _not_send: PhantomData,
     })
 }

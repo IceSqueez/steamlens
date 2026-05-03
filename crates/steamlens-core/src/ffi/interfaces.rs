@@ -54,7 +54,12 @@ pub struct ISteamClient018 {
         version: *const c_char,
     ) -> *mut c_void,
     _reserved_14_get_isteam_game_server_stats: usize,
-    _reserved_15_get_isteam_apps: usize,
+    pub get_isteam_apps: unsafe extern "C" fn(
+        this: *mut c_void,
+        user: HSteamUser,
+        pipe: HSteamPipe,
+        version: *const c_char,
+    ) -> *mut c_void,
     _reserved_16_get_isteam_networking: usize,
     _reserved_17_get_isteam_remote_storage: usize,
     _reserved_18_get_isteam_screenshots: usize,
@@ -185,4 +190,15 @@ pub struct ISteamUserStats013 {
     _reserved_41_get_global_stat_history_integer: usize,
     _reserved_42_get_achievement_progress_limits_float: usize,
     _reserved_43_get_achievement_progress_limits_integer: usize,
+}
+
+#[repr(C)]
+pub struct ISteamApps001 {
+    pub get_app_data: unsafe extern "C" fn(
+        this: *mut c_void,
+        app_id: u32,
+        key: *const c_char,
+        value: *mut c_char,
+        value_length: i32,
+    ) -> i32,
 }
