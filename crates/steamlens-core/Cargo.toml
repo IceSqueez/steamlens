@@ -13,3 +13,4 @@ thiserror = "2"
 
 [dev-dependencies]
 static_assertions = "1"
+steamlens-vdf = { path = "../steamlens-vdf" }

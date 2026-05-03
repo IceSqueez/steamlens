@@ -119,7 +119,54 @@ impl Client {
     }
 }
 
-pub fn connect() -> Result<Client, SteamError> {
+/// Connects to Steam.
+///
+/// Pass `0` for no specific app context (suitable for picker / splash screens
+/// that only need the user's SteamID; per-app stat reads will return
+/// `CallFailed`). Pass a real Steam app ID (e.g. `105600` for Terraria) when
+/// entering app-specific flows that need `GetStat` / `SetStat` /
+/// `IndicateAchievementProgress` to operate against that app's stat counters.
+///
+/// When `app_id != 0` this function writes `SteamAppId` to the process
+/// environment *before* loading `steamclient.so`. Steam reads this variable
+/// exactly once during its first-touch library initialisation — the call that
+/// triggers `loader::shared()` / `dlopen`. After the library is loaded the
+/// variable has no further effect in the same process.
+///
+/// When `app_id == 0` the environment is left untouched (matching SAM's
+/// `if (appId != 0) SetEnvironmentVariable(...)` guard).
+///
+/// # Concurrency
+///
+/// When `app_id != 0` this function mutates the process-wide environment via
+/// `std::env::set_var`, which is `unsafe` in Rust 2024 because it races with
+/// concurrent reads from other threads. Call `connect` before spawning any
+/// thread that reads `std::env`. The library load is single-shot and
+/// idempotent — the *first* call with a non-zero `app_id` sets the app
+/// context for the entire process lifetime.
+///
+/// # Errors
+///
+/// - [`SteamError::SteamInstallNotFound`] — could not locate `steamclient.so`.
+/// - [`SteamError::SteamNotRunning`] — `CreateSteamPipe` or `ConnectToGlobalUser`
+///   returned 0, meaning no Steam process is listening on the IPC socket.
+/// - [`SteamError::InterfaceUnavailable`] — Steam returned a null pointer for
+///   the `SteamUser012` or `STEAMUSERSTATS_INTERFACE_VERSION013` interface.
+pub fn connect(app_id: u32) -> Result<Client, SteamError> {
+    if app_id != 0 {
+        // SAFETY: `std::env::set_var` is `unsafe` in Rust 2024 because it
+        // mutates process-wide state without synchronisation. The caller
+        // contract (documented above) requires that this function is called
+        // before any other thread reads `std::env`. The value written is a
+        // pure ASCII decimal — no NUL bytes, no invalid UTF-8 — and
+        // `SteamAppId` is a fixed ASCII key. Steam reads the env once during
+        // the library's first-touch init triggered by `loader::shared()` below;
+        // setting it before that call is the only correct ordering.
+        unsafe {
+            std::env::set_var("SteamAppId", app_id.to_string());
+        }
+    }
+
     let library = loader::shared()?;
     let steam_client = library.create_interface(STEAM_CLIENT_VERSION)?;
 

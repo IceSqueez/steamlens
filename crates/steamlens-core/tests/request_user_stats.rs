@@ -24,7 +24,7 @@ use steamlens_core::{SteamCallback, connect};
 #[test]
 #[ignore = "requires Steam running; calls RequestUserStats and waits for callback"]
 fn request_user_stats_delivers_callback() {
-    let client = connect().expect("connect() must succeed with Steam running");
+    let client = connect(0).expect("connect(0) must succeed with Steam running");
     let steam_id = client.steam_id();
 
     let expected_game_id: Option<u64> = std::env::var("SteamAppId")

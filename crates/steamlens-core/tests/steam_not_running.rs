@@ -1,4 +1,4 @@
-//! Integration test: `connect()` must surface `SteamError::SteamNotRunning`
+//! Integration test: `connect(0)` must surface `SteamError::SteamNotRunning`
 //! when the Steam client is not active, instead of panicking.
 //!
 //! This test is `#[ignore]`d by default because CI does not have a Steam
@@ -20,7 +20,7 @@ use steamlens_core::{SteamError, connect};
 #[test]
 #[ignore = "requires Steam to be NOT running; see file header"]
 fn steam_offline_returns_not_running() {
-    match connect() {
+    match connect(0) {
         Err(SteamError::SteamNotRunning) => {}
         Err(SteamError::SteamInstallNotFound { .. }) => {
             // Acceptable on machines without Steam installed at all — still
@@ -57,7 +57,7 @@ fn steam_offline_returns_not_running() {
 #[ignore = "requires Steam running; regression guard for drop-time SIGSEGV"]
 fn drop_on_worker_thread_does_not_segfault() {
     let handle = std::thread::spawn(|| {
-        let client = connect().expect("connect on worker thread");
+        let client = connect(0).expect("connect(0) on worker thread");
         let id = client.steam_id();
         assert_ne!(id, 0);
         // implicit drop of `client` here, on the worker thread; before the
@@ -69,7 +69,7 @@ fn drop_on_worker_thread_does_not_segfault() {
 #[test]
 #[ignore = "requires Steam to be running and signed in; see file header"]
 fn steam_online_returns_client() {
-    match connect() {
+    match connect(0) {
         Ok(client) => {
             assert_ne!(
                 client.steam_id(),

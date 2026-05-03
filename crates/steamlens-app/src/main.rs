@@ -33,7 +33,8 @@ async fn connect_steam() -> Result<u64, String> {
     tokio::time::timeout(
         std::time::Duration::from_secs(10),
         tokio::task::spawn_blocking(|| {
-            steamlens_core::connect()
+            // app_id=0: no specific app context for splash; Manager view will use real app_id
+            steamlens_core::connect(0)
                 .map(|c| c.steam_id())
                 .map_err(|e| e.to_string())
         }),

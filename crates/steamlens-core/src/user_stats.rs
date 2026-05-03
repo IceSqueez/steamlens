@@ -161,15 +161,26 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Returns the value of the named integer stat from the local cache.
+    /// Returns the value of the named integer stat for the local user in the
+    /// current app context.
+    ///
+    /// Requires that the process was started with `SteamAppId` set in the
+    /// environment (or that [`crate::connect`] was called with a non-zero `app_id`) AND that
+    /// [`Self::request_user_stats`] has completed with a `UserStatsReceived`
+    /// callback whose `result.is_ok()`.
+    ///
+    /// Returns `CallFailed` when Steam reports `false` — typically because
+    /// the app context is unset, the stat name is unknown to the schema, or
+    /// stats have not yet been loaded.
     pub fn get_stat_int(&self, name: &str) -> Result<i32, SteamError> {
         let cname = Self::cname(name)?;
         let mut value: i32 = 0;
         // SAFETY: Impl-level invariant holds (see above).
-        // Slot 1 = GetStatInteger.  `cname` is NUL-terminated and held alive by
-        // the binding.  `value` is a stack i32; Steam writes through the pointer
-        // before returning.  Returns false when the name is unknown or stats are
-        // not loaded yet.
+        // Slot 1 = GetStatInteger (current-user reader).  `cname` is
+        // NUL-terminated and held alive by the binding.  `value` is a stack
+        // i32; Steam writes through the pointer before returning.  Returns
+        // false when the name is unknown, stats are not loaded, or the
+        // process has no SteamAppId set.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_stat_int)(self.raw, cname.as_ptr(), &mut value)
@@ -183,14 +194,18 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Returns the value of the named float stat from the local cache.
+    /// Returns the value of the named float stat for the local user in the
+    /// current app context.
+    ///
+    /// Same semantics as [`Self::get_stat_int`] — see that method for the
+    /// app-context contract and error conditions.
     pub fn get_stat_float(&self, name: &str) -> Result<f32, SteamError> {
         let cname = Self::cname(name)?;
         let mut value: f32 = 0.0;
         // SAFETY: Impl-level invariant holds (see above).
-        // Slot 0 = GetStatFloat.  `cname` is NUL-terminated and held alive by
-        // the binding.  `value` is a stack f32; Steam writes through the pointer
-        // before returning.
+        // Slot 0 = GetStatFloat (current-user reader).  `cname` is
+        // NUL-terminated and held alive by the binding.  `value` is a stack
+        // f32; Steam writes through the pointer before returning.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_stat_float)(self.raw, cname.as_ptr(), &mut value)
@@ -373,6 +388,45 @@ impl<'a> UserStats<'a> {
         } else {
             Err(SteamError::CallFailed {
                 method: "ResetAllStats",
+            })
+        }
+    }
+
+    /// Signals to Steam that the user has made progress toward an achievement.
+    ///
+    /// This API is separate from regular stat writes. Steam maintains an internal
+    /// progress counter for each achievement that drives the "X/Y" popup in the
+    /// overlay; that counter is NOT reset by [`Self::reset_all_stats`]. Calling
+    /// this method with `current = 0` is the only way to reset it without a
+    /// game-side progress notification.
+    ///
+    /// Typical use: derive `max` from the achievement's schema definition, then
+    /// call `indicate_achievement_progress(name, 0, max)` after a full
+    /// `reset_all_stats(true)` + `store_stats` cycle to clear the popup counter.
+    ///
+    /// Returns `CallFailed` when Steam rejects the call — most commonly because
+    /// the achievement name is unknown or `max` is zero.
+    pub fn indicate_achievement_progress(
+        &self,
+        name: &str,
+        current: u32,
+        max: u32,
+    ) -> Result<(), SteamError> {
+        let cname = Self::cname(name)?;
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 12 = IndicateAchievementProgress.  `cname` is NUL-terminated and
+        // held alive by the binding for the duration of the call.  `current` and
+        // `max` are plain u32 register arguments (RDX, RCX on SysV-x64).
+        // Returns bool in RAX; false means Steam rejected the name or max == 0.
+        let ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
+            ((*vtbl).indicate_achievement_progress)(self.raw, cname.as_ptr(), current, max)
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(SteamError::CallFailed {
+                method: "IndicateAchievementProgress",
             })
         }
     }

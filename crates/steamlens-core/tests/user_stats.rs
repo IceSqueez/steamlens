@@ -22,7 +22,7 @@ use steamlens_core::connect;
 #[test]
 #[ignore]
 fn user_stats_schema_browse() {
-    let client = connect().expect("Steam must be running");
+    let client = connect(0).expect("Steam must be running");
     let stats = client.user_stats();
 
     let count = stats.num_achievements().expect("num_achievements failed");
@@ -72,7 +72,7 @@ fn user_stats_schema_browse() {
 #[test]
 #[ignore]
 fn achievement_name_out_of_range() {
-    let client = connect().expect("Steam must be running");
+    let client = connect(0).expect("Steam must be running");
     let stats = client.user_stats();
 
     let result = stats.achievement_name(u32::MAX);
@@ -88,7 +88,7 @@ fn achievement_name_out_of_range() {
 #[test]
 #[ignore]
 fn invalid_string_returns_error() {
-    let client = connect().expect("Steam must be running");
+    let client = connect(0).expect("Steam must be running");
     let stats = client.user_stats();
 
     let result = stats.get_achievement("ACH\0IEVMENT");

@@ -19,7 +19,7 @@ use steamlens_core::{SteamCallback, connect};
 #[test]
 #[ignore = "requires Steam running; polls callbacks 5 times at 100 ms intervals"]
 fn poll_five_iterations_does_not_error() {
-    let client = connect().expect("connect() must succeed with Steam running");
+    let client = connect(0).expect("connect(0) must succeed with Steam running");
 
     for i in 0..5 {
         let callbacks = client
@@ -58,7 +58,7 @@ fn poll_five_iterations_does_not_error() {
 #[test]
 #[ignore = "requires Steam running; verifies callback payloads are coherent"]
 fn callback_payloads_have_sensible_sizes() {
-    let client = connect().expect("connect() must succeed with Steam running");
+    let client = connect(0).expect("connect(0) must succeed with Steam running");
 
     for _ in 0..10 {
         let callbacks = client
