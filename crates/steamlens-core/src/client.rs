@@ -1,10 +1,14 @@
 use core::marker::PhantomData;
+use core::ptr::addr_of;
 use std::ffi::CString;
 
 use crate::error::SteamError;
-use crate::ffi::interfaces::{HSteamPipe, HSteamUser, ISteamClient018, ISteamUser012};
+use crate::ffi::interfaces::{
+    CallbackMessage, HSteamPipe, HSteamUser, ISteamClient018, ISteamUser012,
+};
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
+use crate::raw_callback::RawCallback;
 
 const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
@@ -21,6 +25,78 @@ pub struct Client {
 impl Client {
     pub fn steam_id(&self) -> u64 {
         self.steam_id
+    }
+
+    /// Drain all pending Steam callbacks into a `Vec<RawCallback>`.
+    ///
+    /// Each call to this method processes every callback that Steam has queued
+    /// since the previous poll. Callbacks are returned in arrival order.
+    ///
+    /// The method is intended to be called at ~10 Hz from an `iced::Subscription`
+    /// tick on the UI thread. It is not safe to call from multiple threads
+    /// concurrently — `Client` is `!Send`.
+    ///
+    /// Returns an empty `Vec` when no callbacks are pending, which is the
+    /// normal case between Steam events. Never returns an error for an empty
+    /// queue; a `Result` error indicates an FFI symbol resolution failure which
+    /// is unrecoverable on this pipe.
+    pub fn poll_callbacks(&self) -> Result<Vec<RawCallback>, SteamError> {
+        let library = loader::shared()?;
+        let mut out = Vec::new();
+
+        loop {
+            let mut msg = CallbackMessage {
+                user: 0,
+                id: 0,
+                param_ptr: core::ptr::null_mut(),
+                param_size: 0,
+            };
+
+            // SAFETY: `msg` is a stack-allocated `CallbackMessage` whose
+            // address is valid for the duration of this call. `self.pipe`
+            // is the live `HSteamPipe` handle established in `connect()`.
+            // Steam writes into `msg` only when it returns `true` (a callback
+            // is available). We pass `null_mut()` for the call-handle output
+            // because we do not use API-call tracking at this layer.
+            let has_callback =
+                library.b_get_callback(self.pipe, &mut msg, core::ptr::null_mut())?;
+            if !has_callback {
+                break;
+            }
+
+            // Read fields from the packed struct via `addr_of!` to avoid
+            // creating unaligned references, which is UB even for reads on
+            // packed structs. Steam wrote valid data when `has_callback` is
+            // true.
+            //
+            // SAFETY: `msg` was just written by Steam (b_get_callback returned
+            // true). `param_ptr` and `param_size` are valid for the duration
+            // between b_get_callback and free_last_callback — we copy the
+            // bytes immediately before calling free.
+            let id = unsafe { addr_of!(msg.id).read_unaligned() };
+            let param_ptr = unsafe { addr_of!(msg.param_ptr).read_unaligned() };
+            let param_size = unsafe { addr_of!(msg.param_size).read_unaligned() };
+
+            let payload = if !param_ptr.is_null() && param_size > 0 {
+                // SAFETY: Steam guarantees that `param_ptr` points to a buffer
+                // of at least `param_size` bytes that is valid until
+                // `Steam_FreeLastCallback` is called on this pipe. We copy the
+                // bytes into an owned `Vec` before freeing. The cast from
+                // `i32` to `usize` is safe because we guard `param_size > 0`.
+                unsafe { core::slice::from_raw_parts(param_ptr, param_size as usize).to_vec() }
+            } else {
+                Vec::new()
+            };
+
+            // Free the callback buffer before moving to the next iteration.
+            // After this call, `param_ptr` is invalidated — but we have already
+            // copied the payload above.
+            library.free_last_callback(self.pipe)?;
+
+            out.push(RawCallback { id, payload });
+        }
+
+        Ok(out)
     }
 }
 

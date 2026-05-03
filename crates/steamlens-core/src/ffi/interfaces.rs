@@ -3,6 +3,25 @@ use core::ffi::{c_char, c_void};
 pub type HSteamPipe = i32;
 pub type HSteamUser = i32;
 
+/// Wire-level callback message as written by Steam into the buffer passed to
+/// `Steam_BGetCallback`. The layout matches the C-style struct that Steam
+/// writes on the stack: 4-byte user handle, 4-byte callback id, pointer-sized
+/// param pointer, 4-byte param byte count. `Pack = 1` in the canonical
+/// reference means no implicit padding is inserted between fields; we must
+/// declare this accordingly so Steam's write lines up with our reads.
+#[repr(C, packed)]
+pub struct CallbackMessage {
+    pub user: HSteamUser,
+    pub id: i32,
+    pub param_ptr: *mut u8,
+    pub param_size: i32,
+}
+
+pub type BGetCallbackFn =
+    unsafe extern "C" fn(pipe: HSteamPipe, msg: *mut CallbackMessage, call: *mut i32) -> bool;
+
+pub type FreeLastCallbackFn = unsafe extern "C" fn(pipe: HSteamPipe) -> bool;
+
 #[repr(C)]
 pub struct ISteamClient018 {
     pub create_steam_pipe: unsafe extern "C" fn(this: *mut c_void) -> HSteamPipe,

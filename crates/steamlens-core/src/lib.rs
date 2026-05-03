@@ -7,6 +7,8 @@ compile_error!(
 mod client;
 mod error;
 mod ffi;
+mod raw_callback;
 
 pub use client::{Client, connect};
 pub use error::SteamError;
+pub use raw_callback::RawCallback;

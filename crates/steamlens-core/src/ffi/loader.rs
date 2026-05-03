@@ -6,7 +6,9 @@ use std::sync::OnceLock;
 use libloading::{Library, Symbol};
 
 use crate::error::SteamError;
-use crate::ffi::interfaces::CreateInterfaceFn;
+use crate::ffi::interfaces::{
+    BGetCallbackFn, CallbackMessage, CreateInterfaceFn, FreeLastCallbackFn, HSteamPipe,
+};
 use crate::ffi::opaque::RawInterface;
 
 pub struct SteamLibrary {
@@ -44,6 +46,56 @@ impl SteamLibrary {
         let handle = unsafe { Library::new(&path) }
             .map_err(|source| SteamError::LibraryLoadFailed { path, source })?;
         Ok(Self { handle })
+    }
+
+    pub fn b_get_callback(
+        &self,
+        pipe: HSteamPipe,
+        msg: *mut CallbackMessage,
+        call_handle: *mut i32,
+    ) -> Result<bool, SteamError> {
+        let symbol_name = b"Steam_BGetCallback\0";
+        // SAFETY: `Steam_BGetCallback` is a documented C export of
+        // `steamclient.so`. Its signature is
+        // `bool Steam_BGetCallback(HSteamPipe, CallbackMessage*, int*)`.
+        // The symbol name is NUL-terminated. We type-erase it through the
+        // `BGetCallbackFn` alias which matches the export exactly.
+        let func: Symbol<BGetCallbackFn> = unsafe {
+            self.handle
+                .get(symbol_name)
+                .map_err(|source| SteamError::SymbolNotFound {
+                    symbol: "Steam_BGetCallback",
+                    source,
+                })?
+        };
+        // SAFETY: `pipe` is a valid handle returned by `CreateSteamPipe`.
+        // `msg` points to a `CallbackMessage` that lives on the caller's
+        // stack and remains valid for the duration of this call. Steam
+        // writes through `msg` only when it returns `true`; we copy the
+        // payload before calling `free_last_callback`. `call_handle` may
+        // be null — Steam skips writing back when it is.
+        Ok(unsafe { func(pipe, msg, call_handle) })
+    }
+
+    pub fn free_last_callback(&self, pipe: HSteamPipe) -> Result<(), SteamError> {
+        let symbol_name = b"Steam_FreeLastCallback\0";
+        // SAFETY: `Steam_FreeLastCallback` is a documented C export of
+        // `steamclient.so` whose signature is `bool Steam_FreeLastCallback(HSteamPipe)`.
+        // The symbol name is NUL-terminated and typed via `FreeLastCallbackFn`.
+        let func: Symbol<FreeLastCallbackFn> = unsafe {
+            self.handle
+                .get(symbol_name)
+                .map_err(|source| SteamError::SymbolNotFound {
+                    symbol: "Steam_FreeLastCallback",
+                    source,
+                })?
+        };
+        // SAFETY: `pipe` is the same valid handle used in the preceding
+        // `b_get_callback` call. Steam_FreeLastCallback must be called once
+        // per successful `b_get_callback`; we call it immediately after
+        // copying the payload, before any further use of the pipe.
+        unsafe { func(pipe) };
+        Ok(())
     }
 
     pub fn create_interface(&self, version: &str) -> Result<RawInterface, SteamError> {
