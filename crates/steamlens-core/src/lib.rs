@@ -12,7 +12,7 @@ mod stat_schema;
 mod steam_callback;
 mod user_stats;
 
-pub use client::{Client, connect};
+pub use client::{Client, Image, connect};
 pub use error::SteamError;
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};

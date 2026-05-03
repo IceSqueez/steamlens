@@ -5,6 +5,7 @@ use std::ffi::CString;
 use crate::error::SteamError;
 use crate::ffi::interfaces::{
     CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamClient018, ISteamUser012,
+    ISteamUtils005,
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
@@ -16,12 +17,25 @@ const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
 const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
+const STEAM_UTILS_VERSION: &str = "SteamUtils005";
+
+/// RGBA8888 pixel data for a Steam image handle.
+///
+/// `rgba` has exactly `width * height * 4` bytes. Pixels are in
+/// left-to-right, top-to-bottom order with no row padding.
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
 
 pub struct Client {
     steam_client: RawInterface,
     _steam_user: RawInterface,
     steam_user_stats: RawInterface,
     steam_apps: RawInterface,
+    steam_utils: RawInterface,
     pipe: HSteamPipe,
     user: HSteamUser,
     steam_id: u64,
@@ -96,6 +110,83 @@ impl Client {
     /// locally; `store_stats` must be called to persist them.
     pub fn user_stats(&self) -> UserStats<'_> {
         UserStats::from_raw(self.steam_user_stats)
+    }
+
+    /// Fetch RGBA pixel data for a Steam image handle.
+    ///
+    /// Handles are obtained from [`UserStats::achievement_icon`], which returns
+    /// an `i32` for each achievement name. A handle of `0` means Steam has not
+    /// finished fetching the image yet — this is the normal state immediately
+    /// after `RequestUserStats` returns and before Steam has retrieved the icon
+    /// data asynchronously. In that case `Ok(None)` is returned and the caller
+    /// should retry on the next callback poll cycle.
+    ///
+    /// When Steam emits an `AchievementIconFetched` callback (id 1408) the
+    /// handle becomes valid and this method will return the pixel data.
+    ///
+    /// Returns `Ok(None)` when the handle is `0`, when Steam reports the handle
+    /// is not loaded yet, or if a race causes `GetImageRGBA` to fail.
+    ///
+    /// # Errors
+    ///
+    /// [`SteamError::InterfaceUnavailable`] when the `SteamUtils005` interface
+    /// pointer is null (should not happen in normal usage after `connect`).
+    pub fn get_image(&self, handle: i32) -> Result<Option<Image>, SteamError> {
+        if handle == 0 {
+            return Ok(None);
+        }
+        if self.steam_utils.is_null() {
+            return Err(SteamError::InterfaceUnavailable {
+                version: STEAM_UTILS_VERSION.to_owned(),
+            });
+        }
+
+        let mut width: u32 = 0;
+        let mut height: u32 = 0;
+
+        // SAFETY: `self.steam_utils` was vended as "SteamUtils005", so its
+        // vtable layout matches `ISteamUtils005`. `handle` is an opaque image
+        // handle from Steam — we pass it back unchanged. `width` and `height`
+        // are stack-allocated `u32`s whose addresses are valid for the duration
+        // of this call. Steam writes into them when it returns `true`. No
+        // pointer into Steam-owned memory is retained after this call.
+        let size_ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUtils005>(self.steam_utils);
+            ((*vtbl).get_image_size)(self.steam_utils, handle, &mut width, &mut height)
+        };
+        if !size_ok || width == 0 || height == 0 {
+            return Ok(None);
+        }
+
+        let pixel_count = width as usize * height as usize;
+        let byte_count = pixel_count * 4;
+        let mut rgba: Vec<u8> = vec![0u8; byte_count];
+
+        // SAFETY: `self.steam_utils` vtable invariant: same as above for
+        // `GetImageSize`. `rgba.as_mut_ptr()` points to the start of a
+        // Vec<u8> with `byte_count` bytes of allocated, initialised storage.
+        // Steam writes exactly `dest_size` bytes (RGBA8888). `byte_count`
+        // fits in an `i32` for any practical image (Steam icon max ~256×256
+        // = 262144 bytes, well below i32::MAX). No pointer is retained after
+        // this call — the Vec owns the data.
+        let rgba_ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUtils005>(self.steam_utils);
+            ((*vtbl).get_image_rgba)(
+                self.steam_utils,
+                handle,
+                rgba.as_mut_ptr(),
+                byte_count as i32,
+            )
+        };
+        if !rgba_ok {
+            return Ok(None);
+        }
+
+        Ok(Some(Image {
+            width,
+            height,
+            rgba,
+        }))
     }
 
     /// Read stat counter metadata from the local Steam schema cache file.
@@ -358,11 +449,30 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_version.as_ptr())
     };
 
+    let utils_version =
+        CString::new(STEAM_UTILS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
+            version: STEAM_UTILS_VERSION.to_owned(),
+        })?;
+
+    // SAFETY: `pipe` is the live HSteamPipe handle from this `steam_client`.
+    // `utils_version.as_ptr()` is a NUL-terminated C string outliving the call.
+    // `GetISteamUtils` takes only `(this, pipe, version)` — no user handle —
+    // matching the SteamClient018 interface definition (slot 9). The returned
+    // pointer is to a Steam-owned `ISteamUtils005` object whose vtable layout
+    // matches the struct declared for that version string. Sub-interface
+    // pointers are not released — only user and pipe handles are. A null return
+    // is non-fatal: `get_image()` guards on `steam_utils.is_null()`.
+    let steam_utils = unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
+    };
+
     Ok(Client {
         steam_client,
         _steam_user: steam_user,
         steam_user_stats,
         steam_apps,
+        steam_utils,
         pipe,
         user,
         steam_id,

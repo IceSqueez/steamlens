@@ -43,7 +43,11 @@ pub struct ISteamClient018 {
     _reserved_06_get_isteam_game_server: usize,
     _reserved_07_set_local_ip_binding: usize,
     _reserved_08_get_isteam_friends: usize,
-    _reserved_09_get_isteam_utils: usize,
+    pub get_isteam_utils: unsafe extern "C" fn(
+        this: *mut c_void,
+        pipe: HSteamPipe,
+        version: *const c_char,
+    ) -> *mut c_void,
     _reserved_10_get_isteam_matchmaking: usize,
     _reserved_11_get_isteam_matchmaking_servers: usize,
     _reserved_12_get_isteam_generic_interface: usize,
@@ -201,4 +205,39 @@ pub struct ISteamApps001 {
         value: *mut c_char,
         value_length: i32,
     ) -> i32,
+}
+
+/// Vtable layout for `ISteamUtils005` as vended by
+/// `GetISteamUtils("SteamUtils005")`.
+///
+/// Field order must match the canonical interface definition exactly.
+/// Steam dispatches by vtable index; reordering fields silently changes
+/// which method is called.
+#[repr(C)]
+pub struct ISteamUtils005 {
+    _reserved_00_get_seconds_since_app_active: usize,
+    _reserved_01_get_seconds_since_computer_active: usize,
+    _reserved_02_get_connected_universe: usize,
+    _reserved_03_get_server_real_time: usize,
+    _reserved_04_get_ip_country: usize,
+    pub get_image_size: unsafe extern "C" fn(
+        this: *mut c_void,
+        handle: i32,
+        width: *mut u32,
+        height: *mut u32,
+    ) -> bool,
+    pub get_image_rgba:
+        unsafe extern "C" fn(this: *mut c_void, handle: i32, dest: *mut u8, dest_size: i32) -> bool,
+    _reserved_07_get_cser_ip_port: usize,
+    _reserved_08_get_current_battery_power: usize,
+    _reserved_09_get_app_id: usize,
+    _reserved_10_set_overlay_notification_position: usize,
+    _reserved_11_is_api_call_completed: usize,
+    _reserved_12_get_api_call_failure_reason: usize,
+    _reserved_13_get_api_call_result: usize,
+    _reserved_14_run_frame: usize,
+    _reserved_15_get_ipc_call_count: usize,
+    _reserved_16_set_warning_message_hook: usize,
+    _reserved_17_is_overlay_enabled: usize,
+    _reserved_18_overlay_needs_present: usize,
 }
