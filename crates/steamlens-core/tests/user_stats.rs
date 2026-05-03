@@ -101,4 +101,3 @@ fn invalid_string_returns_error() {
         "expected InvalidString"
     );
 }
-
