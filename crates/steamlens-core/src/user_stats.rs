@@ -33,6 +33,22 @@ pub struct UserStats<'a> {
     _not_send: PhantomData<*const ()>,
 }
 
+// Impl-level safety invariant for every `unsafe` block in this `impl`:
+//
+// `self.raw` is a pointer vended by Steam via `GetISteamUserStats` against
+// the version string `STEAMUSERSTATS_INTERFACE_VERSION013`.  Steam guarantees
+// its vtable layout matches `ISteamUserStats013` — dispatch is positional
+// (slot N = method M as declared in that interface).  The pointer remains
+// valid for the lifetime `'a` (tied to the `&'a Client` that owns the pipe).
+//
+// Calling convention on the current target (Linux x86_64 SysV-x64): `this`
+// is the first integer argument (RDI); remaining arguments follow in RSI,
+// RDX, RCX, R8, R9.  No `thiscall` is required (that applies only to the
+// Windows x86 backend, not yet implemented).
+//
+// Per-block comments below state the specific vtable slot and any additional
+// invariants (lifetime of string arguments, out-pointer validity, etc.) on
+// top of this base.
 impl<'a> UserStats<'a> {
     pub(crate) fn from_raw(raw: RawInterface) -> Self {
         Self {
@@ -54,11 +70,10 @@ impl<'a> UserStats<'a> {
     pub fn get_achievement(&self, name: &str) -> Result<bool, SteamError> {
         let cname = Self::cname(name)?;
         let mut achieved = false;
-        // SAFETY: `self.raw` was vended as `STEAMUSERSTATS_INTERFACE_VERSION013`,
-        // so its vtable matches `ISteamUserStats013` (slot 5 = GetAchievement).
-        // `cname` is a valid NUL-terminated UTF-8 string that outlives this call.
-        // `achieved` is a stack bool; Steam writes through the pointer before returning.
-        // SysV-x64: `this` passes in RDI, `name` in RSI, `achieved` (out-ptr) in RDX.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 5 = GetAchievement.  `cname` is NUL-terminated and held alive by
+        // the binding for the duration of the call.  `achieved` is a stack-allocated
+        // bool; Steam writes through the pointer before returning.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement)(self.raw, cname.as_ptr(), &mut achieved)
@@ -77,8 +92,10 @@ impl<'a> UserStats<'a> {
     /// Call `store_stats` afterwards to persist the change.
     pub fn set_achievement(&self, name: &str) -> Result<(), SteamError> {
         let cname = Self::cname(name)?;
-        // SAFETY: slot 6 = SetAchievement. `this` + NUL-terminated name.
-        // Returns bool; false means Steam rejected the name (e.g. schema not loaded).
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 6 = SetAchievement.  `cname` is NUL-terminated and held alive by
+        // the binding for the duration of the call.  Returns bool; false means
+        // Steam rejected the name (schema not loaded or name unknown).
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).set_achievement)(self.raw, cname.as_ptr())
@@ -97,7 +114,10 @@ impl<'a> UserStats<'a> {
     /// Call `store_stats` afterwards to persist the change.
     pub fn clear_achievement(&self, name: &str) -> Result<(), SteamError> {
         let cname = Self::cname(name)?;
-        // SAFETY: slot 7 = ClearAchievement. Same invariants as set_achievement.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 7 = ClearAchievement.  `cname` is NUL-terminated and held alive by
+        // the binding for the duration of the call.  Returns bool; false means
+        // Steam rejected the name (schema not loaded or name unknown).
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).clear_achievement)(self.raw, cname.as_ptr())
@@ -118,9 +138,11 @@ impl<'a> UserStats<'a> {
         let cname = Self::cname(name)?;
         let mut achieved = false;
         let mut unlock_time: u32 = 0;
-        // SAFETY: slot 8 = GetAchievementAndUnlockTime. Both out-pointers are
-        // stack-allocated and outlive the call. Steam writes through them only
-        // when it returns true.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 8 = GetAchievementAndUnlockTime.  `cname` is NUL-terminated and
+        // held alive by the binding.  `achieved` and `unlock_time` are
+        // stack-allocated out-params; Steam writes through them only when it
+        // returns true.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement_and_unlock_time)(
@@ -143,9 +165,11 @@ impl<'a> UserStats<'a> {
     pub fn get_stat_int(&self, name: &str) -> Result<i32, SteamError> {
         let cname = Self::cname(name)?;
         let mut value: i32 = 0;
-        // SAFETY: slot 1 = GetStatInteger. `value` is a stack i32; Steam writes
-        // through the pointer. Returns false if the name is unknown or stats
-        // are not loaded yet.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 1 = GetStatInteger.  `cname` is NUL-terminated and held alive by
+        // the binding.  `value` is a stack i32; Steam writes through the pointer
+        // before returning.  Returns false when the name is unknown or stats are
+        // not loaded yet.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_stat_int)(self.raw, cname.as_ptr(), &mut value)
@@ -163,8 +187,10 @@ impl<'a> UserStats<'a> {
     pub fn get_stat_float(&self, name: &str) -> Result<f32, SteamError> {
         let cname = Self::cname(name)?;
         let mut value: f32 = 0.0;
-        // SAFETY: slot 0 = GetStatFloat. `value` is a stack f32; Steam writes
-        // through the pointer.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 0 = GetStatFloat.  `cname` is NUL-terminated and held alive by
+        // the binding.  `value` is a stack f32; Steam writes through the pointer
+        // before returning.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_stat_float)(self.raw, cname.as_ptr(), &mut value)
@@ -183,7 +209,9 @@ impl<'a> UserStats<'a> {
     /// Call `store_stats` to persist.
     pub fn set_stat_int(&self, name: &str, value: i32) -> Result<(), SteamError> {
         let cname = Self::cname(name)?;
-        // SAFETY: slot 3 = SetStatInteger. Value passed by register (i32).
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 3 = SetStatInteger.  `cname` is NUL-terminated and held alive by
+        // the binding.  `value` is passed by register (i32 in RDX on SysV-x64).
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).set_stat_int)(self.raw, cname.as_ptr(), value)
@@ -202,7 +230,9 @@ impl<'a> UserStats<'a> {
     /// Call `store_stats` to persist.
     pub fn set_stat_float(&self, name: &str, value: f32) -> Result<(), SteamError> {
         let cname = Self::cname(name)?;
-        // SAFETY: slot 2 = SetStatFloat. Value passed by XMM0 register (f32 by value).
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 2 = SetStatFloat.  `cname` is NUL-terminated and held alive by
+        // the binding.  `value` is passed by XMM register (f32 on SysV-x64).
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).set_stat_float)(self.raw, cname.as_ptr(), value)
@@ -225,7 +255,8 @@ impl<'a> UserStats<'a> {
     /// or no stats staged). A `false` return does not mean data was lost —
     /// retrying after a successful `RequestUserStats` round will re-stage the data.
     pub fn store_stats(&self) -> Result<(), SteamError> {
-        // SAFETY: slot 9 = StoreStats. No parameters beyond `this`.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 9 = StoreStats.  No additional parameters beyond `this`.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).store_stats)(self.raw)
@@ -241,8 +272,10 @@ impl<'a> UserStats<'a> {
 
     /// Returns the number of achievements defined in the schema for this app.
     pub fn num_achievements(&self) -> Result<u32, SteamError> {
-        // SAFETY: slot 13 = GetNumAchievements. Returns u32 in RAX.
-        // Cannot fail (returns 0 when schema is not loaded, which is not an error state).
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 13 = GetNumAchievements.  No additional parameters.  Returns u32
+        // in RAX; 0 when the schema is not yet loaded (not an error — caller
+        // should call RequestUserStats first).
         let count = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_num_achievements)(self.raw)
@@ -255,10 +288,12 @@ impl<'a> UserStats<'a> {
     /// Returns `AchievementNotFound` when `index` is out of range or the schema
     /// is not loaded (Steam returns a null pointer in both cases).
     pub fn achievement_name(&self, index: u32) -> Result<String, SteamError> {
-        // SAFETY: slot 14 = GetAchievementName. Returns a pointer to a static
-        // string buffer owned by `steamclient.so`. The pointer is valid until
-        // the next Steam call on this pipe, so we copy into an owned String
-        // before returning. Null indicates index-out-of-range or schema not loaded.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 14 = GetAchievementName.  Returns a pointer to a static string
+        // buffer owned by `steamclient.so`; valid until the next Steam call on
+        // this pipe.  Null indicates index-out-of-range or schema not loaded.
+        // The subsequent `CStr::from_ptr` block copies the bytes before any
+        // further Steam call can invalidate the buffer.
         let ptr = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement_name)(self.raw, index)
@@ -268,8 +303,10 @@ impl<'a> UserStats<'a> {
                 name: format!("<index {index}>"),
             });
         }
-        // SAFETY: Steam guarantees the returned pointer is a NUL-terminated
-        // UTF-8 string when non-null. We copy before any further Steam call.
+        // SAFETY: Non-null was verified above.  Steam guarantees a valid
+        // NUL-terminated UTF-8 string in this buffer for the lifetime noted in
+        // the vtable-call block.  We copy immediately; no further Steam call
+        // intervenes.
         let name = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
@@ -286,8 +323,11 @@ impl<'a> UserStats<'a> {
     /// to the `UserAchievementIconFetched` callback (Round 2+).
     pub fn achievement_icon(&self, name: &str) -> Result<i32, SteamError> {
         let cname = Self::cname(name)?;
-        // SAFETY: slot 10 = GetAchievementIcon. Returns i32 icon handle in RAX.
-        // 0 means "not loaded yet" — not an error; caller must wait for callback.
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 10 = GetAchievementIcon.  `cname` is NUL-terminated and held alive
+        // by the binding.  Returns i32 icon handle in RAX; 0 means the icon has
+        // not been fetched yet (not an error — caller subscribes to the
+        // UserAchievementIconFetched callback, Round 2+).
         let handle = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement_icon)(self.raw, cname.as_ptr())
@@ -312,10 +352,13 @@ impl<'a> UserStats<'a> {
     ) -> Result<String, SteamError> {
         let cname = Self::cname(name)?;
         let cattr = Self::cname(attribute)?;
-        // SAFETY: slot 11 = GetAchievementDisplayAttribute. Returns a pointer
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 11 = GetAchievementDisplayAttribute.  Both `cname` and `cattr`
+        // are NUL-terminated and held alive by their bindings.  Returns a pointer
         // to a static string buffer owned by `steamclient.so`; valid until the
-        // next Steam call on this pipe. We copy into an owned String immediately.
-        // Null indicates unknown achievement or schema not loaded.
+        // next Steam call on this pipe.  The subsequent `CStr::from_ptr` block
+        // copies the bytes before any further Steam call can invalidate the buffer.
+        // Null indicates unknown achievement name or schema not loaded.
         let ptr = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement_display_attribute)(self.raw, cname.as_ptr(), cattr.as_ptr())
@@ -325,8 +368,10 @@ impl<'a> UserStats<'a> {
                 name: name.to_owned(),
             });
         }
-        // SAFETY: Steam guarantees the returned pointer is a NUL-terminated
-        // UTF-8 string when non-null. We copy before any further Steam call.
+        // SAFETY: Non-null was verified above.  Steam guarantees a valid
+        // NUL-terminated UTF-8 string in this buffer for the lifetime noted in
+        // the vtable-call block.  We copy immediately; no further Steam call
+        // intervenes.
         let value = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
