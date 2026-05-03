@@ -309,13 +309,6 @@ fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
 
     println!("steam_id = {steam_id}");
 
-    println!(
-        "\n>>> CHECKPOINT 1: Sleeping 2s after connect({app_id_u32}). \
-         Look at Steam UI — does it show '{app_id} — In Game' or your friends list status \
-         changed to 'In-Game Terraria' (or whatever app you used)?"
-    );
-    std::thread::sleep(Duration::from_secs(2));
-
     stats
         .request_user_stats(steam_id)
         .expect("request_user_stats must not fail when Steam is running");
@@ -440,10 +433,4 @@ fn __destructive_clear_all_DO_NOT_RUN_ON_FAVORITE_GAME() {
             );
         }
     }
-
-    println!(
-        "\n>>> CHECKPOINT 2: Sleeping 2s before disconnect. \
-         Look at Steam UI again — friends-list status, popups, anything change?"
-    );
-    std::thread::sleep(Duration::from_secs(2));
 }
