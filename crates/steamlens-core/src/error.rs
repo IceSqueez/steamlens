@@ -48,6 +48,17 @@ pub enum SteamError {
 
     #[error("Achievement {name:?} not found or returned null from Steam")]
     AchievementNotFound { name: String },
+
+    /// The schema cache file exists but could not be parsed.
+    ///
+    /// A missing file is not an error — `stat_descriptors` returns an empty
+    /// `Vec` in that case. This variant fires only when the file is present but
+    /// the binary KeyValue data is truncated or otherwise corrupt.
+    #[error("Failed to parse Steam schema cache: {source}")]
+    SchemaParseError {
+        #[source]
+        source: steamlens_vdf::VdfError,
+    },
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

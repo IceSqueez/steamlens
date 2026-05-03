@@ -9,8 +9,8 @@ description = "Steam client interop layer for SteamLens"
 
 [dependencies]
 libloading = "0.9"
+steamlens-vdf = { path = "../steamlens-vdf" }
 thiserror = "2"
 
 [dev-dependencies]
 static_assertions = "1"
-steamlens-vdf = { path = "../steamlens-vdf" }

@@ -8,6 +8,7 @@ use crate::ffi::interfaces::{
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
+use crate::stat_schema::{StatDescriptor, load as load_stat_descriptors};
 use crate::steam_callback::{SteamCallback, callback_decode};
 use crate::user_stats::UserStats;
 
@@ -37,6 +38,29 @@ impl Client {
     /// locally; `store_stats` must be called to persist them.
     pub fn user_stats(&self) -> UserStats<'_> {
         UserStats::from_raw(self.steam_user_stats)
+    }
+
+    /// Read stat counter metadata from the local Steam schema cache file.
+    ///
+    /// Returns a descriptor for every integer and float stat defined for `app_id`.
+    /// Achievement-typed entries in the schema are filtered out — this method
+    /// returns only pure stat counters (those with `type = "INT"` or `"FLOAT"`).
+    ///
+    /// Reads `~/.local/share/Steam/appcache/stats/UserGameStatsSchema_<app_id>.bin`
+    /// from disk; no live Steam connection is required.
+    ///
+    /// # Missing file
+    ///
+    /// If the schema file does not exist (the game was never launched against the
+    /// connected Steam account, or stats have not been downloaded yet) the method
+    /// returns `Ok(Vec::new())` — an empty list is not an error.
+    ///
+    /// # Errors
+    ///
+    /// [`SteamError::SchemaParseError`] when the cache file is present but the
+    /// binary KeyValue data is truncated or otherwise corrupt.
+    pub fn stat_descriptors(&self, app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
+        load_stat_descriptors(app_id)
     }
 
     /// Drain all pending Steam callbacks and return them as typed [`SteamCallback`] values.
