@@ -397,4 +397,110 @@ mod tests {
         let state = ManagerState::new(105600);
         assert!(!state.has_stat_errors());
     }
+
+    fn make_manager_state_with_dirty_achievements() -> ManagerState {
+        use manager::types::{AchievementData, AchievementRow};
+        let mut state = ManagerState::new(105600);
+        state.phase = manager::ManagerPhase::Ready;
+        let data = AchievementData {
+            id: "ACH_1".to_owned(),
+            display_name: "Test".to_owned(),
+            description: "desc".to_owned(),
+            is_hidden: false,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+        };
+        let mut row = AchievementRow::from_data(data);
+        row.is_dirty = true;
+        state.achievements.push(row);
+        state
+    }
+
+    #[test]
+    fn cancel_resets_dirty_count_to_zero() {
+        use manager::ManagerMessage;
+        use steam_worker::SteamWorker;
+
+        let mut state = make_manager_state_with_dirty_achievements();
+        assert_eq!(
+            state.dirty_count(),
+            1,
+            "precondition: one dirty achievement"
+        );
+
+        let worker = SteamWorker::new_disconnected();
+        let _task = manager::update(&mut state, ManagerMessage::DiscardChanges, &worker);
+
+        assert_eq!(
+            state.dirty_count(),
+            0,
+            "dirty count must be zero after DiscardChanges"
+        );
+    }
+
+    #[test]
+    fn cancel_does_not_change_phase() {
+        use manager::ManagerMessage;
+        use steam_worker::SteamWorker;
+
+        let mut state = make_manager_state_with_dirty_achievements();
+        assert_eq!(state.phase, manager::ManagerPhase::Ready, "precondition");
+
+        let worker = SteamWorker::new_disconnected();
+        let _task = manager::update(&mut state, ManagerMessage::DiscardChanges, &worker);
+
+        assert_eq!(
+            state.phase,
+            manager::ManagerPhase::Ready,
+            "phase must not change after DiscardChanges"
+        );
+    }
+
+    #[test]
+    fn manager_state_app_name_starts_as_fallback() {
+        let state = ManagerState::new(105600);
+        assert_eq!(
+            state.game_name, "App 105600",
+            "initial game_name must be fallback App <id>"
+        );
+    }
+
+    #[test]
+    fn connected_reply_updates_game_name() {
+        use manager::handle_steam_reply;
+        use steam_worker::SteamReply;
+
+        let mut state = ManagerState::new(105600);
+        let _task = handle_steam_reply(
+            &mut state,
+            SteamReply::Connected {
+                steam_id: 0,
+                app_name: Some("Terraria".to_owned()),
+            },
+        );
+        assert_eq!(
+            state.game_name, "Terraria",
+            "game_name must update when Connected reply carries app_name"
+        );
+    }
+
+    #[test]
+    fn connected_reply_keeps_fallback_when_app_name_none() {
+        use manager::handle_steam_reply;
+        use steam_worker::SteamReply;
+
+        let mut state = ManagerState::new(105600);
+        let _task = handle_steam_reply(
+            &mut state,
+            SteamReply::Connected {
+                steam_id: 0,
+                app_name: None,
+            },
+        );
+        assert_eq!(
+            state.game_name, "App 105600",
+            "game_name must remain fallback when app_name is None"
+        );
+    }
 }

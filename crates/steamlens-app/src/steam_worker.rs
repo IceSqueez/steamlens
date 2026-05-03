@@ -28,6 +28,7 @@ pub enum SteamRequest {
 pub enum SteamReply {
     Connected {
         steam_id: u64,
+        app_name: Option<String>,
     },
     ConnectFailed(String),
     StatsRequested,
@@ -65,6 +66,12 @@ impl SteamWorker {
     pub fn send(&self, req: SteamRequest) {
         let _ = self.sender.try_send(req);
     }
+
+    #[cfg(test)]
+    pub fn new_disconnected() -> Self {
+        let (req_tx, _req_rx) = mpsc::sync_channel::<SteamRequest>(1);
+        SteamWorker { sender: req_tx }
+    }
 }
 
 fn send_reply(tx: &mpsc::Sender<SteamReply>, reply: SteamReply) {
@@ -83,9 +90,10 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                 match steamlens_core::connect(app_id) {
                     Ok(c) => {
                         let steam_id = c.steam_id();
+                        let app_name = c.app_name();
                         connected_app_id = Some(app_id);
                         client = Some(c);
-                        send_reply(&tx, SteamReply::Connected { steam_id });
+                        send_reply(&tx, SteamReply::Connected { steam_id, app_name });
                     }
                     Err(e) => send_reply(&tx, SteamReply::ConnectFailed(e.to_string())),
                 }

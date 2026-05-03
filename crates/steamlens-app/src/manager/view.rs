@@ -637,7 +637,7 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
 
     let cancel_btn = if dirty > 0 && !is_busy {
         button(text(cancel_label).size(13))
-            .on_press(Message::GoBack)
+            .on_press(msg(ManagerMessage::DiscardChanges))
             .padding(Padding::from([8u16, 16]))
             .style(cancel_style)
     } else {

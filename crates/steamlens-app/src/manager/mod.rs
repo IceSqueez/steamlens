@@ -39,6 +39,7 @@ pub enum ManagerMessage {
     ResetDone,
     ResetFailed(String),
     BannerDismissed,
+    DiscardChanges,
     SpinnerTick,
     FadeInTick(f32),
 }
@@ -110,7 +111,10 @@ impl ManagerState {
 
 pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<crate::Message> {
     match reply {
-        SteamReply::Connected { .. } => {
+        SteamReply::Connected { app_name, .. } => {
+            if let Some(name) = app_name {
+                state.game_name = name;
+            }
             state.phase = ManagerPhase::WaitingStats;
             Task::none()
         }
@@ -420,6 +424,18 @@ pub fn update(
         }
         ManagerMessage::BannerDismissed => {
             state.banner = None;
+            Task::none()
+        }
+        ManagerMessage::DiscardChanges => {
+            for row in &mut state.achievements {
+                row.is_dirty = false;
+            }
+            for row in &mut state.stats {
+                row.data.value = row.data.original_value;
+                row.edit_text = row.data.original_value.to_edit_string();
+                row.is_dirty = false;
+                row.edit_error = None;
+            }
             Task::none()
         }
         ManagerMessage::SpinnerTick => {
