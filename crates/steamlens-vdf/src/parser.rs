@@ -166,8 +166,6 @@ impl<'a> Cursor<'a> {
         Ok(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
-    /// Read children of a section until the `End` (0x08) tag is consumed.
-    /// Returns `Value::Section(children)`.
     pub(crate) fn read_section(&mut self) -> Result<Value, VdfError> {
         let mut children = Vec::new();
 

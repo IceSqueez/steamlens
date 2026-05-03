@@ -32,12 +32,16 @@ fn path_walk_on_real_schema() {
     let root = steamlens_vdf::parse(FIXTURE).unwrap();
 
     // Structure: 325180 -> stats -> 1 -> type = "ACHIEVEMENTS"
-    // (the "bits" sub-section exists but is empty in this schema file)
     let achievement_type = root.get("325180/stats/1/type");
     assert_eq!(
         achievement_type,
         Some(&Value::String("ACHIEVEMENTS".into()))
     );
+
+    // The "bits" sub-section is empty in this schema — exercises the
+    // empty-section parse path explicitly.
+    let bits = root.get("325180/stats/1/bits");
+    assert_eq!(bits, Some(&Value::Section(vec![])));
 
     // version is a sibling of "stats" under the "325180" app section
     let version = root.get("325180/version");
