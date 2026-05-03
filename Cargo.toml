@@ -2,6 +2,11 @@
 name = "steamlens"
 version = "0.3.0-alpha.0+build.1"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["IceSqueez <IceSqueez@gmail.com>"]
+description = "Desktop tool for inspecting and modifying Steam achievements and stats"
+repository = "https://github.com/IceSqueez/steamlens"
+readme = "README.md"
 
 [dependencies]
 iced = "0.14.0"
