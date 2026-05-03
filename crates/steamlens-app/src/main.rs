@@ -1,4 +1,4 @@
-use iced::widget::{button, center, column, text};
+use iced::widget::{button, center, column, row, text};
 use iced::{Element, Task};
 
 #[derive(Debug)]
@@ -17,38 +17,50 @@ enum Message {
 
 struct App {
     screen: Screen,
+    connecting: bool,
 }
 
 fn boot() -> (App, Task<Message>) {
     let app = App {
         screen: Screen::Loading,
+        connecting: true,
     };
     let task = Task::perform(connect_steam(), Message::SteamConnectAttempted);
     (app, task)
 }
 
 async fn connect_steam() -> Result<u64, String> {
-    tokio::task::spawn_blocking(|| {
-        steamlens_core::connect()
-            .map(|c| c.steam_id())
-            .map_err(|e| e.to_string())
-    })
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::task::spawn_blocking(|| {
+            steamlens_core::connect()
+                .map(|c| c.steam_id())
+                .map_err(|e| e.to_string())
+        }),
+    )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|_| "Connection timed out after 10s — is Steam responsive?".to_string())
+    .and_then(|join_result| join_result.map_err(|e| e.to_string()))
     .and_then(|r| r)
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::SteamConnectAttempted(Ok(steam_id)) => {
+            app.connecting = false;
             app.screen = Screen::Connected { steam_id };
             Task::none()
         }
         Message::SteamConnectAttempted(Err(reason)) => {
+            app.connecting = false;
             app.screen = Screen::SteamNotRunning { reason };
             Task::none()
         }
         Message::Retry => {
+            if app.connecting {
+                return Task::none();
+            }
+            app.connecting = true;
             app.screen = Screen::Loading;
             Task::perform(connect_steam(), Message::SteamConnectAttempted)
         }
@@ -65,8 +77,12 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::SteamNotRunning { reason } => column![
             text("Steam is not running").size(28),
             text("Start the Steam client and try again.").size(16),
-            text(reason.as_str()).size(12),
-            button(text("Retry")).on_press(Message::Retry),
+            text(reason.as_str()).size(14),
+            row![
+                button(text("Retry")).on_press(Message::Retry),
+                button(text("Exit")).on_press(Message::Exit),
+            ]
+            .spacing(8),
         ]
         .spacing(16)
         .into(),
@@ -101,6 +117,7 @@ mod tests {
     fn app_loading() -> App {
         App {
             screen: Screen::Loading,
+            connecting: true,
         }
     }
 
@@ -109,12 +126,14 @@ mod tests {
             screen: Screen::SteamNotRunning {
                 reason: reason.to_owned(),
             },
+            connecting: false,
         }
     }
 
     fn app_connected(steam_id: u64) -> App {
         App {
             screen: Screen::Connected { steam_id },
+            connecting: false,
         }
     }
 
@@ -211,5 +230,50 @@ mod tests {
             Screen::SteamNotRunning { reason: stored } => assert_eq!(stored, reason),
             _ => panic!("expected SteamNotRunning"),
         }
+    }
+
+    #[test]
+    fn retry_while_connecting_does_not_change_state() {
+        let mut app = app_loading();
+        assert!(app.connecting, "precondition: connecting must be true");
+        let screen_before = screen_name(&app);
+        let _task = update(&mut app, Message::Retry);
+        assert_eq!(
+            screen_name(&app),
+            screen_before,
+            "screen must not change when Retry fires while connecting"
+        );
+        assert!(
+            app.connecting,
+            "connecting flag must remain true after no-op Retry"
+        );
+    }
+
+    #[test]
+    fn successful_connect_clears_connecting_flag() {
+        let mut app = app_loading();
+        assert!(app.connecting, "precondition: connecting must be true");
+        let _task = update(
+            &mut app,
+            Message::SteamConnectAttempted(Ok(76561198000000001)),
+        );
+        assert!(
+            !app.connecting,
+            "connecting must be false after successful connect"
+        );
+    }
+
+    #[test]
+    fn failed_connect_clears_connecting_flag() {
+        let mut app = app_loading();
+        assert!(app.connecting, "precondition: connecting must be true");
+        let _task = update(
+            &mut app,
+            Message::SteamConnectAttempted(Err("Steam not running".to_owned())),
+        );
+        assert!(
+            !app.connecting,
+            "connecting must be false after failed connect"
+        );
     }
 }
