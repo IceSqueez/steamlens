@@ -10,3 +10,5 @@ readme = "../../README.md"
 
 [dependencies]
 iced.workspace = true
+tokio.workspace = true
+steamlens-core = { path = "../steamlens-core" }
