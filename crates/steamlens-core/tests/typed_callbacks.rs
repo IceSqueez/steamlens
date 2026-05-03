@@ -165,3 +165,64 @@ fn unknown_callback_empty_payload_round_trips() {
     let cb = SteamCallback::from(raw);
     assert!(matches!(cb, SteamCallback::Unknown(_)));
 }
+
+// ── Exact-minimum-size boundary tests ─────────────────────────────────────────
+//
+// These tests verify that a payload of exactly the documented minimum size
+// decodes to the typed variant (not Unknown). One byte fewer produces Unknown.
+
+#[test]
+fn decode_user_stats_received_exact_min_len() {
+    // UserStatsReceived minimum: 20 bytes (u64 game_id + i32 result + u64 user_steam_id).
+    // Hand-crafted: game_id=105600 (Terraria, LE), result=1 (Ok), user_steam_id=76561198000000042.
+    let game_id: u64 = 105600;
+    let result: i32 = 1;
+    let user_steam_id: u64 = 76561198000000042;
+
+    let mut payload = Vec::with_capacity(20);
+    payload.extend_from_slice(&game_id.to_le_bytes());
+    payload.extend_from_slice(&result.to_le_bytes());
+    payload.extend_from_slice(&user_steam_id.to_le_bytes());
+    assert_eq!(payload.len(), 20);
+
+    let raw = RawCallback { id: 1101, payload };
+    let cb = SteamCallback::from(raw);
+    match cb {
+        SteamCallback::UserStatsReceived {
+            game_id: g,
+            result: r,
+            user_steam_id: u,
+        } => {
+            assert_eq!(g, game_id);
+            assert!(r.is_ok());
+            assert_eq!(u, user_steam_id);
+        }
+        other => panic!("expected UserStatsReceived at exact min size, got {other:?}"),
+    }
+}
+
+#[test]
+fn decode_user_stats_stored_exact_min_len() {
+    // UserStatsStored minimum: 12 bytes (u64 game_id + i32 result).
+    // Hand-crafted: game_id=105600 (Terraria, LE), result=1 (Ok).
+    let game_id: u64 = 105600;
+    let result: i32 = 1;
+
+    let mut payload = Vec::with_capacity(12);
+    payload.extend_from_slice(&game_id.to_le_bytes());
+    payload.extend_from_slice(&result.to_le_bytes());
+    assert_eq!(payload.len(), 12);
+
+    let raw = RawCallback { id: 1102, payload };
+    let cb = SteamCallback::from(raw);
+    match cb {
+        SteamCallback::UserStatsStored {
+            game_id: g,
+            result: r,
+        } => {
+            assert_eq!(g, game_id);
+            assert!(r.is_ok());
+        }
+        other => panic!("expected UserStatsStored at exact min size, got {other:?}"),
+    }
+}

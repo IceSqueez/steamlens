@@ -9,6 +9,10 @@
 // owns and that has a populated stats schema. You can also omit SteamAppId to
 // use whatever context the current Steam session has active.
 //
+// If SteamAppId is set, the test additionally asserts that the game_id in the
+// UserStatsReceived callback matches it. If the env var is absent the assertion
+// is skipped (a warning is printed instead).
+//
 // Expected output: within 5 seconds the test prints a UserStatsReceived line
 // and asserts result.is_ok(). If Steam does not deliver the callback within
 // the poll window the test panics with a clear timeout message.
@@ -22,6 +26,14 @@ use steamlens_core::{SteamCallback, connect};
 fn request_user_stats_delivers_callback() {
     let client = connect().expect("connect() must succeed with Steam running");
     let steam_id = client.steam_id();
+
+    let expected_game_id: Option<u64> = std::env::var("SteamAppId")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok());
+
+    if expected_game_id.is_none() {
+        println!("warning: SteamAppId not set — game_id assertion will be skipped");
+    }
 
     println!("steam_id = {steam_id}");
 
@@ -59,6 +71,14 @@ fn request_user_stats_delivers_callback() {
                         result.is_ok(),
                         "UserStatsReceived result must be Ok, got {result:?}"
                     );
+
+                    if let Some(expected) = expected_game_id {
+                        assert_eq!(
+                            *game_id, expected,
+                            "UserStatsReceived game_id={game_id} does not match SteamAppId={expected}"
+                        );
+                    }
+
                     return;
                 }
                 SteamCallback::UserStatsStored { game_id, result } => {
@@ -71,6 +91,7 @@ fn request_user_stats_delivers_callback() {
                         raw.payload.len()
                     );
                 }
+                _ => {}
             }
         }
 

@@ -47,6 +47,7 @@ fn poll_five_iterations_does_not_error() {
                         raw.payload.len()
                     );
                 }
+                _ => {}
             }
         }
 
