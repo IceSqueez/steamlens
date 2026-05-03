@@ -1,0 +1,22 @@
+name: Audit
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'Cargo.lock'
+
+jobs:
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

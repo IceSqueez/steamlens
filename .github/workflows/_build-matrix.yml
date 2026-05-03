@@ -1,0 +1,80 @@
+name: Build Matrix (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      bin_name:
+        required: true
+        type: string
+      retention_days:
+        required: false
+        type: number
+        default: 0
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: windows-x64
+            suffix: .exe
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: linux-x64
+            suffix: ""
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: macos-arm64
+            suffix: ""
+
+          - os: macos-26-intel
+            target: x86_64-apple-darwin
+            asset_name: macos-x64
+            suffix: ""
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update -qq && sudo apt-get install -y libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config
+
+      - name: Get Version
+        id: get_version
+        shell: bash
+        run: |
+          RAW_VERSION=$(cargo pkgid -p ${{ inputs.bin_name }} | cut -d# -f2 | cut -d@ -f2)
+          echo "VERSION=$RAW_VERSION" >> $GITHUB_ENV
+
+      - name: Build
+        shell: bash
+        run: cargo build --release --locked --target ${{ matrix.target }} -p ${{ inputs.bin_name }}
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          SRC_PATH="target/${{ matrix.target }}/release/${{ inputs.bin_name }}${{ matrix.suffix }}"
+          NEW_NAME="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}${{ matrix.suffix }}"
+          mv "$SRC_PATH" "$NEW_NAME"
+          echo "ARTIFACT_PATH=$NEW_NAME" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_PATH }}
+          path: ${{ env.ARTIFACT_PATH }}
+          retention-days: ${{ inputs.retention_days == 0 && 3 || inputs.retention_days }}

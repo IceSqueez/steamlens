@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config
+
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  build:
+    name: Build
+    needs: [test]
+    uses: ./.github/workflows/_build-matrix.yml
+    with:
+      bin_name: steamlens
+      retention_days: 1
+
+  publish:
+    name: Publish
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Resolve previous tag
+        id: prev_tag
+        run: |
+          PREV=$(git tag -l "v*" --sort=-version:refname | sed -n '2p')
+          if [ -n "$PREV" ]; then
+            echo "range=$PREV.." >> $GITHUB_OUTPUT
+          else
+            echo "range=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Fallback changelog
+        if: hashFiles('RELEASE_NOTES.md') == '' || steps.cliff.outcome == 'failure'
+        run: |
+          {
+            echo "## What's Changed"
+            echo ""
+            git log ${{ steps.prev_tag.outputs.range }}HEAD --oneline --no-merges \
+              | grep -v "^.*chore: Release" \
+              | grep -v "^.*docs(changelog)" \
+              | sed 's/^[a-f0-9]* /- /'
+          } > RELEASE_NOTES.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: RELEASE_NOTES.md
+          files: artifacts/*
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
