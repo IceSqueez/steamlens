@@ -50,3 +50,38 @@ fn errors_implement_std_error() {
     fn assert_error<T: std::error::Error + 'static>() {}
     assert_error::<SteamError>();
 }
+
+#[test]
+fn invalid_string_display_mentions_nul() {
+    let source = std::ffi::CString::new("bad\0name").unwrap_err();
+    let err = SteamError::InvalidString { source };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("NUL") || msg.contains("nul") || msg.contains("interior"),
+        "InvalidString Display must describe the NUL problem, got: {msg}"
+    );
+}
+
+#[test]
+fn call_failed_display_includes_method_name() {
+    let err = SteamError::CallFailed {
+        method: "GetAchievement",
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("GetAchievement"),
+        "CallFailed Display must include the method name, got: {msg}"
+    );
+}
+
+#[test]
+fn achievement_not_found_display_includes_name() {
+    let err = SteamError::AchievementNotFound {
+        name: "ACH_HIDDEN_BOSS".to_owned(),
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("ACH_HIDDEN_BOSS"),
+        "AchievementNotFound Display must include the name, got: {msg}"
+    );
+}
