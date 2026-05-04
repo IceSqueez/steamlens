@@ -214,16 +214,25 @@ fn build_card(entry: &GameEntry, card_w: f32) -> Element<'_, crate::Message> {
         text(entry.summary.name.as_str())
             .size(12)
             .color(C_TEXT)
-            .wrapping(text::Wrapping::None),
+            .wrapping(text::Wrapping::Word)
+            .line_height(text::LineHeight::Relative(1.2)),
     )
     .width(Length::Fixed(card_w))
-    .height(Length::Fixed(22.0))
+    .height(Length::Fixed(44.0))
     .padding(Padding::default().left(4).right(4).top(4).bottom(4));
 
-    let card_inner = column![capsule_area, name_label].spacing(0);
+    let total_card_h = capsule_h + 44.0 + 8.0;
+
+    let card_inner = column![
+        capsule_area,
+        iced::widget::Space::new().height(Length::Fill),
+        name_label,
+    ]
+    .spacing(0);
 
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
+        .height(Length::Fixed(total_card_h))
         .style(|_: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(C_SURFACE)),
             border: iced::Border {

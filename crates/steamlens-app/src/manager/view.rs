@@ -290,7 +290,7 @@ fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
 const ACH_CARD_GAP: f32 = 10.0;
 const ACH_CARD_WIDTH: f32 = 260.0;
 const ACH_CARD_ICON: f32 = 64.0;
-const ACH_CARD_HEIGHT: f32 = 128.0;
+const ACH_CARD_HEIGHT: f32 = 180.0;
 
 fn filter_row(state: &ManagerState) -> Element<'_, Message> {
     let search = text_input("Search achievements...", &state.search_query)
@@ -462,10 +462,11 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
         text(display_name)
             .size(13)
             .color(name_color)
-            .wrapping(text::Wrapping::None),
+            .wrapping(text::Wrapping::Word)
+            .line_height(text::LineHeight::Relative(1.2)),
     )
     .width(Length::Fill)
-    .height(Length::Fixed(18.0));
+    .height(Length::Fixed(36.0));
 
     let description = if spoiler_hidden {
         "Hidden until revealed".to_owned()
@@ -557,7 +558,12 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
             .into()
     };
 
-    let card_body = column![top_row, bottom_row].spacing(0);
+    let card_body = column![
+        top_row,
+        iced::widget::Space::new().height(Length::Fill),
+        bottom_row,
+    ]
+    .spacing(0);
 
     let card_container = container(card_body)
         .width(Length::Fixed(ACH_CARD_WIDTH))
