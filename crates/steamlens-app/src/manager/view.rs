@@ -290,7 +290,7 @@ fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
 const ACH_CARD_GAP: f32 = 10.0;
 const ACH_CARD_WIDTH: f32 = 260.0;
 const ACH_CARD_ICON: f32 = 64.0;
-const ACH_CARD_HEIGHT: f32 = 180.0;
+const ACH_CARD_HEIGHT: f32 = 140.0;
 
 fn filter_row(state: &ManagerState) -> Element<'_, Message> {
     let search = text_input("Search achievements...", &state.search_query)
@@ -560,6 +560,8 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
 
     let card_body = column![
         top_row,
+        iced::widget::Space::new().height(Length::Fixed(8.0)),
+        iced::widget::rule::horizontal(1),
         iced::widget::Space::new().height(Length::Fill),
         bottom_row,
     ]
