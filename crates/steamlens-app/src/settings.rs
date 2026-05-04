@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::library::types::LibrarySort;
-use crate::manager::types::{AchievementFilter, AchievementSort, RarityFilter};
+use crate::game_view::types::{AchievementFilter, AchievementSort, RarityFilter};
+use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
 

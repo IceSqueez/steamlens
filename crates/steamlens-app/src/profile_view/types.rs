@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::time::Instant;
 
 use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
@@ -87,7 +88,7 @@ impl std::fmt::Display for LibrarySort {
 }
 
 #[derive(Clone)]
-pub enum LibraryMessage {
+pub enum ProfileViewMessage {
     ScanComplete(Vec<GameSummary>),
     ScanFailed(String),
     SearchChanged(String),
@@ -118,54 +119,57 @@ pub enum LibraryMessage {
         total: u32,
     },
     ProgressScanDone,
+    /// Drives the indeterminate loader pulse animation (phase α).
+    LoaderPulseTick,
 }
 
-impl std::fmt::Debug for LibraryMessage {
+impl std::fmt::Debug for ProfileViewMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LibraryMessage::ScanComplete(v) => {
+            ProfileViewMessage::ScanComplete(v) => {
                 write!(f, "ScanComplete({} games)", v.len())
             }
-            LibraryMessage::ScanFailed(e) => write!(f, "ScanFailed({e})"),
-            LibraryMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
-            LibraryMessage::SortChanged(s) => write!(f, "SortChanged({s:?})"),
-            LibraryMessage::CapsuleSizeChanged(s) => write!(f, "CapsuleSizeChanged({s})"),
-            LibraryMessage::CapsuleLoaded {
+            ProfileViewMessage::ScanFailed(e) => write!(f, "ScanFailed({e})"),
+            ProfileViewMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
+            ProfileViewMessage::SortChanged(s) => write!(f, "SortChanged({s:?})"),
+            ProfileViewMessage::CapsuleSizeChanged(s) => write!(f, "CapsuleSizeChanged({s})"),
+            ProfileViewMessage::CapsuleLoaded {
                 app_id,
                 size,
                 width,
                 height,
                 ..
             } => write!(f, "CapsuleLoaded(app={app_id}, {size}, {width}x{height})"),
-            LibraryMessage::CapsuleFailed { app_id, size } => {
+            ProfileViewMessage::CapsuleFailed { app_id, size } => {
                 write!(f, "CapsuleFailed(app={app_id}, {size})")
             }
-            LibraryMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
-            LibraryMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
-            LibraryMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
-            LibraryMessage::RescanRequested => write!(f, "RescanRequested"),
-            LibraryMessage::FadeTick => write!(f, "FadeTick"),
-            LibraryMessage::RevealTick => write!(f, "RevealTick"),
-            LibraryMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
-            LibraryMessage::ProgressFetched {
+            ProfileViewMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
+            ProfileViewMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
+            ProfileViewMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
+            ProfileViewMessage::RescanRequested => write!(f, "RescanRequested"),
+            ProfileViewMessage::FadeTick => write!(f, "FadeTick"),
+            ProfileViewMessage::RevealTick => write!(f, "RevealTick"),
+            ProfileViewMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
+            ProfileViewMessage::ProgressFetched {
                 app_id,
                 earned,
                 total,
             } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
-            LibraryMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
+            ProfileViewMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
+            ProfileViewMessage::LoaderPulseTick => write!(f, "LoaderPulseTick"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LibraryPhase {
+pub enum ProfileViewPhase {
     Scanning,
     Loaded,
     Error(String),
 }
 
-pub struct LibraryState {
-    pub phase: LibraryPhase,
+pub struct ProfileViewState {
+    pub phase: ProfileViewPhase,
     pub games: Vec<GameEntry>,
     pub reveal_queue: VecDeque<u32>,
     pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
@@ -180,11 +184,17 @@ pub struct LibraryState {
     /// starts and drained on every `ProgressFetched` / `ProgressScanDone` tick.
     pub progress_rx:
         Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
+    /// Loader pulse phase [0.0, 1.0) — drives the indeterminate animation in
+    /// phase α. Runtime-only; not persisted to settings.
+    pub loader_pulse_phase: f32,
+    /// Set when loader first enters phase γ (fully loaded). Drives the 300 ms
+    /// ease-out fade-out before unmounting. Runtime-only; not persisted.
+    pub loader_hiding_since: Option<Instant>,
 }
 
-impl std::fmt::Debug for LibraryState {
+impl std::fmt::Debug for ProfileViewState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LibraryState")
+        f.debug_struct("ProfileViewState")
             .field("phase", &self.phase)
             .field("games_count", &self.games.len())
             .field("sort", &self.sort)
@@ -193,10 +203,10 @@ impl std::fmt::Debug for LibraryState {
     }
 }
 
-impl LibraryState {
+impl ProfileViewState {
     pub fn new() -> Self {
         Self {
-            phase: LibraryPhase::Scanning,
+            phase: ProfileViewPhase::Scanning,
             games: Vec::new(),
             reveal_queue: VecDeque::new(),
             capsule_handles: HashMap::new(),
@@ -207,6 +217,8 @@ impl LibraryState {
             spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: None,
+            loader_pulse_phase: 0.0,
+            loader_hiding_since: None,
         }
     }
 
@@ -243,6 +255,50 @@ impl LibraryState {
         sort_entries(&mut result, self.sort);
         result
     }
+
+    /// Returns the current loader phase based on game/progress state.
+    ///
+    /// - Alpha: no games discovered yet (indeterminate pulse).
+    /// - Beta: games discovered but not all have progress data (determinate fill).
+    /// - Gamma: all games have progress data (loader fading out or unmounted).
+    pub fn loader_phase(&self) -> LoaderPhase {
+        if self.games.is_empty() {
+            return LoaderPhase::Alpha;
+        }
+        let with_progress = self.games.iter().filter(|g| g.progress.is_some()).count();
+        if with_progress < self.games.len() {
+            LoaderPhase::Beta {
+                loaded: with_progress,
+                total: self.games.len(),
+            }
+        } else {
+            LoaderPhase::Gamma
+        }
+    }
+
+    /// Returns true while the loader should be subscribed for pulse ticks
+    /// (phases α and β, plus the 300 ms γ fade-out window).
+    pub fn loader_needs_pulse_subscription(&self) -> bool {
+        match self.loader_phase() {
+            LoaderPhase::Alpha | LoaderPhase::Beta { .. } => true,
+            LoaderPhase::Gamma => self
+                .loader_hiding_since
+                .map(|t| t.elapsed().as_millis() < 300)
+                .unwrap_or(true),
+        }
+    }
+}
+
+/// The three phases of the unified loader strip.
+///
+/// - Alpha: library is empty — indeterminate pulsing animation.
+/// - Beta: games exist but progress data is still streaming in — determinate bar.
+/// - Gamma: all games have progress — loader fades out and unmounts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LoaderPhase {
+    Alpha,
+    Beta { loaded: usize, total: usize },
+    Gamma,
 }
 
 fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
@@ -296,9 +352,9 @@ mod tests {
         }
     }
 
-    fn make_state_with_games(games: Vec<GameEntry>) -> LibraryState {
-        LibraryState {
-            phase: LibraryPhase::Loaded,
+    fn make_state_with_games(games: Vec<GameEntry>) -> ProfileViewState {
+        ProfileViewState {
+            phase: ProfileViewPhase::Loaded,
             games,
             reveal_queue: VecDeque::new(),
             capsule_handles: HashMap::new(),
@@ -309,6 +365,8 @@ mod tests {
             spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: None,
+            loader_pulse_phase: 0.0,
+            loader_hiding_since: None,
         }
     }
 
@@ -387,7 +445,7 @@ mod tests {
 
     #[test]
     fn capsule_size_default_is_medium() {
-        let state = LibraryState::new();
+        let state = ProfileViewState::new();
         assert_eq!(state.capsule_size, CapsuleSize::Medium);
     }
 
@@ -434,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn library_reveal_tick_pops_one_from_queue() {
+    fn profile_view_reveal_tick_pops_one_from_queue() {
         let entries: Vec<GameEntry> = (1u32..=3)
             .map(|id| GameEntry {
                 summary: make_summary(id, &format!("Game {id}"), None),
@@ -444,8 +502,8 @@ mod tests {
             })
             .collect();
 
-        let mut state = LibraryState {
-            phase: LibraryPhase::Loaded,
+        let mut state = ProfileViewState {
+            phase: ProfileViewPhase::Loaded,
             games: entries,
             reveal_queue: VecDeque::from([1u32, 2, 3]),
             capsule_handles: HashMap::new(),
@@ -456,6 +514,8 @@ mod tests {
             spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: None,
+            loader_pulse_phase: 0.0,
+            loader_hiding_since: None,
         };
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
@@ -488,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn library_spinner_tick_updates_angle() {
+    fn profile_view_spinner_tick_updates_angle() {
         let mut state = make_state_with_games(vec![]);
         assert_eq!(
             state.spinner_angle, 0.0,
@@ -612,5 +672,55 @@ mod tests {
             matches!(g.capsule, CapsuleState::Pending),
             "entry capsule must be Pending on cache miss"
         );
+    }
+
+    #[test]
+    fn loader_phase_alpha_when_no_games() {
+        let state = ProfileViewState::new();
+        assert_eq!(state.loader_phase(), LoaderPhase::Alpha);
+    }
+
+    #[test]
+    fn loader_phase_beta_when_partial_progress() {
+        let mut state = make_state_with_games(vec![
+            GameEntry {
+                summary: make_summary(1, "A", None),
+                capsule: CapsuleState::Unavailable,
+                revealed: true,
+                progress: Some(crate::progress_scan::ProgressData {
+                    earned: 5,
+                    total: 10,
+                }),
+            },
+            GameEntry {
+                summary: make_summary(2, "B", None),
+                capsule: CapsuleState::Unavailable,
+                revealed: true,
+                progress: None,
+            },
+        ]);
+        state.phase = ProfileViewPhase::Loaded;
+        assert_eq!(
+            state.loader_phase(),
+            LoaderPhase::Beta {
+                loaded: 1,
+                total: 2
+            }
+        );
+    }
+
+    #[test]
+    fn loader_phase_gamma_when_all_have_progress() {
+        let mut state = make_state_with_games(vec![GameEntry {
+            summary: make_summary(1, "A", None),
+            capsule: CapsuleState::Unavailable,
+            revealed: true,
+            progress: Some(crate::progress_scan::ProgressData {
+                earned: 5,
+                total: 10,
+            }),
+        }]);
+        state.phase = ProfileViewPhase::Loaded;
+        assert_eq!(state.loader_phase(), LoaderPhase::Gamma);
     }
 }

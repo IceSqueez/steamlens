@@ -8,7 +8,7 @@ use super::types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp,
     RarityFilter, RarityTier, ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
 };
-use super::{ManagerMessage, ManagerPhase, ManagerState};
+use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::Message;
 
 const C_BG: Color = Color::from_rgb(0.157, 0.165, 0.212);
@@ -23,8 +23,8 @@ const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
 const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
-fn msg(m: ManagerMessage) -> Message {
-    Message::Manager(m)
+fn msg(m: GameViewMessage) -> Message {
+    Message::GameView(m)
 }
 
 fn dracula_border_radius(r: f32) -> iced::Border {
@@ -34,21 +34,21 @@ fn dracula_border_radius(r: f32) -> iced::Border {
     }
 }
 
-pub fn render(state: &ManagerState) -> Element<'_, Message> {
+pub fn render(state: &GameViewState) -> Element<'_, Message> {
     match state.phase {
-        ManagerPhase::Connecting | ManagerPhase::WaitingStats | ManagerPhase::LoadingData => {
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
             loading_view(state)
         }
-        ManagerPhase::Saving | ManagerPhase::Resetting => {
+        GameViewPhase::Saving | GameViewPhase::Resetting => {
             let base = loaded_view(state);
-            let label = if state.phase == ManagerPhase::Saving {
+            let label = if state.phase == GameViewPhase::Saving {
                 "Saving changes..."
             } else {
                 "Resetting..."
             };
             stack![base, opaque(saving_overlay(state.spinner_angle, label))].into()
         }
-        ManagerPhase::Ready => {
+        GameViewPhase::Ready => {
             let base = loaded_view(state);
             if state.show_reset_modal {
                 stack![base, opaque(reset_modal(state))].into()
@@ -56,15 +56,15 @@ pub fn render(state: &ManagerState) -> Element<'_, Message> {
                 base
             }
         }
-        ManagerPhase::Error => error_view(state),
+        GameViewPhase::Error => error_view(state),
     }
 }
 
-fn loading_view(state: &ManagerState) -> Element<'_, Message> {
+fn loading_view(state: &GameViewState) -> Element<'_, Message> {
     let phase_label = match state.phase {
-        ManagerPhase::Connecting => "Connecting to Steam...",
-        ManagerPhase::WaitingStats => "Requesting stats from Steam...",
-        ManagerPhase::LoadingData => "Loading achievements...",
+        GameViewPhase::Connecting => "Connecting to Steam...",
+        GameViewPhase::WaitingStats => "Requesting stats from Steam...",
+        GameViewPhase::LoadingData => "Loading achievements...",
         _ => "Loading...",
     };
 
@@ -92,7 +92,7 @@ fn loading_view(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn error_view(state: &ManagerState) -> Element<'_, Message> {
+fn error_view(state: &GameViewState) -> Element<'_, Message> {
     let content = column![
         text("Failed to load").size(20).color(C_RED),
         text(&state.error_message).size(13).color(C_MUTED),
@@ -111,7 +111,7 @@ fn error_view(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn loaded_view(state: &ManagerState) -> Element<'_, Message> {
+fn loaded_view(state: &GameViewState) -> Element<'_, Message> {
     let hdr = header_bar(state);
     let tabs = tab_bar_widget(state);
     let body = match state.active_tab {
@@ -128,7 +128,7 @@ fn loaded_view(state: &ManagerState) -> Element<'_, Message> {
     col.spacing(0).into()
 }
 
-fn header_bar(state: &ManagerState) -> Element<'_, Message> {
+fn header_bar(state: &GameViewState) -> Element<'_, Message> {
     let back_btn = button(text("\u{2190} Back").size(13).color(C_PURPLE))
         .on_press(Message::GoBack)
         .padding(Padding::from([8u16, 8]))
@@ -151,7 +151,7 @@ fn header_bar(state: &ManagerState) -> Element<'_, Message> {
     let title = text(&state.game_name).size(20).color(C_FG);
 
     let reload_btn = button(text("\u{27F3} Reload").size(13))
-        .on_press(msg(ManagerMessage::ReloadRequested))
+        .on_press(msg(GameViewMessage::ReloadRequested))
         .padding(Padding::from([6u16, 12]));
 
     let clear_cache_btn = button(text("Clear cache").size(11).color(C_MUTED))
@@ -188,7 +188,7 @@ fn header_bar(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn tab_bar_widget(state: &ManagerState) -> Element<'_, Message> {
+fn tab_bar_widget(state: &GameViewState) -> Element<'_, Message> {
     let unlocked = state
         .achievements
         .iter()
@@ -211,12 +211,12 @@ fn tab_bar_widget(state: &ManagerState) -> Element<'_, Message> {
     let ach_btn = tab_btn(
         ach_label,
         ach_active,
-        msg(ManagerMessage::TabChanged(ActiveTab::Achievements)),
+        msg(GameViewMessage::TabChanged(ActiveTab::Achievements)),
     );
     let stats_btn = tab_btn(
         stats_label,
         !ach_active,
-        msg(ManagerMessage::TabChanged(ActiveTab::Stats)),
+        msg(GameViewMessage::TabChanged(ActiveTab::Stats)),
     );
 
     let tabs_row = row![ach_btn, stats_btn]
@@ -302,7 +302,7 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
 
     let inner: Element<'_, Message> = if banner.dismissible {
         let dismiss = button(text("\u{00D7}").size(13).color(text_color))
-            .on_press(msg(ManagerMessage::BannerDismissed))
+            .on_press(msg(GameViewMessage::BannerDismissed))
             .padding(Padding::from([2u16, 8]))
             .style(|_t, _s| button::Style {
                 background: None,
@@ -326,7 +326,7 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
         .into()
 }
 
-fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
+fn achievements_tab(state: &GameViewState) -> Element<'_, Message> {
     let mut col = column![filter_row(state)].spacing(0).height(Length::Fill);
     if let Some(indicator) = build_reveal_indicator(state) {
         col = col.push(indicator);
@@ -334,7 +334,7 @@ fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
     col.push(achievement_list(state)).into()
 }
 
-fn build_reveal_indicator(state: &ManagerState) -> Option<Element<'_, Message>> {
+fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, Message>> {
     if !state.has_pending_reveals() && !state.has_fading_cards() {
         return None;
     }
@@ -361,39 +361,39 @@ const ACH_CARD_WIDTH: f32 = 260.0;
 const ACH_CARD_ICON: f32 = 64.0;
 const ACH_CARD_HEIGHT: f32 = 140.0;
 
-fn filter_row(state: &ManagerState) -> Element<'_, Message> {
+fn filter_row(state: &GameViewState) -> Element<'_, Message> {
     let search = text_input("Search achievements...", &state.search_query)
-        .on_input(|s| msg(ManagerMessage::SearchChanged(s)))
+        .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
         .padding(8)
         .size(13)
         .width(Length::Fill);
 
     let filter_pick = pick_list(AchievementFilter::ALL, Some(state.filter), |f| {
-        msg(ManagerMessage::FilterChanged(f))
+        msg(GameViewMessage::FilterChanged(f))
     })
     .text_size(13)
     .padding(8);
 
     let rarity_pick = pick_list(RarityFilter::ALL, Some(state.rarity_filter), |f| {
-        msg(ManagerMessage::RarityFilterChanged(f))
+        msg(GameViewMessage::RarityFilterChanged(f))
     })
     .text_size(13)
     .padding(8);
 
     let sort_pick = pick_list(AchievementSort::ALL, Some(state.achievement_sort), |s| {
-        msg(ManagerMessage::AchievementSortChanged(s))
+        msg(GameViewMessage::AchievementSortChanged(s))
     })
     .text_size(13)
     .padding(8);
 
     let bulk_unlock = button(text("Unlock All").size(13))
-        .on_press(msg(ManagerMessage::BulkAction(BulkOp::Unlock)))
+        .on_press(msg(GameViewMessage::BulkAction(BulkOp::Unlock)))
         .padding(Padding::from([6u16, 10]));
     let bulk_lock = button(text("Lock All").size(13))
-        .on_press(msg(ManagerMessage::BulkAction(BulkOp::Lock)))
+        .on_press(msg(GameViewMessage::BulkAction(BulkOp::Lock)))
         .padding(Padding::from([6u16, 10]));
     let bulk_invert = button(text("Invert").size(13))
-        .on_press(msg(ManagerMessage::BulkAction(BulkOp::Invert)))
+        .on_press(msg(GameViewMessage::BulkAction(BulkOp::Invert)))
         .padding(Padding::from([6u16, 10]));
 
     let r = row![
@@ -506,7 +506,7 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
     }
 }
 
-fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
+fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
@@ -829,7 +829,7 @@ fn achievement_card_widget<'a>(
     let bottom_row: Element<'_, Message> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
         let reveal_btn = button(text("Reveal").size(11).color(C_MUTED))
-            .on_press(msg(ManagerMessage::RevealHidden(reveal_id)))
+            .on_press(msg(GameViewMessage::RevealHidden(reveal_id)))
             .padding(Padding::default().left(10).right(10).top(3).bottom(3))
             .style(|_t, _s| button::Style {
                 background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
@@ -877,7 +877,7 @@ fn achievement_card_widget<'a>(
 
     let toggle_id = row.data.id.clone();
     button(card_container)
-        .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+        .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)))
         .padding(0)
         .style(|_theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -923,9 +923,9 @@ fn achievement_card_widget<'a>(
         .into()
 }
 
-fn stats_tab(state: &ManagerState) -> Element<'_, Message> {
+fn stats_tab(state: &GameViewState) -> Element<'_, Message> {
     let consent_check = iced::widget::checkbox(state.stats_edit_consent)
-        .on_toggle(|v| msg(ManagerMessage::StatsConsentToggled(v)))
+        .on_toggle(|v| msg(GameViewMessage::StatsConsentToggled(v)))
         .size(14);
     let consent_label = text("I understand that editing stats may corrupt game saves").size(13);
     let consent_row = row![consent_check, consent_label]
@@ -1012,8 +1012,8 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
 
     let value_col: Element<'_, Message> = if can_edit {
         text_input("", &row.edit_text)
-            .on_input(|s| msg(ManagerMessage::StatEdited(row.data.id.clone(), s)))
-            .on_submit(msg(ManagerMessage::StatEditCommitted(row.data.id.clone())))
+            .on_input(|s| msg(GameViewMessage::StatEdited(row.data.id.clone(), s)))
+            .on_submit(msg(GameViewMessage::StatEditCommitted(row.data.id.clone())))
             .padding(6)
             .size(13)
             .width(Length::FillPortion(2))
@@ -1080,13 +1080,16 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
         .into()
 }
 
-fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
+fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
     let dirty = state.dirty_count();
     let has_errors = state.has_stat_errors();
-    let is_busy = matches!(state.phase, ManagerPhase::Saving | ManagerPhase::Resetting);
+    let is_busy = matches!(
+        state.phase,
+        GameViewPhase::Saving | GameViewPhase::Resetting
+    );
 
     let reset_btn = button(text("\u{26A0} Reset...").size(13).color(C_RED))
-        .on_press(msg(ManagerMessage::ResetClicked))
+        .on_press(msg(GameViewMessage::ResetClicked))
         .padding(Padding::from([8u16, 16]))
         .style(|_t, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1118,7 +1121,7 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
 
     let cancel_btn = if dirty > 0 && !is_busy {
         button(text(cancel_label).size(13).color(C_FG))
-            .on_press(msg(ManagerMessage::DiscardChanges))
+            .on_press(msg(GameViewMessage::DiscardChanges))
             .padding(Padding::from([8u16, 16]))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1161,7 +1164,7 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
     let apply_enabled = dirty > 0 && !has_errors && !is_busy;
     let apply_btn = if apply_enabled {
         button(text(apply_label).size(13))
-            .on_press(msg(ManagerMessage::ApplyChanges))
+            .on_press(msg(GameViewMessage::ApplyChanges))
             .padding(Padding::from([8u16, 16]))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1231,19 +1234,19 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
+fn reset_modal(state: &GameViewState) -> Element<'_, Message> {
     let scope_stats = radio_option(
         "Stats only",
         "Resets all stat counters to their default values.",
         state.reset_scope == ResetScope::StatsOnly,
-        msg(ManagerMessage::ResetScopeSelected(ResetScope::StatsOnly)),
+        msg(GameViewMessage::ResetScopeSelected(ResetScope::StatsOnly)),
     );
 
     let scope_all = radio_option(
         "Stats + Achievements",
         "Resets stats AND locks all achievements. This cannot be undone.",
         state.reset_scope == ResetScope::StatsAndAchievements,
-        msg(ManagerMessage::ResetScopeSelected(
+        msg(GameViewMessage::ResetScopeSelected(
             ResetScope::StatsAndAchievements,
         )),
     );
@@ -1286,7 +1289,7 @@ fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
     .color(C_MUTED);
 
     let confirm_input = text_input(state.game_name.trim(), &state.reset_confirm_input)
-        .on_input(|s| msg(ManagerMessage::ResetConfirmInputChanged(s)))
+        .on_input(|s| msg(GameViewMessage::ResetConfirmInputChanged(s)))
         .size(13)
         .padding(Padding::from([6u16, 10]))
         .style(|_theme, _status| iced::widget::text_input::Style {
@@ -1338,14 +1341,14 @@ fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
             ..button::Style::default()
         });
         if confirm_enabled {
-            base.on_press(msg(ManagerMessage::ResetConfirmed))
+            base.on_press(msg(GameViewMessage::ResetConfirmed))
         } else {
             base
         }
     };
 
     let cancel_btn = button(text("Cancel").size(13))
-        .on_press(msg(ManagerMessage::ResetCancelled))
+        .on_press(msg(GameViewMessage::ResetCancelled))
         .padding(Padding::from([8u16, 16]))
         .style(|_t, _s| button::Style {
             background: Some(iced::Background::Color(C_CURRENT_LINE)),

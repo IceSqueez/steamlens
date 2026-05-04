@@ -11,7 +11,7 @@ use steamlens_core::ipc::{
 };
 use steamlens_core::{AchievementIcon, GameSummary};
 
-use crate::manager::types::ResetScope;
+use crate::game_view::types::ResetScope;
 
 #[allow(dead_code)]
 pub enum SteamRequest {

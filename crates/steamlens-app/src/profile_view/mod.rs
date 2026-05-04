@@ -10,28 +10,29 @@ use crate::progress_scan::ProgressData;
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
-    CapsuleState, FADE_DELTA, GameEntry, LibraryMessage, LibraryPhase, LibraryState, StoredCapsule,
+    CapsuleState, FADE_DELTA, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
+    StoredCapsule,
 };
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
-pub fn handle_steam_reply(state: &mut LibraryState, reply: SteamReply) -> Task<crate::Message> {
+pub fn handle_steam_reply(state: &mut ProfileViewState, reply: SteamReply) -> Task<crate::Message> {
     match reply {
         SteamReply::LibraryScan(games) => {
-            let msg = LibraryMessage::ScanComplete(games);
+            let msg = ProfileViewMessage::ScanComplete(games);
             update(state, msg)
         }
         SteamReply::LibraryScanFailed(e) => {
-            let msg = LibraryMessage::ScanFailed(e);
+            let msg = ProfileViewMessage::ScanFailed(e);
             update(state, msg)
         }
         _ => Task::none(),
     }
 }
 
-pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::Message> {
+pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task<crate::Message> {
     match message {
-        LibraryMessage::ScanComplete(summaries) => {
+        ProfileViewMessage::ScanComplete(summaries) => {
             state.games = summaries
                 .iter()
                 .map(|s| GameEntry {
@@ -45,28 +46,28 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             state.capsule_handles.clear();
             state.progress_scanner = None;
             state.progress_rx = None;
-            state.phase = LibraryPhase::Loaded;
+            state.phase = ProfileViewPhase::Loaded;
 
             let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
             spawn_capsule_queue(app_ids, state.capsule_size)
         }
 
-        LibraryMessage::ScanFailed(reason) => {
-            state.phase = LibraryPhase::Error(reason);
+        ProfileViewMessage::ScanFailed(reason) => {
+            state.phase = ProfileViewPhase::Error(reason);
             Task::none()
         }
 
-        LibraryMessage::SearchChanged(query) => {
+        ProfileViewMessage::SearchChanged(query) => {
             state.search = query;
             Task::none()
         }
 
-        LibraryMessage::SortChanged(sort) => {
+        ProfileViewMessage::SortChanged(sort) => {
             state.sort = sort;
             Task::none()
         }
 
-        LibraryMessage::CapsuleSizeChanged(new_size) => {
+        ProfileViewMessage::CapsuleSizeChanged(new_size) => {
             state.capsule_size = new_size;
             state.reveal_queue.clear();
 
@@ -95,7 +96,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             }
         }
 
-        LibraryMessage::CapsuleLoaded {
+        ProfileViewMessage::CapsuleLoaded {
             app_id,
             size,
             handle,
@@ -126,7 +127,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::RevealTick => {
+        ProfileViewMessage::RevealTick => {
             let pop_count = state.reveal_queue.len().min(3);
             for _ in 0..pop_count {
                 if let Some(app_id) = state.reveal_queue.pop_front()
@@ -138,7 +139,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::FadeTick => {
+        ProfileViewMessage::FadeTick => {
             for entry in &mut state.games {
                 if let CapsuleState::Loaded { opacity, .. } = &mut entry.capsule
                     && *opacity < 1.0
@@ -149,7 +150,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::CapsuleFailed { app_id, size } => {
+        ProfileViewMessage::CapsuleFailed { app_id, size } => {
             if size != state.capsule_size {
                 return Task::none();
             }
@@ -159,7 +160,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::ProgressFetched {
+        ProfileViewMessage::ProgressFetched {
             app_id,
             earned,
             total,
@@ -170,33 +171,50 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::ProgressScanDone => {
+        ProfileViewMessage::ProgressScanDone => {
             state.progress_scanner = None;
             state.progress_rx = None;
             Task::none()
         }
 
-        LibraryMessage::GameSelected(_) => Task::none(),
+        ProfileViewMessage::GameSelected(_) => Task::none(),
 
-        LibraryMessage::ManualAppIdChanged(s) => {
+        ProfileViewMessage::ManualAppIdChanged(s) => {
             state.manual_app_id_input = s.chars().filter(|c| c.is_ascii_digit()).collect();
             Task::none()
         }
 
-        LibraryMessage::ManualAppIdSubmitted => Task::none(),
+        ProfileViewMessage::ManualAppIdSubmitted => Task::none(),
 
-        LibraryMessage::RescanRequested => {
-            state.phase = LibraryPhase::Scanning;
+        ProfileViewMessage::RescanRequested => {
+            state.phase = ProfileViewPhase::Scanning;
             state.games.clear();
             state.reveal_queue.clear();
             state.capsule_handles.clear();
             state.progress_scanner = None;
             state.progress_rx = None;
+            state.loader_pulse_phase = 0.0;
+            state.loader_hiding_since = None;
             Task::none()
         }
 
-        LibraryMessage::SpinnerTick(_) => {
+        ProfileViewMessage::SpinnerTick(_) => {
             state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
+            Task::none()
+        }
+
+        ProfileViewMessage::LoaderPulseTick => {
+            use std::time::Instant;
+
+            state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
+
+            if let types::LoaderPhase::Gamma = state.loader_phase() {
+                if state.loader_hiding_since.is_none() {
+                    state.loader_hiding_since = Some(Instant::now());
+                }
+            } else {
+                state.loader_hiding_since = None;
+            }
             Task::none()
         }
     }
@@ -223,7 +241,7 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
                                     pixels.height,
                                     pixels.rgba,
                                 );
-                                crate::Message::Library(LibraryMessage::CapsuleLoaded {
+                                crate::Message::ProfileView(ProfileViewMessage::CapsuleLoaded {
                                     app_id,
                                     size: fetched_size,
                                     handle,
@@ -232,7 +250,7 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
                                 })
                             }
                             Err((fetched_size, _)) => {
-                                crate::Message::Library(LibraryMessage::CapsuleFailed {
+                                crate::Message::ProfileView(ProfileViewMessage::CapsuleFailed {
                                     app_id,
                                     size: fetched_size,
                                 })
@@ -253,7 +271,7 @@ pub fn trigger_scan(worker: &SteamWorker) {
 }
 
 pub fn view_with_cache_actions<'a>(
-    state: &'a LibraryState,
+    state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
 ) -> iced::Element<'a, crate::Message> {

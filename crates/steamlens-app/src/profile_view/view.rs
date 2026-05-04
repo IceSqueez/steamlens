@@ -9,9 +9,11 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 
-use super::LibraryState;
+use super::ProfileViewState;
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
-use super::types::{CapsuleState, GameEntry, LibraryMessage, LibraryPhase, LibrarySort};
+use super::types::{
+    CapsuleState, GameEntry, LibrarySort, LoaderPhase, ProfileViewMessage, ProfileViewPhase,
+};
 
 const CARD_GAP: f32 = 12.0;
 
@@ -46,7 +48,7 @@ fn card_width(size: CapsuleSize) -> f32 {
 }
 
 pub fn render_with_cache_actions<'a>(
-    state: &'a LibraryState,
+    state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
 ) -> Element<'a, crate::Message> {
@@ -54,7 +56,7 @@ pub fn render_with_cache_actions<'a>(
 }
 
 fn render_inner<'a>(
-    state: &'a LibraryState,
+    state: &'a ProfileViewState,
     show_cache_actions: bool,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
@@ -68,9 +70,9 @@ fn render_inner<'a>(
     let profile_section = build_profile_section(state, user_profile, cached_entries);
 
     let body: Element<'_, crate::Message> = match &state.phase {
-        LibraryPhase::Scanning => center_text("Scanning library…"),
-        LibraryPhase::Error(e) => error_view(e),
-        LibraryPhase::Loaded => {
+        ProfileViewPhase::Scanning => center_text("Scanning library…"),
+        ProfileViewPhase::Error(e) => error_view(e),
+        ProfileViewPhase::Loaded => {
             let visible: Vec<&GameEntry> = state
                 .visible_games()
                 .into_iter()
@@ -87,14 +89,14 @@ fn render_inner<'a>(
         }
     };
 
-    let sync_banner = build_sync_banner(state);
+    let loader = build_unified_loader(state);
     let stream_indicator = build_stream_indicator(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
     col = col.push(profile_section);
-    if let Some(banner) = sync_banner {
-        col = col.push(banner);
+    if let Some(loader_el) = loader {
+        col = col.push(loader_el);
     }
     if let Some(indicator) = stream_indicator {
         col = col.push(indicator);
@@ -105,7 +107,7 @@ fn render_inner<'a>(
 }
 
 fn build_profile_section<'a>(
-    state: &'a LibraryState,
+    state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
 ) -> Element<'a, crate::Message> {
@@ -114,38 +116,95 @@ fn build_profile_section<'a>(
     profile_widget(user_profile, &summary, top5, &state.capsule_handles)
 }
 
-fn build_sync_banner<'a>(state: &'a LibraryState) -> Option<Element<'a, crate::Message>> {
-    if state.phase != LibraryPhase::Loaded {
-        return None;
-    }
-    let games_with_progress = state.games.iter().filter(|g| g.progress.is_some()).count();
-    let total = state.games.len();
-    if games_with_progress >= total || total == 0 {
-        return None;
-    }
+/// Unified 3-phase loader strip shown below the profile widget and above the
+/// games grid.  Returns `None` only when the loader has finished its γ fade-out
+/// (elapsed >= 300 ms), causing it to be fully unmounted from the layout.
+///
+/// - Phase α (Alpha): no games discovered yet — indeterminate 3-dot pulse.
+/// - Phase β (Beta): games loading — determinate fill bar with game count.
+/// - Phase γ (Gamma): all games have progress — fades out over 300 ms.
+fn build_unified_loader<'a>(state: &'a ProfileViewState) -> Option<Element<'a, crate::Message>> {
+    let phase = state.loader_phase();
 
-    let loaded_frac = games_with_progress as f32 / total as f32;
-    let bar_filled = (loaded_frac * 20.0).round() as usize;
-    let bar_empty = 20usize.saturating_sub(bar_filled);
-    let bar_str = format!(
-        "{}{}",
-        "\u{2593}".repeat(bar_filled),
-        "\u{2591}".repeat(bar_empty)
-    );
+    let alpha_opacity = match phase {
+        LoaderPhase::Gamma => {
+            let elapsed = state
+                .loader_hiding_since
+                .map(|t| t.elapsed().as_millis())
+                .unwrap_or(0);
+            if elapsed >= 300 {
+                return None;
+            }
+            let progress = elapsed as f32 / 300.0;
+            1.0 - progress
+        }
+        _ => 1.0,
+    };
 
-    let banner_text = format!(
-        "Synchronizing your library…   {bar_str}  {games_with_progress} / {total} games loaded"
-    );
+    let loader_content: Element<'_, crate::Message> = match phase {
+        LoaderPhase::Alpha => {
+            let pulse = state.loader_pulse_phase;
+            let pulse_dots = build_pulse_dots(pulse);
+            row![
+                pulse_dots,
+                text("Discovering your library…").size(12).color(Color {
+                    a: alpha_opacity,
+                    ..C_MUTED
+                }),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+        }
 
-    let banner = container(text(banner_text).size(12).color(C_MUTED))
+        LoaderPhase::Beta { loaded, total } => {
+            let frac = if total > 0 {
+                loaded as f32 / total as f32
+            } else {
+                0.0
+            };
+            let bar = build_determinate_bar(frac, 200.0, alpha_opacity);
+            row![
+                bar,
+                text(format!("{loaded} / {total} games loaded"))
+                    .size(12)
+                    .color(Color {
+                        a: alpha_opacity,
+                        ..C_MUTED
+                    }),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+        }
+
+        LoaderPhase::Gamma => {
+            let bar = build_determinate_bar(1.0, 200.0, alpha_opacity);
+            row![
+                bar,
+                text("Library ready").size(12).color(Color {
+                    a: alpha_opacity,
+                    ..C_MUTED
+                }),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+        }
+    };
+
+    let banner = container(loader_content)
         .width(Length::Fill)
         .padding(Padding::default().left(16).right(16).top(6).bottom(6))
-        .style(|_: &iced::Theme| container::Style {
+        .style(move |_: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(Color::from_rgba(
-                0.18, 0.14, 0.28, 0.6,
+                0.18,
+                0.14,
+                0.28,
+                0.6 * alpha_opacity,
             ))),
             border: iced::Border {
-                color: Color::from_rgba(0.741, 0.576, 0.976, 0.3),
+                color: Color::from_rgba(0.741, 0.576, 0.976, 0.3 * alpha_opacity),
                 width: 0.0,
                 radius: 0.0.into(),
             },
@@ -155,7 +214,83 @@ fn build_sync_banner<'a>(state: &'a LibraryState) -> Option<Element<'a, crate::M
     Some(banner.into())
 }
 
-fn build_stream_indicator(state: &LibraryState) -> Option<Element<'_, crate::Message>> {
+fn build_pulse_dots<'a>(pulse: f32) -> Element<'a, crate::Message> {
+    let dot_count = 3usize;
+    let mut dots_row = row![].spacing(4).align_y(Alignment::Center);
+
+    for i in 0..dot_count {
+        let offset = i as f32 / dot_count as f32;
+        let phase = (pulse + offset) % 1.0;
+        let brightness = if phase < 0.5 {
+            0.4 + phase * 1.2
+        } else {
+            1.0 - (phase - 0.5) * 1.2
+        };
+        let brightness = brightness.clamp(0.4, 1.0);
+        let dot_color = Color {
+            r: C_ACCENT.r * brightness,
+            g: C_ACCENT.g * brightness,
+            b: C_ACCENT.b * brightness,
+            a: 1.0,
+        };
+        let dot = container(iced::widget::Space::new())
+            .width(Length::Fixed(6.0))
+            .height(Length::Fixed(6.0))
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(dot_color)),
+                border: iced::Border {
+                    radius: 3.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            });
+        dots_row = dots_row.push(dot);
+    }
+
+    dots_row.into()
+}
+
+fn build_determinate_bar<'a>(
+    fraction: f32,
+    width: f32,
+    opacity: f32,
+) -> Element<'a, crate::Message> {
+    let fill_w = (fraction.clamp(0.0, 1.0) * width).max(0.0);
+    let bar_color = Color {
+        a: opacity,
+        ..C_ACCENT
+    };
+
+    let fill = container(iced::widget::Space::new())
+        .width(Length::Fixed(fill_w))
+        .height(Length::Fixed(4.0))
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(bar_color)),
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        });
+
+    let track_color = Color::from_rgba(0.3, 0.3, 0.35, 0.5 * opacity);
+
+    let track = container(fill)
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(4.0))
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(track_color)),
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        });
+
+    track.into()
+}
+
+fn build_stream_indicator(state: &ProfileViewState) -> Option<Element<'_, crate::Message>> {
     if !state.is_streaming() {
         return None;
     }
@@ -177,22 +312,22 @@ fn build_stream_indicator(state: &LibraryState) -> Option<Element<'_, crate::Mes
     Some(container(indicator_row).width(Length::Fill).into())
 }
 
-fn build_header(state: &LibraryState) -> Element<'_, crate::Message> {
+fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
     build_header_inner(state, false)
 }
 
-fn build_header_with_cache(state: &LibraryState) -> Element<'_, crate::Message> {
+fn build_header_with_cache(state: &ProfileViewState) -> Element<'_, crate::Message> {
     build_header_inner(state, true)
 }
 
 fn build_header_inner(
-    state: &LibraryState,
+    state: &ProfileViewState,
     show_cache_actions: bool,
 ) -> Element<'_, crate::Message> {
     let title = text("Library").size(22).color(C_ACCENT);
 
     let search = text_input("Search games…", &state.search)
-        .on_input(|s| crate::Message::Library(LibraryMessage::SearchChanged(s)))
+        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
         .padding(8)
         .size(13)
         .width(Length::Fixed(260.0));
@@ -201,7 +336,7 @@ fn build_header_inner(
     let sort_pick = pick_list(
         &[LibrarySort::LastPlayed, LibrarySort::NameAsc][..],
         Some(state.sort),
-        |s| crate::Message::Library(LibraryMessage::SortChanged(s)),
+        |s| crate::Message::ProfileView(ProfileViewMessage::SortChanged(s)),
     )
     .text_size(13);
 
@@ -209,12 +344,14 @@ fn build_header_inner(
     let size_pick = pick_list(
         &[CapsuleSize::Small, CapsuleSize::Medium, CapsuleSize::Large][..],
         Some(state.capsule_size),
-        |s| crate::Message::Library(LibraryMessage::CapsuleSizeChanged(s)),
+        |s| crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(s)),
     )
     .text_size(13);
 
     let rescan_btn = button(text("Rescan").size(12))
-        .on_press(crate::Message::Library(LibraryMessage::RescanRequested))
+        .on_press(crate::Message::ProfileView(
+            ProfileViewMessage::RescanRequested,
+        ))
         .padding(Padding::default().left(10).right(10).top(6).bottom(6));
 
     let mut right_controls = row![sort_label, sort_pick, size_label, size_pick, rescan_btn]
@@ -274,7 +411,7 @@ fn build_header_inner(
 }
 
 fn build_grid<'a>(
-    state: &'a LibraryState,
+    state: &'a ProfileViewState,
     visible: Vec<&'a GameEntry>,
 ) -> Element<'a, crate::Message> {
     let capsule_size = state.capsule_size;
@@ -449,9 +586,9 @@ fn build_card(
 
     let card_btn = button(card)
         .padding(0)
-        .on_press(crate::Message::Library(LibraryMessage::GameSelected(
-            app_id,
-        )))
+        .on_press(crate::Message::ProfileView(
+            ProfileViewMessage::GameSelected(app_id),
+        ))
         .style(move |_: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
 
@@ -635,11 +772,11 @@ fn build_progress_overlay<'a>(
         .into()
 }
 
-fn build_footer(state: &LibraryState) -> Element<'_, crate::Message> {
+fn build_footer(state: &ProfileViewState) -> Element<'_, crate::Message> {
     let id_input = text_input("App ID (e.g. 105600)", &state.manual_app_id_input)
-        .on_input(|s| crate::Message::Library(LibraryMessage::ManualAppIdChanged(s)))
-        .on_submit(crate::Message::Library(
-            LibraryMessage::ManualAppIdSubmitted,
+        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::ManualAppIdChanged(s)))
+        .on_submit(crate::Message::ProfileView(
+            ProfileViewMessage::ManualAppIdSubmitted,
         ))
         .padding(8)
         .size(13)
@@ -653,8 +790,8 @@ fn build_footer(state: &LibraryState) -> Element<'_, crate::Message> {
 
     let open_btn = if can_open {
         button(text("Open").size(13))
-            .on_press(crate::Message::Library(
-                LibraryMessage::ManualAppIdSubmitted,
+            .on_press(crate::Message::ProfileView(
+                ProfileViewMessage::ManualAppIdSubmitted,
             ))
             .padding(Padding::default().left(14).right(14).top(8).bottom(8))
     } else {
@@ -700,7 +837,9 @@ fn error_view(msg: &str) -> Element<'_, crate::Message> {
         text("Library scan failed").size(18).color(C_ACCENT),
         text(msg).size(13).color(C_TEXT),
         button(text("Retry").size(13))
-            .on_press(crate::Message::Library(LibraryMessage::RescanRequested))
+            .on_press(crate::Message::ProfileView(
+                ProfileViewMessage::RescanRequested,
+            ))
             .padding(Padding::default().left(14).right(14).top(8).bottom(8)),
     ]
     .spacing(12)

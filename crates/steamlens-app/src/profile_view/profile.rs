@@ -4,7 +4,7 @@ use iced::widget::{column, container, image as img_widget, row, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
-use crate::manager::types::RarityTier;
+use crate::game_view::types::RarityTier;
 
 use super::types::GameEntry;
 
@@ -554,7 +554,7 @@ fn build_closest_row<'a>(
         .align_x(Alignment::Center);
 
         let card_btn = button(card_col)
-            .on_press(crate::Message::OpenManager(app_id))
+            .on_press(crate::Message::OpenGameView(app_id))
             .padding(0)
             .style(move |_: &iced::Theme, status| {
                 let hovered = matches!(
@@ -595,7 +595,7 @@ fn build_closest_row<'a>(
 mod tests {
     use super::*;
     use crate::cache::types::{CachedAchievement, CachedProgress, GameCacheEntry};
-    use crate::library::types::{CapsuleState, GameEntry};
+    use crate::profile_view::types::{CapsuleState, GameEntry};
     use crate::progress_scan::ProgressData;
     use steamlens_core::GameSummary;
 

@@ -17,7 +17,7 @@ pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub enum ManagerMessage {
+pub enum GameViewMessage {
     StatsRequested,
     RequestStatsFailed(String),
     StatsReceived,
@@ -52,12 +52,12 @@ pub enum ManagerMessage {
     SpinnerTick,
     FadeInTick(f32),
     RevealTick,
-    ManagerFadeTick,
+    GameViewFadeTick,
     RareGlowTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ManagerPhase {
+pub enum GameViewPhase {
     Connecting,
     WaitingStats,
     LoadingData,
@@ -67,12 +67,12 @@ pub enum ManagerPhase {
     Error,
 }
 
-pub struct ManagerState {
+pub struct GameViewState {
     pub app_id: u32,
     pub game_name: String,
-    pub phase: ManagerPhase,
+    pub phase: GameViewPhase,
     /// The `last_updated` value from the Steam app manifest at the time the
-    /// Manager was opened.  Written back to the cache on GoBack so the next
+    /// GameView was opened.  Written back to the cache on GoBack so the next
     /// cold boot can compare against the live manifest and skip an IPC
     /// re-scan for this game.
     pub steam_last_updated: u64,
@@ -101,12 +101,12 @@ pub struct ManagerState {
     pub error_message: String,
 }
 
-impl ManagerState {
+impl GameViewState {
     pub fn new(app_id: u32) -> Self {
         Self {
             app_id,
             game_name: format!("App {app_id}"),
-            phase: ManagerPhase::Connecting,
+            phase: GameViewPhase::Connecting,
             steam_last_updated: 0,
             achievements: Vec::new(),
             stats: Vec::new(),
@@ -155,26 +155,26 @@ impl ManagerState {
     }
 }
 
-pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<crate::Message> {
+pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<crate::Message> {
     match reply {
         SteamReply::Connected { app_name, .. } => {
             if let Some(name) = app_name {
                 state.game_name = name;
             }
-            state.phase = ManagerPhase::WaitingStats;
+            state.phase = GameViewPhase::WaitingStats;
             Task::none()
         }
         SteamReply::ConnectFailed(e) => {
-            state.phase = ManagerPhase::Error;
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
         SteamReply::StatsRequested => {
-            state.phase = ManagerPhase::LoadingData;
+            state.phase = GameViewPhase::LoadingData;
             Task::none()
         }
         SteamReply::RequestStatsFailed(e) => {
-            state.phase = ManagerPhase::Error;
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
@@ -199,7 +199,7 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
                 })
                 .collect();
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.fade_in = 0.0;
 
             state.reveal_queue = state
@@ -211,7 +211,7 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             Task::none()
         }
         SteamReply::LoadFailed(e) => {
-            state.phase = ManagerPhase::Error;
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
@@ -228,7 +228,7 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
                     row.is_dirty = false;
                 }
             }
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Success,
                 message: "Changes saved to Steam.".to_owned(),
@@ -237,7 +237,7 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             Task::none()
         }
         SteamReply::SaveFailed(e) => {
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Error,
                 message: format!("Failed to save: {e}"),
@@ -246,11 +246,11 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             Task::none()
         }
         SteamReply::ResetDone => {
-            state.phase = ManagerPhase::LoadingData;
+            state.phase = GameViewPhase::LoadingData;
             Task::none()
         }
         SteamReply::ResetFailed(e) => {
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Error,
                 message: format!("Reset failed: {e}"),
@@ -267,10 +267,10 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
         SteamReply::Callback(cb) => {
             use steamlens_core::SteamCallback;
             if let SteamCallback::UserStatsReceived { result, .. } = &cb {
-                if result.is_ok() && state.phase == ManagerPhase::WaitingStats {
-                    state.phase = ManagerPhase::LoadingData;
-                } else if !result.is_ok() && state.phase == ManagerPhase::WaitingStats {
-                    state.phase = ManagerPhase::Error;
+                if result.is_ok() && state.phase == GameViewPhase::WaitingStats {
+                    state.phase = GameViewPhase::LoadingData;
+                } else if !result.is_ok() && state.phase == GameViewPhase::WaitingStats {
+                    state.phase = GameViewPhase::Error;
                     state.error_message =
                         format!("Steam returned error {} for RequestUserStats", result.raw());
                 }
@@ -292,24 +292,24 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
 }
 
 pub fn update(
-    state: &mut ManagerState,
-    message: ManagerMessage,
+    state: &mut GameViewState,
+    message: GameViewMessage,
     worker: &SteamWorker,
 ) -> Task<crate::Message> {
     match message {
-        ManagerMessage::StatsRequested => Task::none(),
-        ManagerMessage::RequestStatsFailed(e) => {
-            state.phase = ManagerPhase::Error;
+        GameViewMessage::StatsRequested => Task::none(),
+        GameViewMessage::RequestStatsFailed(e) => {
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
-        ManagerMessage::StatsReceived => Task::none(),
-        ManagerMessage::StatsReceivedFailed(e) => {
-            state.phase = ManagerPhase::Error;
+        GameViewMessage::StatsReceived => Task::none(),
+        GameViewMessage::StatsReceivedFailed(e) => {
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
-        ManagerMessage::AchievementsLoaded(achievements, stats) => {
+        GameViewMessage::AchievementsLoaded(achievements, stats) => {
             let prev_revealed: std::collections::HashSet<String> = state
                 .achievements
                 .iter()
@@ -327,7 +327,7 @@ pub fn update(
                 })
                 .collect();
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.fade_in = 0.0;
             state.reveal_queue = state
                 .achievements
@@ -336,12 +336,12 @@ pub fn update(
                 .collect();
             Task::none()
         }
-        ManagerMessage::LoadFailed(e) => {
-            state.phase = ManagerPhase::Error;
+        GameViewMessage::LoadFailed(e) => {
+            state.phase = GameViewPhase::Error;
             state.error_message = e;
             Task::none()
         }
-        ManagerMessage::AchievementToggled(id) => {
+        GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
                 if row.data.permission != 0 {
                     state.banner = Some(Banner {
@@ -355,39 +355,39 @@ pub fn update(
             }
             Task::none()
         }
-        ManagerMessage::StatEdited(id, text) => {
+        GameViewMessage::StatEdited(id, text) => {
             if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
                 row.edit_text = text;
             }
             Task::none()
         }
-        ManagerMessage::StatEditCommitted(id) => {
+        GameViewMessage::StatEditCommitted(id) => {
             if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
                 row.validate_and_parse();
             }
             Task::none()
         }
-        ManagerMessage::FilterChanged(f) => {
+        GameViewMessage::FilterChanged(f) => {
             state.filter = f;
             Task::none()
         }
-        ManagerMessage::RarityFilterChanged(f) => {
+        GameViewMessage::RarityFilterChanged(f) => {
             state.rarity_filter = f;
             Task::none()
         }
-        ManagerMessage::AchievementSortChanged(s) => {
+        GameViewMessage::AchievementSortChanged(s) => {
             state.achievement_sort = s;
             Task::none()
         }
-        ManagerMessage::SearchChanged(q) => {
+        GameViewMessage::SearchChanged(q) => {
             state.search_query = q;
             Task::none()
         }
-        ManagerMessage::TabChanged(tab) => {
+        GameViewMessage::TabChanged(tab) => {
             state.active_tab = tab;
             Task::none()
         }
-        ManagerMessage::StatsConsentToggled(v) => {
+        GameViewMessage::StatsConsentToggled(v) => {
             state.stats_edit_consent = v;
             if !v {
                 for row in &mut state.stats {
@@ -401,7 +401,7 @@ pub fn update(
             }
             Task::none()
         }
-        ManagerMessage::BulkAction(op) => {
+        GameViewMessage::BulkAction(op) => {
             let visible: std::collections::HashSet<String> = visible_achievement_ids(
                 &state.achievements,
                 state.filter,
@@ -434,8 +434,8 @@ pub fn update(
             }
             Task::none()
         }
-        ManagerMessage::ReloadRequested => {
-            state.phase = ManagerPhase::WaitingStats;
+        GameViewMessage::ReloadRequested => {
+            state.phase = GameViewPhase::WaitingStats;
             state.achievements.clear();
             state.stats.clear();
             state.reveal_queue.clear();
@@ -445,12 +445,12 @@ pub fn update(
             let _ = steam_id_placeholder;
             Task::none()
         }
-        ManagerMessage::ApplyChanges => {
+        GameViewMessage::ApplyChanges => {
             if state.dirty_count() == 0 || state.has_stat_errors() {
                 return Task::none();
             }
             let payload = build_apply_payload(&state.achievements, &state.stats);
-            state.phase = ManagerPhase::Saving;
+            state.phase = GameViewPhase::Saving;
             worker.send(SteamRequest::ApplyChanges {
                 achievements_to_set: payload.achievements_to_set,
                 achievements_to_clear: payload.achievements_to_clear,
@@ -459,7 +459,7 @@ pub fn update(
             });
             Task::none()
         }
-        ManagerMessage::ChangesSaved => {
+        GameViewMessage::ChangesSaved => {
             for row in &mut state.achievements {
                 if row.is_dirty {
                     row.data.is_achieved = row.effective_achieved();
@@ -472,7 +472,7 @@ pub fn update(
                     row.is_dirty = false;
                 }
             }
-            state.phase = ManagerPhase::Ready;
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Success,
                 message: "Changes saved to Steam.".to_owned(),
@@ -480,8 +480,8 @@ pub fn update(
             });
             Task::none()
         }
-        ManagerMessage::SaveFailed(e) => {
-            state.phase = ManagerPhase::Ready;
+        GameViewMessage::SaveFailed(e) => {
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Error,
                 message: format!("Failed to save: {e}"),
@@ -489,45 +489,45 @@ pub fn update(
             });
             Task::none()
         }
-        ManagerMessage::ResetClicked => {
+        GameViewMessage::ResetClicked => {
             state.reset_scope = ResetScope::StatsOnly;
             state.reset_confirm_input.clear();
             state.show_reset_modal = true;
             Task::none()
         }
-        ManagerMessage::ResetScopeSelected(scope) => {
+        GameViewMessage::ResetScopeSelected(scope) => {
             state.reset_scope = scope;
             Task::none()
         }
-        ManagerMessage::ResetConfirmInputChanged(text) => {
+        GameViewMessage::ResetConfirmInputChanged(text) => {
             state.reset_confirm_input = text;
             Task::none()
         }
-        ManagerMessage::ResetConfirmed => {
+        GameViewMessage::ResetConfirmed => {
             state.show_reset_modal = false;
             state.reset_confirm_input.clear();
-            state.phase = ManagerPhase::Resetting;
+            state.phase = GameViewPhase::Resetting;
             worker.send(SteamRequest::ResetAll {
                 scope: state.reset_scope,
                 stat_driven_progress_max: std::collections::HashMap::new(),
             });
             Task::none()
         }
-        ManagerMessage::ResetCancelled => {
+        GameViewMessage::ResetCancelled => {
             state.show_reset_modal = false;
             state.reset_confirm_input.clear();
             Task::none()
         }
-        ManagerMessage::ResetDone => {
-            state.phase = ManagerPhase::WaitingStats;
+        GameViewMessage::ResetDone => {
+            state.phase = GameViewPhase::WaitingStats;
             state.achievements.clear();
             state.stats.clear();
             state.reveal_queue.clear();
             worker.send(SteamRequest::RequestUserStats);
             Task::none()
         }
-        ManagerMessage::ResetFailed(e) => {
-            state.phase = ManagerPhase::Ready;
+        GameViewMessage::ResetFailed(e) => {
+            state.phase = GameViewPhase::Ready;
             state.banner = Some(Banner {
                 kind: BannerKind::Error,
                 message: format!("Reset failed: {e}"),
@@ -535,11 +535,11 @@ pub fn update(
             });
             Task::none()
         }
-        ManagerMessage::BannerDismissed => {
+        GameViewMessage::BannerDismissed => {
             state.banner = None;
             Task::none()
         }
-        ManagerMessage::DiscardChanges => {
+        GameViewMessage::DiscardChanges => {
             for row in &mut state.achievements {
                 row.is_dirty = false;
             }
@@ -551,22 +551,22 @@ pub fn update(
             }
             Task::none()
         }
-        ManagerMessage::RevealHidden(id) => {
+        GameViewMessage::RevealHidden(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
                 row.revealed = true;
             }
             Task::none()
         }
-        ManagerMessage::SpinnerTick => {
+        GameViewMessage::SpinnerTick => {
             state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-            if state.phase == ManagerPhase::Ready && state.fade_in < 1.0 {
+            if state.phase == GameViewPhase::Ready && state.fade_in < 1.0 {
                 state.fade_in = (state.fade_in + 0.08).min(1.0);
             }
             Task::none()
         }
-        ManagerMessage::FadeInTick(_) => Task::none(),
+        GameViewMessage::FadeInTick(_) => Task::none(),
 
-        ManagerMessage::RevealTick => {
+        GameViewMessage::RevealTick => {
             if let Some(id) = state.reveal_queue.pop_front()
                 && let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id)
             {
@@ -575,7 +575,7 @@ pub fn update(
             Task::none()
         }
 
-        ManagerMessage::ManagerFadeTick => {
+        GameViewMessage::GameViewFadeTick => {
             for row in &mut state.achievements {
                 if row.appeared && row.card_opacity < 1.0 {
                     row.card_opacity = (row.card_opacity + MANAGER_FADE_DELTA).min(1.0);
@@ -584,57 +584,57 @@ pub fn update(
             Task::none()
         }
 
-        ManagerMessage::RareGlowTick => {
+        GameViewMessage::RareGlowTick => {
             state.rare_glow_phase = (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
             Task::none()
         }
     }
 }
 
-pub fn view(state: &ManagerState) -> iced::Element<'_, crate::Message> {
+pub fn view(state: &GameViewState) -> iced::Element<'_, crate::Message> {
     view::render(state)
 }
 
-pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> {
+pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message> {
     use iced::time;
 
     let needs_spinner = matches!(
         state.phase,
-        ManagerPhase::Connecting
-            | ManagerPhase::WaitingStats
-            | ManagerPhase::LoadingData
-            | ManagerPhase::Saving
-            | ManagerPhase::Resetting
+        GameViewPhase::Connecting
+            | GameViewPhase::WaitingStats
+            | GameViewPhase::LoadingData
+            | GameViewPhase::Saving
+            | GameViewPhase::Resetting
     );
 
     let needs_tick = needs_spinner
-        || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0)
-        || (state.phase == ManagerPhase::Ready && state.has_pending_reveals())
-        || (state.phase == ManagerPhase::Ready && state.has_fading_cards());
+        || (state.phase == GameViewPhase::Ready && state.fade_in < 1.0)
+        || (state.phase == GameViewPhase::Ready && state.has_pending_reveals())
+        || (state.phase == GameViewPhase::Ready && state.has_fading_cards());
 
     let spinner_sub = if needs_tick {
         time::every(std::time::Duration::from_millis(33))
-            .map(|_| crate::Message::Manager(ManagerMessage::SpinnerTick))
+            .map(|_| crate::Message::GameView(GameViewMessage::SpinnerTick))
     } else {
         iced::Subscription::none()
     };
 
     let reveal_sub = if state.has_pending_reveals() {
         time::every(std::time::Duration::from_millis(30))
-            .map(|_| crate::Message::Manager(ManagerMessage::RevealTick))
+            .map(|_| crate::Message::GameView(GameViewMessage::RevealTick))
     } else {
         iced::Subscription::none()
     };
 
     let fade_sub = if state.has_fading_cards() {
         time::every(std::time::Duration::from_millis(33))
-            .map(|_| crate::Message::Manager(ManagerMessage::ManagerFadeTick))
+            .map(|_| crate::Message::GameView(GameViewMessage::GameViewFadeTick))
     } else {
         iced::Subscription::none()
     };
 
     let tier_map = compute_tier_map(&state.achievements);
-    let has_legendary = state.phase == ManagerPhase::Ready
+    let has_legendary = state.phase == GameViewPhase::Ready
         && state.achievements.iter().any(|r| {
             r.appeared
                 && tier_map
@@ -643,7 +643,7 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
         });
     let glow_sub = if has_legendary {
         time::every(std::time::Duration::from_millis(40))
-            .map(|_| crate::Message::Manager(ManagerMessage::RareGlowTick))
+            .map(|_| crate::Message::GameView(GameViewMessage::RareGlowTick))
     } else {
         iced::Subscription::none()
     };
@@ -658,8 +658,8 @@ mod tests {
     use steamlens_core::AchievementIcon;
     use types::{AchievementData, AchievementRow};
 
-    fn make_state_with_achievement(id: &str) -> ManagerState {
-        let mut state = ManagerState::new(0);
+    fn make_state_with_achievement(id: &str) -> GameViewState {
+        let mut state = GameViewState::new(0);
         state.achievements = vec![AchievementRow::from_data(AchievementData {
             id: id.to_owned(),
             display_name: id.to_owned(),
@@ -716,10 +716,10 @@ mod tests {
     }
 
     #[test]
-    fn manager_reveal_tick_pops_one_from_queue() {
+    fn game_view_reveal_tick_pops_one_from_queue() {
         use std::collections::VecDeque;
 
-        let mut state = ManagerState::new(0);
+        let mut state = GameViewState::new(0);
         for i in 1u8..=3 {
             let id = format!("ACH_{i}");
             state
@@ -737,7 +737,7 @@ mod tests {
         }
         state.reveal_queue =
             VecDeque::from(["ACH_1".to_owned(), "ACH_2".to_owned(), "ACH_3".to_owned()]);
-        state.phase = ManagerPhase::Ready;
+        state.phase = GameViewPhase::Ready;
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
         assert!(
@@ -747,7 +747,7 @@ mod tests {
 
         let worker = SteamWorker::new_disconnected();
         for expected_remaining in [2usize, 1, 0] {
-            let _task = update(&mut state, ManagerMessage::RevealTick, &worker);
+            let _task = update(&mut state, GameViewMessage::RevealTick, &worker);
             assert_eq!(
                 state.reveal_queue.len(),
                 expected_remaining,
