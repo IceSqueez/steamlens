@@ -759,10 +759,10 @@ fn achievement_card_widget<'a>(
 
     let (badge_text, badge_color) = if is_protected {
         ("Protected", C_ORANGE)
-    } else if spoiler_hidden {
-        ("Hidden", C_MUTED)
     } else if row.is_dirty {
         ("Pending", C_YELLOW)
+    } else if spoiler_hidden {
+        ("Hidden", C_MUTED)
     } else if effective {
         ("Unlocked", C_GREEN)
     } else {
