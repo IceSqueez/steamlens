@@ -5,7 +5,7 @@ use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
 
 use crate::capsule_cache::{self, CapsuleSize};
-use crate::progress_scan::{ProgressData, ProgressScanner};
+use crate::progress_scan::ProgressData;
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
@@ -42,14 +42,11 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
                 .collect();
             state.reveal_queue.clear();
             state.capsule_handles.clear();
+            state.progress_scanner = None;
+            state.progress_rx = None;
             state.phase = LibraryPhase::Loaded;
 
             let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
-
-            let mut scanner = ProgressScanner::new(app_ids.clone());
-            state.progress_rx = scanner.take_receiver();
-            state.progress_scanner = Some(scanner);
-
             spawn_capsule_queue(app_ids, state.capsule_size)
         }
 

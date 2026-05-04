@@ -410,6 +410,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::OpenManager(app_id) => {
+            let steam_last_updated = if let Screen::Library(lib_state) = &app.screen {
+                lib_state
+                    .games
+                    .iter()
+                    .find(|g| g.summary.app_id == app_id)
+                    .map(|g| g.summary.last_updated)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
             if let Screen::Library(lib_state) = std::mem::replace(&mut app.screen, Screen::Splash) {
                 app.library_state = Some(lib_state);
             }
@@ -424,6 +435,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             worker.send(SteamRequest::ConnectWithApp(app_id));
 
             let mut state = ManagerState::new(app_id);
+            state.steam_last_updated = steam_last_updated;
             state.filter = app.settings.manager.filter;
             state.achievement_sort = app.settings.manager.sort;
             state.rarity_filter = app.settings.manager.rarity_filter;
@@ -735,7 +747,7 @@ fn build_manager_cache_entry(
         schema_version: cache::CURRENT_SCHEMA_VERSION,
         app_id,
         name: state.game_name.clone(),
-        steam_last_updated: 0,
+        steam_last_updated: state.steam_last_updated,
         steam_last_played,
         cached_at,
         achievements,
@@ -1457,6 +1469,24 @@ mod tests {
         assert!(
             state.achievements[0].revealed,
             "revealed state must survive AchievementsAndStats refresh"
+        );
+    }
+
+    #[test]
+    fn build_manager_cache_entry_preserves_steam_last_updated() {
+        let mut state = ManagerState::new(570);
+        state.steam_last_updated = 12345;
+
+        let entry = build_manager_cache_entry(
+            &state,
+            570,
+            std::path::Path::new("/nonexistent/steam/root"),
+            0,
+        );
+
+        assert_eq!(
+            entry.steam_last_updated, 12345,
+            "cache entry must carry the steam_last_updated from ManagerState"
         );
     }
 }

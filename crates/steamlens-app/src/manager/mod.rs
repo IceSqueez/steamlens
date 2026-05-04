@@ -71,6 +71,11 @@ pub struct ManagerState {
     pub app_id: u32,
     pub game_name: String,
     pub phase: ManagerPhase,
+    /// The `last_updated` value from the Steam app manifest at the time the
+    /// Manager was opened.  Written back to the cache on GoBack so the next
+    /// cold boot can compare against the live manifest and skip an IPC
+    /// re-scan for this game.
+    pub steam_last_updated: u64,
 
     pub achievements: Vec<AchievementRow>,
     pub stats: Vec<StatRow>,
@@ -102,6 +107,7 @@ impl ManagerState {
             app_id,
             game_name: format!("App {app_id}"),
             phase: ManagerPhase::Connecting,
+            steam_last_updated: 0,
             achievements: Vec::new(),
             stats: Vec::new(),
             reveal_queue: VecDeque::new(),
