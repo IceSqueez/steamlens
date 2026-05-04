@@ -1036,19 +1036,71 @@ fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
         ..container::Style::default()
     });
 
+    let confirm_input_label = text(format!(
+        "Type \"{name}\" to confirm:",
+        name = state.game_name.trim()
+    ))
+    .size(12)
+    .color(C_MUTED);
+
+    let confirm_input = text_input(state.game_name.trim(), &state.reset_confirm_input)
+        .on_input(|s| msg(ManagerMessage::ResetConfirmInputChanged(s)))
+        .size(13)
+        .padding(Padding::from([6u16, 10]))
+        .style(|_theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(Color {
+                r: 0.12,
+                g: 0.13,
+                b: 0.17,
+                a: 1.0,
+            }),
+            border: iced::Border {
+                color: C_MUTED,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            icon: C_MUTED,
+            placeholder: Color { a: 0.3, ..C_MUTED },
+            value: C_FG,
+            selection: Color {
+                a: 0.35,
+                ..C_PURPLE
+            },
+        });
+
+    let confirm_gate = column![confirm_input_label, confirm_input].spacing(4);
+
+    let confirm_enabled = state.reset_confirm_matches();
+
     let confirm_label = match state.reset_scope {
         ResetScope::StatsOnly => "Reset Stats \u{26A0}",
         ResetScope::StatsAndAchievements => "Reset Stats + Achievements \u{26A0}",
         ResetScope::Pending => "Reset \u{26A0}",
     };
-    let confirm_btn = button(text(confirm_label).size(13).color(Color::WHITE))
-        .on_press(msg(ManagerMessage::ResetConfirmed))
+    let confirm_btn = {
+        let base = button(text(confirm_label).size(13).color(if confirm_enabled {
+            Color::WHITE
+        } else {
+            Color {
+                a: 0.4,
+                ..Color::WHITE
+            }
+        }))
         .padding(Padding::from([8u16, 16]))
-        .style(|_t, _s| button::Style {
-            background: Some(iced::Background::Color(C_RED)),
+        .style(move |_t, _s| button::Style {
+            background: Some(iced::Background::Color(Color {
+                a: if confirm_enabled { 1.0 } else { 0.3 },
+                ..C_RED
+            })),
             border: dracula_border_radius(4.0),
             ..button::Style::default()
         });
+        if confirm_enabled {
+            base.on_press(msg(ManagerMessage::ResetConfirmed))
+        } else {
+            base
+        }
+    };
 
     let cancel_btn = button(text("Cancel").size(13))
         .on_press(msg(ManagerMessage::ResetCancelled))
@@ -1072,6 +1124,7 @@ fn reset_modal(state: &ManagerState) -> Element<'_, Message> {
         scope_stats,
         scope_all,
         warning_box,
+        confirm_gate,
         button_row,
     ]
     .spacing(12)

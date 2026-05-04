@@ -783,6 +783,58 @@ mod tests {
     }
 
     #[test]
+    fn reset_confirm_blocks_when_name_mismatch() {
+        use manager::{ManagerMessage, ManagerPhase, update};
+        use steam_worker::SteamWorker;
+
+        let mut state = ManagerState::new(105600);
+        state.phase = ManagerPhase::Ready;
+        state.game_name = "Terraria".to_owned();
+
+        let worker = SteamWorker::new_disconnected();
+        let _task = update(&mut state, ManagerMessage::ResetClicked, &worker);
+        assert!(state.show_reset_modal, "modal must open on ResetClicked");
+        assert!(
+            state.reset_confirm_input.is_empty(),
+            "input must be cleared on open"
+        );
+
+        let _task = update(
+            &mut state,
+            ManagerMessage::ResetConfirmInputChanged("Wrong".to_owned()),
+            &worker,
+        );
+        assert_eq!(state.reset_confirm_input, "Wrong");
+        assert!(
+            !state.reset_confirm_matches(),
+            "confirm must NOT match for wrong input"
+        );
+    }
+
+    #[test]
+    fn reset_confirm_allows_case_insensitive_match() {
+        use manager::{ManagerMessage, ManagerPhase, update};
+        use steam_worker::SteamWorker;
+
+        let mut state = ManagerState::new(105600);
+        state.phase = ManagerPhase::Ready;
+        state.game_name = "Terraria".to_owned();
+
+        let worker = SteamWorker::new_disconnected();
+        let _task = update(&mut state, ManagerMessage::ResetClicked, &worker);
+
+        let _task = update(
+            &mut state,
+            ManagerMessage::ResetConfirmInputChanged("TERRARIA ".to_owned()),
+            &worker,
+        );
+        assert!(
+            state.reset_confirm_matches(),
+            "confirm must match for case-insensitive + trailing space input"
+        );
+    }
+
+    #[test]
     fn apply_then_reload_preserves_revealed_state() {
         use manager::handle_steam_reply;
         use manager::types::{AchievementData, AchievementRow};

@@ -38,6 +38,7 @@ pub enum ManagerMessage {
     SaveFailed(String),
     ResetClicked,
     ResetScopeSelected(ResetScope),
+    ResetConfirmInputChanged(String),
     ResetConfirmed,
     ResetCancelled,
     ResetDone,
@@ -77,6 +78,7 @@ pub struct ManagerState {
     pub stats_edit_consent: bool,
 
     pub reset_scope: ResetScope,
+    pub reset_confirm_input: String,
     pub show_reset_modal: bool,
 
     pub banner: Option<Banner>,
@@ -101,6 +103,7 @@ impl ManagerState {
             filter: AchievementFilter::All,
             stats_edit_consent: false,
             reset_scope: ResetScope::Pending,
+            reset_confirm_input: String::new(),
             show_reset_modal: false,
             banner: None,
             spinner_angle: 0.0,
@@ -119,6 +122,14 @@ impl ManagerState {
 
     pub fn has_pending_reveals(&self) -> bool {
         !self.reveal_queue.is_empty()
+    }
+
+    pub fn reset_confirm_matches(&self) -> bool {
+        self.reset_scope != ResetScope::Pending
+            && self
+                .reset_confirm_input
+                .trim()
+                .eq_ignore_ascii_case(self.game_name.trim())
     }
 
     pub fn has_fading_cards(&self) -> bool {
@@ -442,6 +453,7 @@ pub fn update(
         }
         ManagerMessage::ResetClicked => {
             state.reset_scope = ResetScope::StatsOnly;
+            state.reset_confirm_input.clear();
             state.show_reset_modal = true;
             Task::none()
         }
@@ -449,8 +461,13 @@ pub fn update(
             state.reset_scope = scope;
             Task::none()
         }
+        ManagerMessage::ResetConfirmInputChanged(text) => {
+            state.reset_confirm_input = text;
+            Task::none()
+        }
         ManagerMessage::ResetConfirmed => {
             state.show_reset_modal = false;
+            state.reset_confirm_input.clear();
             state.phase = ManagerPhase::Resetting;
             worker.send(SteamRequest::ResetAll {
                 scope: state.reset_scope,
@@ -460,6 +477,7 @@ pub fn update(
         }
         ManagerMessage::ResetCancelled => {
             state.show_reset_modal = false;
+            state.reset_confirm_input.clear();
             Task::none()
         }
         ManagerMessage::ResetDone => {
