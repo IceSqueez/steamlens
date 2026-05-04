@@ -7,6 +7,7 @@ compile_error!(
 mod client;
 mod error;
 mod ffi;
+pub mod ipc;
 pub mod library;
 mod raw_callback;
 mod stat_schema;
@@ -15,6 +16,10 @@ mod user_stats;
 
 pub use client::{Client, Image, connect};
 pub use error::{LibraryScanError, SteamError};
+pub use ipc::{
+    AchievementData, AchievementIcon, FrameError, StatData, StatValue, WorkerCommand,
+    WorkerResponse,
+};
 pub use library::{GameSummary, scan_installed_games};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};

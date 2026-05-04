@@ -14,6 +14,8 @@ tag = false
 libloading = { workspace = true }
 steamlens-vdf = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+bincode = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

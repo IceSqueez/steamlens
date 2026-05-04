@@ -17,5 +17,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 libloading = "0.9"
 thiserror = "2"
 static_assertions = "1"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }

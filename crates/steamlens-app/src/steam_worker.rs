@@ -3,9 +3,12 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use steamlens_core::{Client, GameSummary, StatKind, SteamCallback};
+use steamlens_core::{
+    AchievementData, AchievementIcon, Client, GameSummary, StatData, StatKind, StatValue,
+    SteamCallback,
+};
 
-use crate::manager::types::{AchievementData, AchievementIcon, ResetScope, StatData, StatValue};
+use crate::manager::types::ResetScope;
 
 fn try_resolve_icon(c: &Client, icon_handle: i32) -> Option<AchievementIcon> {
     if icon_handle == 0 {

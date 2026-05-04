@@ -559,8 +559,7 @@ pub fn update(
         }
 
         ManagerMessage::RareGlowTick => {
-            state.rare_glow_phase =
-                (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
+            state.rare_glow_phase = (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
             Task::none()
         }
     }
@@ -627,7 +626,8 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
 mod tests {
     use super::*;
     use crate::steam_worker::SteamReply;
-    use types::{AchievementData, AchievementIcon, AchievementRow};
+    use steamlens_core::AchievementIcon;
+    use types::{AchievementData, AchievementRow};
 
     fn make_state_with_achievement(id: &str) -> ManagerState {
         let mut state = ManagerState::new(0);
