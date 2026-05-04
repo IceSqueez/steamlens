@@ -406,10 +406,14 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
     };
 
     let grid = responsive(move |size| {
-        let available = size.width.max(ACH_CARD_WIDTH + ACH_CARD_GAP);
-        let cols = ((available + ACH_CARD_GAP) / (ACH_CARD_WIDTH + ACH_CARD_GAP))
+        const SIDE_PADDING: f32 = 16.0;
+        let inner = (size.width - SIDE_PADDING * 2.0).max(ACH_CARD_WIDTH);
+        let cols = ((inner + ACH_CARD_GAP) / (ACH_CARD_WIDTH + ACH_CARD_GAP))
             .floor()
             .max(1.0) as usize;
+        let actual_card_w = ((inner - ACH_CARD_GAP * (cols.saturating_sub(1)) as f32)
+            / cols as f32)
+            .max(ACH_CARD_WIDTH);
 
         let mut rows_col: iced::widget::Column<'_, Message> = column![]
             .spacing(ACH_CARD_GAP as u32)
@@ -420,11 +424,11 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                 .spacing(ACH_CARD_GAP as u32)
                 .align_y(Alignment::Start);
             for entry in chunk {
-                r = r.push(achievement_card_widget(entry));
+                r = r.push(achievement_card_widget(entry, actual_card_w));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(ACH_CARD_WIDTH)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(actual_card_w)));
             }
             rows_col = rows_col.push(r);
         }
@@ -445,7 +449,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
+fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
     let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
@@ -630,7 +634,7 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
     .spacing(0);
 
     let card_container = container(card_body)
-        .width(Length::Fixed(ACH_CARD_WIDTH))
+        .width(Length::Fixed(card_w))
         .height(Length::Fixed(ACH_CARD_HEIGHT));
 
     let toggle_id = row.data.id.clone();

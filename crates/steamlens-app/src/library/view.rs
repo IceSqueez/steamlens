@@ -176,10 +176,13 @@ fn build_grid<'a>(
         .collect();
 
     let grid = responsive(move |size| {
-        let available = size.width.max(card_w + CARD_GAP);
-        let cols = ((available + CARD_GAP) / (card_w + CARD_GAP))
+        const SIDE_PADDING: f32 = 16.0;
+        let inner = (size.width - SIDE_PADDING * 2.0).max(card_w);
+        let cols = ((inner + CARD_GAP) / (card_w + CARD_GAP))
             .floor()
             .max(1.0) as usize;
+        let actual_card_w =
+            ((inner - CARD_GAP * (cols.saturating_sub(1)) as f32) / cols as f32).max(card_w);
 
         let mut rows_col: iced::widget::Column<'_, crate::Message> = column![]
             .spacing(CARD_GAP as u32)
@@ -188,11 +191,11 @@ fn build_grid<'a>(
         for chunk in entries.chunks(cols) {
             let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
             for (entry, locked_out) in chunk {
-                r = r.push(build_card(entry, capsule_size, *locked_out));
+                r = r.push(build_card(entry, capsule_size, actual_card_w, *locked_out));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(actual_card_w)));
             }
             rows_col = rows_col.push(r);
         }
@@ -221,11 +224,11 @@ fn dim(c: Color, factor: f32) -> Color {
 fn build_card(
     entry: &GameEntry,
     capsule_size: CapsuleSize,
+    card_w: f32,
     locked_out: bool,
 ) -> Element<'_, crate::Message> {
     let app_id = entry.summary.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
-    let card_w = card_width(capsule_size);
 
     const DIM: f32 = 0.35;
 

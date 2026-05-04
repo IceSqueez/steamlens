@@ -435,6 +435,7 @@ fn main() -> iced::Result {
         .title("SteamLens")
         .theme(theme)
         .subscription(subscription)
+        .window_size(iced::Size::new(1280.0, 720.0))
         .run()
 }
 
