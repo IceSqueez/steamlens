@@ -11,4 +11,6 @@ readme = "../../README.md"
 [dependencies]
 iced = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
+image = { workspace = true }
 steamlens-core = { workspace = true }

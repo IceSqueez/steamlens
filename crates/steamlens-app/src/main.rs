@@ -1,19 +1,22 @@
+mod capsule_cache;
+mod library;
 mod manager;
 mod steam_worker;
 
 use std::sync::mpsc;
 
 use iced::keyboard;
-use iced::widget::{button, center, column, container, row, text, text_input};
-use iced::{Element, Length, Padding, Subscription, Task};
+use iced::widget::{button, center, column, container, row, text};
+use iced::{Element, Length, Subscription, Task};
 
+use library::types::{LibraryMessage, LibraryState};
 use manager::{ManagerMessage, ManagerState};
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 #[derive(Debug)]
 enum Screen {
     Splash,
-    Picker { app_id_input: String },
+    Library(Box<LibraryState>),
     SteamNotRunning { reason: String },
     Manager(Box<ManagerState>),
 }
@@ -23,8 +26,8 @@ enum Message {
     SplashDone,
     Exit,
     GoBack,
-    AppIdInputChanged(String),
-    OpenManager,
+    Library(LibraryMessage),
+    OpenManager(u32),
     Manager(ManagerMessage),
     PollWorker,
     KeyboardEvent(keyboard::Event),
@@ -66,6 +69,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
     };
 
     let replies: Vec<SteamReply> = rx.try_iter().collect();
+    let mut tasks: Vec<Task<Message>> = Vec::new();
 
     for reply in replies {
         if let SteamReply::ConnectFailed(reason) = &reply {
@@ -80,39 +84,58 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             return Task::none();
         }
 
-        let Screen::Manager(state) = &mut app.screen else {
-            continue;
-        };
-
         match &reply {
-            SteamReply::Connected { .. } => {
-                if let Some(w) = &app.worker {
-                    w.send(SteamRequest::RequestUserStats);
+            SteamReply::LibraryScan(_) | SteamReply::LibraryScanFailed(_) => {
+                if let Screen::Library(state) = &mut app.screen {
+                    let t = library::handle_steam_reply(state, reply);
+                    tasks.push(t);
                 }
-            }
-            SteamReply::ResetDone => {
-                if let Some(w) = &app.worker {
-                    w.send(SteamRequest::RequestUserStats);
-                }
+                continue;
             }
             _ => {}
         }
 
-        let _task = manager::handle_steam_reply(state, reply);
+        if let SteamReply::Connected { .. } = &reply
+            && let Some(w) = &app.worker
+        {
+            w.send(SteamRequest::RequestUserStats);
+        }
+
+        if let SteamReply::ResetDone = &reply
+            && let Some(w) = &app.worker
+        {
+            w.send(SteamRequest::RequestUserStats);
+        }
+
+        let Screen::Manager(state) = &mut app.screen else {
+            continue;
+        };
+
+        let t = manager::handle_steam_reply(state, reply);
+        tasks.push(t);
     }
 
-    Task::none()
+    if tasks.is_empty() {
+        Task::none()
+    } else {
+        Task::batch(tasks)
+    }
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::SplashDone => {
-            app.screen = Screen::Picker {
-                app_id_input: String::new(),
-            };
+            let lib_state = LibraryState::new();
+            let (worker, rx) = SteamWorker::spawn();
+            library::trigger_scan(&worker);
+            app.worker = Some(worker);
+            app.worker_rx = Some(rx);
+            app.screen = Screen::Library(Box::new(lib_state));
             Task::none()
         }
+
         Message::Exit => iced::exit(),
+
         Message::GoBack => {
             if let Screen::Manager(_) = &app.screen {
                 if let Some(w) = &app.worker {
@@ -120,28 +143,76 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 app.worker = None;
                 app.worker_rx = None;
-            }
-            app.screen = Screen::Picker {
-                app_id_input: String::new(),
-            };
-            Task::none()
-        }
-        Message::AppIdInputChanged(s) => {
-            if let Screen::Picker { app_id_input } = &mut app.screen {
-                *app_id_input = s.chars().filter(|c| c.is_ascii_digit()).collect();
-            }
-            Task::none()
-        }
-        Message::OpenManager => {
-            let app_id: u32 = if let Screen::Picker { app_id_input } = &app.screen {
-                app_id_input.parse().unwrap_or(0)
-            } else {
-                0
-            };
 
-            if app_id == 0 {
-                return Task::none();
+                let mut lib_state = LibraryState::new();
+                lib_state.has_opened_a_game = true;
+                let (worker, rx) = SteamWorker::spawn();
+                library::trigger_scan(&worker);
+                app.worker = Some(worker);
+                app.worker_rx = Some(rx);
+                app.screen = Screen::Library(Box::new(lib_state));
+            } else if let Screen::SteamNotRunning { .. } = &app.screen {
+                let lib_state = LibraryState::new();
+                let (worker, rx) = SteamWorker::spawn();
+                library::trigger_scan(&worker);
+                app.worker = Some(worker);
+                app.worker_rx = Some(rx);
+                app.screen = Screen::Library(Box::new(lib_state));
             }
+            Task::none()
+        }
+
+        Message::Library(lib_msg) => {
+            match &lib_msg {
+                LibraryMessage::GameSelected(app_id) => {
+                    let app_id = *app_id;
+                    if app_id == 0 {
+                        return Task::none();
+                    }
+                    if let Screen::Library(lib_state) = &mut app.screen {
+                        lib_state.has_opened_a_game = true;
+                    }
+                    return update(app, Message::OpenManager(app_id));
+                }
+                LibraryMessage::ManualAppIdSubmitted => {
+                    let app_id: u32 = if let Screen::Library(lib_state) = &app.screen {
+                        lib_state.manual_app_id_input.parse().unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    if app_id == 0 {
+                        return Task::none();
+                    }
+                    if let Screen::Library(lib_state) = &mut app.screen {
+                        lib_state.has_opened_a_game = true;
+                    }
+                    return update(app, Message::OpenManager(app_id));
+                }
+                LibraryMessage::RescanRequested => {
+                    if let Screen::Library(lib_state) = &mut app.screen {
+                        let t = library::update(lib_state, lib_msg);
+                        if let Some(w) = &app.worker {
+                            library::trigger_scan(w);
+                        }
+                        return t;
+                    }
+                    return Task::none();
+                }
+                _ => {}
+            }
+
+            if let Screen::Library(lib_state) = &mut app.screen {
+                return library::update(lib_state, lib_msg);
+            }
+            Task::none()
+        }
+
+        Message::OpenManager(app_id) => {
+            if let Some(w) = &app.worker {
+                w.send(SteamRequest::Disconnect);
+            }
+            app.worker = None;
+            app.worker_rx = None;
 
             let (worker, rx) = SteamWorker::spawn();
             worker.send(SteamRequest::ConnectWithApp(app_id));
@@ -153,6 +224,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             Task::none()
         }
+
         Message::Manager(m) => {
             if let Screen::Manager(state) = &mut app.screen
                 && let Some(worker) = &app.worker
@@ -161,7 +233,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+
         Message::PollWorker => drain_worker_replies(app),
+
         Message::KeyboardEvent(event) => {
             if let keyboard::Event::KeyPressed {
                 modifiers,
@@ -186,7 +260,7 @@ fn view(app: &App) -> Element<'_, Message> {
     match &app.screen {
         Screen::Splash => splash_view(),
 
-        Screen::Picker { app_id_input } => picker_view(app_id_input),
+        Screen::Library(lib_state) => library::view(lib_state),
 
         Screen::SteamNotRunning { reason } => {
             let content: Element<'_, Message> = column![
@@ -222,33 +296,6 @@ fn splash_view() -> Element<'static, Message> {
     let content = column![title, subtitle]
         .spacing(12)
         .align_x(iced::Alignment::Center);
-
-    container(content)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(iced::Alignment::Center)
-        .align_y(iced::Alignment::Center)
-        .into()
-}
-
-fn picker_view(app_id_input: &str) -> Element<'_, Message> {
-    let header = text("SteamLens").size(32);
-    let subtitle = text("Enter a Steam App ID to inspect achievements and stats.").size(14);
-
-    let input_row = row![
-        text_input("App ID (e.g. 105600)", app_id_input)
-            .on_input(Message::AppIdInputChanged)
-            .on_submit(Message::OpenManager)
-            .padding(10)
-            .size(14)
-            .width(Length::Fixed(220.0)),
-        button(text("Open Manager").size(14))
-            .on_press(Message::OpenManager)
-            .padding(Padding::from([10u16, 18])),
-    ]
-    .spacing(8);
-
-    let content = column![header, subtitle, input_row].spacing(16).padding(24);
 
     container(content)
         .width(Length::Fill)
@@ -298,11 +345,9 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
 
-    fn make_app_picker() -> App {
+    fn make_app_library() -> App {
         App {
-            screen: Screen::Picker {
-                app_id_input: String::new(),
-            },
+            screen: Screen::Library(Box::new(LibraryState::new())),
             worker: None,
             worker_rx: None,
         }
@@ -321,7 +366,7 @@ mod tests {
     fn screen_name(app: &App) -> &'static str {
         match app.screen {
             Screen::Splash => "Splash",
-            Screen::Picker { .. } => "Picker",
+            Screen::Library(_) => "Library",
             Screen::SteamNotRunning { .. } => "SteamNotRunning",
             Screen::Manager(_) => "Manager",
         }
@@ -343,45 +388,23 @@ mod tests {
     }
 
     #[test]
-    fn splash_done_transitions_to_picker() {
+    fn splash_done_transitions_to_library() {
         let mut app = make_app_splash();
         let _task = update(&mut app, Message::SplashDone);
         assert!(
-            matches!(app.screen, Screen::Picker { .. }),
-            "expected Picker after SplashDone, got {}",
+            matches!(app.screen, Screen::Library(_)),
+            "expected Library after SplashDone, got {}",
             screen_name(&app)
         );
     }
 
     #[test]
-    fn app_id_input_filters_non_digits() {
-        let mut app = make_app_picker();
-        let _task = update(&mut app, Message::AppIdInputChanged("105abc600".to_owned()));
-        if let Screen::Picker { app_id_input } = &app.screen {
-            assert_eq!(app_id_input, "105600");
-        } else {
-            panic!("expected Picker");
-        }
-    }
-
-    #[test]
-    fn open_manager_with_zero_app_id_is_no_op() {
-        let mut app = make_app_picker();
-        let _task = update(&mut app, Message::OpenManager);
-        assert!(
-            matches!(app.screen, Screen::Picker { .. }),
-            "expected Picker after OpenManager with empty input, got {}",
-            screen_name(&app)
-        );
-    }
-
-    #[test]
-    fn go_back_from_not_running_returns_to_picker() {
+    fn go_back_from_not_running_returns_to_library() {
         let mut app = make_app_not_running("pipe closed");
         let _task = update(&mut app, Message::GoBack);
         assert!(
-            matches!(app.screen, Screen::Picker { .. }),
-            "expected Picker after GoBack, got {}",
+            matches!(app.screen, Screen::Library(_)),
+            "expected Library after GoBack, got {}",
             screen_name(&app)
         );
     }
