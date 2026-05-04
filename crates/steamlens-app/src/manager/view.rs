@@ -22,6 +22,8 @@ const C_RED: Color = Color::from_rgb(1.0, 0.333, 0.333);
 const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 #[allow(dead_code)]
 const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
+const C_RARE: Color = Color::from_rgb(1.0, 0.85, 0.4);
+const RARE_THRESHOLD: f32 = 10.0;
 fn msg(m: ManagerMessage) -> Message {
     Message::Manager(m)
 }
@@ -406,6 +408,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
     };
 
     let query_owned = state.search_query.clone();
+    let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
 
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
@@ -430,6 +433,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                     entry,
                     actual_card_w,
                     query_owned.clone(),
+                    glow_pulse,
                 ));
             }
             let needed = cols - chunk.len();
@@ -459,6 +463,7 @@ fn achievement_card_widget<'a>(
     row: &'a AchievementRow,
     card_w: f32,
     search_query: String,
+    glow_pulse: f32,
 ) -> Element<'a, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
@@ -484,19 +489,40 @@ fn achievement_card_widget<'a>(
     } else if let Some(ico) = &row.data.icon {
         let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
+        let is_rare = row.rarity_percent.is_some_and(|p| p < RARE_THRESHOLD);
         container(
             image(handle)
                 .width(Length::Fixed(ACH_CARD_ICON))
                 .height(Length::Fixed(ACH_CARD_ICON))
                 .opacity(opacity),
         )
-        .style(|_theme| container::Style {
-            shadow: iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                offset: iced::Vector::new(1.5, 1.5),
-                blur_radius: 3.0,
-            },
-            ..container::Style::default()
+        .style(move |_theme| {
+            if is_rare {
+                let alpha = 0.55 + 0.45 * glow_pulse;
+                let blur = 14.0 + 14.0 * glow_pulse;
+                container::Style {
+                    shadow: iced::Shadow {
+                        color: Color { a: alpha, ..C_RARE },
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: blur,
+                    },
+                    border: iced::Border {
+                        color: C_RARE,
+                        width: 2.0,
+                        radius: 8.0.into(),
+                    },
+                    ..container::Style::default()
+                }
+            } else {
+                container::Style {
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(1.5, 1.5),
+                        blur_radius: 3.0,
+                    },
+                    ..container::Style::default()
+                }
+            }
         })
         .into()
     } else {

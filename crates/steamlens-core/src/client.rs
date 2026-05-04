@@ -1,3 +1,4 @@
+use core::ffi::c_void;
 use core::marker::PhantomData;
 use core::ptr::addr_of;
 use std::ffi::CString;
@@ -187,6 +188,92 @@ impl Client {
             height,
             rgba,
         }))
+    }
+
+    /// Poll the completion status of a Steam API call result.
+    ///
+    /// Steam delivers some async results (e.g. `RequestGlobalAchievementPercentages`)
+    /// as *Call Results* rather than broadcast callbacks. Call Results are bound to the
+    /// specific `SteamAPICall_t` handle returned by the initiating method. They do NOT
+    /// appear in the broadcast queue polled by [`Self::poll_callbacks`] — they must be
+    /// retrieved via `ISteamUtils::IsAPICallCompleted` + `GetAPICallResult`.
+    ///
+    /// Returns:
+    /// - `None` — the call is still pending; poll again later (suggested: 50 ms).
+    /// - `Some(Ok(bytes))` — completed successfully; `bytes` contains the callback
+    ///   payload of `payload_size` bytes (caller interprets the layout).
+    /// - `Some(Err(e))` — completed with an IO-level failure.
+    ///
+    /// `expected_callback_id` must match the callback ID of the expected result type
+    /// (e.g. `1110` for `GlobalAchievementPercentagesReady_t`). Steam uses it for
+    /// type-checking on the C++ side.
+    ///
+    /// # Errors
+    ///
+    /// [`SteamError::InterfaceUnavailable`] when `SteamUtils005` is null (should
+    /// not happen after a successful `connect`).
+    pub fn poll_call_result(
+        &self,
+        handle: u64,
+        expected_callback_id: i32,
+        payload_size: usize,
+    ) -> Result<Option<Result<Vec<u8>, SteamError>>, SteamError> {
+        if self.steam_utils.is_null() {
+            return Err(SteamError::InterfaceUnavailable {
+                version: STEAM_UTILS_VERSION.to_owned(),
+            });
+        }
+
+        let mut failed: bool = false;
+
+        // SAFETY: `self.steam_utils` was vended as "SteamUtils005" so its vtable layout
+        // matches `ISteamUtils005`. `handle` is the SteamAPICall_t returned by the
+        // initiating method. `failed` is a stack bool whose address is valid for the
+        // duration of the call. Steam writes `true` into it when the call completed with
+        // an IO error. Returns `false` when the call is still pending.
+        let completed = unsafe {
+            let vtbl = opaque::vtable::<ISteamUtils005>(self.steam_utils);
+            ((*vtbl).is_api_call_completed)(self.steam_utils, handle, &mut failed)
+        };
+
+        if !completed {
+            return Ok(None);
+        }
+
+        if failed {
+            return Ok(Some(Err(SteamError::CallFailed {
+                method: "APICall(IO failure)",
+            })));
+        }
+
+        let mut buf: Vec<u8> = vec![0u8; payload_size];
+
+        // SAFETY: `self.steam_utils` vtable invariant: same as IsAPICallCompleted above.
+        // `buf.as_mut_ptr()` points to `payload_size` bytes of initialised storage.
+        // `callback_size` = payload_size as i32, fits in i32 for any reasonable callback
+        // payload (max observed: 144 bytes for UserAchievementIconFetched).
+        // `expected_callback_id` is the Steam callback ID for type-checking.
+        // `failed` is a fresh stack bool. Steam writes the callback bytes into `buf`
+        // when it returns `true`. No pointer is retained after this call.
+        let ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUtils005>(self.steam_utils);
+            ((*vtbl).get_api_call_result)(
+                self.steam_utils,
+                handle,
+                buf.as_mut_ptr().cast::<c_void>(),
+                payload_size as i32,
+                expected_callback_id,
+                &mut failed,
+            )
+        };
+
+        if !ok || failed {
+            return Ok(Some(Err(SteamError::CallFailed {
+                method: "GetAPICallResult",
+            })));
+        }
+
+        Ok(Some(Ok(buf)))
     }
 
     /// Read stat counter metadata from the local Steam schema cache file.

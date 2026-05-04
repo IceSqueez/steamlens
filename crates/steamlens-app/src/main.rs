@@ -836,6 +836,49 @@ mod tests {
     }
 
     #[test]
+    fn global_percentages_reply_populates_rarity() {
+        use std::collections::HashMap;
+
+        use manager::handle_steam_reply;
+        use manager::types::{AchievementData, AchievementRow};
+        use steam_worker::SteamReply;
+
+        let mut state = ManagerState::new(0);
+
+        let make_row = |id: &str| {
+            AchievementRow::from_data(AchievementData {
+                id: id.to_owned(),
+                display_name: id.to_owned(),
+                description: String::new(),
+                is_hidden: false,
+                is_achieved: false,
+                unlock_time: None,
+                permission: 0,
+                icon: None,
+            })
+        };
+
+        state.achievements = vec![make_row("ACH_RARE"), make_row("ACH_COMMON")];
+
+        let mut map = HashMap::new();
+        map.insert("ACH_RARE".to_owned(), 4.0f32);
+        map.insert("ACH_COMMON".to_owned(), 55.0f32);
+
+        let _task = handle_steam_reply(&mut state, SteamReply::GlobalPercentagesReady(map));
+
+        assert_eq!(
+            state.achievements[0].rarity_percent,
+            Some(4.0),
+            "ACH_RARE must have rarity_percent = Some(4.0)"
+        );
+        assert_eq!(
+            state.achievements[1].rarity_percent,
+            Some(55.0),
+            "ACH_COMMON must have rarity_percent = Some(55.0)"
+        );
+    }
+
+    #[test]
     fn apply_then_reload_preserves_revealed_state() {
         use manager::handle_steam_reply;
         use manager::types::{AchievementData, AchievementRow};

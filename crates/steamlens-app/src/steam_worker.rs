@@ -52,6 +52,7 @@ pub enum SteamRequest {
     ConnectWithApp(u32),
     ScanLibrary,
     RequestUserStats,
+    RequestGlobalPercentages,
     ApplyChanges {
         achievements_to_set: Vec<String>,
         achievements_to_clear: Vec<String>,
@@ -90,6 +91,8 @@ pub enum SteamReply {
         name: String,
         icon: AchievementIcon,
     },
+    GlobalPercentagesReady(HashMap<String, f32>),
+    GlobalPercentagesFailed(String),
     Callback(SteamCallback),
     Disconnected,
 }
@@ -174,9 +177,22 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
                         Ok(()) => {
                             send_reply(&tx, SteamReply::StatsRequested);
                             wait_for_stats_then_load(c, app_id, &tx);
+                            trigger_global_percentages(c, app_id, &tx);
                         }
                         Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
                     }
+                }
+
+                SteamRequest::RequestGlobalPercentages => {
+                    let Some(c) = &client else {
+                        send_reply(
+                            &tx,
+                            SteamReply::GlobalPercentagesFailed("Not connected".to_owned()),
+                        );
+                        continue;
+                    };
+                    let app_id = connected_app_id.unwrap_or(0);
+                    trigger_global_percentages(c, app_id, &tx);
                 }
 
                 SteamRequest::ApplyChanges {
@@ -508,4 +524,103 @@ fn poll_until_store_confirmed(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn trigger_global_percentages(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
+    match c.user_stats().request_global_achievement_percentages() {
+        Err(e) => send_reply(tx, SteamReply::GlobalPercentagesFailed(e.to_string())),
+        Ok(handle) => wait_for_global_percentages_call_result(c, handle, app_id, tx),
+    }
+}
+
+fn wait_for_global_percentages_call_result(
+    c: &Client,
+    handle: u64,
+    app_id: u32,
+    tx: &mpsc::Sender<SteamReply>,
+) {
+    const CALLBACK_ID_GLOBAL: i32 = 1110;
+    const PAYLOAD_SIZE: usize = 12;
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+
+    loop {
+        if let Ok(callbacks) = c.poll_callbacks() {
+            forward_icon_callbacks(callbacks, c, tx);
+        }
+
+        match c.poll_call_result(handle, CALLBACK_ID_GLOBAL, PAYLOAD_SIZE) {
+            Err(e) => {
+                send_reply(
+                    tx,
+                    SteamReply::GlobalPercentagesFailed(format!("poll_call_result: {e}")),
+                );
+                return;
+            }
+            Ok(None) => {}
+            Ok(Some(Err(e))) => {
+                send_reply(
+                    tx,
+                    SteamReply::GlobalPercentagesFailed(format!("APICall failed: {e}")),
+                );
+                return;
+            }
+            Ok(Some(Ok(bytes))) => {
+                if bytes.len() < PAYLOAD_SIZE {
+                    send_reply(
+                        tx,
+                        SteamReply::GlobalPercentagesFailed(
+                            "GlobalAchievementPercentagesReady payload too short".to_owned(),
+                        ),
+                    );
+                    return;
+                }
+                let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
+                if result_code == 1 {
+                    collect_and_send_percentages(c, app_id, tx);
+                } else {
+                    send_reply(
+                        tx,
+                        SteamReply::GlobalPercentagesFailed(format!(
+                            "GlobalAchievementPercentagesReady error: {result_code}"
+                        )),
+                    );
+                }
+                return;
+            }
+        }
+
+        if std::time::Instant::now() >= deadline {
+            send_reply(
+                tx,
+                SteamReply::GlobalPercentagesFailed(
+                    "Timed out waiting for GlobalAchievementPercentagesReady".to_owned(),
+                ),
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn collect_and_send_percentages(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
+    let stats_iface = c.user_stats();
+    let num = match stats_iface.num_achievements() {
+        Ok(n) => n,
+        Err(e) => {
+            send_reply(tx, SteamReply::GlobalPercentagesFailed(e.to_string()));
+            return;
+        }
+    };
+    let mut map = HashMap::with_capacity(num as usize);
+    for i in 0..num {
+        let name = match stats_iface.achievement_name(i) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        if let Ok(pct) = stats_iface.achievement_achieved_percent(&name) {
+            map.insert(name, pct);
+        }
+    }
+    let _ = app_id;
+    send_reply(tx, SteamReply::GlobalPercentagesReady(map));
 }

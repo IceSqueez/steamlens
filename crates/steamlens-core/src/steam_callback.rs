@@ -3,6 +3,7 @@ use crate::raw_callback::RawCallback;
 pub const CALLBACK_ID_USER_STATS_RECEIVED: i32 = 1101;
 pub const CALLBACK_ID_USER_STATS_STORED: i32 = 1102;
 pub const CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED: i32 = 1109;
+pub const CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
 
 /// A Steam EResult value.
 ///
@@ -86,6 +87,13 @@ pub enum SteamCallback {
         icon_handle: i32,
     },
 
+    /// Global achievement percentage data is ready to query.
+    ///
+    /// Emitted after `RequestGlobalAchievementPercentages` completes. When
+    /// `result.is_ok()`, call `achievement_achieved_percent` for each achievement
+    /// name to read the global unlock percentage (0.0–100.0).
+    GlobalAchievementPercentagesReady { game_id: u64, result: SteamResult },
+
     /// An unrecognised or malformed callback. The raw id and payload bytes are
     /// preserved for inspection and logging.
     Unknown(RawCallback),
@@ -99,6 +107,7 @@ impl From<RawCallback> for SteamCallback {
 
 pub(crate) mod callback_decode {
     use super::{
+        CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY,
         CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED, CALLBACK_ID_USER_STATS_RECEIVED,
         CALLBACK_ID_USER_STATS_STORED, SteamCallback, SteamResult,
     };
@@ -107,6 +116,7 @@ pub(crate) mod callback_decode {
     const USER_STATS_RECEIVED_LEN: usize = 20;
     const USER_STATS_STORED_LEN: usize = 12;
     const USER_ACHIEVEMENT_ICON_FETCHED_LEN: usize = 144;
+    const GLOBAL_ACHIEVEMENT_PERCENTAGES_READY_LEN: usize = 12;
 
     pub(crate) fn decode_user_stats_received(payload: &[u8]) -> Option<SteamCallback> {
         if payload.len() < USER_STATS_RECEIVED_LEN {
@@ -152,6 +162,18 @@ pub(crate) mod callback_decode {
         })
     }
 
+    pub(crate) fn decode_global_percentages_ready(payload: &[u8]) -> Option<SteamCallback> {
+        if payload.len() < GLOBAL_ACHIEVEMENT_PERCENTAGES_READY_LEN {
+            return None;
+        }
+        let game_id = u64::from_le_bytes(payload[0..8].try_into().ok()?);
+        let result = i32::from_le_bytes(payload[8..12].try_into().ok()?);
+        Some(SteamCallback::GlobalAchievementPercentagesReady {
+            game_id,
+            result: SteamResult::from_raw(result),
+        })
+    }
+
     pub(crate) fn decode(raw: RawCallback) -> SteamCallback {
         match raw.id {
             CALLBACK_ID_USER_STATS_RECEIVED => {
@@ -163,6 +185,9 @@ pub(crate) mod callback_decode {
             CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED => {
                 decode_user_achievement_icon_fetched(&raw.payload)
                     .unwrap_or(SteamCallback::Unknown(raw))
+            }
+            CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY => {
+                decode_global_percentages_ready(&raw.payload).unwrap_or(SteamCallback::Unknown(raw))
             }
             _ => SteamCallback::Unknown(raw),
         }
@@ -260,6 +285,38 @@ pub(crate) mod callback_decode {
             assert!(
                 matches!(cb, crate::SteamCallback::Unknown(_)),
                 "truncated icon-fetched payload must fall back to Unknown"
+            );
+        }
+
+        #[test]
+        fn decode_global_percentages_ok() {
+            let game_id: u64 = 105600;
+            let result_ok: i32 = 1;
+            let mut payload = Vec::with_capacity(12);
+            payload.extend_from_slice(&game_id.to_le_bytes());
+            payload.extend_from_slice(&result_ok.to_le_bytes());
+            let raw = RawCallback { id: 1110, payload };
+            let cb = crate::SteamCallback::from(raw);
+            match cb {
+                crate::SteamCallback::GlobalAchievementPercentagesReady {
+                    game_id: gid,
+                    result,
+                } => {
+                    assert_eq!(gid, 105600);
+                    assert!(result.is_ok());
+                }
+                other => panic!("expected GlobalAchievementPercentagesReady, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn decode_global_percentages_too_short_returns_unknown() {
+            let payload = vec![0u8; 8];
+            let raw = RawCallback { id: 1110, payload };
+            let cb = crate::SteamCallback::from(raw);
+            assert!(
+                matches!(cb, crate::SteamCallback::Unknown(_)),
+                "8-byte payload (too short) must fall back to Unknown"
             );
         }
     }

@@ -50,6 +50,7 @@ pub enum ManagerMessage {
     FadeInTick(f32),
     RevealTick,
     ManagerFadeTick,
+    RareGlowTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -85,6 +86,7 @@ pub struct ManagerState {
 
     pub spinner_angle: f32,
     pub fade_in: f32,
+    pub rare_glow_phase: f32,
 
     pub error_message: String,
 }
@@ -108,6 +110,7 @@ impl ManagerState {
             banner: None,
             spinner_angle: 0.0,
             fade_in: 0.0,
+            rare_glow_phase: 0.0,
             error_message: String::new(),
         }
     }
@@ -263,6 +266,15 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
         }
         SteamReply::Disconnected => Task::none(),
         SteamReply::LibraryScan(_) | SteamReply::LibraryScanFailed(_) => Task::none(),
+        SteamReply::GlobalPercentagesReady(map) => {
+            for row in &mut state.achievements {
+                if let Some(&pct) = map.get(&row.data.id) {
+                    row.rarity_percent = Some(pct);
+                }
+            }
+            Task::none()
+        }
+        SteamReply::GlobalPercentagesFailed(_) => Task::none(),
     }
 }
 
@@ -545,6 +557,12 @@ pub fn update(
             }
             Task::none()
         }
+
+        ManagerMessage::RareGlowTick => {
+            state.rare_glow_phase =
+                (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
+            Task::none()
+        }
     }
 }
 
@@ -590,7 +608,19 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
         iced::Subscription::none()
     };
 
-    iced::Subscription::batch([spinner_sub, reveal_sub, fade_sub])
+    let has_rare = state.phase == ManagerPhase::Ready
+        && state
+            .achievements
+            .iter()
+            .any(|r| r.appeared && r.rarity_percent.is_some_and(|p| p < 10.0));
+    let glow_sub = if has_rare {
+        time::every(std::time::Duration::from_millis(40))
+            .map(|_| crate::Message::Manager(ManagerMessage::RareGlowTick))
+    } else {
+        iced::Subscription::none()
+    };
+
+    iced::Subscription::batch([spinner_sub, reveal_sub, fade_sub, glow_sub])
 }
 
 #[cfg(test)]

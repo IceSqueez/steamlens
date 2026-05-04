@@ -431,6 +431,71 @@ impl<'a> UserStats<'a> {
         }
     }
 
+    /// Requests that Steam load global achievement percentage data for the current app.
+    ///
+    /// Returns immediately with a `SteamAPICall_t` handle. The result is a Call Result
+    /// (not a broadcast callback) — it must be polled via [`crate::Client::poll_call_result`]
+    /// using the returned handle and callback ID `1110`. Once polling succeeds, call
+    /// [`Self::achievement_achieved_percent`] for each achievement name to read the
+    /// global unlock percentage.
+    ///
+    /// Steam infers the app from the `SteamAppId` environment variable set at connect
+    /// time — no app ID argument is passed on the wire.
+    ///
+    /// Returns `CallFailed` when Steam returns a handle of 0, which occurs when Steam
+    /// is offline or the app context was not set at connect time.
+    pub fn request_global_achievement_percentages(&self) -> Result<u64, SteamError> {
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 33 = RequestGlobalAchievementPercentages. The vtable slot takes only
+        // `this` — no game_id argument. Steam infers the app from SteamAppId in the
+        // process environment (set before connect). Returns a SteamAPICall_t (u64)
+        // handle; 0 means Steam rejected the call. This is a Call Result, not a
+        // broadcast callback — the result must be retrieved via ISteamUtils::
+        // IsAPICallCompleted + GetAPICallResult, not from Steam_BGetCallback.
+        let handle = unsafe {
+            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
+            ((*vtbl).request_global_achievement_percentages)(self.raw)
+        };
+        if handle == 0 {
+            Err(SteamError::CallFailed {
+                method: "RequestGlobalAchievementPercentages",
+            })
+        } else {
+            Ok(handle)
+        }
+    }
+
+    /// Returns the global unlock percentage for the named achievement.
+    ///
+    /// Returns a value in the range 0.0–100.0, representing the fraction of all
+    /// Steam users who have unlocked this achievement. Call
+    /// [`Self::request_global_achievement_percentages`] first and wait for the
+    /// `GlobalAchievementPercentagesReady` callback before reading individual
+    /// percentages — Steam returns `false` for all names until that data arrives.
+    ///
+    /// Returns `SteamError::CallFailed` when Steam returns `false` — either because
+    /// the global data has not yet loaded or the achievement name is unknown.
+    pub fn achievement_achieved_percent(&self, name: &str) -> Result<f32, SteamError> {
+        let cname = Self::cname(name)?;
+        let mut percent: f32 = 0.0;
+        // SAFETY: Impl-level invariant holds (see above).
+        // Slot 36 = GetAchievementAchievedPercent. `cname` is NUL-terminated and
+        // held alive by the binding for the duration of the call. `percent` is a
+        // stack-allocated f32 out-param; Steam writes through it when returning true.
+        // Returns false when global data is not loaded or the name is unknown.
+        let ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
+            ((*vtbl).get_achievement_achieved_percent)(self.raw, cname.as_ptr(), &mut percent)
+        };
+        if ok {
+            Ok(percent)
+        } else {
+            Err(SteamError::CallFailed {
+                method: "GetAchievementAchievedPercent",
+            })
+        }
+    }
+
     /// Returns Steam's opaque image handle for the achievement icon.
     ///
     /// Pass the returned handle to `ISteamUtils::GetImageRGBA` (not yet

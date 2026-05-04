@@ -58,6 +58,7 @@ pub struct AchievementRow {
     pub revealed: bool,
     pub appeared: bool,
     pub card_opacity: f32,
+    pub rarity_percent: Option<f32>,
 }
 
 impl AchievementRow {
@@ -68,6 +69,7 @@ impl AchievementRow {
             revealed: false,
             appeared: false,
             card_opacity: 0.0,
+            rarity_percent: None,
         }
     }
 
