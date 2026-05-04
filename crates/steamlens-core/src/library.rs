@@ -16,6 +16,14 @@ pub struct GameSummary {
     /// Number of achievements defined in the local schema cache.  Zero when
     /// the schema file is missing or cannot be parsed — this is not an error.
     pub achievement_count: u32,
+    /// Unix timestamp from `AppState.LastUpdated` in the appmanifest ACF.
+    /// Zero when the field is absent (game installed without an update record).
+    /// Used by the cache invalidation predicate to detect Steam updates.
+    pub last_updated: u64,
+    /// Absolute path to the `appmanifest_<id>.acf` file this summary was
+    /// constructed from.  Required for multi-library support: `classify_games`
+    /// calls `read_manifest_state` with this path rather than reconstructing it.
+    pub manifest_path: PathBuf,
 }
 
 /// Scan all installed Steam libraries and return a list of games that have
@@ -173,11 +181,19 @@ fn parse_appmanifest(path: &Path) -> Option<GameSummary> {
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&ts| ts != 0);
 
+    let last_updated = app_state
+        .get("LastUpdated")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+
     Some(GameSummary {
         app_id,
         name,
         last_played,
         achievement_count: 0,
+        last_updated,
+        manifest_path: path.to_path_buf(),
     })
 }
 
@@ -254,6 +270,7 @@ mod tests {
     "name"          "Terraria"
     "StateFlags"    "4"
     "LastPlayed"    "1700000000"
+    "LastUpdated"   "1777629959"
 }
 "#,
         );
@@ -261,6 +278,38 @@ mod tests {
         assert_eq!(summary.app_id, 105600);
         assert_eq!(summary.name, "Terraria");
         assert_eq!(summary.last_played, Some(1700000000));
+        assert_eq!(summary.last_updated, 1777629959);
+        assert_eq!(summary.manifest_path, tmp);
+    }
+
+    #[test]
+    fn parse_appmanifest_last_updated_absent_is_zero() {
+        let tmp = tempfile_appmanifest(
+            r#"
+"AppState"
+{
+    "appid" "105600"
+    "name"  "Terraria"
+}
+"#,
+        );
+        let summary = parse_appmanifest(&tmp).unwrap();
+        assert_eq!(summary.last_updated, 0);
+    }
+
+    #[test]
+    fn parse_appmanifest_manifest_path_is_exact_input_path() {
+        let tmp = tempfile_appmanifest(
+            r#"
+"AppState"
+{
+    "appid" "570"
+    "name"  "Dota 2"
+}
+"#,
+        );
+        let summary = parse_appmanifest(&tmp).unwrap();
+        assert_eq!(summary.manifest_path, tmp);
     }
 
     #[test]

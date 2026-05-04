@@ -148,7 +148,7 @@ mod tests {
             },
             WorkerCommand::SetStatFloat {
                 name: "stat_ratio".to_owned(),
-                value: 3.14,
+                value: std::f32::consts::PI,
             },
             WorkerCommand::StoreStats,
             WorkerCommand::ResetAllStats {
