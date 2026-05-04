@@ -486,6 +486,32 @@ pub fn update(
     }
 }
 
+pub fn view(state: &ManagerState) -> iced::Element<'_, crate::Message> {
+    view::render(state)
+}
+
+pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> {
+    use iced::time;
+
+    let needs_spinner = matches!(
+        state.phase,
+        ManagerPhase::Connecting
+            | ManagerPhase::WaitingStats
+            | ManagerPhase::LoadingData
+            | ManagerPhase::Saving
+            | ManagerPhase::Resetting
+    );
+
+    let needs_tick = needs_spinner || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0);
+
+    if needs_tick {
+        time::every(std::time::Duration::from_millis(33))
+            .map(|_| crate::Message::Manager(ManagerMessage::SpinnerTick))
+    } else {
+        iced::Subscription::none()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,31 +573,5 @@ mod tests {
         let _task = handle_steam_reply(&mut state, reply);
 
         assert!(state.achievements[0].data.icon.is_none());
-    }
-}
-
-pub fn view(state: &ManagerState) -> iced::Element<'_, crate::Message> {
-    view::render(state)
-}
-
-pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> {
-    use iced::time;
-
-    let needs_spinner = matches!(
-        state.phase,
-        ManagerPhase::Connecting
-            | ManagerPhase::WaitingStats
-            | ManagerPhase::LoadingData
-            | ManagerPhase::Saving
-            | ManagerPhase::Resetting
-    );
-
-    let needs_tick = needs_spinner || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0);
-
-    if needs_tick {
-        time::every(std::time::Duration::from_millis(33))
-            .map(|_| crate::Message::Manager(ManagerMessage::SpinnerTick))
-    } else {
-        iced::Subscription::none()
     }
 }
