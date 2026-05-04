@@ -582,8 +582,7 @@ fn achievement_card_widget<'a>(
     tier: Option<RarityTier>,
 ) -> Element<'a, Message> {
     let effective = row.effective_achieved();
-    let is_protected = row.data.permission != 0;
-    let spoiler_hidden = row.data.is_hidden && !row.data.is_achieved && !row.revealed;
+    let spoiler_hidden = row.is_spoiler_hidden();
 
     let icon_el: Element<'_, Message> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
@@ -757,16 +756,12 @@ fn achievement_card_widget<'a>(
         .align_y(Alignment::Start)
         .padding(Padding::from([8u16, 8]));
 
-    let (badge_text, badge_color) = if is_protected {
-        ("Protected", C_ORANGE)
-    } else if row.is_dirty {
-        ("Pending", C_YELLOW)
-    } else if spoiler_hidden {
-        ("Hidden", C_MUTED)
-    } else if effective {
-        ("Unlocked", C_GREEN)
-    } else {
-        ("Locked", C_MUTED)
+    let badge_text = row.status_label();
+    let badge_color = match badge_text {
+        "Protected" => C_ORANGE,
+        "Pending" => C_YELLOW,
+        "Unlocked" => C_GREEN,
+        _ => C_MUTED,
     };
 
     let badge = container(text(badge_text).size(10).color(Color {

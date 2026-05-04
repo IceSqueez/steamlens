@@ -32,6 +32,24 @@ impl AchievementRow {
             self.data.is_achieved
         }
     }
+
+    pub fn is_spoiler_hidden(&self) -> bool {
+        self.data.is_hidden && !self.data.is_achieved && !self.revealed
+    }
+
+    pub fn status_label(&self) -> &'static str {
+        if self.data.permission != 0 {
+            "Protected"
+        } else if self.is_dirty {
+            "Pending"
+        } else if self.is_spoiler_hidden() {
+            "Hidden"
+        } else if self.effective_achieved() {
+            "Unlocked"
+        } else {
+            "Locked"
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -418,7 +436,13 @@ pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, Rari
     });
 
     let total = rated.len();
-    let legendary_n = total.min(LEGENDARY_TOP_N);
+    let mut legendary_n = total.min(LEGENDARY_TOP_N);
+    if legendary_n > 0 && legendary_n < total {
+        let threshold = rated[legendary_n - 1].1;
+        while legendary_n < total && (rated[legendary_n].1 - threshold).abs() < 0.001 {
+            legendary_n += 1;
+        }
+    }
     let remaining = total - legendary_n;
 
     let mythical_n = (remaining as f32 * 0.10).round() as usize;
@@ -767,6 +791,286 @@ mod rarity_tests {
         assert!(
             !ids.contains(&"no_data"),
             "unrated must be excluded by specific filter"
+        );
+    }
+
+    #[test]
+    fn filter_locked_keeps_dirty_unlock_toggle_in_locked_group() {
+        let row = AchievementRow {
+            appeared: true,
+            is_dirty: true,
+            ..make_row("dirty_unlock", None)
+        };
+        let rows = [row];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Locked,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"dirty_unlock"),
+            "pending-unlock row must still be visible under Locked filter (persisted state = locked)"
+        );
+    }
+
+    #[test]
+    fn filter_unlocked_keeps_dirty_lock_toggle_in_unlocked_group() {
+        let row = AchievementRow {
+            appeared: true,
+            is_dirty: true,
+            data: AchievementData {
+                id: "dirty_lock".to_owned(),
+                display_name: "dirty_lock".to_owned(),
+                description: String::new(),
+                is_achieved: true,
+                unlock_time: None,
+                is_hidden: false,
+                permission: 0,
+                icon: None,
+            },
+            revealed: false,
+            card_opacity: 1.0,
+            rarity_percent: None,
+        };
+        let rows = [row];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Unlocked,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"dirty_lock"),
+            "pending-lock row must still be visible under Unlocked filter (persisted state = unlocked)"
+        );
+    }
+
+    fn count_legendary(map: &HashMap<String, RarityTier>) -> usize {
+        map.values().filter(|t| **t == RarityTier::Legendary).count()
+    }
+
+    #[test]
+    fn legendary_no_tie_at_third_position() {
+        let rows = vec![
+            make_row("a", Some(1.0)),
+            make_row("b", Some(1.0)),
+            make_row("c", Some(2.0)),
+            make_row("d", Some(3.0)),
+            make_row("e", Some(3.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 3);
+        assert_eq!(map.get("a").copied(), Some(RarityTier::Legendary));
+        assert_eq!(map.get("b").copied(), Some(RarityTier::Legendary));
+        assert_eq!(map.get("c").copied(), Some(RarityTier::Legendary));
+        assert_ne!(map.get("d").copied(), Some(RarityTier::Legendary));
+    }
+
+    #[test]
+    fn legendary_three_with_same_value_no_extension() {
+        let rows = vec![
+            make_row("a", Some(1.0)),
+            make_row("b", Some(1.0)),
+            make_row("c", Some(1.0)),
+            make_row("d", Some(2.0)),
+            make_row("e", Some(3.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 3);
+    }
+
+    #[test]
+    fn legendary_extends_when_fourth_matches_third() {
+        let rows = vec![
+            make_row("a", Some(1.0)),
+            make_row("b", Some(1.0)),
+            make_row("c", Some(1.0)),
+            make_row("d", Some(1.0)),
+            make_row("e", Some(2.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 4);
+        for id in ["a", "b", "c", "d"] {
+            assert_eq!(
+                map.get(id).copied(),
+                Some(RarityTier::Legendary),
+                "{id} should be Legendary"
+            );
+        }
+    }
+
+    #[test]
+    fn legendary_extends_through_multiple_ties() {
+        let rows = vec![
+            make_row("a", Some(1.0)),
+            make_row("b", Some(2.0)),
+            make_row("c", Some(3.0)),
+            make_row("d", Some(3.0)),
+            make_row("e", Some(3.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 5);
+    }
+
+    #[test]
+    fn legendary_fewer_than_three_rated() {
+        let rows = vec![make_row("a", Some(1.0)), make_row("b", Some(2.0))];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 2);
+    }
+
+    #[test]
+    fn legendary_zero_rated_returns_empty() {
+        let rows = vec![make_row("a", None), make_row("b", None)];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 0);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn legendary_all_same_percent() {
+        let rows = vec![
+            make_row("a", Some(1.0)),
+            make_row("b", Some(1.0)),
+            make_row("c", Some(1.0)),
+            make_row("d", Some(1.0)),
+            make_row("e", Some(1.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(count_legendary(&map), 5);
+    }
+}
+
+#[cfg(test)]
+mod behavior_tests {
+    use super::*;
+    use steamlens_core::AchievementData;
+
+    fn make_row(
+        is_hidden: bool,
+        is_achieved: bool,
+        revealed: bool,
+        is_dirty: bool,
+        permission: u32,
+    ) -> AchievementRow {
+        AchievementRow {
+            data: AchievementData {
+                id: "test".to_owned(),
+                display_name: "Test".to_owned(),
+                description: String::new(),
+                is_achieved,
+                unlock_time: None,
+                is_hidden,
+                permission,
+                icon: None,
+            },
+            is_dirty,
+            revealed,
+            appeared: true,
+            card_opacity: 1.0,
+            rarity_percent: None,
+        }
+    }
+
+    #[test]
+    fn spoiler_hidden_persisted_unlock_overrides_dirty() {
+        let row = make_row(true, true, false, true, 0);
+        assert!(
+            !row.is_spoiler_hidden(),
+            "already-unlocked secret stays visible even when dirty (pending to lock)"
+        );
+    }
+
+    #[test]
+    fn spoiler_hidden_clean_locked_hidden() {
+        let row = make_row(true, false, false, false, 0);
+        assert!(
+            row.is_spoiler_hidden(),
+            "locked+hidden+not-revealed = spoiler"
+        );
+    }
+
+    #[test]
+    fn spoiler_hidden_after_reveal_click() {
+        let row = make_row(true, false, true, false, 0);
+        assert!(
+            !row.is_spoiler_hidden(),
+            "user clicked reveal: spoiler lifted"
+        );
+    }
+
+    #[test]
+    fn spoiler_hidden_non_hidden_achievement() {
+        let row = make_row(false, false, false, false, 0);
+        assert!(
+            !row.is_spoiler_hidden(),
+            "non-hidden achievement is never a spoiler"
+        );
+    }
+
+    #[test]
+    fn spoiler_hidden_dirty_locked_does_not_unspoil() {
+        let row = make_row(true, false, false, true, 0);
+        assert!(
+            row.is_spoiler_hidden(),
+            "pending-unlock on hidden card: still a spoiler until Apply commits"
+        );
+    }
+
+    #[test]
+    fn status_label_protected_overrides_all() {
+        let row = make_row(false, false, false, true, 1);
+        assert_eq!(row.status_label(), "Protected");
+    }
+
+    #[test]
+    fn status_label_pending_overrides_hidden() {
+        let row = make_row(true, true, false, true, 0);
+        assert_eq!(
+            row.status_label(),
+            "Pending",
+            "dirty wins over Hidden when achievement was already unlocked"
+        );
+    }
+
+    #[test]
+    fn status_label_pending_on_hidden_spoiler() {
+        let row = make_row(true, false, false, true, 0);
+        assert_eq!(
+            row.status_label(),
+            "Pending",
+            "dirty wins over Hidden even on spoiler card so progress is visible"
+        );
+    }
+
+    #[test]
+    fn status_label_hidden_when_clean_and_secret() {
+        let row = make_row(true, false, false, false, 0);
+        assert_eq!(row.status_label(), "Hidden");
+    }
+
+    #[test]
+    fn status_label_unlocked_persisted() {
+        let row = make_row(false, true, false, false, 0);
+        assert_eq!(row.status_label(), "Unlocked");
+    }
+
+    #[test]
+    fn status_label_locked_default() {
+        let row = make_row(false, false, false, false, 0);
+        assert_eq!(row.status_label(), "Locked");
+    }
+
+    #[test]
+    fn status_label_unlocked_after_revealed_secret() {
+        let row = make_row(true, true, false, false, 0);
+        assert_eq!(
+            row.status_label(),
+            "Unlocked",
+            "secret naturally revealed by being earned shows Unlocked"
         );
     }
 }
