@@ -28,12 +28,6 @@ const C_PURPLE_BAR: Color = Color::from_rgb(0.741, 0.576, 0.976);
 const C_MAGENTA_BAR: Color = Color::from_rgb(1.0, 0.4, 0.85);
 const C_CYAN_BAR: Color = Color::from_rgb(0.545, 0.914, 0.992);
 
-fn spinner_frame(angle: f32) -> &'static str {
-    let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
-    let idx = ((angle / 90.0) as usize) % frames.len();
-    frames[idx]
-}
-
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
         CapsuleSize::Small => (120.0, 45.0),
@@ -90,16 +84,12 @@ fn render_inner<'a>(
     };
 
     let loader = build_unified_loader(state);
-    let stream_indicator = build_stream_indicator(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
     col = col.push(profile_section);
     if let Some(loader_el) = loader {
         col = col.push(loader_el);
-    }
-    if let Some(indicator) = stream_indicator {
-        col = col.push(indicator);
     }
     col = col.push(body).push(footer);
 
@@ -288,28 +278,6 @@ fn build_determinate_bar<'a>(
         });
 
     track.into()
-}
-
-fn build_stream_indicator(state: &ProfileViewState) -> Option<Element<'_, crate::Message>> {
-    if !state.is_streaming() {
-        return None;
-    }
-    let total = state.games.len();
-    let revealed = state.games.iter().filter(|g| g.revealed).count();
-
-    let indicator_row = row![
-        text(spinner_frame(state.spinner_angle))
-            .size(13)
-            .color(C_MUTED),
-        text(format!("Loading {revealed} / {total} games…"))
-            .size(12)
-            .color(C_MUTED),
-    ]
-    .spacing(6)
-    .align_y(iced::Alignment::Center)
-    .padding(Padding::default().left(16).right(16).top(4).bottom(4));
-
-    Some(container(indicator_row).width(Length::Fill).into())
 }
 
 fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {

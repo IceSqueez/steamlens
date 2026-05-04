@@ -247,9 +247,7 @@ impl ProfileViewState {
         let mut result: Vec<&GameEntry> = self
             .games
             .iter()
-            .filter(|g| {
-                g.revealed && (query.is_empty() || g.summary.name.to_lowercase().contains(&query))
-            })
+            .filter(|g| query.is_empty() || g.summary.name.to_lowercase().contains(&query))
             .collect();
 
         sort_entries(&mut result, self.sort);
