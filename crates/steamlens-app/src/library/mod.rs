@@ -4,7 +4,7 @@ mod view;
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
 
-use crate::capsule_cache;
+use crate::capsule_cache::{self, CapsuleSize};
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{CapsuleState, GameEntry, LibraryMessage, LibraryPhase, LibraryState};
@@ -38,7 +38,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             state.phase = LibraryPhase::Loaded;
 
             let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
-            spawn_capsule_queue(app_ids)
+            spawn_capsule_queue(app_ids, state.capsule_size)
         }
 
         LibraryMessage::ScanFailed(reason) => {
@@ -56,17 +56,25 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::CardWidthChanged(w) => {
-            state.card_width = w;
-            Task::none()
+        LibraryMessage::CapsuleSizeChanged(new_size) => {
+            state.capsule_size = new_size;
+            for entry in &mut state.games {
+                entry.capsule = CapsuleState::Pending;
+            }
+            let app_ids: Vec<u32> = state.games.iter().map(|g| g.summary.app_id).collect();
+            spawn_capsule_queue(app_ids, new_size)
         }
 
         LibraryMessage::CapsuleLoaded {
             app_id,
+            size,
             handle,
             width,
             height,
         } => {
+            if size != state.capsule_size {
+                return Task::none();
+            }
             if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
                 entry.capsule = CapsuleState::Loaded {
                     handle,
@@ -77,7 +85,10 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             Task::none()
         }
 
-        LibraryMessage::CapsuleFailed(app_id) => {
+        LibraryMessage::CapsuleFailed { app_id, size } => {
+            if size != state.capsule_size {
+                return Task::none();
+            }
             if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
                 entry.capsule = CapsuleState::Unavailable;
             }
@@ -101,7 +112,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
     }
 }
 
-fn spawn_capsule_queue(app_ids: Vec<u32>) -> Task<crate::Message> {
+fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Message> {
     let chunks: Vec<Vec<u32>> = app_ids
         .chunks(MAX_CONCURRENT_DOWNLOADS)
         .map(|c| c.to_vec())
@@ -114,9 +125,9 @@ fn spawn_capsule_queue(app_ids: Vec<u32>) -> Task<crate::Message> {
                 .into_iter()
                 .map(|app_id| {
                     Task::perform(
-                        async move { capsule_cache::fetch_capsule(app_id).await },
+                        async move { capsule_cache::fetch_capsule(app_id, size).await },
                         move |result| match result {
-                            Ok(pixels) => {
+                            Ok((fetched_size, pixels)) => {
                                 let handle = ImageHandle::from_rgba(
                                     pixels.width,
                                     pixels.height,
@@ -124,13 +135,17 @@ fn spawn_capsule_queue(app_ids: Vec<u32>) -> Task<crate::Message> {
                                 );
                                 crate::Message::Library(LibraryMessage::CapsuleLoaded {
                                     app_id,
+                                    size: fetched_size,
                                     handle,
                                     width: pixels.width,
                                     height: pixels.height,
                                 })
                             }
-                            Err(_) => {
-                                crate::Message::Library(LibraryMessage::CapsuleFailed(app_id))
+                            Err((fetched_size, _)) => {
+                                crate::Message::Library(LibraryMessage::CapsuleFailed {
+                                    app_id,
+                                    size: fetched_size,
+                                })
                             }
                         },
                     )

@@ -1,6 +1,8 @@
 use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
 
+use crate::capsule_cache::CapsuleSize;
+
 #[derive(Clone)]
 pub struct GameEntry {
     pub summary: GameSummary,
@@ -60,14 +62,18 @@ pub enum LibraryMessage {
     ScanFailed(String),
     SearchChanged(String),
     SortChanged(LibrarySort),
-    CardWidthChanged(f32),
+    CapsuleSizeChanged(CapsuleSize),
     CapsuleLoaded {
         app_id: u32,
+        size: CapsuleSize,
         handle: ImageHandle,
         width: u32,
         height: u32,
     },
-    CapsuleFailed(u32),
+    CapsuleFailed {
+        app_id: u32,
+        size: CapsuleSize,
+    },
     GameSelected(u32),
     ManualAppIdChanged(String),
     ManualAppIdSubmitted,
@@ -83,14 +89,17 @@ impl std::fmt::Debug for LibraryMessage {
             LibraryMessage::ScanFailed(e) => write!(f, "ScanFailed({e})"),
             LibraryMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
             LibraryMessage::SortChanged(s) => write!(f, "SortChanged({s:?})"),
-            LibraryMessage::CardWidthChanged(w) => write!(f, "CardWidthChanged({w})"),
+            LibraryMessage::CapsuleSizeChanged(s) => write!(f, "CapsuleSizeChanged({s})"),
             LibraryMessage::CapsuleLoaded {
                 app_id,
+                size,
                 width,
                 height,
                 ..
-            } => write!(f, "CapsuleLoaded(app={app_id}, {width}x{height})"),
-            LibraryMessage::CapsuleFailed(id) => write!(f, "CapsuleFailed({id})"),
+            } => write!(f, "CapsuleLoaded(app={app_id}, {size}, {width}x{height})"),
+            LibraryMessage::CapsuleFailed { app_id, size } => {
+                write!(f, "CapsuleFailed(app={app_id}, {size})")
+            }
             LibraryMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
             LibraryMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
             LibraryMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
@@ -111,7 +120,7 @@ pub struct LibraryState {
     pub games: Vec<GameEntry>,
     pub search: String,
     pub sort: LibrarySort,
-    pub card_width: f32,
+    pub capsule_size: CapsuleSize,
     pub manual_app_id_input: String,
     pub has_opened_a_game: bool,
 }
@@ -122,6 +131,7 @@ impl std::fmt::Debug for LibraryState {
             .field("phase", &self.phase)
             .field("games_count", &self.games.len())
             .field("sort", &self.sort)
+            .field("capsule_size", &self.capsule_size)
             .finish_non_exhaustive()
     }
 }
@@ -133,7 +143,7 @@ impl LibraryState {
             games: Vec::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
-            card_width: 160.0,
+            capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
         }
@@ -205,7 +215,7 @@ mod tests {
             games,
             search: String::new(),
             sort: LibrarySort::LastPlayed,
-            card_width: 160.0,
+            capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
         }
@@ -282,5 +292,11 @@ mod tests {
             .ok()
             .filter(|&id| id > 0 && id < u32::MAX);
         assert_eq!(valid, Some(105600));
+    }
+
+    #[test]
+    fn capsule_size_default_is_medium() {
+        let state = LibraryState::new();
+        assert_eq!(state.capsule_size, CapsuleSize::Medium);
     }
 }

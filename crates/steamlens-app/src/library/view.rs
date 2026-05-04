@@ -1,16 +1,15 @@
 use iced::widget::{
-    button, column, container, image as img_widget, pick_list, responsive, row, scrollable, slider,
-    text, text_input,
+    button, column, container, image as img_widget, pick_list, responsive, row, scrollable, text,
+    text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
+
+use crate::capsule_cache::CapsuleSize;
 
 use super::LibraryState;
 use super::types::{CapsuleState, GameEntry, LibraryMessage, LibraryPhase, LibrarySort};
 
 const CARD_GAP: f32 = 12.0;
-const CARD_MIN_WIDTH: f32 = 120.0;
-const CARD_MAX_WIDTH: f32 = 280.0;
-const CAPSULE_ASPECT_H: f32 = 45.0 / 120.0;
 
 const C_SURFACE: Color = Color::from_rgb(0.267, 0.278, 0.353);
 const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
@@ -18,6 +17,19 @@ const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_ACCENT: Color = Color::from_rgb(0.741, 0.576, 0.976);
 const C_WARNING: Color = Color::from_rgb(0.545, 0.914, 0.992);
+
+fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
+    match size {
+        CapsuleSize::Small => (120.0, 45.0),
+        CapsuleSize::Medium => (231.0, 87.0),
+        CapsuleSize::Large => (460.0, 215.0),
+    }
+}
+
+fn card_width(size: CapsuleSize) -> f32 {
+    let (capsule_w, _) = capsule_dims(size);
+    capsule_w + 16.0
+}
 
 pub fn render(state: &LibraryState) -> Element<'_, crate::Message> {
     let header = build_header(state);
@@ -76,27 +88,21 @@ fn build_header(state: &LibraryState) -> Element<'_, crate::Message> {
     )
     .text_size(13);
 
+    let size_label = text("Size:").size(13).color(C_MUTED);
+    let size_pick = pick_list(
+        &[CapsuleSize::Small, CapsuleSize::Medium, CapsuleSize::Large][..],
+        Some(state.capsule_size),
+        |s| crate::Message::Library(LibraryMessage::CapsuleSizeChanged(s)),
+    )
+    .text_size(13);
+
     let rescan_btn = button(text("Rescan").size(12))
         .on_press(crate::Message::Library(LibraryMessage::RescanRequested))
         .padding(Padding::default().left(10).right(10).top(6).bottom(6));
 
-    let slider_label = text(format!("{}px", state.card_width as u32))
-        .size(12)
-        .color(C_MUTED);
-    let width_slider = slider(CARD_MIN_WIDTH..=CARD_MAX_WIDTH, state.card_width, |v| {
-        crate::Message::Library(LibraryMessage::CardWidthChanged(v))
-    })
-    .width(Length::Fixed(100.0));
-
-    let right_controls = row![
-        sort_label,
-        sort_pick,
-        width_slider,
-        slider_label,
-        rescan_btn
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
+    let right_controls = row![sort_label, sort_pick, size_label, size_pick, rescan_btn]
+        .spacing(8)
+        .align_y(Alignment::Center);
 
     let header_row = row![
         title,
@@ -129,7 +135,8 @@ fn build_grid<'a>(
     state: &'a LibraryState,
     visible: Vec<&'a GameEntry>,
 ) -> Element<'a, crate::Message> {
-    let card_w = state.card_width;
+    let capsule_size = state.capsule_size;
+    let card_w = card_width(capsule_size);
 
     let entries: Vec<&'a GameEntry> = visible;
 
@@ -146,7 +153,7 @@ fn build_grid<'a>(
         for chunk in entries.chunks(cols) {
             let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
             for entry in chunk {
-                r = r.push(build_card(entry, card_w));
+                r = r.push(build_card(entry, capsule_size));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
@@ -167,18 +174,20 @@ fn build_grid<'a>(
         .into()
 }
 
-fn build_card(entry: &GameEntry, card_w: f32) -> Element<'_, crate::Message> {
+fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate::Message> {
     let app_id = entry.summary.app_id;
-    let capsule_h = (card_w * CAPSULE_ASPECT_H).round();
+    let (capsule_w, capsule_h) = capsule_dims(capsule_size);
+    let card_w = card_width(capsule_size);
 
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
         CapsuleState::Loaded { handle, .. } => container(
             img_widget(handle.clone())
-                .width(Length::Fill)
+                .width(Length::Fixed(capsule_w))
                 .height(Length::Fixed(capsule_h)),
         )
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h))
+        .align_x(Alignment::Center)
         .into(),
 
         CapsuleState::Pending => container(iced::widget::Space::new())

@@ -4,6 +4,40 @@ use std::path::PathBuf;
 use image::ImageReader;
 use tokio::fs;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CapsuleSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl std::fmt::Display for CapsuleSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CapsuleSize::Small => write!(f, "Small"),
+            CapsuleSize::Medium => write!(f, "Medium"),
+            CapsuleSize::Large => write!(f, "Large"),
+        }
+    }
+}
+
+fn size_filename(size: CapsuleSize) -> &'static str {
+    match size {
+        CapsuleSize::Small => "capsule_sm_120.jpg",
+        CapsuleSize::Medium => "capsule_231x87.jpg",
+        CapsuleSize::Large => "header.jpg",
+    }
+}
+
+fn size_suffix(size: CapsuleSize) -> &'static str {
+    match size {
+        CapsuleSize::Small => "small",
+        CapsuleSize::Medium => "medium",
+        CapsuleSize::Large => "large",
+    }
+}
+
 #[derive(Debug)]
 pub struct CapsulePixels {
     pub rgba: Vec<u8>,
@@ -69,13 +103,14 @@ fn dirs_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/tmp"))
 }
 
-fn cache_path(app_id: u32) -> PathBuf {
-    cache_dir().join(format!("{app_id}.jpg"))
+fn cache_path(app_id: u32, size: CapsuleSize) -> PathBuf {
+    cache_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
 }
 
-fn capsule_url(app_id: u32) -> String {
+fn capsule_url(app_id: u32, size: CapsuleSize) -> String {
     format!(
-        "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{app_id}/capsule_sm_120.jpg"
+        "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{}",
+        size_filename(size)
     )
 }
 
@@ -96,33 +131,38 @@ fn decode_jpeg(bytes: &[u8]) -> Result<CapsulePixels, CapsuleError> {
     })
 }
 
-pub async fn fetch_capsule(app_id: u32) -> Result<CapsulePixels, CapsuleError> {
-    let path = cache_path(app_id);
+pub async fn fetch_capsule(
+    app_id: u32,
+    size: CapsuleSize,
+) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
+    let path = cache_path(app_id, size);
 
     if let Ok(bytes) = fs::read(&path).await {
-        return decode_jpeg(&bytes);
+        return decode_jpeg(&bytes)
+            .map(|p| (size, p))
+            .map_err(|e| (size, e));
     }
 
-    let url = capsule_url(app_id);
+    let url = capsule_url(app_id, size);
     let response = reqwest::get(&url)
         .await
-        .map_err(|e| CapsuleError::Http(e.to_string()))?;
+        .map_err(|e| (size, CapsuleError::Http(e.to_string())))?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err(CapsuleError::NotFound);
+        return Err((size, CapsuleError::NotFound));
     }
 
     if !response.status().is_success() {
-        return Err(CapsuleError::Http(format!(
-            "HTTP {}",
-            response.status().as_u16()
-        )));
+        return Err((
+            size,
+            CapsuleError::Http(format!("HTTP {}", response.status().as_u16())),
+        ));
     }
 
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| CapsuleError::Http(e.to_string()))?;
+        .map_err(|e| (size, CapsuleError::Http(e.to_string())))?;
 
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent).await;
@@ -130,4 +170,6 @@ pub async fn fetch_capsule(app_id: u32) -> Result<CapsulePixels, CapsuleError> {
     let _ = fs::write(&path, &bytes).await;
 
     decode_jpeg(&bytes)
+        .map(|p| (size, p))
+        .map_err(|e| (size, e))
 }

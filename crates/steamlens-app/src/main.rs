@@ -345,14 +345,6 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
 
-    fn make_app_library() -> App {
-        App {
-            screen: Screen::Library(Box::new(LibraryState::new())),
-            worker: None,
-            worker_rx: None,
-        }
-    }
-
     fn make_app_not_running(reason: &str) -> App {
         App {
             screen: Screen::SteamNotRunning {
