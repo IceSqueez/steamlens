@@ -232,7 +232,7 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
     .align_y(Alignment::End)
     .padding(Padding::default().left(6).right(6).top(0).bottom(4));
 
-    let total_card_h = capsule_h + 32.0 + 4.0;
+    let total_card_h = capsule_h + 32.0 + 4.0 + 8.0;
 
     let card_inner = column![
         capsule_area,
@@ -244,6 +244,7 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(total_card_h))
+        .padding(Padding::default().top(8))
         .style(|_: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(C_SURFACE)),
             border: iced::Border {

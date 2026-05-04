@@ -22,11 +22,26 @@ impl std::fmt::Display for CapsuleSize {
     }
 }
 
-fn size_filename(size: CapsuleSize) -> &'static str {
+fn fallback_chain(size: CapsuleSize) -> &'static [&'static str] {
     match size {
-        CapsuleSize::Small => "capsule_sm_120.jpg",
-        CapsuleSize::Medium => "capsule_231x87.jpg",
-        CapsuleSize::Large => "header.jpg",
+        CapsuleSize::Small => &[
+            "capsule_sm_120.jpg",
+            "capsule_231x87.jpg",
+            "header.jpg",
+            "library_hero.jpg",
+        ],
+        CapsuleSize::Medium => &[
+            "capsule_231x87.jpg",
+            "capsule_sm_120.jpg",
+            "header.jpg",
+            "library_hero.jpg",
+        ],
+        CapsuleSize::Large => &[
+            "header.jpg",
+            "library_hero.jpg",
+            "capsule_231x87.jpg",
+            "capsule_sm_120.jpg",
+        ],
     }
 }
 
@@ -107,13 +122,6 @@ fn cache_path(app_id: u32, size: CapsuleSize) -> PathBuf {
     cache_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
 }
 
-fn capsule_url(app_id: u32, size: CapsuleSize) -> String {
-    format!(
-        "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{}",
-        size_filename(size)
-    )
-}
-
 fn decode_jpeg(bytes: &[u8]) -> Result<CapsulePixels, CapsuleError> {
     let reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
@@ -143,33 +151,44 @@ pub async fn fetch_capsule(
             .map_err(|e| (size, e));
     }
 
-    let url = capsule_url(app_id, size);
-    let response = reqwest::get(&url)
-        .await
-        .map_err(|e| (size, CapsuleError::Http(e.to_string())))?;
-
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err((size, CapsuleError::NotFound));
+    let mut last_err = CapsuleError::NotFound;
+    for filename in fallback_chain(size) {
+        let url = format!(
+            "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
+        );
+        match reqwest::get(&url).await {
+            Ok(response) => {
+                if response.status() == reqwest::StatusCode::NOT_FOUND {
+                    last_err = CapsuleError::NotFound;
+                    continue;
+                }
+                if !response.status().is_success() {
+                    last_err =
+                        CapsuleError::Http(format!("HTTP {}", response.status().as_u16()));
+                    continue;
+                }
+                match response.bytes().await {
+                    Ok(bytes) => {
+                        if let Some(parent) = path.parent() {
+                            let _ = fs::create_dir_all(parent).await;
+                        }
+                        let _ = fs::write(&path, &bytes).await;
+                        return decode_jpeg(&bytes)
+                            .map(|p| (size, p))
+                            .map_err(|e| (size, e));
+                    }
+                    Err(e) => {
+                        last_err = CapsuleError::Http(e.to_string());
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = CapsuleError::Http(e.to_string());
+                continue;
+            }
+        }
     }
 
-    if !response.status().is_success() {
-        return Err((
-            size,
-            CapsuleError::Http(format!("HTTP {}", response.status().as_u16())),
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| (size, CapsuleError::Http(e.to_string())))?;
-
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent).await;
-    }
-    let _ = fs::write(&path, &bytes).await;
-
-    decode_jpeg(&bytes)
-        .map(|p| (size, p))
-        .map_err(|e| (size, e))
+    Err((size, last_err))
 }
