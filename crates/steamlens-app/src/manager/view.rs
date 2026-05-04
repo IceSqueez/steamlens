@@ -560,7 +560,7 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
 
     let card_body = column![
         top_row,
-        iced::widget::Space::new().height(Length::Fixed(8.0)),
+        iced::widget::Space::new().height(Length::Fixed(10.0)),
         iced::widget::rule::horizontal(1),
         iced::widget::Space::new().height(Length::Fill),
         bottom_row,
