@@ -1,6 +1,42 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.2] - 2026-05-04
+### 🎨 Styling
+- *(app)* Add subtle card shadow for 3D depth
+- *(app)* Card image shadows + Library card separator
+
+### 🐛 Bug Fixes
+- *(app)* Sort uses persisted is_achieved, not dirty-aware effective_achieved
+- *(app)* Wrap long card names and pin status rows to card bottom
+- *(app)* Tighten Library card name block (smaller gap, bottom-left aligned)
+- *(app)* Library card top padding + capsule URL fallback chain
+- *(app)* Tighten achievement card height + add separator above status row
+- *(card)* Slightly increase padding for separator
+- *(app)* Preserve Library state across Manager navigation
+- *(app)* Keep revealed hidden achievements in Hidden group
+- *(core)* Replace with slice fixes analyzer warning
+
+### 📚 Documentation
+- *(readme)* Updates with disclaimer, badges, features, and known limitations
+
+### 🚀 Features
+- *(app)* Achievement view as responsive card grid with width slider
+- *(app)* Uniform card sizing + achievement card horizontal layout
+- *(app)* Library preset image sizes instead of slider
+- *(app)* Fade-in animation for Library capsules on load
+- *(app)* Stream-based card reveal (queue + tick)
+- *(app)* Loading indicator with spinner + counter for stream reveal
+- *(app)* Hover accent border on Library and Achievement cards
+- *(app)* Full-card hover state — brighter bg, lifted shadow, accent border
+- *(app)* Hover/focus styles for control buttons in Manager view
+- *(app)* Lock other Library cards once a game is opened
+- *(app)* In-memory capsule handle cache (instant size-switch restore)
+- *(app)* Typed game-name confirmation gate on reset stats
+- *(app)* Responsive cards stretch to fill width
+- *(app)* Inline search highlight on achievement card name + description
+- *(app)* Rare achievement glow with pulse animation
+
 ## [1.0.0-alpha.1] - 2026-05-04
 ### Bump
 - Version 0.1.0 → 0.2.0
@@ -31,6 +67,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(core)* Expand SAFETY invariants on UserStats unsafe blocks
+- *(release)* Release v1.0.0-alpha.1
 
 ### 🚀 Features
 - Init commit
