@@ -1,0 +1,8 @@
+[advisories]
+ignore = [
+  # paste 1.0.15 — unmaintained.
+  # Pulled in transitively via image → rav1e (AV1 decoder).
+  # Cannot be removed without dropping image support; awaiting upstream migration.
+  # Track: https://github.com/image-rs/image/issues
+  "RUSTSEC-2024-0436",
+]

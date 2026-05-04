@@ -10,14 +10,23 @@ authors = ["IceSqueez <IceSqueez@gmail.com>"]
 repository = "https://github.com/IceSqueez/steamlens"
 
 [workspace.dependencies]
-iced = { version = "0.14.0", features = ["tokio", "image"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "process"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+iced = { version = "0.14", features = ["tokio", "image"] }
+tokio = { version = "1.52", features = [
+  "rt-multi-thread",
+  "macros",
+  "time",
+  "fs",
+  "process",
+] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls",
+  "http2",
+] }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
-libloading = "0.9"
-thiserror = "2"
-static_assertions = "1"
-serde = { version = "1", features = ["derive"] }
-bincode = "1"
+libloading = { version = "0.9" }
+thiserror = { version = "2.0" }
+static_assertions = { version = "1.1" }
+serde = { version = "1.0", features = ["derive"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }

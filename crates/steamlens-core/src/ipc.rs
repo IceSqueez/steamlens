@@ -103,12 +103,12 @@ pub fn parse_header(bytes: [u8; 4]) -> Result<usize, FrameError> {
     Ok(len)
 }
 
-/// Serialises `msg` with bincode and prepends the 4-byte LE length header.
+/// Serialises `msg` with postcard and prepends the 4-byte LE length header.
 ///
 /// Returns the complete framed bytes (header + payload). The caller writes
 /// these bytes verbatim to the transport.
 pub fn encode_frame<T: serde::Serialize>(msg: &T) -> Result<Vec<u8>, FrameError> {
-    let payload = bincode::serialize(msg).map_err(|e| FrameError::Encode(e.to_string()))?;
+    let payload = postcard::to_allocvec(msg).map_err(|e| FrameError::Encode(e.to_string()))?;
     if payload.len() > MAX_FRAME_BYTES {
         return Err(FrameError::TooLarge {
             size: payload.len(),
@@ -124,9 +124,9 @@ pub fn encode_frame<T: serde::Serialize>(msg: &T) -> Result<Vec<u8>, FrameError>
 
 /// Deserialises `bytes` (the payload slice, **without** the length header) into `T`.
 ///
-/// Returns [`FrameError::Decode`] on any bincode error including trailing bytes.
+/// Returns [`FrameError::Decode`] on any postcard error including trailing bytes.
 pub fn decode_frame<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, FrameError> {
-    bincode::deserialize(bytes).map_err(|e| FrameError::Decode(e.to_string()))
+    postcard::from_bytes(bytes).map_err(|e| FrameError::Decode(e.to_string()))
 }
 
 #[cfg(test)]
