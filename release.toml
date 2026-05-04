@@ -1,8 +1,7 @@
-allow-branch = ["master", "main"]
+allow-branch = ["main"]
 sign-commit = false
 push = true
 publish = false
-shared-version = false
-dependent-version = "upgrade"
-
-consolidate-commits = false
+shared-version = true
+consolidate-commits = true
+tag-name = "v{{version}}"
