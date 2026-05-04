@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, column, container, image, mouse_area, opaque, pick_list, responsive, row, scrollable,
-    space, stack, text, text_input,
+    button, column, container, image, mouse_area, opaque, pick_list, responsive, rich_text, row,
+    scrollable, space, span, stack, text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -405,6 +405,8 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         format!("{total} achievements")
     };
 
+    let query_owned = state.search_query.clone();
+
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
         let inner = (size.width - SIDE_PADDING * 2.0).max(ACH_CARD_WIDTH);
@@ -424,7 +426,11 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                 .spacing(ACH_CARD_GAP as u32)
                 .align_y(Alignment::Start);
             for entry in chunk {
-                r = r.push(achievement_card_widget(entry, actual_card_w));
+                r = r.push(achievement_card_widget(
+                    entry,
+                    actual_card_w,
+                    query_owned.clone(),
+                ));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
@@ -449,7 +455,11 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Message> {
+fn achievement_card_widget<'a>(
+    row: &'a AchievementRow,
+    card_w: f32,
+    search_query: String,
+) -> Element<'a, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
     let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
@@ -524,15 +534,52 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
     };
 
     let name_color = if row.is_dirty { C_YELLOW } else { C_FG };
-    let name_label = container(
-        text(display_name)
-            .size(13)
-            .color(name_color)
-            .wrapping(text::Wrapping::Word)
-            .line_height(text::LineHeight::Relative(1.2)),
-    )
-    .width(Length::Fill)
-    .height(Length::Fixed(36.0));
+    let name_label: Element<'_, Message> =
+        if !row.is_dirty && !spoiler_hidden && !search_query.is_empty() {
+            if let Some((before, matched, after)) = highlight_split(&display_name, &search_query) {
+                let before = before.to_owned();
+                let matched = matched.to_owned();
+                let after = after.to_owned();
+                container(
+                    rich_text![
+                        span(before).color(C_FG),
+                        span(matched)
+                            .color(C_YELLOW)
+                            .background(Color { a: 0.2, ..C_YELLOW }),
+                        span(after).color(C_FG),
+                    ]
+                    .on_link_click(iced::never)
+                    .size(13)
+                    .wrapping(text::Wrapping::Word)
+                    .line_height(text::LineHeight::Relative(1.2)),
+                )
+                .width(Length::Fill)
+                .height(Length::Fixed(36.0))
+                .into()
+            } else {
+                container(
+                    text(display_name)
+                        .size(13)
+                        .color(name_color)
+                        .wrapping(text::Wrapping::Word)
+                        .line_height(text::LineHeight::Relative(1.2)),
+                )
+                .width(Length::Fill)
+                .height(Length::Fixed(36.0))
+                .into()
+            }
+        } else {
+            container(
+                text(display_name)
+                    .size(13)
+                    .color(name_color)
+                    .wrapping(text::Wrapping::Word)
+                    .line_height(text::LineHeight::Relative(1.2)),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(36.0))
+            .into()
+        };
 
     let description = if spoiler_hidden {
         "Hidden until revealed".to_owned()
@@ -546,14 +593,48 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
         C_MUTED
     };
 
-    let desc_label = container(
-        text(description)
-            .size(11)
-            .color(desc_color)
-            .wrapping(text::Wrapping::Word),
-    )
-    .width(Length::Fill)
-    .height(Length::Fixed(30.0));
+    let desc_label: Element<'_, Message> = if !spoiler_hidden && !search_query.is_empty() {
+        if let Some((before, matched, after)) = highlight_split(&description, &search_query) {
+            let before = before.to_owned();
+            let matched = matched.to_owned();
+            let after = after.to_owned();
+            container(
+                rich_text![
+                    span(before).color(C_MUTED),
+                    span(matched)
+                        .color(C_YELLOW)
+                        .background(Color { a: 0.2, ..C_YELLOW }),
+                    span(after).color(C_MUTED),
+                ]
+                .on_link_click(iced::never)
+                .size(11)
+                .wrapping(text::Wrapping::Word),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(30.0))
+            .into()
+        } else {
+            container(
+                text(description)
+                    .size(11)
+                    .color(desc_color)
+                    .wrapping(text::Wrapping::Word),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(30.0))
+            .into()
+        }
+    } else {
+        container(
+            text(description)
+                .size(11)
+                .color(desc_color)
+                .wrapping(text::Wrapping::Word),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(30.0))
+        .into()
+    };
 
     let text_col = column![name_label, desc_label].spacing(2);
 
@@ -1231,4 +1312,18 @@ fn spinner_frame(angle: f32) -> &'static str {
     let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
     let idx = ((angle / 90.0) as usize) % frames.len();
     frames[idx]
+}
+
+fn highlight_split<'a>(source: &'a str, query: &str) -> Option<(&'a str, &'a str, &'a str)> {
+    if query.is_empty() {
+        return None;
+    }
+    let lower_source = source.to_lowercase();
+    let lower_query = query.to_lowercase();
+    let byte_offset = lower_source.find(&lower_query)?;
+    let match_end = byte_offset + lower_query.len();
+    let before = &source[..byte_offset];
+    let matched = &source[byte_offset..match_end];
+    let after = &source[match_end..];
+    Some((before, matched, after))
 }

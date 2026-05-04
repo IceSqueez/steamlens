@@ -178,9 +178,7 @@ fn build_grid<'a>(
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
         let inner = (size.width - SIDE_PADDING * 2.0).max(card_w);
-        let cols = ((inner + CARD_GAP) / (card_w + CARD_GAP))
-            .floor()
-            .max(1.0) as usize;
+        let cols = ((inner + CARD_GAP) / (card_w + CARD_GAP)).floor().max(1.0) as usize;
         let actual_card_w =
             ((inner - CARD_GAP * (cols.saturating_sub(1)) as f32) / cols as f32).max(card_w);
 
