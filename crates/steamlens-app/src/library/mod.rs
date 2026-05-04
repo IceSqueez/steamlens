@@ -7,7 +7,9 @@ use iced::widget::image::Handle as ImageHandle;
 use crate::capsule_cache::{self, CapsuleSize};
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
-use types::{CapsuleState, FADE_DELTA, GameEntry, LibraryMessage, LibraryPhase, LibraryState};
+use types::{
+    CapsuleState, FADE_DELTA, GameEntry, LibraryMessage, LibraryPhase, LibraryState, StoredCapsule,
+};
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
@@ -37,6 +39,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
                 })
                 .collect();
             state.reveal_queue.clear();
+            state.capsule_handles.clear();
             state.phase = LibraryPhase::Loaded;
 
             let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
@@ -61,12 +64,30 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
         LibraryMessage::CapsuleSizeChanged(new_size) => {
             state.capsule_size = new_size;
             state.reveal_queue.clear();
+
+            let mut miss_ids: Vec<u32> = Vec::new();
             for entry in &mut state.games {
-                entry.capsule = CapsuleState::Pending;
-                entry.revealed = false;
+                let key = (entry.summary.app_id, new_size);
+                if let Some(cached) = state.capsule_handles.get(&key) {
+                    entry.capsule = CapsuleState::Loaded {
+                        handle: cached.handle.clone(),
+                        width: cached.width,
+                        height: cached.height,
+                        opacity: 1.0,
+                    };
+                    entry.revealed = true;
+                } else {
+                    entry.capsule = CapsuleState::Pending;
+                    entry.revealed = false;
+                    miss_ids.push(entry.summary.app_id);
+                }
             }
-            let app_ids: Vec<u32> = state.games.iter().map(|g| g.summary.app_id).collect();
-            spawn_capsule_queue(app_ids, new_size)
+
+            if miss_ids.is_empty() {
+                Task::none()
+            } else {
+                spawn_capsule_queue(miss_ids, new_size)
+            }
         }
 
         LibraryMessage::CapsuleLoaded {
@@ -76,6 +97,15 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             width,
             height,
         } => {
+            state.capsule_handles.insert(
+                (app_id, size),
+                StoredCapsule {
+                    handle: handle.clone(),
+                    width,
+                    height,
+                },
+            );
+
             if size != state.capsule_size {
                 return Task::none();
             }
@@ -137,6 +167,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             state.phase = LibraryPhase::Scanning;
             state.games.clear();
             state.reveal_queue.clear();
+            state.capsule_handles.clear();
             Task::none()
         }
 

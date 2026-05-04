@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
@@ -6,6 +6,19 @@ use steamlens_core::GameSummary;
 use crate::capsule_cache::CapsuleSize;
 
 pub(crate) const FADE_DELTA: f32 = 0.2;
+
+#[derive(Clone)]
+pub struct StoredCapsule {
+    pub handle: ImageHandle,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl std::fmt::Debug for StoredCapsule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StoredCapsule({}x{})", self.width, self.height)
+    }
+}
 
 #[derive(Clone)]
 pub struct GameEntry {
@@ -136,6 +149,7 @@ pub struct LibraryState {
     pub phase: LibraryPhase,
     pub games: Vec<GameEntry>,
     pub reveal_queue: VecDeque<u32>,
+    pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
@@ -162,6 +176,7 @@ impl LibraryState {
             phase: LibraryPhase::Scanning,
             games: Vec::new(),
             reveal_queue: VecDeque::new(),
+            capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -263,6 +278,7 @@ mod tests {
             phase: LibraryPhase::Loaded,
             games,
             reveal_queue: VecDeque::new(),
+            capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -407,6 +423,7 @@ mod tests {
             phase: LibraryPhase::Loaded,
             games: entries,
             reveal_queue: VecDeque::from([1u32, 2, 3]),
+            capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -501,6 +518,101 @@ mod tests {
         assert!(
             (state.spinner_angle - 2.0).abs() < f32::EPSILON,
             "angle must wrap around 360 correctly from 356"
+        );
+    }
+
+    #[test]
+    fn cache_hit_instant_restore() {
+        use iced::widget::image::Handle as ImageHandle;
+
+        let app_id = 105600u32;
+        let dummy_handle = ImageHandle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
+        let stored = StoredCapsule {
+            handle: dummy_handle.clone(),
+            width: 120,
+            height: 45,
+        };
+
+        let entry = GameEntry {
+            summary: make_summary(app_id, "Terraria", None),
+            capsule: CapsuleState::Pending,
+            revealed: false,
+        };
+        let mut state = make_state_with_games(vec![entry]);
+        state.capsule_size = CapsuleSize::Small;
+        state
+            .capsule_handles
+            .insert((app_id, CapsuleSize::Small), stored);
+
+        for entry in &mut state.games {
+            let key = (entry.summary.app_id, state.capsule_size);
+            if let Some(cached) = state.capsule_handles.get(&key) {
+                entry.capsule = CapsuleState::Loaded {
+                    handle: cached.handle.clone(),
+                    width: cached.width,
+                    height: cached.height,
+                    opacity: 1.0,
+                };
+                entry.revealed = true;
+            } else {
+                entry.capsule = CapsuleState::Pending;
+                entry.revealed = false;
+            }
+        }
+
+        assert!(
+            state.reveal_queue.is_empty(),
+            "reveal queue must remain empty on cache hit path"
+        );
+        let g = &state.games[0];
+        assert!(g.revealed, "entry must be marked revealed on cache hit");
+        match &g.capsule {
+            CapsuleState::Loaded { opacity, .. } => {
+                assert!(
+                    (*opacity - 1.0).abs() < f32::EPSILON,
+                    "opacity must be 1.0 (no fade) on cache hit"
+                );
+            }
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cache_miss_falls_through_to_pending() {
+        let app_id = 105600u32;
+        let entry = GameEntry {
+            summary: make_summary(app_id, "Terraria", None),
+            capsule: CapsuleState::Pending,
+            revealed: false,
+        };
+        let mut state = make_state_with_games(vec![entry]);
+        state.capsule_size = CapsuleSize::Small;
+
+        for entry in &mut state.games {
+            let key = (entry.summary.app_id, state.capsule_size);
+            if let Some(cached) = state.capsule_handles.get(&key) {
+                entry.capsule = CapsuleState::Loaded {
+                    handle: cached.handle.clone(),
+                    width: cached.width,
+                    height: cached.height,
+                    opacity: 1.0,
+                };
+                entry.revealed = true;
+            } else {
+                entry.capsule = CapsuleState::Pending;
+                entry.revealed = false;
+            }
+        }
+
+        assert!(
+            state.reveal_queue.is_empty(),
+            "reveal queue must stay empty — populated only by CapsuleLoaded, not CapsuleSizeChanged"
+        );
+        let g = &state.games[0];
+        assert!(!g.revealed, "entry must not be revealed on cache miss");
+        assert!(
+            matches!(g.capsule, CapsuleState::Pending),
+            "entry capsule must be Pending on cache miss"
         );
     }
 }
