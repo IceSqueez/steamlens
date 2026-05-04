@@ -599,6 +599,11 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
                 radius: 8.0.into(),
                 ..iced::Border::default()
             },
+            shadow: iced::Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 10.0,
+            },
             ..container::Style::default()
         });
 
