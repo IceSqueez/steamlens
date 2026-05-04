@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;

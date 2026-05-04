@@ -67,11 +67,6 @@ pub(crate) async fn classify_games_with_root(
         let cache_path = cache_root.join(format!("{app_id}.json"));
 
         let schema_version_from_file = peek_schema_version(&cache_path).await;
-        if schema_version_from_file == Some(0) {
-            result.dirty.push(app_id);
-            continue;
-        }
-
         if let Some(v) = schema_version_from_file
             && v != CURRENT_SCHEMA_VERSION
         {
@@ -329,5 +324,25 @@ mod tests {
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![6]);
         assert_eq!(result.schema_bumped, 1);
+    }
+
+    #[tokio::test]
+    async fn schema_version_zero_goes_dirty_and_increments_schema_bumped() {
+        let steam_root = tempdir();
+        let cache_dir = tempdir();
+        let manifest_path = steam_root.join("appmanifest_7.acf");
+        let game = make_summary(7, manifest_path);
+
+        let bad_cache = cache_dir.join("7.json");
+        let bad_json = r#"{"schema_version":0,"app_id":7,"name":"Game 7","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
+        std::fs::write(&bad_cache, bad_json).unwrap();
+
+        let result = classify_games_with_root(&[game], &steam_root, 0, &cache_dir).await;
+        assert!(result.hits.is_empty(), "version-0 cache must not be a hit");
+        assert_eq!(result.dirty, vec![7], "version-0 cache must be dirty");
+        assert_eq!(
+            result.schema_bumped, 1,
+            "schema_version=0 must increment schema_bumped like any other mismatch"
+        );
     }
 }

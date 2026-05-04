@@ -91,12 +91,26 @@ impl Default for UiSettings {
     }
 }
 
+/// Layout mode for the Library screen.
+///
+/// Accepts `"grid"` or `"list"` in `settings.toml`. The `list` variant is
+/// reserved for a future phase — the Library currently renders only grid layout.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryView {
+    #[default]
+    Grid,
+    List,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LibrarySettings {
     #[serde(default)]
     pub search: String,
     #[serde(default = "default_library_sort")]
     pub sort: LibrarySort,
+    #[serde(default)]
+    pub view: LibraryView,
 }
 
 fn default_library_sort() -> LibrarySort {
@@ -108,6 +122,7 @@ impl Default for LibrarySettings {
         Self {
             search: String::new(),
             sort: default_library_sort(),
+            view: LibraryView::default(),
         }
     }
 }
@@ -291,6 +306,7 @@ mod tests {
             library: LibrarySettings {
                 search: "terra".to_owned(),
                 sort: LibrarySort::NameAsc,
+                view: LibraryView::Grid,
             },
             manager: ManagerSettings {
                 search: String::new(),
@@ -357,6 +373,47 @@ mod tests {
         assert_eq!(result.library.sort, LibrarySort::NameAsc);
         assert_eq!(result.ui.window_width, 1280.0);
         assert_eq!(result.manager.filter, AchievementFilter::All);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn library_view_defaults_to_grid() {
+        assert_eq!(
+            LibrarySettings::default().view,
+            LibraryView::Grid,
+            "default view must be Grid per RFC §2"
+        );
+    }
+
+    #[test]
+    fn library_view_list_round_trips_via_toml() {
+        let settings = Settings {
+            library: LibrarySettings {
+                view: LibraryView::List,
+                ..LibrarySettings::default()
+            },
+            ..Settings::default()
+        };
+        let text = toml::to_string_pretty(&settings).expect("serialize");
+        let restored: Settings = toml::from_str(&text).expect("deserialize");
+        assert_eq!(
+            restored.library.view,
+            LibraryView::List,
+            "view = list must survive a TOML round-trip"
+        );
+    }
+
+    #[test]
+    fn library_view_absent_from_toml_defaults_to_grid() {
+        let tmp = std::env::temp_dir().join("steamlens_test_no_view_999999.toml");
+        let toml_without_view = "schema_version = 1\n[library]\nsort = \"name_asc\"\n";
+        std::fs::write(&tmp, toml_without_view).expect("write");
+        let result = load_from_path(&tmp);
+        assert_eq!(
+            result.library.view,
+            LibraryView::Grid,
+            "missing view field must default to Grid"
+        );
         let _ = std::fs::remove_file(&tmp);
     }
 }

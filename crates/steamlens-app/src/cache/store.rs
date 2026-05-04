@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 use crate::cache::types::{CURRENT_SCHEMA_VERSION, GameCacheEntry};
@@ -44,18 +42,6 @@ pub fn game_cache_path(app_id: u32) -> PathBuf {
         .join("cache")
         .join("games")
         .join(format!("{app_id}.json"))
-}
-
-/// Loads a cached entry from disk.
-///
-/// Returns `Some(entry)` on a successful load where `schema_version` matches
-/// `CURRENT_SCHEMA_VERSION`. Returns `None` on a missing file, any I/O error,
-/// JSON parse failure, or schema version mismatch. All failure paths are
-/// treated identically so the caller cannot distinguish "file missing" from
-/// "version bumped" — the boot-time pass counts dirty entries and emits a
-/// single toast for the schema-bump case rather than this function doing so.
-pub async fn load_game_cache(app_id: u32) -> Option<GameCacheEntry> {
-    load_game_cache_from_path(&game_cache_path(app_id)).await
 }
 
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {

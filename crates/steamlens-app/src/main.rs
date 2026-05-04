@@ -394,6 +394,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::ClearGameCache(app_id) => {
             app.cached_entries.remove(&app_id);
+
+            if let Screen::Library(lib_state) = &mut app.screen
+                && let Some(entry) = lib_state
+                    .games
+                    .iter_mut()
+                    .find(|e| e.summary.app_id == app_id)
+            {
+                entry.progress = None;
+            }
+            if let Some(lib_state) = &mut app.library_state
+                && let Some(entry) = lib_state
+                    .games
+                    .iter_mut()
+                    .find(|e| e.summary.app_id == app_id)
+            {
+                entry.progress = None;
+            }
+
             let cache_path = cache::game_cache_path(app_id);
             let name = if let Screen::Manager(state) = &app.screen {
                 state.game_name.clone()
@@ -1488,5 +1506,85 @@ mod tests {
             entry.steam_last_updated, 12345,
             "cache entry must carry the steam_last_updated from ManagerState"
         );
+    }
+
+    #[tokio::test]
+    async fn clear_game_cache_removes_cached_entry_and_clears_progress() {
+        use library::types::{CapsuleState, GameEntry};
+        use steamlens_core::GameSummary;
+
+        let app_id: u32 = 440;
+
+        let summary = GameSummary {
+            app_id,
+            name: "Team Fortress 2".to_owned(),
+            last_played: None,
+            achievement_count: 520,
+            last_updated: 9_999,
+            manifest_path: std::path::PathBuf::from("/nonexistent"),
+        };
+        let game_entry = GameEntry {
+            summary,
+            capsule: CapsuleState::Unavailable,
+            revealed: true,
+            progress: Some(crate::progress_scan::ProgressData {
+                earned: 10,
+                total: 520,
+            }),
+        };
+
+        let mut lib_state = LibraryState::new();
+        lib_state.games.push(game_entry);
+
+        let mut app = App {
+            screen: Screen::Library(Box::new(lib_state)),
+            worker: None,
+            worker_rx: None,
+            library_state: None,
+            settings: Settings::default(),
+            settings_dirty_since: None,
+            toast: None,
+            cached_entries: {
+                let mut m = HashMap::new();
+                m.insert(
+                    app_id,
+                    cache::GameCacheEntry {
+                        schema_version: cache::CURRENT_SCHEMA_VERSION,
+                        app_id,
+                        name: "Team Fortress 2".to_owned(),
+                        steam_last_updated: 9_999,
+                        steam_last_played: 0,
+                        cached_at: 1_000,
+                        achievements: vec![],
+                        stats: vec![],
+                        progress: cache::types::CachedProgress {
+                            earned: 10,
+                            total: 520,
+                        },
+                    },
+                );
+                m
+            },
+            steam_root: std::path::PathBuf::from("/tmp"),
+            steamid3: 0,
+        };
+
+        let _task = update(&mut app, Message::ClearGameCache(app_id));
+
+        assert!(
+            !app.cached_entries.contains_key(&app_id),
+            "cached_entries must no longer contain the cleared app_id"
+        );
+
+        if let Screen::Library(lib_state) = &app.screen {
+            let entry = lib_state.games.iter().find(|e| e.summary.app_id == app_id);
+            assert!(entry.is_some(), "GameEntry must still exist in library");
+            assert!(
+                entry.unwrap().progress.is_none(),
+                "progress must be None after ClearGameCache"
+            );
+        } else {
+            panic!("expected Library screen");
+        }
     }
 }
