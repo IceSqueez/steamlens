@@ -7,6 +7,30 @@ use crate::manager::types::{AchievementFilter, AchievementSort, RarityFilter};
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
 
+/// Returns the platform-default Steam root directory.
+///
+/// On Linux: `$HOME/.local/share/Steam`
+/// On macOS: `$HOME/Library/Application Support/Steam`
+/// On Windows: `%ProgramFiles(x86)%\Steam`
+pub fn default_steam_root() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        PathBuf::from(home).join(".local/share/Steam")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        PathBuf::from(home).join("Library/Application Support/Steam")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let program_files = std::env::var("ProgramFiles(x86)")
+            .unwrap_or_else(|_| r"C:\Program Files (x86)".to_owned());
+        PathBuf::from(program_files).join("Steam")
+    }
+}
+
 /// Returns `$HOME/.steamlens/` on all platforms.
 ///
 /// Falls back to the process working directory when the home environment

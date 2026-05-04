@@ -154,8 +154,24 @@ fn header_bar(state: &ManagerState) -> Element<'_, Message> {
         .on_press(msg(ManagerMessage::ReloadRequested))
         .padding(Padding::from([6u16, 12]));
 
-    let right_group = row![title, reload_btn]
-        .spacing(16)
+    let clear_cache_btn = button(text("Clear cache").size(11).color(C_MUTED))
+        .on_press(Message::ClearGameCache(state.app_id))
+        .padding(Padding::from([4u16, 8]))
+        .style(|_theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: if hovered {
+                    Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED }))
+                } else {
+                    None
+                },
+                border: dracula_border_radius(4.0),
+                ..button::Style::default()
+            }
+        });
+
+    let right_group = row![title, reload_btn, clear_cache_btn]
+        .spacing(12)
         .align_y(Alignment::Center);
 
     let header_row = row![back_btn, space().width(Length::Fill), right_group]

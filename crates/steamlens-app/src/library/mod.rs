@@ -254,6 +254,6 @@ pub fn trigger_scan(worker: &SteamWorker) {
     worker.send(SteamRequest::ScanLibrary);
 }
 
-pub fn view(state: &LibraryState) -> iced::Element<'_, crate::Message> {
-    view::render(state)
+pub fn view_with_cache_actions(state: &LibraryState) -> iced::Element<'_, crate::Message> {
+    view::render_with_cache_actions(state)
 }

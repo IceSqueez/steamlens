@@ -36,8 +36,16 @@ fn card_width(size: CapsuleSize) -> f32 {
     capsule_w + 16.0
 }
 
-pub fn render(state: &LibraryState) -> Element<'_, crate::Message> {
-    let header = build_header(state);
+pub fn render_with_cache_actions(state: &LibraryState) -> Element<'_, crate::Message> {
+    render_inner(state, true)
+}
+
+fn render_inner(state: &LibraryState, show_cache_actions: bool) -> Element<'_, crate::Message> {
+    let header = if show_cache_actions {
+        build_header_with_cache(state)
+    } else {
+        build_header(state)
+    };
 
     let body: Element<'_, crate::Message> = match &state.phase {
         LibraryPhase::Scanning => center_text("Scanning library…"),
@@ -87,6 +95,17 @@ fn build_stream_indicator(state: &LibraryState) -> Option<Element<'_, crate::Mes
 }
 
 fn build_header(state: &LibraryState) -> Element<'_, crate::Message> {
+    build_header_inner(state, false)
+}
+
+fn build_header_with_cache(state: &LibraryState) -> Element<'_, crate::Message> {
+    build_header_inner(state, true)
+}
+
+fn build_header_inner(
+    state: &LibraryState,
+    show_cache_actions: bool,
+) -> Element<'_, crate::Message> {
     let title = text("Library").size(22).color(C_ACCENT);
 
     let search = text_input("Search games…", &state.search)
@@ -115,9 +134,34 @@ fn build_header(state: &LibraryState) -> Element<'_, crate::Message> {
         .on_press(crate::Message::Library(LibraryMessage::RescanRequested))
         .padding(Padding::default().left(10).right(10).top(6).bottom(6));
 
-    let right_controls = row![sort_label, sort_pick, size_label, size_pick, rescan_btn]
+    let mut right_controls = row![sort_label, sort_pick, size_label, size_pick, rescan_btn]
         .spacing(8)
         .align_y(Alignment::Center);
+
+    if show_cache_actions {
+        let clear_btn = button(text("Clear cache").size(11).color(C_MUTED))
+            .on_press(crate::Message::ClearAllCache)
+            .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+            .style(|_theme, status| {
+                let hovered = matches!(
+                    status,
+                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+                );
+                iced::widget::button::Style {
+                    background: if hovered {
+                        Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED }))
+                    } else {
+                        None
+                    },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..iced::Border::default()
+                    },
+                    ..iced::widget::button::Style::default()
+                }
+            });
+        right_controls = right_controls.push(clear_btn);
+    }
 
     let header_row = row![
         title,

@@ -7,6 +7,7 @@ mod settings;
 mod steam_worker;
 mod worker;
 
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,7 @@ use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Alignment, Color, Element, Length, Subscription, Task};
 
+use cache::{ClassifyResult, GameCacheEntry};
 use library::types::{LibraryMessage, LibraryState};
 use manager::{ManagerMessage, ManagerState};
 use settings::Settings;
@@ -47,6 +49,13 @@ enum Message {
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
     ToastTick,
+    CacheClassified(ClassifyResult),
+    CacheWritten {
+        app_id: u32,
+        result: Result<(), String>,
+    },
+    ClearAllCache,
+    ClearGameCache(u32),
 }
 
 impl std::fmt::Debug for ManagerState {
@@ -66,10 +75,24 @@ struct App {
     settings: Settings,
     settings_dirty_since: Option<Instant>,
     toast: Option<ToastState>,
+    /// Full cache entries keyed by app_id.  Populated after classify_games
+    /// completes.  Used to seed ManagerState on open (Rule R scaffold).
+    cached_entries: HashMap<u32, GameCacheEntry>,
+    /// Steam root path cached at boot for use in cache write helpers.
+    steam_root: std::path::PathBuf,
+    /// SteamID3 cached at boot; 0 when profile load fails.
+    steamid3: u64,
 }
 
 fn boot() -> (App, Task<Message>) {
     let loaded_settings = settings::load_settings();
+
+    let steam_root = settings::default_steam_root();
+    let steamid3 = steamlens_core::load_local_profile()
+        .ok()
+        .map(|p| p.steam_id.saturating_sub(76_561_197_960_265_728))
+        .unwrap_or(0);
+
     let app = App {
         screen: Screen::Splash,
         worker: None,
@@ -78,6 +101,9 @@ fn boot() -> (App, Task<Message>) {
         settings: loaded_settings,
         settings_dirty_since: None,
         toast: None,
+        cached_entries: HashMap::new(),
+        steam_root,
+        steamid3,
     };
     let splash_task = Task::perform(
         async {
@@ -172,6 +198,23 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::GoBack => {
             match &app.screen {
                 Screen::Manager(_) => {
+                    let write_task = if let Screen::Manager(state) = &app.screen {
+                        let app_id = state.app_id;
+                        let entry =
+                            build_manager_cache_entry(state, app_id, &app.steam_root, app.steamid3);
+                        app.cached_entries.insert(app_id, entry.clone());
+                        Task::perform(
+                            async move {
+                                cache::write_game_cache(&entry)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                            },
+                            move |result| Message::CacheWritten { app_id, result },
+                        )
+                    } else {
+                        Task::none()
+                    };
+
                     if let Some(w) = &app.worker {
                         w.send(SteamRequest::Disconnect);
                     }
@@ -188,6 +231,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         app.worker_rx = Some(rx);
                         app.screen = Screen::Library(Box::new(lib_state));
                     }
+                    return write_task;
                 }
                 Screen::SteamNotRunning { .. } => {
                     if let Some(w) = &app.worker {
@@ -250,6 +294,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.settings.library.search = new_search.clone();
                     mark_settings_dirty(app);
                 }
+                LibraryMessage::ScanComplete(summaries) => {
+                    let games = summaries.clone();
+                    let steam_root = app.steam_root.clone();
+                    let steamid3 = app.steamid3;
+                    let classify_task = Task::perform(
+                        async move { cache::classify_games(&games, &steam_root, steamid3).await },
+                        Message::CacheClassified,
+                    );
+
+                    if let Screen::Library(lib_state) = &mut app.screen {
+                        let scan_task = library::update(lib_state, lib_msg);
+                        return Task::batch([scan_task, classify_task]);
+                    }
+                    return classify_task;
+                }
                 _ => {}
             }
 
@@ -257,6 +316,97 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 return library::update(lib_state, lib_msg);
             }
             Task::none()
+        }
+
+        Message::CacheClassified(result) => {
+            let ClassifyResult {
+                hits,
+                dirty,
+                schema_bumped,
+            } = result;
+
+            if let Screen::Library(lib_state) = &mut app.screen {
+                for hit in &hits {
+                    if let Some(entry) = lib_state
+                        .games
+                        .iter_mut()
+                        .find(|g| g.summary.app_id == hit.app_id)
+                    {
+                        use crate::progress_scan::ProgressData;
+                        entry.progress = Some(ProgressData {
+                            earned: hit.entry.progress.earned,
+                            total: hit.entry.progress.total,
+                        });
+                    }
+                    app.cached_entries.insert(hit.app_id, hit.entry.clone());
+                }
+
+                if !dirty.is_empty() {
+                    let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
+                    lib_state.progress_rx = scanner.take_receiver();
+                    lib_state.progress_scanner = Some(scanner);
+                }
+            } else {
+                for hit in &hits {
+                    app.cached_entries.insert(hit.app_id, hit.entry.clone());
+                }
+            }
+
+            if schema_bumped > 0 {
+                return Task::done(Message::ToastRequest(format!(
+                    "Cache rebuilt: {} entries updated",
+                    schema_bumped
+                )));
+            }
+            Task::none()
+        }
+
+        Message::CacheWritten { app_id, result } => {
+            if let Err(e) = result {
+                eprintln!("[steamlens] cache: write failed for app {app_id}: {e}");
+            }
+            Task::none()
+        }
+
+        Message::ClearAllCache => {
+            let cache_games_dir = settings::steamlens_root().join("cache").join("games");
+            let cache_images_dir = settings::steamlens_root().join("cache").join("images");
+            app.cached_entries.clear();
+            if let Screen::Library(lib_state) = &mut app.screen {
+                for entry in &mut lib_state.games {
+                    entry.progress = None;
+                }
+                let all_ids: Vec<u32> = lib_state.games.iter().map(|g| g.summary.app_id).collect();
+                if !all_ids.is_empty() {
+                    let mut scanner = crate::progress_scan::ProgressScanner::new(all_ids);
+                    lib_state.progress_rx = scanner.take_receiver();
+                    lib_state.progress_scanner = Some(scanner);
+                }
+            }
+            Task::batch([Task::perform(
+                async move {
+                    let _ = tokio::fs::remove_dir_all(&cache_games_dir).await;
+                    let _ = tokio::fs::remove_dir_all(&cache_images_dir).await;
+                },
+                |()| Message::ToastRequest("Cache cleared".to_owned()),
+            )])
+        }
+
+        Message::ClearGameCache(app_id) => {
+            app.cached_entries.remove(&app_id);
+            let cache_path = cache::game_cache_path(app_id);
+            let name = if let Screen::Manager(state) = &app.screen {
+                state.game_name.clone()
+            } else {
+                format!("App {app_id}")
+            };
+            Task::perform(
+                async move {
+                    let _ = tokio::fs::remove_file(&cache_path).await;
+                    name
+                },
+                |name| Message::ToastRequest(format!("Cache cleared for {name}")),
+            )
         }
 
         Message::OpenManager(app_id) => {
@@ -278,6 +428,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             state.achievement_sort = app.settings.manager.sort;
             state.rarity_filter = app.settings.manager.rarity_filter;
             state.search_query = app.settings.manager.search.clone();
+
+            if let Some(cached) = app.cached_entries.get(&app_id) {
+                seed_manager_from_cache(&mut state, cached);
+            }
+
             app.worker = Some(worker);
             app.worker_rx = Some(rx);
             app.screen = Screen::Manager(Box::new(state));
@@ -329,13 +484,40 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     match rx.try_recv() {
                         Ok(result) => {
                             if let Some(data) = result.data {
+                                let scan_app_id = result.app_id;
                                 tasks.push(Task::done(Message::Library(
                                     LibraryMessage::ProgressFetched {
-                                        app_id: result.app_id,
+                                        app_id: scan_app_id,
                                         earned: data.earned,
                                         total: data.total,
                                     },
                                 )));
+
+                                if let Some(game) = lib_state
+                                    .games
+                                    .iter()
+                                    .find(|g| g.summary.app_id == scan_app_id)
+                                {
+                                    let entry = cache::invalidate::make_progress_cache_entry(
+                                        &game.summary,
+                                        data.earned,
+                                        data.total,
+                                        &app.steam_root,
+                                        app.steamid3,
+                                    );
+                                    app.cached_entries.insert(scan_app_id, entry.clone());
+                                    tasks.push(Task::perform(
+                                        async move {
+                                            cache::write_game_cache(&entry)
+                                                .await
+                                                .map_err(|e| e.to_string())
+                                        },
+                                        move |res| Message::CacheWritten {
+                                            app_id: scan_app_id,
+                                            result: res,
+                                        },
+                                    ));
+                                }
                             }
                         }
                         Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
@@ -429,11 +611,144 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
+fn seed_manager_from_cache(state: &mut ManagerState, cached: &GameCacheEntry) {
+    use manager::ManagerPhase;
+    use manager::types::{AchievementData, AchievementRow, StatData, StatRow, StatValue};
+
+    if cached.achievements.is_empty() {
+        return;
+    }
+
+    state.game_name = cached.name.clone();
+
+    state.achievements = cached
+        .achievements
+        .iter()
+        .map(|a| {
+            let data = AchievementData {
+                id: a.api_name.clone(),
+                display_name: a.display_name.clone(),
+                description: a.description.clone(),
+                is_hidden: a.hidden,
+                is_achieved: a.earned,
+                unlock_time: a.earned_at.map(|t| t as u32),
+                permission: 0,
+                icon: None,
+            };
+            let mut row = AchievementRow::from_data(data);
+            row.appeared = true;
+            row.card_opacity = 1.0;
+            row.rarity_percent = a.global_percent.map(|p| p as f32);
+            row
+        })
+        .collect();
+
+    state.stats = cached
+        .stats
+        .iter()
+        .map(|s| {
+            let value = if let Some(i) = s.value_int {
+                StatValue::Int(i as i32)
+            } else if let Some(f) = s.value_float {
+                StatValue::Float(f as f32)
+            } else {
+                StatValue::Int(0)
+            };
+            let data = StatData {
+                id: s.api_name.clone(),
+                display_name: s.display_name.clone(),
+                value,
+                original_value: value,
+                max_value: None,
+                min_value: None,
+                default_value: None,
+                is_increment_only: false,
+                permission: 0,
+            };
+            StatRow::from_data(data)
+        })
+        .collect();
+
+    state.phase = ManagerPhase::Connecting;
+    state.reveal_queue.clear();
+}
+
+fn build_manager_cache_entry(
+    state: &ManagerState,
+    app_id: u32,
+    steam_root: &std::path::Path,
+    steamid3: u64,
+) -> GameCacheEntry {
+    use cache::types::{CachedAchievement, CachedProgress, CachedStat};
+    use steamlens_core::read_last_played;
+
+    let earned = state
+        .achievements
+        .iter()
+        .filter(|r| r.data.is_achieved)
+        .count() as u32;
+    let total = state.achievements.len() as u32;
+
+    let achievements = state
+        .achievements
+        .iter()
+        .map(|r| CachedAchievement {
+            api_name: r.data.id.clone(),
+            display_name: r.data.display_name.clone(),
+            description: r.data.description.clone(),
+            hidden: r.data.is_hidden,
+            icon_path: None,
+            icon_locked_path: None,
+            earned: r.data.is_achieved,
+            earned_at: r.data.unlock_time.map(|t| t as u64),
+            global_percent: r.rarity_percent.map(|p| p as f64),
+        })
+        .collect();
+
+    let stats = state
+        .stats
+        .iter()
+        .map(|r| {
+            use steamlens_core::StatValue;
+            let (value_int, value_float) = match r.data.value {
+                StatValue::Int(i) => (Some(i as i64), None),
+                StatValue::Float(f) => (None, Some(f as f64)),
+            };
+            CachedStat {
+                api_name: r.data.id.clone(),
+                display_name: r.data.display_name.clone(),
+                value_int,
+                value_float,
+                default_value: None,
+            }
+        })
+        .collect();
+
+    let steam_last_played = read_last_played(steam_root, steamid3, app_id).unwrap_or(0);
+
+    let cached_at = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    GameCacheEntry {
+        schema_version: cache::CURRENT_SCHEMA_VERSION,
+        app_id,
+        name: state.game_name.clone(),
+        steam_last_updated: 0,
+        steam_last_played,
+        cached_at,
+        achievements,
+        stats,
+        progress: CachedProgress { earned, total },
+    }
+}
+
 fn view(app: &App) -> Element<'_, Message> {
     let screen_content: Element<'_, Message> = match &app.screen {
         Screen::Splash => splash_view(),
 
-        Screen::Library(lib_state) => library::view(lib_state),
+        Screen::Library(lib_state) => library::view_with_cache_actions(lib_state),
 
         Screen::SteamNotRunning { reason } => {
             let content: Element<'_, Message> = column![
@@ -655,6 +970,9 @@ mod tests {
             settings: Settings::default(),
             settings_dirty_since: None,
             toast: None,
+            cached_entries: HashMap::new(),
+            steam_root: std::path::PathBuf::from("/tmp"),
+            steamid3: 0,
         }
     }
 
@@ -676,6 +994,9 @@ mod tests {
             settings: Settings::default(),
             settings_dirty_since: None,
             toast: None,
+            cached_entries: HashMap::new(),
+            steam_root: std::path::PathBuf::from("/tmp"),
+            steamid3: 0,
         }
     }
 

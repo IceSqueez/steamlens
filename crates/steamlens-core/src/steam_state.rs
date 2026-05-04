@@ -151,7 +151,10 @@ mod tests {
 "#,
         );
         let state = read_manifest_state(&path).unwrap();
-        assert_eq!(state.last_updated, 0, "absent LastUpdated must default to 0");
+        assert_eq!(
+            state.last_updated, 0,
+            "absent LastUpdated must default to 0"
+        );
         assert_eq!(state.build_id, "99887766");
     }
 
