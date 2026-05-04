@@ -339,7 +339,7 @@ mod tests {
         std::fs::write(steamapps.join("appmanifest_105600.acf"), b"").unwrap();
         std::fs::write(steamapps.join("appmanifest_400.acf"), b"").unwrap();
 
-        let manifests = enumerate_appmanifests(&[tmp_dir.clone()]);
+        let manifests = enumerate_appmanifests(std::slice::from_ref(&tmp_dir));
         let ids: Vec<u32> = manifests
             .iter()
             .map(|p| extract_app_id_from_path(p))
