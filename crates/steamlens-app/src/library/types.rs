@@ -70,7 +70,8 @@ impl std::fmt::Debug for CapsuleState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LibrarySort {
     LastPlayed,
     NameAsc,
@@ -281,6 +282,8 @@ mod tests {
             name: name.to_owned(),
             last_played,
             achievement_count: 1,
+            last_updated: 0,
+            manifest_path: std::path::PathBuf::new(),
         }
     }
 
@@ -462,10 +465,10 @@ mod tests {
         );
 
         for expected_remaining in [2usize, 1, 0] {
-            if let Some(app_id) = state.reveal_queue.pop_front() {
-                if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
-                    entry.revealed = true;
-                }
+            if let Some(app_id) = state.reveal_queue.pop_front()
+                && let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id)
+            {
+                entry.revealed = true;
             }
             assert_eq!(
                 state.reveal_queue.len(),

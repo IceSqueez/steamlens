@@ -1,18 +1,22 @@
+mod cache;
 mod capsule_cache;
 mod library;
 mod manager;
 mod progress_scan;
+mod settings;
 mod steam_worker;
 mod worker;
 
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
-use iced::{Element, Length, Subscription, Task};
+use iced::{Alignment, Color, Element, Length, Subscription, Task};
 
 use library::types::{LibraryMessage, LibraryState};
 use manager::{ManagerMessage, ManagerState};
+use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 #[derive(Debug)]
@@ -21,6 +25,11 @@ enum Screen {
     Library(Box<LibraryState>),
     SteamNotRunning { reason: String },
     Manager(Box<ManagerState>),
+}
+
+struct ToastState {
+    message: String,
+    expires_at: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +43,10 @@ enum Message {
     PollWorker,
     KeyboardEvent(keyboard::Event),
     DrainProgressResults,
+    SettingsFlushTick,
+    SettingsWritten(Result<(), String>),
+    ToastRequest(String),
+    ToastTick,
 }
 
 impl std::fmt::Debug for ManagerState {
@@ -50,18 +63,25 @@ struct App {
     worker: Option<SteamWorker>,
     worker_rx: Option<mpsc::Receiver<SteamReply>>,
     library_state: Option<Box<LibraryState>>,
+    settings: Settings,
+    settings_dirty_since: Option<Instant>,
+    toast: Option<ToastState>,
 }
 
 fn boot() -> (App, Task<Message>) {
+    let loaded_settings = settings::load_settings();
     let app = App {
         screen: Screen::Splash,
         worker: None,
         worker_rx: None,
         library_state: None,
+        settings: loaded_settings,
+        settings_dirty_since: None,
+        toast: None,
     };
     let splash_task = Task::perform(
         async {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         },
         |()| Message::SplashDone,
     );
@@ -127,10 +147,18 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
     }
 }
 
+fn mark_settings_dirty(app: &mut App) {
+    if app.settings_dirty_since.is_none() {
+        app.settings_dirty_since = Some(Instant::now());
+    }
+}
+
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::SplashDone => {
-            let lib_state = LibraryState::new();
+            let mut lib_state = LibraryState::new();
+            lib_state.sort = app.settings.library.sort;
+            lib_state.search = app.settings.library.search.clone();
             let (worker, rx) = SteamWorker::spawn();
             library::trigger_scan(&worker);
             app.worker = Some(worker);
@@ -214,6 +242,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     return Task::none();
                 }
+                LibraryMessage::SortChanged(new_sort) => {
+                    app.settings.library.sort = *new_sort;
+                    mark_settings_dirty(app);
+                }
+                LibraryMessage::SearchChanged(new_search) => {
+                    app.settings.library.search = new_search.clone();
+                    mark_settings_dirty(app);
+                }
                 _ => {}
             }
 
@@ -237,7 +273,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let (worker, rx) = SteamWorker::spawn();
             worker.send(SteamRequest::ConnectWithApp(app_id));
 
-            let state = ManagerState::new(app_id);
+            let mut state = ManagerState::new(app_id);
+            state.filter = app.settings.manager.filter;
+            state.achievement_sort = app.settings.manager.sort;
+            state.rarity_filter = app.settings.manager.rarity_filter;
+            state.search_query = app.settings.manager.search.clone();
             app.worker = Some(worker);
             app.worker_rx = Some(rx);
             app.screen = Screen::Manager(Box::new(state));
@@ -246,6 +286,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::Manager(m) => {
+            match &m {
+                ManagerMessage::FilterChanged(f) => {
+                    app.settings.manager.filter = *f;
+                    mark_settings_dirty(app);
+                }
+                ManagerMessage::AchievementSortChanged(s) => {
+                    app.settings.manager.sort = *s;
+                    mark_settings_dirty(app);
+                }
+                ManagerMessage::RarityFilterChanged(r) => {
+                    app.settings.manager.rarity_filter = *r;
+                    mark_settings_dirty(app);
+                }
+                ManagerMessage::SearchChanged(q) => {
+                    app.settings.manager.search = q.clone();
+                    mark_settings_dirty(app);
+                }
+                _ => {}
+            }
+
             if let Screen::Manager(state) = &mut app.screen
                 && let Some(worker) = &app.worker
             {
@@ -295,6 +355,60 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
 
+        Message::SettingsFlushTick => {
+            if let Some(since) = app.settings_dirty_since
+                && since.elapsed() >= Duration::from_millis(200)
+            {
+                app.settings_dirty_since = None;
+                match toml::to_string_pretty(&app.settings) {
+                    Ok(text) => {
+                        let path = settings::settings_path();
+                        let bytes = text.into_bytes();
+                        return Task::perform(
+                            async move {
+                                cache::store::atomic_write(&path, &bytes)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                            },
+                            Message::SettingsWritten,
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[steamlens] settings: serialize error: {e}");
+                        return Task::done(Message::ToastRequest(
+                            "Could not save settings".to_owned(),
+                        ));
+                    }
+                }
+            }
+            Task::none()
+        }
+
+        Message::SettingsWritten(result) => {
+            if let Err(e) = result {
+                eprintln!("[steamlens] settings: write error: {e}");
+                return Task::done(Message::ToastRequest("Could not save settings".to_owned()));
+            }
+            Task::none()
+        }
+
+        Message::ToastRequest(msg) => {
+            app.toast = Some(ToastState {
+                message: msg,
+                expires_at: Instant::now() + Duration::from_secs(4),
+            });
+            Task::none()
+        }
+
+        Message::ToastTick => {
+            if let Some(toast) = &app.toast
+                && Instant::now() >= toast.expires_at
+            {
+                app.toast = None;
+            }
+            Task::none()
+        }
+
         Message::KeyboardEvent(event) => {
             if let keyboard::Event::KeyPressed {
                 modifiers,
@@ -316,7 +430,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 }
 
 fn view(app: &App) -> Element<'_, Message> {
-    match &app.screen {
+    let screen_content: Element<'_, Message> = match &app.screen {
         Screen::Splash => splash_view(),
 
         Screen::Library(lib_state) => library::view(lib_state),
@@ -338,7 +452,53 @@ fn view(app: &App) -> Element<'_, Message> {
         }
 
         Screen::Manager(state) => manager::view(state),
+    };
+
+    if let Some(toast) = &app.toast {
+        toast_overlay(screen_content, &toast.message)
+    } else {
+        screen_content
     }
+}
+
+fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element<'a, Message> {
+    use iced::widget::{Space, stack};
+
+    let toast_widget = container(
+        text(message)
+            .size(14)
+            .color(Color::from_rgb(0.95, 0.95, 0.95)),
+    )
+    .padding(iced::Padding::default().top(8).bottom(8).left(16).right(16))
+    .style(|_theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgba(
+            0.18, 0.18, 0.22, 0.92,
+        ))),
+        border: iced::Border {
+            color: Color::from_rgba(0.6, 0.4, 0.9, 0.7),
+            width: 1.0,
+            radius: 6.0.into(),
+        },
+        ..Default::default()
+    });
+
+    let toast_row = row![
+        Space::new().width(Length::Fill),
+        toast_widget,
+        Space::new().width(Length::Fill),
+    ]
+    .align_y(Alignment::Center);
+
+    let overlay_col = column![
+        Space::new().height(Length::Fill),
+        container(toast_row)
+            .width(Length::Fill)
+            .padding(iced::Padding::default().bottom(24)),
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    stack![content, overlay_col].into()
 }
 
 fn splash_view() -> Element<'static, Message> {
@@ -429,6 +589,15 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let settings_flush_sub =
+        iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick);
+
+    let toast_sub = if app.toast.is_some() {
+        iced::time::every(Duration::from_millis(500)).map(|_| Message::ToastTick)
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch([
         keyboard_sub,
         poll_sub,
@@ -437,6 +606,8 @@ fn subscription(app: &App) -> Subscription<Message> {
         reveal_sub,
         library_spinner_sub,
         progress_sub,
+        settings_flush_sub,
+        toast_sub,
     ])
 }
 
@@ -457,11 +628,15 @@ fn main() -> iced::Result {
         eprintln!("usage: steamlens-app --worker <app_id>");
         std::process::exit(2);
     }
+    let loaded = settings::load_settings();
+    let window_w = loaded.ui.window_width;
+    let window_h = loaded.ui.window_height;
+
     iced::application(boot, update, view)
         .title("SteamLens")
         .theme(theme)
         .subscription(subscription)
-        .window_size(iced::Size::new(1280.0, 720.0))
+        .window_size(iced::Size::new(window_w, window_h))
         .run()
 }
 
@@ -477,6 +652,9 @@ mod tests {
             worker: None,
             worker_rx: None,
             library_state: None,
+            settings: Settings::default(),
+            settings_dirty_since: None,
+            toast: None,
         }
     }
 
@@ -495,6 +673,9 @@ mod tests {
             worker: None,
             worker_rx: None,
             library_state: None,
+            settings: Settings::default(),
+            settings_dirty_since: None,
+            toast: None,
         }
     }
 

@@ -118,7 +118,8 @@ impl StatRow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AchievementFilter {
     All,
     Unlocked,
@@ -150,7 +151,8 @@ impl std::fmt::Display for AchievementFilter {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AchievementSort {
     UnlockChance,
     RarityAndName,
@@ -182,7 +184,8 @@ impl std::fmt::Display for AchievementSort {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RarityFilter {
     All,
     Common,
@@ -610,7 +613,7 @@ mod rarity_tests {
             "total must sum to 100"
         );
         assert!(
-            common >= 45 && common <= 50,
+            (45..=50).contains(&common),
             "common gets remainder: {common}"
         );
     }
@@ -735,8 +738,8 @@ mod rarity_tests {
         );
         assert_eq!(ids.len(), 10);
 
-        for pos in 0..common_count {
-            let tier = map.get(ids[pos]).copied();
+        for (pos, id) in ids.iter().enumerate().take(common_count) {
+            let tier = map.get(*id).copied();
             assert_eq!(
                 tier,
                 Some(RarityTier::Common),
