@@ -226,6 +226,7 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             Task::none()
         }
         SteamReply::Disconnected => Task::none(),
+        SteamReply::LibraryScan(_) | SteamReply::LibraryScanFailed(_) => Task::none(),
     }
 }
 

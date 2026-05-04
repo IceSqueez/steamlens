@@ -1,4 +1,5 @@
 use std::ffi::NulError;
+use std::io;
 use std::path::PathBuf;
 
 use thiserror::Error;
@@ -59,6 +60,22 @@ pub enum SteamError {
         #[source]
         source: steamlens_vdf::VdfError,
     },
+}
+
+/// Errors that can occur while scanning the local Steam library for installed
+/// games.  Per-game failures (bad `.acf` files, missing schema) are silently
+/// swallowed; only catalogue-level failures propagate here.
+#[derive(Debug, Error)]
+pub enum LibraryScanError {
+    /// Reading `libraryfolders.vdf` failed with an I/O error AND the fallback
+    /// default-root path also failed.
+    #[error("Failed to read Steam library folders file: {0}")]
+    LibraryFoldersIo(#[source] io::Error),
+
+    /// `libraryfolders.vdf` was parsed successfully but contained no library
+    /// paths — this should not happen with a valid Steam installation.
+    #[error("No Steam library paths found in libraryfolders.vdf")]
+    NoLibrariesFound,
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

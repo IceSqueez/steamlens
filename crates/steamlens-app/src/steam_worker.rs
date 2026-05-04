@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use steamlens_core::{Client, StatKind, SteamCallback};
+use steamlens_core::{Client, GameSummary, StatKind, SteamCallback};
 
 use crate::manager::types::{AchievementData, AchievementIcon, ResetScope, StatData, StatValue};
 
@@ -47,8 +47,10 @@ fn forward_icon_callbacks(
     }
 }
 
+#[allow(dead_code)]
 pub enum SteamRequest {
     ConnectWithApp(u32),
+    ScanLibrary,
     RequestUserStats,
     ApplyChanges {
         achievements_to_set: Vec<String>,
@@ -71,6 +73,8 @@ pub enum SteamReply {
         app_name: Option<String>,
     },
     ConnectFailed(String),
+    LibraryScan(Vec<GameSummary>),
+    LibraryScanFailed(String),
     StatsRequested,
     RequestStatsFailed(String),
     AchievementsAndStats {
@@ -136,6 +140,11 @@ fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
     loop {
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(req) => match req {
+                SteamRequest::ScanLibrary => match steamlens_core::scan_installed_games() {
+                    Ok(games) => send_reply(&tx, SteamReply::LibraryScan(games)),
+                    Err(e) => send_reply(&tx, SteamReply::LibraryScanFailed(e.to_string())),
+                },
+
                 SteamRequest::ConnectWithApp(app_id) => {
                     client = None;
                     connected_app_id = None;

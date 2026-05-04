@@ -1,6 +1,8 @@
 mod parser;
+pub mod text;
 
 pub use parser::{KeyValuePair, Value, VdfError};
+pub use text::{TextValue, TextVdfError, parse as parse_text};
 
 /// Parse a binary KeyValue stream, returning the root as [`Value::Section`].
 ///
