@@ -230,17 +230,38 @@ fn display_group(row: &AchievementRow) -> u8 {
     }
 }
 
-fn sort_for_display(rows: Vec<&AchievementRow>) -> Vec<&AchievementRow> {
+fn tier_rank(tier: Option<RarityTier>) -> u8 {
+    match tier {
+        Some(RarityTier::Legendary) => 0,
+        Some(RarityTier::Mythical) => 1,
+        Some(RarityTier::Rare) => 2,
+        Some(RarityTier::Uncommon) => 3,
+        Some(RarityTier::Common) => 4,
+        None => 5,
+    }
+}
+
+fn row_tier(row: &AchievementRow, legendary_ids: &HashSet<String>) -> Option<RarityTier> {
+    row.rarity_percent
+        .map(|p| RarityTier::classify(p, legendary_ids.contains(&row.data.id)))
+}
+
+fn sort_for_display<'a>(
+    rows: Vec<&'a AchievementRow>,
+    legendary_ids: &HashSet<String>,
+) -> Vec<&'a AchievementRow> {
     let mut sorted = rows;
     sorted.sort_by(|a, b| {
         let ga = display_group(a);
         let gb = display_group(b);
-        ga.cmp(&gb).then_with(|| {
-            a.data
-                .display_name
-                .to_lowercase()
-                .cmp(&b.data.display_name.to_lowercase())
-        })
+        ga.cmp(&gb)
+            .then_with(|| tier_rank(row_tier(a, legendary_ids)).cmp(&tier_rank(row_tier(b, legendary_ids))))
+            .then_with(|| {
+                a.data
+                    .display_name
+                    .to_lowercase()
+                    .cmp(&b.data.display_name.to_lowercase())
+            })
     });
     sorted
 }
@@ -305,6 +326,7 @@ pub fn visible_achievement_ids<'a>(
     filter: AchievementFilter,
     search: &str,
 ) -> Vec<&'a str> {
+    let legendary_ids = top_3_legendary_ids(achievements);
     let query = search.to_lowercase();
     let filtered: Vec<&AchievementRow> = achievements
         .iter()
@@ -325,7 +347,7 @@ pub fn visible_achievement_ids<'a>(
             filter_ok && search_ok
         })
         .collect();
-    sort_for_display(filtered)
+    sort_for_display(filtered, &legendary_ids)
         .into_iter()
         .map(|row| row.data.id.as_str())
         .collect()
