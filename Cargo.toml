@@ -12,3 +12,8 @@ repository = "https://github.com/IceSqueez/steamlens"
 [workspace.dependencies]
 iced = { version = "0.14.0", features = ["tokio", "image"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+libloading = "0.9"
+thiserror = "2"
+static_assertions = "1"
+steamlens-core = { path = "crates/steamlens-core" }
+steamlens-vdf = { path = "crates/steamlens-vdf" }

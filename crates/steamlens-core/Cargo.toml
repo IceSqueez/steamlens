@@ -8,9 +8,9 @@ repository.workspace = true
 description = "Steam client interop layer for SteamLens"
 
 [dependencies]
-libloading = "0.9"
-steamlens-vdf = { path = "../steamlens-vdf" }
-thiserror = "2"
+libloading = { workspace = true }
+steamlens-vdf = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-static_assertions = "1"
+static_assertions = { workspace = true }

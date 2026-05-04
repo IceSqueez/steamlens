@@ -8,4 +8,4 @@ repository.workspace = true
 description = "Binary KeyValue (VDF) parser for Steam cache files"
 
 [dependencies]
-thiserror = "2"
+thiserror = { workspace = true }
