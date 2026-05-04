@@ -10,7 +10,11 @@ readme = "../../README.md"
 
 [dependencies]
 iced = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "io-std", "rt", "sync"] }
 reqwest = { workspace = true }
 image = { workspace = true }
 steamlens-core = { workspace = true }
+
+[[bin]]
+name = "steamlens-app"
+path = "src/main.rs"

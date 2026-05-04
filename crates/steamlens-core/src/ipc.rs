@@ -36,6 +36,7 @@ pub enum WorkerResponse {
         steam_id: u64,
         app_name: Option<String>,
     },
+    Ack,
     AchievementsAndStats {
         achievements: Vec<AchievementData>,
         stats: Vec<StatData>,
@@ -154,6 +155,7 @@ mod tests {
                 steam_id: 1,
                 app_name: None,
             },
+            WorkerResponse::Ack,
             WorkerResponse::AchievementsAndStats {
                 achievements: vec![AchievementData {
                     id: "ACH_1".to_owned(),
@@ -342,6 +344,20 @@ mod tests {
         let framed = encode_frame(&v).unwrap();
         let decoded: StatValue = decode_frame(&framed[4..]).unwrap();
         assert_eq!(decoded, v);
+    }
+
+    #[test]
+    fn ack_roundtrip() {
+        let framed = encode_frame(&WorkerResponse::Ack).expect("encode must succeed");
+        assert!(framed.len() >= 4, "framed must contain at least a header");
+        let payload = &framed[4..];
+        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+        assert!(
+            matches!(decoded, WorkerResponse::Ack),
+            "decoded variant must be Ack"
+        );
+        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
+        assert_eq!(framed, re_framed, "Ack round-trip must be byte-stable");
     }
 
     #[test]

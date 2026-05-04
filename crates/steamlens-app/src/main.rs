@@ -2,6 +2,7 @@ mod capsule_cache;
 mod library;
 mod manager;
 mod steam_worker;
+mod worker;
 
 use std::sync::mpsc;
 
@@ -431,6 +432,18 @@ fn theme(_app: &App) -> iced::Theme {
 }
 
 fn main() -> iced::Result {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 3 && args[1] == "--worker" {
+        let app_id: u32 = args[2].parse().unwrap_or_else(|_| {
+            eprintln!("steamlens-app: invalid app_id: {}", args[2]);
+            std::process::exit(2);
+        });
+        worker::run(app_id);
+    }
+    if args.len() >= 2 && args[1].starts_with("--worker") {
+        eprintln!("usage: steamlens-app --worker <app_id>");
+        std::process::exit(2);
+    }
     iced::application(boot, update, view)
         .title("SteamLens")
         .theme(theme)
