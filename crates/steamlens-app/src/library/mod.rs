@@ -1,3 +1,4 @@
+pub mod profile;
 pub mod types;
 mod view;
 
@@ -251,6 +252,10 @@ pub fn trigger_scan(worker: &SteamWorker) {
     worker.send(SteamRequest::ScanLibrary);
 }
 
-pub fn view_with_cache_actions(state: &LibraryState) -> iced::Element<'_, crate::Message> {
-    view::render_with_cache_actions(state)
+pub fn view_with_cache_actions<'a>(
+    state: &'a LibraryState,
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
+) -> iced::Element<'a, crate::Message> {
+    view::render_with_cache_actions(state, user_profile, cached_entries)
 }

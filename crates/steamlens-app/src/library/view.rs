@@ -1,12 +1,16 @@
+use std::collections::HashMap;
+
 use iced::widget::{
     button, column, container, image as img_widget, pick_list, responsive, row, scrollable, text,
-    text_input,
+    text_input, tooltip,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
+use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 
 use super::LibraryState;
+use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
 use super::types::{CapsuleState, GameEntry, LibraryMessage, LibraryPhase, LibrarySort};
 
 const CARD_GAP: f32 = 12.0;
@@ -16,6 +20,11 @@ const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_ACCENT: Color = Color::from_rgb(0.741, 0.576, 0.976);
+
+const C_GOLD: Color = Color::from_rgb(1.0, 0.85, 0.4);
+const C_PURPLE_BAR: Color = Color::from_rgb(0.741, 0.576, 0.976);
+const C_MAGENTA_BAR: Color = Color::from_rgb(1.0, 0.4, 0.85);
+const C_CYAN_BAR: Color = Color::from_rgb(0.545, 0.914, 0.992);
 
 fn spinner_frame(angle: f32) -> &'static str {
     let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
@@ -36,23 +45,41 @@ fn card_width(size: CapsuleSize) -> f32 {
     capsule_w + 16.0
 }
 
-pub fn render_with_cache_actions(state: &LibraryState) -> Element<'_, crate::Message> {
-    render_inner(state, true)
+pub fn render_with_cache_actions<'a>(
+    state: &'a LibraryState,
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
+) -> Element<'a, crate::Message> {
+    render_inner(state, true, user_profile, cached_entries)
 }
 
-fn render_inner(state: &LibraryState, show_cache_actions: bool) -> Element<'_, crate::Message> {
+fn render_inner<'a>(
+    state: &'a LibraryState,
+    show_cache_actions: bool,
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
+) -> Element<'a, crate::Message> {
     let header = if show_cache_actions {
         build_header_with_cache(state)
     } else {
         build_header(state)
     };
 
+    let profile_section = build_profile_section(state, user_profile, cached_entries);
+
     let body: Element<'_, crate::Message> = match &state.phase {
         LibraryPhase::Scanning => center_text("Scanning library…"),
         LibraryPhase::Error(e) => error_view(e),
         LibraryPhase::Loaded => {
-            let visible = state.visible_games();
-            if visible.is_empty() {
+            let visible: Vec<&GameEntry> = state
+                .visible_games()
+                .into_iter()
+                .filter(|g| g.progress.is_some())
+                .collect();
+
+            if visible.is_empty() && !state.games.is_empty() {
+                center_text("Loading achievement data…")
+            } else if visible.is_empty() {
                 center_text("No games found.")
             } else {
                 build_grid(state, visible)
@@ -60,16 +87,72 @@ fn render_inner(state: &LibraryState, show_cache_actions: bool) -> Element<'_, c
         }
     };
 
+    let sync_banner = build_sync_banner(state);
     let stream_indicator = build_stream_indicator(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
+    col = col.push(profile_section);
+    if let Some(banner) = sync_banner {
+        col = col.push(banner);
+    }
     if let Some(indicator) = stream_indicator {
         col = col.push(indicator);
     }
     col = col.push(body).push(footer);
 
     col.spacing(0).into()
+}
+
+fn build_profile_section<'a>(
+    state: &'a LibraryState,
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
+) -> Element<'a, crate::Message> {
+    let summary = compute_profile_summary(cached_entries);
+    let top5 = top5_closest_to_complete(&state.games, cached_entries);
+    profile_widget(user_profile, &summary, top5, &state.capsule_handles)
+}
+
+fn build_sync_banner<'a>(state: &'a LibraryState) -> Option<Element<'a, crate::Message>> {
+    if state.phase != LibraryPhase::Loaded {
+        return None;
+    }
+    let games_with_progress = state.games.iter().filter(|g| g.progress.is_some()).count();
+    let total = state.games.len();
+    if games_with_progress >= total || total == 0 {
+        return None;
+    }
+
+    let loaded_frac = games_with_progress as f32 / total as f32;
+    let bar_filled = (loaded_frac * 20.0).round() as usize;
+    let bar_empty = 20usize.saturating_sub(bar_filled);
+    let bar_str = format!(
+        "{}{}",
+        "\u{2593}".repeat(bar_filled),
+        "\u{2591}".repeat(bar_empty)
+    );
+
+    let banner_text = format!(
+        "Synchronizing your library…   {bar_str}  {games_with_progress} / {total} games loaded"
+    );
+
+    let banner = container(text(banner_text).size(12).color(C_MUTED))
+        .width(Length::Fill)
+        .padding(Padding::default().left(16).right(16).top(6).bottom(6))
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(Color::from_rgba(
+                0.18, 0.14, 0.28, 0.6,
+            ))),
+            border: iced::Border {
+                color: Color::from_rgba(0.741, 0.576, 0.976, 0.3),
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            ..container::Style::default()
+        });
+
+    Some(banner.into())
 }
 
 fn build_stream_indicator(state: &LibraryState) -> Option<Element<'_, crate::Message>> {
@@ -234,6 +317,26 @@ fn build_grid<'a>(
         .into()
 }
 
+fn progress_bar_color(ratio: f32) -> Color {
+    if ratio >= 0.9 {
+        C_CYAN_BAR
+    } else if ratio >= 0.5 {
+        Color {
+            r: C_MAGENTA_BAR.r * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.r * ((ratio - 0.5) / 0.4),
+            g: C_MAGENTA_BAR.g * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.g * ((ratio - 0.5) / 0.4),
+            b: C_MAGENTA_BAR.b * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.b * ((ratio - 0.5) / 0.4),
+            a: 1.0,
+        }
+    } else {
+        Color {
+            r: C_PURPLE_BAR.r * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.r * (ratio / 0.5),
+            g: C_PURPLE_BAR.g * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.g * (ratio / 0.5),
+            b: C_PURPLE_BAR.b * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.b * (ratio / 0.5),
+            a: 1.0,
+        }
+    }
+}
+
 fn build_card(
     entry: &GameEntry,
     capsule_size: CapsuleSize,
@@ -295,6 +398,10 @@ fn build_card(
             .into(),
     };
 
+    let progress_overlay = build_progress_overlay(entry, card_w, capsule_h);
+
+    let capsule_stack = iced::widget::stack![capsule_area, progress_overlay];
+
     let name_label = container(
         text(entry.summary.name.as_str())
             .size(12)
@@ -315,7 +422,7 @@ fn build_card(
         .width(Length::Fixed(card_w));
 
     let card_inner = column![
-        capsule_area,
+        capsule_stack,
         separator,
         iced::widget::Space::new().height(Length::Fill),
         name_label,
@@ -327,7 +434,20 @@ fn build_card(
         .height(Length::Fixed(total_card_h))
         .padding(Padding::default().top(8));
 
-    button(card)
+    let has_progress = entry.progress.is_some();
+    let is_gold = entry
+        .progress
+        .as_ref()
+        .is_some_and(|p| p.total > 0 && p.earned >= p.total);
+    let tooltip_earned = entry.progress.as_ref().map(|p| p.earned).unwrap_or(0);
+    let tooltip_total = entry.progress.as_ref().map(|p| p.total).unwrap_or(0);
+    let tooltip_pct = if tooltip_total > 0 {
+        (tooltip_earned as f32 / tooltip_total as f32 * 100.0) as u32
+    } else {
+        0
+    };
+
+    let card_btn = button(card)
         .padding(0)
         .on_press(crate::Message::Library(LibraryMessage::GameSelected(
             app_id,
@@ -346,16 +466,30 @@ fn build_card(
                 C_SURFACE
             };
 
-            let border = iced::Border {
-                color: if hovered {
-                    C_ACCENT
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: if hovered { 2.0 } else { 0.0 },
-                radius: 6.0.into(),
+            let border_color = if is_gold && hovered {
+                C_GOLD
+            } else if hovered {
+                C_ACCENT
+            } else if is_gold {
+                Color { a: 0.5, ..C_GOLD }
+            } else {
+                Color::TRANSPARENT
             };
-            let shadow = if hovered {
+
+            let border_width = if hovered || is_gold { 2.0 } else { 0.0 };
+
+            let shadow = if is_gold {
+                iced::Shadow {
+                    color: Color::from_rgba(
+                        C_GOLD.r,
+                        C_GOLD.g,
+                        C_GOLD.b,
+                        if hovered { 0.5 } else { 0.25 },
+                    ),
+                    offset: iced::Vector::new(0.0, 0.0),
+                    blur_radius: if hovered { 14.0 } else { 6.0 },
+                }
+            } else if hovered {
                 iced::Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
                     offset: iced::Vector::new(0.0, 8.0),
@@ -368,13 +502,136 @@ fn build_card(
                     blur_radius: 10.0,
                 }
             };
+
             button::Style {
                 background: Some(iced::Background::Color(bg)),
-                border,
+                border: iced::Border {
+                    color: border_color,
+                    width: border_width,
+                    radius: 6.0.into(),
+                },
                 shadow,
                 ..button::Style::default()
             }
-        })
+        });
+
+    if !has_progress {
+        card_btn.into()
+    } else {
+        tooltip(
+            card_btn,
+            container(
+                text(format!(
+                    "{tooltip_earned} / {tooltip_total} achievements ({tooltip_pct}%)"
+                ))
+                .size(11)
+                .color(C_TEXT),
+            )
+            .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color::from_rgba(
+                    0.15, 0.15, 0.2, 0.95,
+                ))),
+                border: iced::Border {
+                    color: Color { a: 0.5, ..C_ACCENT },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..container::Style::default()
+            }),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    }
+}
+
+fn build_progress_overlay<'a>(
+    entry: &'a GameEntry,
+    card_w: f32,
+    capsule_h: f32,
+) -> Element<'a, crate::Message> {
+    const BAR_H: f32 = 3.0;
+
+    let Some(progress) = entry.progress.as_ref() else {
+        return iced::widget::Space::new()
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .into();
+    };
+
+    let bar_element: Element<'_, crate::Message> = if progress.total == 0 {
+        iced::widget::Space::new().into()
+    } else if progress.earned == 0 {
+        container(iced::widget::Space::new())
+            .width(Length::Fill)
+            .height(Length::Fixed(BAR_H))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color::from_rgba(
+                    0.47, 0.47, 0.51, 0.5,
+                ))),
+                border: iced::Border {
+                    radius: 1.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            })
+            .into()
+    } else if progress.earned >= progress.total {
+        container(iced::widget::Space::new())
+            .width(Length::Fill)
+            .height(Length::Fixed(BAR_H))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(C_GOLD)),
+                border: iced::Border {
+                    radius: 1.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            })
+            .into()
+    } else {
+        let ratio = progress.earned as f32 / progress.total as f32;
+        let bar_color = progress_bar_color(ratio);
+        let fill_w = (ratio * card_w).max(2.0);
+
+        let fill = container(iced::widget::Space::new())
+            .width(Length::Fixed(fill_w))
+            .height(Length::Fixed(BAR_H))
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(bar_color)),
+                border: iced::Border {
+                    radius: 1.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            });
+
+        let track = container(
+            container(fill)
+                .width(Length::Fixed(card_w))
+                .height(Length::Fixed(BAR_H))
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba(
+                        0.2, 0.2, 0.25, 0.4,
+                    ))),
+                    border: iced::Border {
+                        radius: 1.0.into(),
+                        ..iced::Border::default()
+                    },
+                    ..container::Style::default()
+                }),
+        );
+
+        track.into()
+    };
+
+    let spacer = iced::widget::Space::new()
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(capsule_h - BAR_H));
+
+    container(column![spacer, bar_element].spacing(0))
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(capsule_h))
         .into()
 }
 

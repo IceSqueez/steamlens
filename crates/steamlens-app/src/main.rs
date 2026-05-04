@@ -20,6 +20,7 @@ use library::types::{LibraryMessage, LibraryState};
 use manager::{ManagerMessage, ManagerState};
 use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
+use steamlens_core::UserProfile;
 
 #[derive(Debug)]
 enum Screen {
@@ -82,13 +83,17 @@ struct App {
     steam_root: std::path::PathBuf,
     /// SteamID3 cached at boot; 0 when profile load fails.
     steamid3: u64,
+    /// Local Steam user profile (persona name + avatar). Loaded once at boot.
+    user_profile: Option<UserProfile>,
 }
 
 fn boot() -> (App, Task<Message>) {
     let loaded_settings = settings::load_settings();
 
     let steam_root = settings::default_steam_root();
-    let steamid3 = steamlens_core::load_local_profile()
+    let profile_result = steamlens_core::load_local_profile();
+    let steamid3 = profile_result
+        .as_ref()
         .ok()
         .map(|p| p.steam_id.saturating_sub(76_561_197_960_265_728))
         .unwrap_or(0);
@@ -104,6 +109,7 @@ fn boot() -> (App, Task<Message>) {
         cached_entries: HashMap::new(),
         steam_root,
         steamid3,
+        user_profile: profile_result.ok(),
     };
     let splash_task = Task::perform(
         async {
@@ -778,7 +784,11 @@ fn view(app: &App) -> Element<'_, Message> {
     let screen_content: Element<'_, Message> = match &app.screen {
         Screen::Splash => splash_view(),
 
-        Screen::Library(lib_state) => library::view_with_cache_actions(lib_state),
+        Screen::Library(lib_state) => library::view_with_cache_actions(
+            lib_state,
+            app.user_profile.as_ref(),
+            &app.cached_entries,
+        ),
 
         Screen::SteamNotRunning { reason } => {
             let content: Element<'_, Message> = column![
@@ -1003,6 +1013,7 @@ mod tests {
             cached_entries: HashMap::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
+            user_profile: None,
         }
     }
 
@@ -1027,6 +1038,7 @@ mod tests {
             cached_entries: HashMap::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
+            user_profile: None,
         }
     }
 
@@ -1567,6 +1579,7 @@ mod tests {
             },
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
+            user_profile: None,
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
