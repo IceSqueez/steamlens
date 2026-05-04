@@ -215,6 +215,13 @@ async fn handle_command(cmd: WorkerCommand, client: &Client) -> DispatchOutcome 
             }
         }
 
+        WorkerCommand::QuickAchievementCount => {
+            let resp = quick_achievement_count(client);
+            if write_response(&resp).await.is_err() {
+                return DispatchOutcome::Fatal;
+            }
+        }
+
         WorkerCommand::Shutdown => {
             let _ = write_response(&WorkerResponse::Disconnected).await;
             return DispatchOutcome::Shutdown;
@@ -328,6 +335,47 @@ fn load_achievements_and_stats(client: &Client) -> WorkerResponse {
         achievements,
         stats,
     }
+}
+
+fn quick_achievement_count(client: &Client) -> WorkerResponse {
+    let stats_iface = client.user_stats();
+    let steam_id = client.steam_id();
+
+    if let Err(e) = stats_iface.request_user_stats(steam_id) {
+        return WorkerResponse::Error {
+            context: "QuickAchievementCount/RequestUserStats".into(),
+            message: e.to_string(),
+        };
+    }
+
+    if let Some(err_resp) = wait_for_stats_received(client, steam_id) {
+        return err_resp;
+    }
+
+    let total = match stats_iface.num_achievements() {
+        Ok(n) => n,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "QuickAchievementCount/num_achievements".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+
+    let mut earned = 0u32;
+    for i in 0..total {
+        let name = match stats_iface.achievement_name(i) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        if let Ok((achieved, _)) = stats_iface.achievement_and_unlock_time(&name)
+            && achieved
+        {
+            earned += 1;
+        }
+    }
+
+    WorkerResponse::AchievementCount { earned, total }
 }
 
 fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {

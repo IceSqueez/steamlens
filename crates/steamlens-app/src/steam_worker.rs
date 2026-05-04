@@ -327,6 +327,10 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         WorkerResponse::ResetDone => {
             reply(rep_tx, SteamReply::ResetDone);
         }
+        WorkerResponse::AchievementCount { .. } => {
+            // QuickAchievementCount is only used by ProgressScanner workers which
+            // never route through the bridge — silently ignore if one arrives here.
+        }
         WorkerResponse::Error { context, message } => {
             reply(rep_tx, error_reply(&context, message));
         }

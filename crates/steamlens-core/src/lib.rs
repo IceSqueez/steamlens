@@ -9,6 +9,7 @@ mod error;
 mod ffi;
 pub mod ipc;
 pub mod library;
+pub mod profile;
 mod raw_callback;
 mod stat_schema;
 mod steam_callback;
@@ -21,6 +22,7 @@ pub use ipc::{
     WorkerResponse,
 };
 pub use library::{GameSummary, scan_installed_games};
+pub use profile::{ProfileError, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
 pub use steam_callback::{SteamCallback, SteamResult};

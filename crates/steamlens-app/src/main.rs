@@ -1,6 +1,7 @@
 mod capsule_cache;
 mod library;
 mod manager;
+mod progress_scan;
 mod steam_worker;
 mod worker;
 
@@ -32,6 +33,7 @@ enum Message {
     Manager(ManagerMessage),
     PollWorker,
     KeyboardEvent(keyboard::Event),
+    DrainProgressResults,
 }
 
 impl std::fmt::Debug for ManagerState {
@@ -254,6 +256,45 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::PollWorker => drain_worker_replies(app),
 
+        Message::DrainProgressResults => {
+            let Screen::Library(lib_state) = &mut app.screen else {
+                return Task::none();
+            };
+            let mut tasks: Vec<Task<Message>> = Vec::new();
+            if let Some(scanner) = &mut lib_state.progress_scanner {
+                let _still_going = scanner.poll();
+            }
+            if let Some(rx) = &mut lib_state.progress_rx {
+                loop {
+                    match rx.try_recv() {
+                        Ok(result) => {
+                            if let Some(data) = result.data {
+                                tasks.push(Task::done(Message::Library(
+                                    LibraryMessage::ProgressFetched {
+                                        app_id: result.app_id,
+                                        earned: data.earned,
+                                        total: data.total,
+                                    },
+                                )));
+                            }
+                        }
+                        Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+                        Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                            tasks.push(Task::done(Message::Library(
+                                LibraryMessage::ProgressScanDone,
+                            )));
+                            break;
+                        }
+                    }
+                }
+            }
+            if tasks.is_empty() {
+                Task::none()
+            } else {
+                Task::batch(tasks)
+            }
+        }
+
         Message::KeyboardEvent(event) => {
             if let keyboard::Event::KeyPressed {
                 modifiers,
@@ -377,6 +418,17 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let progress_sub = if let Screen::Library(state) = &app.screen {
+        if state.progress_scanner.is_some() {
+            iced::time::every(std::time::Duration::from_millis(200))
+                .map(|_| Message::DrainProgressResults)
+        } else {
+            Subscription::none()
+        }
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch([
         keyboard_sub,
         poll_sub,
@@ -384,6 +436,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         fade_sub,
         reveal_sub,
         library_spinner_sub,
+        progress_sub,
     ])
 }
 

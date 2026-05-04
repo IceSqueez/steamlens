@@ -4,6 +4,7 @@ use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
+use crate::progress_scan::ProgressData;
 
 pub(crate) const FADE_DELTA: f32 = 0.2;
 
@@ -25,6 +26,9 @@ pub struct GameEntry {
     pub summary: GameSummary,
     pub capsule: CapsuleState,
     pub revealed: bool,
+    /// Per-game achievement progress fetched asynchronously by the background
+    /// scanner.  `None` until the scanner reports a result for this game.
+    pub progress: Option<ProgressData>,
 }
 
 impl std::fmt::Debug for GameEntry {
@@ -32,6 +36,7 @@ impl std::fmt::Debug for GameEntry {
         f.debug_struct("GameEntry")
             .field("app_id", &self.summary.app_id)
             .field("name", &self.summary.name)
+            .field("progress", &self.progress)
             .finish_non_exhaustive()
     }
 }
@@ -105,6 +110,13 @@ pub enum LibraryMessage {
     FadeTick,
     RevealTick,
     SpinnerTick(f32),
+    /// Background progress scan delivered a result for one game.
+    ProgressFetched {
+        app_id: u32,
+        earned: u32,
+        total: u32,
+    },
+    ProgressScanDone,
 }
 
 impl std::fmt::Debug for LibraryMessage {
@@ -134,6 +146,12 @@ impl std::fmt::Debug for LibraryMessage {
             LibraryMessage::FadeTick => write!(f, "FadeTick"),
             LibraryMessage::RevealTick => write!(f, "RevealTick"),
             LibraryMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
+            LibraryMessage::ProgressFetched {
+                app_id,
+                earned,
+                total,
+            } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
+            LibraryMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
         }
     }
 }
@@ -155,6 +173,12 @@ pub struct LibraryState {
     pub capsule_size: CapsuleSize,
     pub manual_app_id_input: String,
     pub spinner_angle: f32,
+    /// Live background progress scanner, `None` when idle.
+    pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
+    /// Receiver half of the progress result channel.  Taken once when the scan
+    /// starts and drained on every `ProgressFetched` / `ProgressScanDone` tick.
+    pub progress_rx:
+        Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
 }
 
 impl std::fmt::Debug for LibraryState {
@@ -180,6 +204,8 @@ impl LibraryState {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             spinner_angle: 0.0,
+            progress_scanner: None,
+            progress_rx: None,
         }
     }
 
@@ -190,6 +216,7 @@ impl LibraryState {
                 .games
                 .iter()
                 .any(|g| matches!(g.capsule, CapsuleState::Pending))
+            || self.progress_scanner.is_some()
     }
 
     pub fn has_fading_capsules(&self) -> bool {
@@ -262,6 +289,7 @@ mod tests {
             summary: make_summary(app_id, name, last_played),
             capsule: CapsuleState::Pending,
             revealed: true,
+            progress: None,
         }
     }
 
@@ -276,6 +304,8 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             spinner_angle: 0.0,
+            progress_scanner: None,
+            progress_rx: None,
         }
     }
 
@@ -372,6 +402,7 @@ mod tests {
                 opacity: 0.0,
             },
             revealed: true,
+            progress: None,
         }]);
 
         assert!(state.has_fading_capsules(), "precondition: opacity < 1.0");
@@ -406,6 +437,7 @@ mod tests {
                 summary: make_summary(id, &format!("Game {id}"), None),
                 capsule: CapsuleState::Pending,
                 revealed: false,
+                progress: None,
             })
             .collect();
 
@@ -419,6 +451,8 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             spinner_angle: 0.0,
+            progress_scanner: None,
+            progress_rx: None,
         };
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
@@ -496,6 +530,7 @@ mod tests {
             summary: make_summary(app_id, "Terraria", None),
             capsule: CapsuleState::Pending,
             revealed: false,
+            progress: None,
         };
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;
@@ -543,6 +578,7 @@ mod tests {
             summary: make_summary(app_id, "Terraria", None),
             capsule: CapsuleState::Pending,
             revealed: false,
+            progress: None,
         };
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;

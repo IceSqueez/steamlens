@@ -22,11 +22,23 @@ pub enum WorkerCommand {
     LoadAchievementsAndStats,
     SetAchievement(String),
     ClearAchievement(String),
-    SetStatInt { name: String, value: i32 },
-    SetStatFloat { name: String, value: f32 },
+    SetStatInt {
+        name: String,
+        value: i32,
+    },
+    SetStatFloat {
+        name: String,
+        value: f32,
+    },
     StoreStats,
-    ResetAllStats { include_achievements: bool },
+    ResetAllStats {
+        include_achievements: bool,
+    },
     RequestGlobalPercentages,
+    /// Request only the count of earned and total achievements.  Faster than
+    /// `LoadAchievementsAndStats` because it skips stat reads and global
+    /// percentages — used by the background progress scanner.
+    QuickAchievementCount,
     Shutdown,
 }
 
@@ -48,6 +60,12 @@ pub enum WorkerResponse {
     GlobalPercentagesReady(std::collections::HashMap<String, f32>),
     Stored,
     ResetDone,
+    /// Lightweight achievement count returned in response to
+    /// [`WorkerCommand::QuickAchievementCount`].
+    AchievementCount {
+        earned: u32,
+        total: u32,
+    },
     Error {
         context: String,
         message: String,
@@ -137,6 +155,7 @@ mod tests {
                 include_achievements: true,
             },
             WorkerCommand::RequestGlobalPercentages,
+            WorkerCommand::QuickAchievementCount,
             WorkerCommand::Shutdown,
         ]
     }
@@ -194,6 +213,14 @@ mod tests {
             WorkerResponse::GlobalPercentagesReady(pct_map),
             WorkerResponse::Stored,
             WorkerResponse::ResetDone,
+            WorkerResponse::AchievementCount {
+                earned: 12,
+                total: 30,
+            },
+            WorkerResponse::AchievementCount {
+                earned: 0,
+                total: 0,
+            },
             WorkerResponse::Error {
                 context: "StoreStats".to_owned(),
                 message: "pipe closed".to_owned(),
@@ -358,6 +385,36 @@ mod tests {
         );
         let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
         assert_eq!(framed, re_framed, "Ack round-trip must be byte-stable");
+    }
+
+    #[test]
+    fn quick_achievement_count_command_roundtrip() {
+        let cmd = WorkerCommand::QuickAchievementCount;
+        let framed = encode_frame(&cmd).expect("encode must succeed");
+        let payload = &framed[4..];
+        let decoded: WorkerCommand = decode_frame(payload).expect("decode must succeed");
+        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
+        assert_eq!(framed, re_framed, "QuickAchievementCount must round-trip");
+    }
+
+    #[test]
+    fn achievement_count_response_roundtrip() {
+        for (earned, total) in [(0u32, 0u32), (12, 30), (u32::MAX, u32::MAX)] {
+            let resp = WorkerResponse::AchievementCount { earned, total };
+            let framed = encode_frame(&resp).expect("encode must succeed");
+            let payload = &framed[4..];
+            let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+            assert!(
+                matches!(
+                    decoded,
+                    WorkerResponse::AchievementCount {
+                        earned: e,
+                        total: t,
+                    } if e == earned && t == total
+                ),
+                "AchievementCount({earned},{total}) must round-trip"
+            );
+        }
     }
 
     #[test]
