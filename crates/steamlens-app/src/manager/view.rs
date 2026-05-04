@@ -281,10 +281,33 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
 }
 
 fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
-    column![filter_row(state), achievement_list(state)]
-        .spacing(0)
-        .height(Length::Fill)
-        .into()
+    let mut col = column![filter_row(state)].spacing(0).height(Length::Fill);
+    if let Some(indicator) = build_reveal_indicator(state) {
+        col = col.push(indicator);
+    }
+    col.push(achievement_list(state)).into()
+}
+
+fn build_reveal_indicator(state: &ManagerState) -> Option<Element<'_, Message>> {
+    if !state.has_pending_reveals() && !state.has_fading_cards() {
+        return None;
+    }
+    let total = state.achievements.len();
+    let appeared = state.achievements.iter().filter(|r| r.appeared).count();
+
+    let indicator_row = row![
+        text(spinner_frame(state.spinner_angle))
+            .size(13)
+            .color(C_MUTED),
+        text(format!("Loading {appeared} / {total} achievements…"))
+            .size(12)
+            .color(C_MUTED),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .padding(Padding::from([4u16, 16]));
+
+    Some(container(indicator_row).width(Length::Fill).into())
 }
 
 const ACH_CARD_GAP: f32 = 10.0;

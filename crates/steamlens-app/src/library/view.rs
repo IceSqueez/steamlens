@@ -18,6 +18,12 @@ const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_ACCENT: Color = Color::from_rgb(0.741, 0.576, 0.976);
 const C_WARNING: Color = Color::from_rgb(0.545, 0.914, 0.992);
 
+fn spinner_frame(angle: f32) -> &'static str {
+    let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
+    let idx = ((angle / 90.0) as usize) % frames.len();
+    frames[idx]
+}
+
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
         CapsuleSize::Small => (120.0, 45.0),
@@ -60,15 +66,41 @@ pub fn render(state: &LibraryState) -> Element<'_, crate::Message> {
         None
     };
 
+    let stream_indicator = build_stream_indicator(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
     if let Some(banner) = alpha_banner {
         col = col.push(banner);
     }
+    if let Some(indicator) = stream_indicator {
+        col = col.push(indicator);
+    }
     col = col.push(body).push(footer);
 
     col.spacing(0).into()
+}
+
+fn build_stream_indicator(state: &LibraryState) -> Option<Element<'_, crate::Message>> {
+    if !state.is_streaming() {
+        return None;
+    }
+    let total = state.games.len();
+    let revealed = state.games.iter().filter(|g| g.revealed).count();
+
+    let indicator_row = row![
+        text(spinner_frame(state.spinner_angle))
+            .size(13)
+            .color(C_MUTED),
+        text(format!("Loading {revealed} / {total} games…"))
+            .size(12)
+            .color(C_MUTED),
+    ]
+    .spacing(6)
+    .align_y(iced::Alignment::Center)
+    .padding(Padding::default().left(16).right(16).top(4).bottom(4));
+
+    Some(container(indicator_row).width(Length::Fill).into())
 }
 
 fn build_header(state: &LibraryState) -> Element<'_, crate::Message> {

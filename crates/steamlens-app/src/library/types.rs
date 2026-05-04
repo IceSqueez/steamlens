@@ -91,6 +91,7 @@ pub enum LibraryMessage {
     RescanRequested,
     FadeTick,
     RevealTick,
+    SpinnerTick(f32),
 }
 
 impl std::fmt::Debug for LibraryMessage {
@@ -119,6 +120,7 @@ impl std::fmt::Debug for LibraryMessage {
             LibraryMessage::RescanRequested => write!(f, "RescanRequested"),
             LibraryMessage::FadeTick => write!(f, "FadeTick"),
             LibraryMessage::RevealTick => write!(f, "RevealTick"),
+            LibraryMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
         }
     }
 }
@@ -139,6 +141,7 @@ pub struct LibraryState {
     pub capsule_size: CapsuleSize,
     pub manual_app_id_input: String,
     pub has_opened_a_game: bool,
+    pub spinner_angle: f32,
 }
 
 impl std::fmt::Debug for LibraryState {
@@ -163,7 +166,17 @@ impl LibraryState {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
+            spinner_angle: 0.0,
         }
+    }
+
+    pub fn is_streaming(&self) -> bool {
+        self.has_pending_reveals()
+            || self.has_fading_capsules()
+            || self
+                .games
+                .iter()
+                .any(|g| matches!(g.capsule, CapsuleState::Pending))
     }
 
     pub fn has_fading_capsules(&self) -> bool {
@@ -249,6 +262,7 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
+            spinner_angle: 0.0,
         }
     }
 
@@ -391,6 +405,7 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
+            spinner_angle: 0.0,
         };
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
@@ -419,6 +434,36 @@ mod tests {
         assert!(
             !state.has_pending_reveals(),
             "has_pending_reveals must be false when queue is empty"
+        );
+    }
+
+    #[test]
+    fn library_spinner_tick_updates_angle() {
+        let mut state = make_state_with_games(vec![]);
+        assert_eq!(
+            state.spinner_angle, 0.0,
+            "precondition: angle starts at 0.0"
+        );
+
+        state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
+        assert!(
+            (state.spinner_angle - 6.0).abs() < f32::EPSILON,
+            "one tick must advance angle by 6 degrees"
+        );
+
+        for _ in 0..59 {
+            state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
+        }
+        assert!(
+            (state.spinner_angle - 0.0).abs() < f32::EPSILON,
+            "60 ticks must wrap exactly back to 0.0 (60 * 6 = 360)"
+        );
+
+        state.spinner_angle = 356.0;
+        state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
+        assert!(
+            (state.spinner_angle - 2.0).abs() < f32::EPSILON,
+            "angle must wrap around 360 correctly from 356"
         );
     }
 }

@@ -95,8 +95,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             let pop_count = state.reveal_queue.len().min(3);
             for _ in 0..pop_count {
                 if let Some(app_id) = state.reveal_queue.pop_front()
-                    && let Some(entry) =
-                        state.games.iter_mut().find(|g| g.summary.app_id == app_id)
+                    && let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id)
                 {
                     entry.revealed = true;
                 }
@@ -138,6 +137,11 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
             state.phase = LibraryPhase::Scanning;
             state.games.clear();
             state.reveal_queue.clear();
+            Task::none()
+        }
+
+        LibraryMessage::SpinnerTick(_) => {
+            state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
             Task::none()
         }
     }

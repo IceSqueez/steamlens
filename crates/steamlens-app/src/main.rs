@@ -348,7 +348,25 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    Subscription::batch([keyboard_sub, poll_sub, manager_sub, fade_sub, reveal_sub])
+    let library_spinner_sub = if let Screen::Library(state) = &app.screen {
+        if state.is_streaming() {
+            iced::time::every(std::time::Duration::from_millis(80))
+                .map(|_| Message::Library(LibraryMessage::SpinnerTick(0.0)))
+        } else {
+            Subscription::none()
+        }
+    } else {
+        Subscription::none()
+    };
+
+    Subscription::batch([
+        keyboard_sub,
+        poll_sub,
+        manager_sub,
+        fade_sub,
+        reveal_sub,
+        library_spinner_sub,
+    ])
 }
 
 fn theme(_app: &App) -> iced::Theme {

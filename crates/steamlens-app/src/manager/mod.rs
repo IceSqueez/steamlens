@@ -546,7 +546,10 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
             | ManagerPhase::Resetting
     );
 
-    let needs_tick = needs_spinner || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0);
+    let needs_tick = needs_spinner
+        || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0)
+        || (state.phase == ManagerPhase::Ready && state.has_pending_reveals())
+        || (state.phase == ManagerPhase::Ready && state.has_fading_cards());
 
     let spinner_sub = if needs_tick {
         time::every(std::time::Duration::from_millis(33))
