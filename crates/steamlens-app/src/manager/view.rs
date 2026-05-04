@@ -5,8 +5,8 @@ use iced::widget::{
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use super::types::{
-    AchievementFilter, AchievementRow, ActiveTab, BannerKind, BulkOp, ResetScope, StatRow,
-    visible_achievement_ids,
+    AchievementFilter, AchievementRow, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope,
+    StatRow, top_3_legendary_ids, visible_achievement_ids,
 };
 use super::{ManagerMessage, ManagerPhase, ManagerState};
 use crate::Message;
@@ -20,10 +20,9 @@ const C_ORANGE: Color = Color::from_rgb(1.0, 0.722, 0.424);
 const C_PURPLE: Color = Color::from_rgb(0.741, 0.576, 0.976);
 const C_RED: Color = Color::from_rgb(1.0, 0.333, 0.333);
 const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
-#[allow(dead_code)]
 const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
-const C_RARE: Color = Color::from_rgb(1.0, 0.85, 0.4);
-const RARE_THRESHOLD: f32 = 10.0;
+const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.85, 0.4);
+const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.4, 0.85);
 fn msg(m: ManagerMessage) -> Message {
     Message::Manager(m)
 }
@@ -383,6 +382,73 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
+fn tier_color(tier: RarityTier) -> Color {
+    match tier {
+        RarityTier::Common => C_GREEN,
+        RarityTier::Uncommon => C_CYAN,
+        RarityTier::Rare => C_PURPLE,
+        RarityTier::Mythical => C_MYTHICAL,
+        RarityTier::Legendary => C_LEGENDARY,
+    }
+}
+
+fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Style {
+    match tier {
+        Some(RarityTier::Legendary) => {
+            let alpha = 0.65 + 0.35 * glow_pulse;
+            let blur = 18.0 + 22.0 * glow_pulse;
+            container::Style {
+                shadow: iced::Shadow {
+                    color: Color {
+                        a: alpha,
+                        ..C_LEGENDARY
+                    },
+                    offset: iced::Vector::new(0.0, 0.0),
+                    blur_radius: blur,
+                },
+                border: iced::Border {
+                    color: C_LEGENDARY,
+                    width: 3.0,
+                    radius: 8.0.into(),
+                },
+                ..container::Style::default()
+            }
+        }
+        Some(RarityTier::Mythical) => container::Style {
+            shadow: iced::Shadow {
+                color: Color {
+                    a: 0.7,
+                    ..C_MYTHICAL
+                },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 14.0,
+            },
+            border: iced::Border {
+                color: C_MYTHICAL,
+                width: 2.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        },
+        Some(RarityTier::Rare) => container::Style {
+            shadow: iced::Shadow {
+                color: Color { a: 0.4, ..C_PURPLE },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 8.0,
+            },
+            ..container::Style::default()
+        },
+        _ => container::Style {
+            shadow: iced::Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                offset: iced::Vector::new(1.5, 1.5),
+                blur_radius: 3.0,
+            },
+            ..container::Style::default()
+        },
+    }
+}
+
 fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
     let visible_ids =
         visible_achievement_ids(&state.achievements, state.filter, &state.search_query);
@@ -409,6 +475,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
 
     let query_owned = state.search_query.clone();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
+    let legendary_ids = top_3_legendary_ids(&state.achievements);
 
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
@@ -429,11 +496,16 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                 .spacing(ACH_CARD_GAP as u32)
                 .align_y(Alignment::Start);
             for entry in chunk {
+                let is_legendary = legendary_ids.contains(entry.data.id.as_str());
+                let tier = entry
+                    .rarity_percent
+                    .map(|p| RarityTier::classify(p, is_legendary));
                 r = r.push(achievement_card_widget(
                     entry,
                     actual_card_w,
                     query_owned.clone(),
                     glow_pulse,
+                    tier,
                 ));
             }
             let needed = cols - chunk.len();
@@ -464,6 +536,7 @@ fn achievement_card_widget<'a>(
     card_w: f32,
     search_query: String,
     glow_pulse: f32,
+    tier: Option<RarityTier>,
 ) -> Element<'a, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
@@ -489,41 +562,13 @@ fn achievement_card_widget<'a>(
     } else if let Some(ico) = &row.data.icon {
         let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
-        let is_rare = row.rarity_percent.is_some_and(|p| p < RARE_THRESHOLD);
         container(
             image(handle)
                 .width(Length::Fixed(ACH_CARD_ICON))
                 .height(Length::Fixed(ACH_CARD_ICON))
                 .opacity(opacity),
         )
-        .style(move |_theme| {
-            if is_rare {
-                let alpha = 0.55 + 0.45 * glow_pulse;
-                let blur = 14.0 + 14.0 * glow_pulse;
-                container::Style {
-                    shadow: iced::Shadow {
-                        color: Color { a: alpha, ..C_RARE },
-                        offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: blur,
-                    },
-                    border: iced::Border {
-                        color: C_RARE,
-                        width: 2.0,
-                        radius: 8.0.into(),
-                    },
-                    ..container::Style::default()
-                }
-            } else {
-                container::Style {
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: iced::Vector::new(1.5, 1.5),
-                        blur_radius: 3.0,
-                    },
-                    ..container::Style::default()
-                }
-            }
-        })
+        .style(move |_theme| icon_glow_style(tier, glow_pulse))
         .into()
     } else {
         let icon_bg = if effective {
@@ -702,6 +747,31 @@ fn achievement_card_widget<'a>(
         ..container::Style::default()
     });
 
+    let rarity_badge: Option<Element<'_, Message>> = if spoiler_hidden {
+        None
+    } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
+        let tc = tier_color(t);
+        let bg_alpha = match t {
+            RarityTier::Common | RarityTier::Uncommon => 0.15,
+            _ => 0.18,
+        };
+        let label = format!("{} \u{00B7} {:.1}%", t.label(), pct);
+        let rb = container(text(label).size(10).color(Color { a: 0.95, ..tc }))
+            .padding(Padding::default().left(7).right(7).top(3).bottom(3))
+            .style(move |_theme| container::Style {
+                background: Some(iced::Background::Color(Color { a: bg_alpha, ..tc })),
+                border: iced::Border {
+                    color: Color { a: 0.5, ..tc },
+                    width: 1.0,
+                    radius: 8.0.into(),
+                },
+                ..container::Style::default()
+            });
+        Some(rb.into())
+    } else {
+        None
+    };
+
     let bottom_row: Element<'_, Message> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
         let reveal_btn = button(text("Reveal").size(11).color(C_MUTED))
@@ -724,7 +794,14 @@ fn achievement_card_widget<'a>(
             .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     } else {
-        container(badge)
+        let mut right_group: iced::widget::Row<'_, Message> =
+            row![].spacing(6).align_y(Alignment::Center);
+        if let Some(rb) = rarity_badge {
+            right_group = right_group.push(rb);
+        }
+        right_group = right_group.push(badge);
+
+        container(right_group)
             .width(Length::Fill)
             .align_x(Alignment::End)
             .padding(Padding::default().right(8).bottom(8))

@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 pub use steamlens_core::{AchievementData, StatData, StatValue};
 
@@ -244,6 +245,61 @@ fn sort_for_display(rows: Vec<&AchievementRow>) -> Vec<&AchievementRow> {
     sorted
 }
 
+const LEGENDARY_TOP_N: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RarityTier {
+    Common,
+    Uncommon,
+    Rare,
+    Mythical,
+    Legendary,
+}
+
+impl RarityTier {
+    pub fn label(self) -> &'static str {
+        match self {
+            RarityTier::Common => "Common",
+            RarityTier::Uncommon => "Uncommon",
+            RarityTier::Rare => "Rare",
+            RarityTier::Mythical => "Mythical",
+            RarityTier::Legendary => "Legendary",
+        }
+    }
+
+    pub fn classify(percent: f32, is_legendary: bool) -> Self {
+        if is_legendary {
+            return Self::Legendary;
+        }
+        if percent < 25.0 {
+            Self::Mythical
+        } else if percent < 50.0 {
+            Self::Rare
+        } else if percent < 75.0 {
+            Self::Uncommon
+        } else {
+            Self::Common
+        }
+    }
+}
+
+pub fn top_3_legendary_ids(achievements: &[AchievementRow]) -> HashSet<String> {
+    let mut candidates: Vec<(&str, f32)> = achievements
+        .iter()
+        .filter_map(|r| r.rarity_percent.map(|p| (r.data.id.as_str(), p)))
+        .collect();
+    candidates.sort_by(|a, b| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(Ordering::Equal)
+            .then(a.0.cmp(b.0))
+    });
+    candidates
+        .into_iter()
+        .take(LEGENDARY_TOP_N)
+        .map(|(id, _)| id.to_owned())
+        .collect()
+}
+
 pub fn visible_achievement_ids<'a>(
     achievements: &'a [AchievementRow],
     filter: AchievementFilter,
@@ -273,4 +329,99 @@ pub fn visible_achievement_ids<'a>(
         .into_iter()
         .map(|row| row.data.id.as_str())
         .collect()
+}
+
+#[cfg(test)]
+mod rarity_tests {
+    use super::*;
+    use steamlens_core::AchievementData;
+
+    fn make_row(id: &str, rarity: Option<f32>) -> AchievementRow {
+        AchievementRow {
+            data: AchievementData {
+                id: id.to_owned(),
+                display_name: id.to_owned(),
+                description: String::new(),
+                is_achieved: false,
+                unlock_time: None,
+                is_hidden: false,
+                permission: 0,
+                icon: None,
+            },
+            is_dirty: false,
+            revealed: false,
+            appeared: false,
+            card_opacity: 0.0,
+            rarity_percent: rarity,
+        }
+    }
+
+    #[test]
+    fn top_3_legendary_returns_empty_when_no_data() {
+        let rows = vec![
+            make_row("a1", None),
+            make_row("a2", None),
+            make_row("a3", None),
+        ];
+        assert!(top_3_legendary_ids(&rows).is_empty());
+    }
+
+    #[test]
+    fn top_3_legendary_returns_all_when_fewer_than_3() {
+        let rows = vec![
+            make_row("a1", Some(2.0)),
+            make_row("a2", Some(7.5)),
+            make_row("a3", None),
+        ];
+        let ids = top_3_legendary_ids(&rows);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("a1"));
+        assert!(ids.contains("a2"));
+    }
+
+    #[test]
+    fn top_3_legendary_takes_lowest_3() {
+        let rows = vec![
+            make_row("a1", Some(0.5)),
+            make_row("a2", Some(1.2)),
+            make_row("a3", Some(3.0)),
+            make_row("a4", Some(5.5)),
+            make_row("a5", Some(8.1)),
+        ];
+        let ids = top_3_legendary_ids(&rows);
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains("a1"));
+        assert!(ids.contains("a2"));
+        assert!(ids.contains("a3"));
+        assert!(!ids.contains("a4"));
+        assert!(!ids.contains("a5"));
+    }
+
+    #[test]
+    fn top_3_legendary_picks_globally_lowest_regardless_of_threshold() {
+        let rows = vec![make_row("a1", Some(62.0)), make_row("a2", Some(80.0))];
+        let ids = top_3_legendary_ids(&rows);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("a1"));
+        assert!(ids.contains("a2"));
+    }
+
+    #[test]
+    fn classify_boundaries() {
+        assert_eq!(RarityTier::classify(100.0, false), RarityTier::Common);
+        assert_eq!(RarityTier::classify(75.0, false), RarityTier::Common);
+        assert_eq!(RarityTier::classify(74.9, false), RarityTier::Uncommon);
+        assert_eq!(RarityTier::classify(50.0, false), RarityTier::Uncommon);
+        assert_eq!(RarityTier::classify(49.9, false), RarityTier::Rare);
+        assert_eq!(RarityTier::classify(25.0, false), RarityTier::Rare);
+        assert_eq!(RarityTier::classify(24.9, false), RarityTier::Mythical);
+        assert_eq!(RarityTier::classify(0.0, false), RarityTier::Mythical);
+    }
+
+    #[test]
+    fn classify_legendary_priority_over_mythical() {
+        assert_eq!(RarityTier::classify(0.5, true), RarityTier::Legendary);
+        assert_eq!(RarityTier::classify(0.0, true), RarityTier::Legendary);
+        assert_eq!(RarityTier::classify(80.0, true), RarityTier::Legendary);
+    }
 }

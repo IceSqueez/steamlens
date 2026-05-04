@@ -9,7 +9,8 @@ use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
     AchievementFilter, AchievementRow, ActiveTab, Banner, BannerKind, BulkOp, ResetScope, StatRow,
-    build_apply_payload, dirty_count, has_stat_errors, visible_achievement_ids,
+    build_apply_payload, dirty_count, has_stat_errors, top_3_legendary_ids,
+    visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -607,12 +608,13 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
         iced::Subscription::none()
     };
 
-    let has_rare = state.phase == ManagerPhase::Ready
+    let legendary_ids = top_3_legendary_ids(&state.achievements);
+    let has_legendary = state.phase == ManagerPhase::Ready
         && state
             .achievements
             .iter()
-            .any(|r| r.appeared && r.rarity_percent.is_some_and(|p| p < 10.0));
-    let glow_sub = if has_rare {
+            .any(|r| r.appeared && legendary_ids.contains(&r.data.id));
+    let glow_sub = if has_legendary {
         time::every(std::time::Duration::from_millis(40))
             .map(|_| crate::Message::Manager(ManagerMessage::RareGlowTick))
     } else {
