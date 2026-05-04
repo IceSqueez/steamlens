@@ -325,15 +325,21 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
 }
 
 fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
-    let visible = visible_achievement_ids(&state.achievements, state.filter, &state.search_query);
+    let visible_ids =
+        visible_achievement_ids(&state.achievements, state.filter, &state.search_query);
 
-    let shown = visible.len();
+    let shown = visible_ids.len();
     let total = state.achievements.len();
 
-    let rows: Vec<Element<'_, Message>> = state
+    let by_id: std::collections::HashMap<&str, &AchievementRow> = state
         .achievements
         .iter()
-        .filter(|row| visible.contains(row.data.id.as_str()))
+        .map(|r| (r.data.id.as_str(), r))
+        .collect();
+
+    let rows: Vec<Element<'_, Message>> = visible_ids
+        .iter()
+        .filter_map(|id| by_id.get(id).copied())
         .map(achievement_row_widget)
         .collect();
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct AchievementIcon {
@@ -261,13 +261,38 @@ pub fn has_stat_errors(stats: &[StatRow]) -> bool {
     stats.iter().any(|r| r.edit_error.is_some())
 }
 
+fn display_group(row: &AchievementRow) -> u8 {
+    if row.effective_achieved() {
+        0
+    } else if !row.data.is_hidden || row.revealed {
+        1
+    } else {
+        2
+    }
+}
+
+fn sort_for_display(rows: Vec<&AchievementRow>) -> Vec<&AchievementRow> {
+    let mut sorted = rows;
+    sorted.sort_by(|a, b| {
+        let ga = display_group(a);
+        let gb = display_group(b);
+        ga.cmp(&gb).then_with(|| {
+            a.data
+                .display_name
+                .to_lowercase()
+                .cmp(&b.data.display_name.to_lowercase())
+        })
+    });
+    sorted
+}
+
 pub fn visible_achievement_ids<'a>(
     achievements: &'a [AchievementRow],
     filter: AchievementFilter,
     search: &str,
-) -> HashSet<&'a str> {
+) -> Vec<&'a str> {
     let query = search.to_lowercase();
-    achievements
+    let filtered: Vec<&AchievementRow> = achievements
         .iter()
         .filter(|row| {
             let effective = row.effective_achieved();
@@ -282,6 +307,9 @@ pub fn visible_achievement_ids<'a>(
                 || row.data.id.to_lowercase().contains(&query);
             filter_ok && search_ok
         })
+        .collect();
+    sort_for_display(filtered)
+        .into_iter()
         .map(|row| row.data.id.as_str())
         .collect()
 }

@@ -543,6 +543,122 @@ mod tests {
     }
 
     #[test]
+    fn sort_orders_unlocked_then_locked_then_hidden() {
+        use manager::types::{
+            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+        };
+
+        fn row(
+            id: &str,
+            name: &str,
+            is_achieved: bool,
+            is_hidden: bool,
+            revealed: bool,
+        ) -> AchievementRow {
+            let mut r = AchievementRow::from_data(AchievementData {
+                id: id.to_owned(),
+                display_name: name.to_owned(),
+                description: String::new(),
+                is_hidden,
+                is_achieved,
+                unlock_time: None,
+                permission: 0,
+                icon: None,
+            });
+            r.revealed = revealed;
+            r
+        }
+
+        let achievements = vec![
+            row("A", "Alpha", true, false, false),
+            row("B", "Beta", false, false, false),
+            row("C", "Gamma", false, true, false),
+            row("D", "Delta", false, true, true),
+            row("E", "Epsilon", true, true, false),
+        ];
+
+        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+
+        assert_eq!(ids.len(), 5);
+        assert_eq!(ids[0], "A", "A (unlocked) first");
+        assert_eq!(ids[1], "E", "E (hidden+achieved = unlocked) second");
+        assert_eq!(ids[2], "B", "B (locked) before D (revealed)");
+        assert_eq!(ids[3], "D", "D (revealed hidden = locked group)");
+        assert_eq!(ids[4], "C", "C (hidden unrevealed) last");
+    }
+
+    #[test]
+    fn dirty_unlock_jumps_to_unlocked_group() {
+        use manager::types::{
+            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+        };
+
+        let mut zebra = AchievementRow::from_data(AchievementData {
+            id: "ZEBRA".to_owned(),
+            display_name: "Zebra".to_owned(),
+            description: String::new(),
+            is_hidden: false,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+            icon: None,
+        });
+        zebra.is_dirty = true;
+
+        let ant = AchievementRow::from_data(AchievementData {
+            id: "ANT".to_owned(),
+            display_name: "Ant".to_owned(),
+            description: String::new(),
+            is_hidden: false,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+            icon: None,
+        });
+
+        let achievements = vec![zebra, ant];
+        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+
+        assert_eq!(
+            ids[0], "ZEBRA",
+            "dirty-unlocked Zebra must appear in Unlocked group (before locked Ant)"
+        );
+        assert_eq!(ids[1], "ANT", "Ant stays in Locked group");
+    }
+
+    #[test]
+    fn case_insensitive_sort() {
+        use manager::types::{
+            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+        };
+
+        fn unlocked_row(id: &str, name: &str) -> AchievementRow {
+            AchievementRow::from_data(AchievementData {
+                id: id.to_owned(),
+                display_name: name.to_owned(),
+                description: String::new(),
+                is_hidden: false,
+                is_achieved: true,
+                unlock_time: None,
+                permission: 0,
+                icon: None,
+            })
+        }
+
+        let achievements = vec![
+            unlocked_row("C", "cherry"),
+            unlocked_row("B", "Banana"),
+            unlocked_row("A", "apple"),
+        ];
+
+        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+
+        assert_eq!(ids[0], "A", "apple first (case-insensitive)");
+        assert_eq!(ids[1], "B", "Banana second");
+        assert_eq!(ids[2], "C", "cherry third");
+    }
+
+    #[test]
     fn apply_then_reload_preserves_revealed_state() {
         use manager::handle_steam_reply;
         use manager::types::{AchievementData, AchievementRow};
