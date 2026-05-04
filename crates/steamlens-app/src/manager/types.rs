@@ -263,7 +263,7 @@ pub fn has_stat_errors(stats: &[StatRow]) -> bool {
 }
 
 fn display_group(row: &AchievementRow) -> u8 {
-    if row.effective_achieved() {
+    if row.data.is_achieved {
         0
     } else if !row.data.is_hidden || row.revealed {
         1

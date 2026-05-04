@@ -611,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn dirty_unlock_jumps_to_unlocked_group() {
+    fn dirty_unlock_does_not_change_group_until_apply() {
         use manager::types::{
             AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
         };
@@ -643,10 +643,13 @@ mod tests {
         let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
 
         assert_eq!(
-            ids[0], "ZEBRA",
-            "dirty-unlocked Zebra must appear in Unlocked group (before locked Ant)"
+            ids[0], "ANT",
+            "Ant comes first alphabetically — both rows are in the Locked group until Apply persists the change"
         );
-        assert_eq!(ids[1], "ANT", "Ant stays in Locked group");
+        assert_eq!(
+            ids[1], "ZEBRA",
+            "Zebra stays in Locked group despite dirty=true; sort uses persisted is_achieved only"
+        );
     }
 
     #[test]
