@@ -7,7 +7,7 @@ use iced::widget::image::Handle as ImageHandle;
 use crate::capsule_cache::{self, CapsuleSize};
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
-use types::{CapsuleState, GameEntry, LibraryMessage, LibraryPhase, LibraryState};
+use types::{CapsuleState, FADE_DELTA, GameEntry, LibraryMessage, LibraryPhase, LibraryState};
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 8;
 
@@ -80,7 +80,19 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
                     handle,
                     width,
                     height,
+                    opacity: 0.0,
                 };
+            }
+            Task::none()
+        }
+
+        LibraryMessage::FadeTick => {
+            for entry in &mut state.games {
+                if let CapsuleState::Loaded { opacity, .. } = &mut entry.capsule
+                    && *opacity < 1.0
+                {
+                    *opacity = (*opacity + FADE_DELTA).min(1.0);
+                }
             }
             Task::none()
         }

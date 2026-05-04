@@ -3,6 +3,8 @@ use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
 
+pub(crate) const FADE_DELTA: f32 = 0.107;
+
 #[derive(Clone)]
 pub struct GameEntry {
     pub summary: GameSummary,
@@ -25,6 +27,7 @@ pub enum CapsuleState {
         handle: ImageHandle,
         width: u32,
         height: u32,
+        opacity: f32,
     },
     Unavailable,
 }
@@ -33,8 +36,13 @@ impl std::fmt::Debug for CapsuleState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CapsuleState::Pending => write!(f, "Pending"),
-            CapsuleState::Loaded { width, height, .. } => {
-                write!(f, "Loaded({width}x{height})")
+            CapsuleState::Loaded {
+                width,
+                height,
+                opacity,
+                ..
+            } => {
+                write!(f, "Loaded({width}x{height}, opacity={opacity:.2})")
             }
             CapsuleState::Unavailable => write!(f, "Unavailable"),
         }
@@ -78,6 +86,7 @@ pub enum LibraryMessage {
     ManualAppIdChanged(String),
     ManualAppIdSubmitted,
     RescanRequested,
+    FadeTick,
 }
 
 impl std::fmt::Debug for LibraryMessage {
@@ -104,6 +113,7 @@ impl std::fmt::Debug for LibraryMessage {
             LibraryMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
             LibraryMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
             LibraryMessage::RescanRequested => write!(f, "RescanRequested"),
+            LibraryMessage::FadeTick => write!(f, "FadeTick"),
         }
     }
 }
@@ -147,6 +157,12 @@ impl LibraryState {
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
         }
+    }
+
+    pub fn has_fading_capsules(&self) -> bool {
+        self.games
+            .iter()
+            .any(|g| matches!(g.capsule, CapsuleState::Loaded { opacity, .. } if opacity < 1.0))
     }
 
     pub fn visible_games(&self) -> Vec<&GameEntry> {
@@ -298,5 +314,45 @@ mod tests {
     fn capsule_size_default_is_medium() {
         let state = LibraryState::new();
         assert_eq!(state.capsule_size, CapsuleSize::Medium);
+    }
+
+    #[test]
+    fn fade_tick_advances_opacity_until_one() {
+        use iced::widget::image::Handle as ImageHandle;
+
+        let dummy_handle = ImageHandle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
+        let mut state = make_state_with_games(vec![GameEntry {
+            summary: make_summary(1, "TestGame", None),
+            capsule: CapsuleState::Loaded {
+                handle: dummy_handle,
+                width: 1,
+                height: 1,
+                opacity: 0.0,
+            },
+        }]);
+
+        assert!(state.has_fading_capsules(), "precondition: opacity < 1.0");
+
+        for _ in 0..10 {
+            for entry in &mut state.games {
+                if let CapsuleState::Loaded { opacity, .. } = &mut entry.capsule {
+                    *opacity = (*opacity + super::FADE_DELTA).min(1.0);
+                }
+            }
+        }
+
+        if let CapsuleState::Loaded { opacity, .. } = &state.games[0].capsule {
+            assert_eq!(
+                *opacity, 1.0,
+                "opacity must be clamped to 1.0 after 10 ticks"
+            );
+        } else {
+            panic!("expected Loaded capsule");
+        }
+
+        assert!(
+            !state.has_fading_capsules(),
+            "has_fading_capsules must return false when all opacity == 1.0"
+        );
     }
 }

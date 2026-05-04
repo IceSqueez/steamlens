@@ -180,10 +180,13 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
     let card_w = card_width(capsule_size);
 
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
-        CapsuleState::Loaded { handle, .. } => container(
+        CapsuleState::Loaded {
+            handle, opacity, ..
+        } => container(
             img_widget(handle.clone())
                 .width(Length::Fixed(capsule_w))
-                .height(Length::Fixed(capsule_h)),
+                .height(Length::Fixed(capsule_h))
+                .opacity(*opacity),
         )
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h))

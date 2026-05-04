@@ -326,7 +326,18 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    Subscription::batch([keyboard_sub, poll_sub, manager_sub])
+    let fade_sub = if let Screen::Library(state) = &app.screen {
+        if state.has_fading_capsules() {
+            iced::time::every(std::time::Duration::from_millis(16))
+                .map(|_| Message::Library(LibraryMessage::FadeTick))
+        } else {
+            Subscription::none()
+        }
+    } else {
+        Subscription::none()
+    };
+
+    Subscription::batch([keyboard_sub, poll_sub, manager_sub, fade_sub])
 }
 
 fn theme(_app: &App) -> iced::Theme {

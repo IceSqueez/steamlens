@@ -163,8 +163,7 @@ pub async fn fetch_capsule(
                     continue;
                 }
                 if !response.status().is_success() {
-                    last_err =
-                        CapsuleError::Http(format!("HTTP {}", response.status().as_u16()));
+                    last_err = CapsuleError::Http(format!("HTTP {}", response.status().as_u16()));
                     continue;
                 }
                 match response.bytes().await {
