@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, column, container, image, mouse_area, opaque, pick_list, row, scrollable, space, stack,
-    text, text_input,
+    button, column, container, image, mouse_area, opaque, pick_list, responsive, row, scrollable,
+    slider, space, stack, text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -287,6 +287,10 @@ fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
+const ACH_CARD_GAP: f32 = 10.0;
+const ACH_CARD_MIN: f32 = 140.0;
+const ACH_CARD_MAX: f32 = 240.0;
+
 fn filter_row(state: &ManagerState) -> Element<'_, Message> {
     let search = text_input("Search achievements...", &state.search_query)
         .on_input(|s| msg(ManagerMessage::SearchChanged(s)))
@@ -310,10 +314,25 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
         .on_press(msg(ManagerMessage::BulkAction(BulkOp::Invert)))
         .padding(Padding::from([6u16, 10]));
 
-    let r = row![search, filter_pick, bulk_unlock, bulk_lock, bulk_invert]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::from([8u16, 16]));
+    let card_w = state.achievement_card_width;
+    let width_slider = slider(ACH_CARD_MIN..=ACH_CARD_MAX, card_w, |v| {
+        msg(ManagerMessage::AchievementCardWidthChanged(v))
+    })
+    .width(Length::Fixed(80.0));
+    let slider_label = text(format!("{}px", card_w as u32)).size(12).color(C_MUTED);
+
+    let r = row![
+        search,
+        filter_pick,
+        bulk_unlock,
+        bulk_lock,
+        bulk_invert,
+        width_slider,
+        slider_label,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .padding(Padding::from([8u16, 16]));
 
     container(r)
         .width(Length::Fill)
@@ -337,10 +356,9 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         .map(|r| (r.data.id.as_str(), r))
         .collect();
 
-    let rows: Vec<Element<'_, Message>> = visible_ids
+    let cards: Vec<&AchievementRow> = visible_ids
         .iter()
         .filter_map(|id| by_id.get(id).copied())
-        .map(achievement_row_widget)
         .collect();
 
     let count_str = if shown < total {
@@ -349,99 +367,78 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         format!("{total} achievements")
     };
 
-    let list_col = column(rows)
-        .push(container(text(count_str).size(12).color(C_MUTED)).padding(Padding::from([4u16, 16])))
-        .spacing(0);
+    let card_w = state.achievement_card_width;
 
-    scrollable(list_col).height(Length::Fill).into()
+    let grid = responsive(move |size| {
+        let available = size.width.max(card_w + ACH_CARD_GAP);
+        let cols = ((available + ACH_CARD_GAP) / (card_w + ACH_CARD_GAP))
+            .floor()
+            .max(1.0) as usize;
+
+        let mut rows_col: iced::widget::Column<'_, Message> = column![]
+            .spacing(ACH_CARD_GAP as u32)
+            .padding(Padding::default().left(16).right(16).top(8).bottom(4));
+
+        for chunk in cards.chunks(cols) {
+            let mut r: iced::widget::Row<'_, Message> = row![]
+                .spacing(ACH_CARD_GAP as u32)
+                .align_y(Alignment::Start);
+            for entry in chunk {
+                r = r.push(achievement_card_widget(entry, card_w));
+            }
+            let needed = cols - chunk.len();
+            for _ in 0..needed {
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
+            }
+            rows_col = rows_col.push(r);
+        }
+
+        let footer_note = container(text(count_str.clone()).size(12).color(C_MUTED))
+            .padding(Padding::from([4u16, 0]));
+        rows_col = rows_col.push(footer_note);
+
+        scrollable(rows_col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    });
+
+    container(grid)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
-fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
+fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
     let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
 
-    let (status_text, status_color) = if is_protected {
-        ("\u{2298} Protected", C_ORANGE)
-    } else if spoiler_hidden {
-        ("\u{25CC} Hidden", C_MUTED)
-    } else if effective {
-        ("\u{2713} Unlocked", C_GREEN)
-    } else {
-        ("\u{25CB} Locked", C_MUTED)
-    };
+    let icon_size = 80.0f32;
 
-    let display_name = if spoiler_hidden {
-        "Hidden Achievement".to_owned()
-    } else {
-        row.data.display_name.clone()
-    };
-    let description = if spoiler_hidden {
-        "??? Unlock to reveal — or click Reveal to spoil.".to_owned()
-    } else {
-        row.data.description.clone()
-    };
-
-    let dirty_dot: Element<'_, Message> = if row.is_dirty {
-        text(" *").size(13).color(C_YELLOW).into()
-    } else {
-        space().width(12).into()
-    };
-
-    let reveal_btn: Option<Element<'_, Message>> = if spoiler_hidden {
-        let btn = button(text("Reveal").size(11).color(C_MUTED))
-            .on_press(msg(ManagerMessage::RevealHidden(row.data.id.clone())))
-            .padding(Padding::from([2u16, 8]))
-            .style(|_t, _s| button::Style {
-                background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
-                border: iced::Border {
-                    color: Color { a: 0.3, ..C_MUTED },
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                text_color: C_MUTED,
-                ..button::Style::default()
-            });
-        Some(btn.into())
-    } else {
-        None
-    };
-
-    let mut name_row_items: Vec<Element<'_, Message>> = vec![
-        text(display_name).size(14).color(C_FG).into(),
-        dirty_dot,
-        space().width(Length::Fill).into(),
-    ];
-    if let Some(rb) = reveal_btn {
-        name_row_items.push(rb);
-        name_row_items.push(space().width(8).into());
-    }
-    name_row_items.push(text(status_text).size(12).color(status_color).into());
-
-    let name_row = iced::widget::Row::from_vec(name_row_items).align_y(Alignment::Center);
-
-    let mut inner = column![name_row].spacing(4);
-
-    if !description.is_empty() {
-        inner = inner.push(text(description).size(13).color(C_MUTED));
-    }
-
-    if let Some(ts) = row.data.unlock_time
-        && effective
-    {
-        inner = inner.push(
-            text(format!("Unlocked: {}", format_unix_time(ts)))
-                .size(12)
-                .color(C_MUTED),
-        );
-    }
-
-    let icon_el: Element<'_, Message> = if let Some(ico) = &row.data.icon {
+    let icon_el: Element<'_, Message> = if spoiler_hidden {
+        container(text("\u{2754}").size(28).color(Color { a: 0.5, ..C_MUTED }))
+            .width(Length::Fixed(icon_size))
+            .height(Length::Fixed(icon_size))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(|_theme| container::Style {
+                background: Some(iced::Background::Color(Color {
+                    r: C_CURRENT_LINE.r * 0.7,
+                    g: C_CURRENT_LINE.g * 0.7,
+                    b: C_CURRENT_LINE.b * 0.7,
+                    a: 1.0,
+                })),
+                border: dracula_border_radius(6.0),
+                ..container::Style::default()
+            })
+            .into()
+    } else if let Some(ico) = &row.data.icon {
         let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
         image(handle)
-            .width(Length::Fixed(48.0))
-            .height(Length::Fixed(48.0))
+            .width(Length::Fixed(icon_size))
+            .height(Length::Fixed(icon_size))
             .opacity(opacity)
             .into()
     } else {
@@ -457,33 +454,142 @@ fn achievement_row_widget(row: &AchievementRow) -> Element<'_, Message> {
         };
         container(
             text(if effective { "\u{2713}" } else { "\u{25CB}" })
-                .size(18)
+                .size(24)
                 .color(if effective { C_GREEN } else { C_MUTED }),
         )
-        .width(Length::Fixed(48.0))
-        .height(Length::Fixed(48.0))
+        .width(Length::Fixed(icon_size))
+        .height(Length::Fixed(icon_size))
         .align_x(Alignment::Center)
         .align_y(Alignment::Center)
         .style(move |_theme| container::Style {
             background: Some(iced::Background::Color(icon_bg)),
-            border: dracula_border_radius(4.0),
+            border: dracula_border_radius(6.0),
             ..container::Style::default()
         })
         .into()
     };
 
-    let text_padded: Element<'_, Message> =
-        container(inner).padding(Padding::default().left(16)).into();
+    let icon_area = container(icon_el)
+        .width(Length::Fill)
+        .align_x(Alignment::Center)
+        .padding(Padding::from([8u16, 0]));
 
-    let content = row![icon_el, text_padded]
-        .align_y(Alignment::Start)
-        .padding(Padding::from([8u16, 16]));
+    let display_name = if spoiler_hidden {
+        "Hidden Achievement".to_owned()
+    } else {
+        row.data.display_name.clone()
+    };
 
-    let row_container = container(content).width(Length::Fill);
+    let name_color = if row.is_dirty { C_YELLOW } else { C_FG };
+    let name_label = text(display_name).size(13).color(name_color);
 
-    mouse_area(row_container)
-        .on_press(msg(ManagerMessage::AchievementToggled(row.data.id.clone())))
-        .into()
+    let description = if spoiler_hidden {
+        String::new()
+    } else {
+        row.data.description.clone()
+    };
+
+    let desc_el: Option<Element<'_, Message>> = if !description.is_empty() {
+        Some(text(description).size(11).color(C_MUTED).into())
+    } else {
+        None
+    };
+
+    let (badge_text, badge_color) = if is_protected {
+        ("Protected", C_ORANGE)
+    } else if spoiler_hidden {
+        ("Hidden", C_MUTED)
+    } else if row.is_dirty {
+        ("Pending", C_YELLOW)
+    } else if effective {
+        ("Unlocked", C_GREEN)
+    } else {
+        ("Locked", C_MUTED)
+    };
+
+    let badge = container(text(badge_text).size(10).color(Color {
+        a: 0.9,
+        ..badge_color
+    }))
+    .padding(Padding::default().left(6).right(6).top(2).bottom(2))
+    .style(move |_theme| container::Style {
+        background: Some(iced::Background::Color(Color {
+            a: 0.15,
+            ..badge_color
+        })),
+        border: iced::Border {
+            color: Color {
+                a: 0.4,
+                ..badge_color
+            },
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..container::Style::default()
+    });
+
+    let badge_row = container(badge)
+        .width(Length::Fill)
+        .align_x(Alignment::End)
+        .padding(Padding::default().right(4).bottom(4));
+
+    let mut text_col = column![name_label].spacing(3);
+    if let Some(d) = desc_el {
+        text_col = text_col.push(d);
+    }
+
+    let text_area = container(text_col)
+        .width(Length::Fill)
+        .padding(Padding::default().left(6).right(6).bottom(4));
+
+    let card_body = column![icon_area, text_area, badge_row].spacing(0);
+
+    let card_container = container(card_body)
+        .width(Length::Fixed(card_w))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_CURRENT_LINE)),
+            border: iced::Border {
+                radius: 8.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        });
+
+    if spoiler_hidden {
+        let reveal_id = row.data.id.clone();
+        let toggle_id = row.data.id.clone();
+
+        let reveal_btn = button(text("Reveal").size(11).color(C_MUTED))
+            .on_press(msg(ManagerMessage::RevealHidden(reveal_id)))
+            .padding(Padding::from([4u16, 12]))
+            .style(|_t, _s| button::Style {
+                background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
+                border: iced::Border {
+                    color: Color { a: 0.3, ..C_MUTED },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: C_MUTED,
+                ..button::Style::default()
+            });
+
+        let reveal_area = container(reveal_btn)
+            .width(Length::Fill)
+            .align_x(Alignment::Center)
+            .padding(Padding::from([4u16, 0]));
+
+        let card_with_reveal =
+            container(column![card_container, reveal_area].spacing(4)).width(Length::Fixed(card_w));
+
+        mouse_area(card_with_reveal)
+            .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+            .into()
+    } else {
+        let toggle_id = row.data.id.clone();
+        mouse_area(card_container)
+            .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+            .into()
+    }
 }
 
 fn stats_tab(state: &ManagerState) -> Element<'_, Message> {
@@ -935,18 +1041,4 @@ fn spinner_frame(angle: f32) -> &'static str {
     let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
     let idx = ((angle / 90.0) as usize) % frames.len();
     frames[idx]
-}
-
-fn format_unix_time(ts: u32) -> String {
-    let secs = ts as u64;
-    let days = secs / 86400;
-    let epoch_days_2000 = 10957u64;
-    let d = days.saturating_sub(epoch_days_2000);
-    let year = 2000 + d / 365;
-    let remaining = d % 365;
-    let month = remaining / 30 + 1;
-    let day = remaining % 30 + 1;
-    let h = (secs % 86400) / 3600;
-    let m = (secs % 3600) / 60;
-    format!("{year:04}-{month:02}-{day:02} {h:02}:{m:02}")
 }

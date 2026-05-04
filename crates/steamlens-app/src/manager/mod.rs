@@ -43,6 +43,7 @@ pub enum ManagerMessage {
     RevealHidden(String),
     SpinnerTick,
     FadeInTick(f32),
+    AchievementCardWidthChanged(f32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,6 +79,8 @@ pub struct ManagerState {
     pub fade_in: f32,
 
     pub error_message: String,
+
+    pub achievement_card_width: f32,
 }
 
 impl ManagerState {
@@ -98,6 +101,7 @@ impl ManagerState {
             spinner_angle: 0.0,
             fade_in: 0.0,
             error_message: String::new(),
+            achievement_card_width: 180.0,
         }
     }
 
@@ -484,6 +488,10 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::FadeInTick(_) => Task::none(),
+        ManagerMessage::AchievementCardWidthChanged(w) => {
+            state.achievement_card_width = w.clamp(140.0, 240.0);
+            Task::none()
+        }
     }
 }
 

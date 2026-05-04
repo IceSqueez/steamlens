@@ -14,6 +14,7 @@ pub struct AchievementData {
     pub description: String,
     pub is_hidden: bool,
     pub is_achieved: bool,
+    #[allow(dead_code)]
     pub unlock_time: Option<u32>,
     pub permission: u32,
     pub icon: Option<AchievementIcon>,
