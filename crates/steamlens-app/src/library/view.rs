@@ -170,7 +170,10 @@ fn build_grid<'a>(
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
 
-    let entries: Vec<&'a GameEntry> = visible;
+    let entries: Vec<(&'a GameEntry, bool)> = visible
+        .into_iter()
+        .map(|e| (e, state.is_locked_out(e.summary.app_id)))
+        .collect();
 
     let grid = responsive(move |size| {
         let available = size.width.max(card_w + CARD_GAP);
@@ -184,8 +187,8 @@ fn build_grid<'a>(
 
         for chunk in entries.chunks(cols) {
             let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
-            for entry in chunk {
-                r = r.push(build_card(entry, capsule_size));
+            for (entry, locked_out) in chunk {
+                r = r.push(build_card(entry, capsule_size, *locked_out));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
@@ -206,34 +209,52 @@ fn build_grid<'a>(
         .into()
 }
 
-fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate::Message> {
+fn dim(c: Color, factor: f32) -> Color {
+    Color {
+        r: c.r * factor,
+        g: c.g * factor,
+        b: c.b * factor,
+        a: c.a,
+    }
+}
+
+fn build_card(
+    entry: &GameEntry,
+    capsule_size: CapsuleSize,
+    locked_out: bool,
+) -> Element<'_, crate::Message> {
     let app_id = entry.summary.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
     let card_w = card_width(capsule_size);
 
+    const DIM: f32 = 0.35;
+
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
         CapsuleState::Loaded {
             handle, opacity, ..
-        } => container(
+        } => {
+            let effective_opacity = if locked_out { *opacity * DIM } else { *opacity };
             container(
-                img_widget(handle.clone())
-                    .width(Length::Fixed(capsule_w))
-                    .height(Length::Fixed(capsule_h))
-                    .opacity(*opacity),
+                container(
+                    img_widget(handle.clone())
+                        .width(Length::Fixed(capsule_w))
+                        .height(Length::Fixed(capsule_h))
+                        .opacity(effective_opacity),
+                )
+                .style(|_: &iced::Theme| container::Style {
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(2.0, 2.0),
+                        blur_radius: 4.0,
+                    },
+                    ..container::Style::default()
+                }),
             )
-            .style(|_: &iced::Theme| container::Style {
-                shadow: iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                    offset: iced::Vector::new(2.0, 2.0),
-                    blur_radius: 4.0,
-                },
-                ..container::Style::default()
-            }),
-        )
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(capsule_h))
-        .align_x(Alignment::Center)
-        .into(),
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .align_x(Alignment::Center)
+            .into()
+        }
 
         CapsuleState::Pending => container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
@@ -264,10 +285,12 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
             .into(),
     };
 
+    let text_color = if locked_out { dim(C_TEXT, DIM) } else { C_TEXT };
+
     let name_label = container(
         text(entry.summary.name.as_str())
             .size(12)
-            .color(C_TEXT)
+            .color(text_color)
             .wrapping(text::Wrapping::Word)
             .line_height(text::LineHeight::Relative(1.2)),
     )
@@ -296,53 +319,64 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
         .height(Length::Fixed(total_card_h))
         .padding(Padding::default().top(8));
 
-    button(card)
-        .on_press(crate::Message::Library(LibraryMessage::GameSelected(
+    let mut btn = button(card).padding(0);
+
+    if !locked_out {
+        btn = btn.on_press(crate::Message::Library(LibraryMessage::GameSelected(
             app_id,
-        )))
-        .padding(0)
-        .style(|_: &iced::Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            let bg = if hovered {
-                Color {
-                    r: (C_SURFACE.r * 1.18).min(1.0),
-                    g: (C_SURFACE.g * 1.18).min(1.0),
-                    b: (C_SURFACE.b * 1.18).min(1.0),
-                    a: 1.0,
-                }
-            } else {
-                C_SURFACE
-            };
-            let border = iced::Border {
-                color: if hovered {
-                    C_ACCENT
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: if hovered { 2.0 } else { 0.0 },
-                radius: 6.0.into(),
-            };
-            let shadow = if hovered {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
-                    offset: iced::Vector::new(0.0, 8.0),
-                    blur_radius: 18.0,
-                }
-            } else {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                    offset: iced::Vector::new(0.0, 4.0),
-                    blur_radius: 10.0,
-                }
-            };
-            button::Style {
-                background: Some(iced::Background::Color(bg)),
-                border,
-                shadow,
-                ..button::Style::default()
+        )));
+    }
+
+    btn.style(move |_: &iced::Theme, status| {
+        let is_disabled = matches!(status, button::Status::Disabled);
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+        let surface = if is_disabled {
+            dim(C_SURFACE, DIM)
+        } else {
+            C_SURFACE
+        };
+        let bg = if hovered && !is_disabled {
+            Color {
+                r: (C_SURFACE.r * 1.18).min(1.0),
+                g: (C_SURFACE.g * 1.18).min(1.0),
+                b: (C_SURFACE.b * 1.18).min(1.0),
+                a: 1.0,
             }
-        })
-        .into()
+        } else {
+            surface
+        };
+
+        let border = iced::Border {
+            color: if hovered && !is_disabled {
+                C_ACCENT
+            } else {
+                Color::TRANSPARENT
+            },
+            width: if hovered && !is_disabled { 2.0 } else { 0.0 },
+            radius: 6.0.into(),
+        };
+        let shadow = if hovered && !is_disabled {
+            iced::Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                offset: iced::Vector::new(0.0, 8.0),
+                blur_radius: 18.0,
+            }
+        } else {
+            iced::Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, if is_disabled { 0.15 } else { 0.45 }),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 10.0,
+            }
+        };
+        button::Style {
+            background: Some(iced::Background::Color(bg)),
+            border,
+            shadow,
+            ..button::Style::default()
+        }
+    })
+    .into()
 }
 
 fn build_footer(state: &LibraryState) -> Element<'_, crate::Message> {

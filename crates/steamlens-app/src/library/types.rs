@@ -142,6 +142,7 @@ pub struct LibraryState {
     pub manual_app_id_input: String,
     pub has_opened_a_game: bool,
     pub spinner_angle: f32,
+    pub locked_app_id: Option<u32>,
 }
 
 impl std::fmt::Debug for LibraryState {
@@ -167,7 +168,12 @@ impl LibraryState {
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
             spinner_angle: 0.0,
+            locked_app_id: None,
         }
+    }
+
+    pub fn is_locked_out(&self, app_id: u32) -> bool {
+        self.locked_app_id.is_some_and(|locked| locked != app_id)
     }
 
     pub fn is_streaming(&self) -> bool {
@@ -263,6 +269,7 @@ mod tests {
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
             spinner_angle: 0.0,
+            locked_app_id: None,
         }
     }
 
@@ -406,6 +413,7 @@ mod tests {
             manual_app_id_input: String::new(),
             has_opened_a_game: false,
             spinner_angle: 0.0,
+            locked_app_id: None,
         };
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
@@ -434,6 +442,35 @@ mod tests {
         assert!(
             !state.has_pending_reveals(),
             "has_pending_reveals must be false when queue is empty"
+        );
+    }
+
+    #[test]
+    fn library_locked_out_returns_true_for_other_apps() {
+        let mut state = make_state_with_games(vec![]);
+        state.locked_app_id = Some(105600);
+
+        assert!(
+            state.is_locked_out(761890),
+            "different app_id must be locked out"
+        );
+        assert!(
+            state.is_locked_out(0),
+            "app_id 0 must be locked out when lock is set"
+        );
+        assert!(
+            !state.is_locked_out(105600),
+            "the locked app itself must NOT be locked out (still clickable)"
+        );
+
+        state.locked_app_id = None;
+        assert!(
+            !state.is_locked_out(105600),
+            "no lock set: nothing should be locked out"
+        );
+        assert!(
+            !state.is_locked_out(761890),
+            "no lock set: nothing should be locked out"
         );
     }
 
