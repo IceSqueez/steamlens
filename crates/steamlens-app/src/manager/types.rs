@@ -123,6 +123,7 @@ pub enum AchievementFilter {
     All,
     Unlocked,
     Locked,
+    Hidden,
 }
 
 impl AchievementFilter {
@@ -131,6 +132,7 @@ impl AchievementFilter {
             AchievementFilter::All => "All",
             AchievementFilter::Unlocked => "Unlocked",
             AchievementFilter::Locked => "Locked",
+            AchievementFilter::Hidden => "Hidden",
         }
     }
 
@@ -138,6 +140,7 @@ impl AchievementFilter {
         AchievementFilter::All,
         AchievementFilter::Unlocked,
         AchievementFilter::Locked,
+        AchievementFilter::Hidden,
     ];
 }
 
@@ -502,7 +505,8 @@ pub fn visible_achievement_ids<'a>(
             let filter_ok = match filter {
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
-                AchievementFilter::Locked => !row.data.is_achieved,
+                AchievementFilter::Locked => !row.data.is_achieved && !row.is_spoiler_hidden(),
+                AchievementFilter::Hidden => row.is_spoiler_hidden(),
             };
             let search_ok = query.is_empty()
                 || row.data.display_name.to_lowercase().contains(&query)
@@ -510,10 +514,16 @@ pub fn visible_achievement_ids<'a>(
                 || row.data.id.to_lowercase().contains(&query);
             let rarity_ok = match rarity_filter {
                 RarityFilter::All => true,
-                specific => match tier_map.get(&row.data.id).copied() {
-                    Some(tier) => tier == rarity_filter_to_tier(specific),
-                    None => false,
-                },
+                specific => {
+                    if row.is_spoiler_hidden() {
+                        false
+                    } else {
+                        match tier_map.get(&row.data.id).copied() {
+                            Some(tier) => tier == rarity_filter_to_tier(specific),
+                            None => false,
+                        }
+                    }
+                }
             };
             filter_ok && search_ok && rarity_ok
         })
@@ -848,8 +858,203 @@ mod rarity_tests {
         );
     }
 
+    fn make_hidden_row(
+        id: &str,
+        is_achieved: bool,
+        revealed: bool,
+        rarity: Option<f32>,
+    ) -> AchievementRow {
+        AchievementRow {
+            data: AchievementData {
+                id: id.to_owned(),
+                display_name: id.to_owned(),
+                description: String::new(),
+                is_achieved,
+                unlock_time: None,
+                is_hidden: true,
+                permission: 0,
+                icon: None,
+            },
+            is_dirty: false,
+            revealed,
+            appeared: true,
+            card_opacity: 1.0,
+            rarity_percent: rarity,
+        }
+    }
+
+    #[test]
+    fn filter_locked_excludes_spoiler_hidden() {
+        let rows = vec![
+            make_appeared("regular_locked", None),
+            make_hidden_row("spoiler", false, false, None),
+            make_hidden_row("revealed_hidden", false, true, None),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Locked,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"regular_locked"),
+            "regular locked row must appear under Locked filter"
+        );
+        assert!(
+            ids.contains(&"revealed_hidden"),
+            "revealed hidden (no longer spoiler) must appear under Locked filter"
+        );
+        assert!(
+            !ids.contains(&"spoiler"),
+            "spoiler-hidden row must be excluded from Locked filter"
+        );
+    }
+
+    #[test]
+    fn filter_unlocked_includes_earned_hidden() {
+        let rows = vec![make_hidden_row("earned_secret", true, false, None)];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Unlocked,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"earned_secret"),
+            "earned hidden achievement (is_achieved=true) must be visible under Unlocked"
+        );
+    }
+
+    #[test]
+    fn filter_hidden_shows_only_spoilers() {
+        let rows = vec![
+            make_appeared("regular_locked", None),
+            make_appeared("regular_unlocked", None),
+            make_hidden_row("spoiler", false, false, None),
+            make_hidden_row("earned_secret", true, false, None),
+        ];
+        let mut rows_with_unlocked = rows;
+        rows_with_unlocked[1].data.is_achieved = true;
+
+        let ids = visible_achievement_ids(
+            &rows_with_unlocked,
+            AchievementFilter::Hidden,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert_eq!(
+            ids.len(),
+            1,
+            "only spoiler row must appear under Hidden filter"
+        );
+        assert!(ids.contains(&"spoiler"));
+    }
+
+    #[test]
+    fn filter_hidden_excludes_revealed_secret() {
+        let rows = vec![make_hidden_row("revealed", false, true, None)];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Hidden,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.is_empty(),
+            "revealed hidden achievement is no longer a spoiler — must not appear under Hidden"
+        );
+    }
+
+    #[test]
+    fn filter_all_includes_spoiler() {
+        let rows = vec![
+            make_appeared("regular", None),
+            make_hidden_row("spoiler", false, false, None),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"spoiler"),
+            "All filter must include spoiler-hidden rows"
+        );
+    }
+
+    #[test]
+    fn rarity_filter_legendary_excludes_spoiler() {
+        let rows = vec![
+            make_appeared("a0", Some(1.0)),
+            make_appeared("a1", Some(2.0)),
+            make_appeared("a2", Some(3.0)),
+            make_hidden_row("hidden_legendary", false, false, Some(0.5)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            RarityFilter::Legendary,
+        );
+        assert!(
+            !ids.contains(&"hidden_legendary"),
+            "spoiler-hidden achievement must be excluded from Legendary rarity filter"
+        );
+    }
+
+    #[test]
+    fn rarity_filter_all_includes_spoiler() {
+        let rows = vec![
+            make_appeared("a0", Some(1.0)),
+            make_appeared("a1", Some(2.0)),
+            make_appeared("a2", Some(3.0)),
+            make_hidden_row("hidden_legendary", false, false, Some(0.5)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert!(
+            ids.contains(&"hidden_legendary"),
+            "RarityFilter::All + AchievementFilter::All must include spoiler-hidden rows"
+        );
+    }
+
+    #[test]
+    fn rarity_filter_legendary_includes_earned_hidden() {
+        let rows = vec![
+            make_appeared("a0", Some(2.0)),
+            make_appeared("a1", Some(3.0)),
+            make_appeared("a2", Some(4.0)),
+            make_hidden_row("earned_legendary", true, false, Some(1.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            RarityFilter::Legendary,
+        );
+        assert!(
+            ids.contains(&"earned_legendary"),
+            "earned hidden achievement (no longer spoiler) must appear under Legendary rarity filter"
+        );
+    }
+
     fn count_legendary(map: &HashMap<String, RarityTier>) -> usize {
-        map.values().filter(|t| **t == RarityTier::Legendary).count()
+        map.values()
+            .filter(|t| **t == RarityTier::Legendary)
+            .count()
     }
 
     #[test]
