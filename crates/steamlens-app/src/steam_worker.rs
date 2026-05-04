@@ -7,6 +7,46 @@ use steamlens_core::{Client, StatKind, SteamCallback};
 
 use crate::manager::types::{AchievementData, AchievementIcon, ResetScope, StatData, StatValue};
 
+fn try_resolve_icon(c: &Client, icon_handle: i32) -> Option<AchievementIcon> {
+    if icon_handle == 0 {
+        return None;
+    }
+    c.get_image(icon_handle)
+        .ok()
+        .flatten()
+        .map(|img| AchievementIcon {
+            width: img.width,
+            height: img.height,
+            rgba: img.rgba,
+        })
+}
+
+fn forward_icon_callbacks(
+    callbacks: Vec<SteamCallback>,
+    c: &Client,
+    tx: &mpsc::Sender<SteamReply>,
+) {
+    for cb in callbacks {
+        match cb {
+            SteamCallback::UserAchievementIconFetched {
+                achievement_name,
+                icon_handle,
+                ..
+            } => {
+                if let Some(icon) = try_resolve_icon(c, icon_handle) {
+                    let _ = tx.send(SteamReply::IconUpdated {
+                        name: achievement_name,
+                        icon,
+                    });
+                }
+            }
+            other => {
+                let _ = tx.send(SteamReply::Callback(other));
+            }
+        }
+    }
+}
+
 pub enum SteamRequest {
     ConnectWithApp(u32),
     RequestUserStats,
@@ -42,6 +82,10 @@ pub enum SteamReply {
     SaveFailed(String),
     ResetDone,
     ResetFailed(String),
+    IconUpdated {
+        name: String,
+        icon: AchievementIcon,
+    },
     Callback(SteamCallback),
     Disconnected,
 }
@@ -78,147 +122,159 @@ fn send_reply(tx: &mpsc::Sender<SteamReply>, reply: SteamReply) {
     let _ = tx.send(reply);
 }
 
+fn poll_idle_callbacks(client: &Option<Client>, tx: &mpsc::Sender<SteamReply>) {
+    let Some(c) = client else { return };
+    if let Ok(callbacks) = c.poll_callbacks() {
+        forward_icon_callbacks(callbacks, c, tx);
+    }
+}
+
 fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
     let mut client: Option<Client> = None;
     let mut connected_app_id: Option<u32> = None;
 
-    for req in rx {
-        match req {
-            SteamRequest::ConnectWithApp(app_id) => {
-                client = None;
-                connected_app_id = None;
-                match steamlens_core::connect(app_id) {
-                    Ok(c) => {
-                        let steam_id = c.steam_id();
-                        let app_name = c.app_name();
-                        connected_app_id = Some(app_id);
-                        client = Some(c);
-                        send_reply(&tx, SteamReply::Connected { steam_id, app_name });
+    loop {
+        match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(req) => match req {
+                SteamRequest::ConnectWithApp(app_id) => {
+                    client = None;
+                    connected_app_id = None;
+                    match steamlens_core::connect(app_id) {
+                        Ok(c) => {
+                            let steam_id = c.steam_id();
+                            let app_name = c.app_name();
+                            connected_app_id = Some(app_id);
+                            client = Some(c);
+                            send_reply(&tx, SteamReply::Connected { steam_id, app_name });
+                        }
+                        Err(e) => send_reply(&tx, SteamReply::ConnectFailed(e.to_string())),
                     }
-                    Err(e) => send_reply(&tx, SteamReply::ConnectFailed(e.to_string())),
                 }
-            }
 
-            SteamRequest::RequestUserStats => {
-                let Some(c) = &client else {
-                    send_reply(
-                        &tx,
-                        SteamReply::RequestStatsFailed("Not connected".to_owned()),
-                    );
-                    continue;
-                };
-                let app_id = connected_app_id.unwrap_or(0);
-                let steam_id = c.steam_id();
-                match c.user_stats().request_user_stats(steam_id) {
-                    Ok(()) => {
-                        send_reply(&tx, SteamReply::StatsRequested);
-                        wait_for_stats_then_load(c, app_id, &tx);
+                SteamRequest::RequestUserStats => {
+                    let Some(c) = &client else {
+                        send_reply(
+                            &tx,
+                            SteamReply::RequestStatsFailed("Not connected".to_owned()),
+                        );
+                        continue;
+                    };
+                    let app_id = connected_app_id.unwrap_or(0);
+                    let steam_id = c.steam_id();
+                    match c.user_stats().request_user_stats(steam_id) {
+                        Ok(()) => {
+                            send_reply(&tx, SteamReply::StatsRequested);
+                            wait_for_stats_then_load(c, app_id, &tx);
+                        }
+                        Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
                     }
-                    Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
                 }
-            }
 
-            SteamRequest::ApplyChanges {
-                achievements_to_set,
-                achievements_to_clear,
-                stats_int,
-                stats_float,
-            } => {
-                let Some(c) = &client else {
-                    send_reply(&tx, SteamReply::SaveFailed("Not connected".to_owned()));
-                    continue;
-                };
-                let stats_iface = c.user_stats();
+                SteamRequest::ApplyChanges {
+                    achievements_to_set,
+                    achievements_to_clear,
+                    stats_int,
+                    stats_float,
+                } => {
+                    let Some(c) = &client else {
+                        send_reply(&tx, SteamReply::SaveFailed("Not connected".to_owned()));
+                        continue;
+                    };
+                    let stats_iface = c.user_stats();
 
-                let stage_result = (|| -> Result<(), String> {
-                    for name in &achievements_to_set {
+                    let stage_result = (|| -> Result<(), String> {
+                        for name in &achievements_to_set {
+                            stats_iface
+                                .set_achievement(name)
+                                .map_err(|e| format!("SetAchievement({name}): {e}"))?;
+                        }
+                        for name in &achievements_to_clear {
+                            stats_iface
+                                .clear_achievement(name)
+                                .map_err(|e| format!("ClearAchievement({name}): {e}"))?;
+                        }
+                        for (name, val) in &stats_int {
+                            stats_iface
+                                .set_stat_int(name, *val)
+                                .map_err(|e| format!("SetStatInt({name}): {e}"))?;
+                        }
+                        for (name, val) in &stats_float {
+                            stats_iface
+                                .set_stat_float(name, *val)
+                                .map_err(|e| format!("SetStatFloat({name}): {e}"))?;
+                        }
                         stats_iface
-                            .set_achievement(name)
-                            .map_err(|e| format!("SetAchievement({name}): {e}"))?;
-                    }
-                    for name in &achievements_to_clear {
-                        stats_iface
-                            .clear_achievement(name)
-                            .map_err(|e| format!("ClearAchievement({name}): {e}"))?;
-                    }
-                    for (name, val) in &stats_int {
-                        stats_iface
-                            .set_stat_int(name, *val)
-                            .map_err(|e| format!("SetStatInt({name}): {e}"))?;
-                    }
-                    for (name, val) in &stats_float {
-                        stats_iface
-                            .set_stat_float(name, *val)
-                            .map_err(|e| format!("SetStatFloat({name}): {e}"))?;
-                    }
-                    stats_iface
-                        .store_stats()
-                        .map_err(|e| format!("StoreStats: {e}"))?;
-                    Ok(())
-                })();
+                            .store_stats()
+                            .map_err(|e| format!("StoreStats: {e}"))?;
+                        Ok(())
+                    })();
 
-                if let Err(e) = stage_result {
-                    send_reply(&tx, SteamReply::SaveFailed(e));
-                    continue;
+                    if let Err(e) = stage_result {
+                        send_reply(&tx, SteamReply::SaveFailed(e));
+                        continue;
+                    }
+
+                    let app_id = connected_app_id.unwrap_or(0);
+                    let saved = wait_for_store_callback(c, &tx);
+                    if saved {
+                        load_achievements_and_stats(c, app_id, &tx);
+                    } else {
+                        send_reply(
+                            &tx,
+                            SteamReply::SaveFailed(
+                                "Timed out waiting for StoreStats confirmation".to_owned(),
+                            ),
+                        );
+                    }
                 }
 
-                let app_id = connected_app_id.unwrap_or(0);
-                let saved = wait_for_store_callback(c, &tx);
-                if saved {
-                    load_achievements_and_stats(c, app_id, &tx);
-                } else {
-                    send_reply(
-                        &tx,
-                        SteamReply::SaveFailed(
-                            "Timed out waiting for StoreStats confirmation".to_owned(),
-                        ),
-                    );
+                SteamRequest::ResetAll {
+                    scope,
+                    stat_driven_progress_max,
+                } => {
+                    let Some(c) = &client else {
+                        send_reply(&tx, SteamReply::ResetFailed("Not connected".to_owned()));
+                        continue;
+                    };
+                    let stats_iface = c.user_stats();
+                    let achievements_too = scope == ResetScope::StatsAndAchievements;
+                    if let Err(e) = stats_iface.reset_all_stats(achievements_too) {
+                        send_reply(&tx, SteamReply::ResetFailed(format!("ResetAllStats: {e}")));
+                        continue;
+                    }
+                    if let Err(e) = stats_iface.store_stats() {
+                        send_reply(
+                            &tx,
+                            SteamReply::ResetFailed(format!("StoreStats after reset: {e}")),
+                        );
+                        continue;
+                    }
+                    let stored = poll_until_store_confirmed(c, &tx);
+                    if !stored {
+                        send_reply(
+                            &tx,
+                            SteamReply::ResetFailed(
+                                "Timed out waiting for StoreStats confirmation after reset"
+                                    .to_owned(),
+                            ),
+                        );
+                        continue;
+                    }
+                    let _ = stat_driven_progress_max;
+                    send_reply(&tx, SteamReply::ResetDone);
                 }
+
+                SteamRequest::Disconnect => {
+                    drop(client.take());
+                    let _ = connected_app_id.take();
+                    send_reply(&tx, SteamReply::Disconnected);
+                    break;
+                }
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                poll_idle_callbacks(&client, &tx);
             }
-
-            SteamRequest::ResetAll {
-                scope,
-                stat_driven_progress_max,
-            } => {
-                let Some(c) = &client else {
-                    send_reply(&tx, SteamReply::ResetFailed("Not connected".to_owned()));
-                    continue;
-                };
-                let stats_iface = c.user_stats();
-                let achievements_too = scope == ResetScope::StatsAndAchievements;
-                if let Err(e) = stats_iface.reset_all_stats(achievements_too) {
-                    send_reply(&tx, SteamReply::ResetFailed(format!("ResetAllStats: {e}")));
-                    continue;
-                }
-                if let Err(e) = stats_iface.store_stats() {
-                    send_reply(
-                        &tx,
-                        SteamReply::ResetFailed(format!("StoreStats after reset: {e}")),
-                    );
-                    continue;
-                }
-                let stored = poll_until_store_confirmed(c, &tx);
-                if !stored {
-                    send_reply(
-                        &tx,
-                        SteamReply::ResetFailed(
-                            "Timed out waiting for StoreStats confirmation after reset".to_owned(),
-                        ),
-                    );
-                    continue;
-                }
-                // TODO: when stat enumeration is wired, loop IAP for each entry
-                // in stat_driven_progress_max if scope == StatsAndAchievements.
-                let _ = stat_driven_progress_max;
-                send_reply(&tx, SteamReply::ResetDone);
-            }
-
-            SteamRequest::Disconnect => {
-                drop(client.take());
-                let _ = connected_app_id.take();
-                send_reply(&tx, SteamReply::Disconnected);
-                break;
-            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
 }
@@ -321,6 +377,24 @@ fn load_achievements_and_stats(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamR
     );
 }
 
+fn route_non_stats_callback(cb: SteamCallback, c: &Client, tx: &mpsc::Sender<SteamReply>) {
+    match cb {
+        SteamCallback::UserAchievementIconFetched {
+            achievement_name,
+            icon_handle,
+            ..
+        } => {
+            if let Some(icon) = try_resolve_icon(c, icon_handle) {
+                let _ = tx.send(SteamReply::IconUpdated {
+                    name: achievement_name,
+                    icon,
+                });
+            }
+        }
+        other => send_reply(tx, SteamReply::Callback(other)),
+    }
+}
+
 fn wait_for_stats_then_load(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
     let expected_user = c.steam_id();
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -347,7 +421,7 @@ fn wait_for_stats_then_load(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamRepl
                             }
                             return;
                         }
-                        _ => send_reply(tx, SteamReply::Callback(cb)),
+                        _ => route_non_stats_callback(cb, c, tx),
                     }
                 }
             }
@@ -390,7 +464,7 @@ fn wait_for_store_callback(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool {
                             }
                             return true;
                         }
-                        _ => send_reply(tx, SteamReply::Callback(cb)),
+                        _ => route_non_stats_callback(cb, c, tx),
                     }
                 }
             }
@@ -415,7 +489,7 @@ fn poll_until_store_confirmed(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool
                     if let SteamCallback::UserStatsStored { result, .. } = &cb {
                         return result.is_ok();
                     }
-                    send_reply(tx, SteamReply::Callback(cb));
+                    route_non_stats_callback(cb, c, tx);
                 }
             }
             Err(_) => return false,

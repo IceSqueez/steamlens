@@ -206,6 +206,12 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             });
             Task::none()
         }
+        SteamReply::IconUpdated { name, icon } => {
+            if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
+                row.data.icon = Some(icon);
+            }
+            Task::none()
+        }
         SteamReply::Callback(cb) => {
             use steamlens_core::SteamCallback;
             if let SteamCallback::UserStatsReceived { result, .. } = &cb {
@@ -477,6 +483,70 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::FadeInTick(_) => Task::none(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::steam_worker::SteamReply;
+    use types::{AchievementData, AchievementIcon, AchievementRow};
+
+    fn make_state_with_achievement(id: &str) -> ManagerState {
+        let mut state = ManagerState::new(0);
+        state.achievements = vec![AchievementRow::from_data(AchievementData {
+            id: id.to_owned(),
+            display_name: id.to_owned(),
+            description: String::new(),
+            is_hidden: false,
+            is_achieved: false,
+            unlock_time: None,
+            permission: 0,
+            icon: None,
+        })];
+        state
+    }
+
+    fn sample_icon() -> AchievementIcon {
+        AchievementIcon {
+            width: 2,
+            height: 2,
+            rgba: vec![255u8; 16],
+        }
+    }
+
+    #[test]
+    fn icon_updated_replaces_row_icon() {
+        let mut state = make_state_with_achievement("ACH_FOO");
+        assert!(state.achievements[0].data.icon.is_none());
+
+        let reply = SteamReply::IconUpdated {
+            name: "ACH_FOO".to_owned(),
+            icon: sample_icon(),
+        };
+        let _task = handle_steam_reply(&mut state, reply);
+
+        let icon = state.achievements[0]
+            .data
+            .icon
+            .as_ref()
+            .expect("icon should be set");
+        assert_eq!(icon.width, 2);
+        assert_eq!(icon.height, 2);
+        assert_eq!(icon.rgba.len(), 16);
+    }
+
+    #[test]
+    fn icon_updated_unknown_name_is_noop() {
+        let mut state = make_state_with_achievement("ACH_FOO");
+
+        let reply = SteamReply::IconUpdated {
+            name: "ACH_NONEXISTENT".to_owned(),
+            icon: sample_icon(),
+        };
+        let _task = handle_steam_reply(&mut state, reply);
+
+        assert!(state.achievements[0].data.icon.is_none());
     }
 }
 
