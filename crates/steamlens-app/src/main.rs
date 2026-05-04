@@ -718,34 +718,4 @@ mod tests {
             "revealed state must survive AchievementsAndStats refresh"
         );
     }
-
-    #[test]
-    fn achievement_card_width_initial_default() {
-        let state = ManagerState::new(123);
-        assert_eq!(
-            state.achievement_card_width, 180.0,
-            "default achievement_card_width must be 180.0"
-        );
-    }
-
-    #[test]
-    fn achievement_card_width_message_updates_state() {
-        use manager::{ManagerMessage, update};
-        use steam_worker::SteamWorker;
-
-        let mut state = ManagerState::new(123);
-        state.phase = manager::ManagerPhase::Ready;
-
-        let worker = SteamWorker::new_disconnected();
-        let _task = update(
-            &mut state,
-            ManagerMessage::AchievementCardWidthChanged(220.0),
-            &worker,
-        );
-
-        assert_eq!(
-            state.achievement_card_width, 220.0,
-            "achievement_card_width must update to 220.0 after AchievementCardWidthChanged"
-        );
-    }
 }

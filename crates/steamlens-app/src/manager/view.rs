@@ -1,6 +1,6 @@
 use iced::widget::{
     button, column, container, image, mouse_area, opaque, pick_list, responsive, row, scrollable,
-    slider, space, stack, text, text_input,
+    space, stack, text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -288,8 +288,9 @@ fn achievements_tab(state: &ManagerState) -> Element<'_, Message> {
 }
 
 const ACH_CARD_GAP: f32 = 10.0;
-const ACH_CARD_MIN: f32 = 140.0;
-const ACH_CARD_MAX: f32 = 240.0;
+const ACH_CARD_WIDTH: f32 = 260.0;
+const ACH_CARD_ICON: f32 = 64.0;
+const ACH_CARD_HEIGHT: f32 = 128.0;
 
 fn filter_row(state: &ManagerState) -> Element<'_, Message> {
     let search = text_input("Search achievements...", &state.search_query)
@@ -314,25 +315,10 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
         .on_press(msg(ManagerMessage::BulkAction(BulkOp::Invert)))
         .padding(Padding::from([6u16, 10]));
 
-    let card_w = state.achievement_card_width;
-    let width_slider = slider(ACH_CARD_MIN..=ACH_CARD_MAX, card_w, |v| {
-        msg(ManagerMessage::AchievementCardWidthChanged(v))
-    })
-    .width(Length::Fixed(80.0));
-    let slider_label = text(format!("{}px", card_w as u32)).size(12).color(C_MUTED);
-
-    let r = row![
-        search,
-        filter_pick,
-        bulk_unlock,
-        bulk_lock,
-        bulk_invert,
-        width_slider,
-        slider_label,
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .padding(Padding::from([8u16, 16]));
+    let r = row![search, filter_pick, bulk_unlock, bulk_lock, bulk_invert,]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(Padding::from([8u16, 16]));
 
     container(r)
         .width(Length::Fill)
@@ -367,11 +353,9 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         format!("{total} achievements")
     };
 
-    let card_w = state.achievement_card_width;
-
     let grid = responsive(move |size| {
-        let available = size.width.max(card_w + ACH_CARD_GAP);
-        let cols = ((available + ACH_CARD_GAP) / (card_w + ACH_CARD_GAP))
+        let available = size.width.max(ACH_CARD_WIDTH + ACH_CARD_GAP);
+        let cols = ((available + ACH_CARD_GAP) / (ACH_CARD_WIDTH + ACH_CARD_GAP))
             .floor()
             .max(1.0) as usize;
 
@@ -384,11 +368,11 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                 .spacing(ACH_CARD_GAP as u32)
                 .align_y(Alignment::Start);
             for entry in chunk {
-                r = r.push(achievement_card_widget(entry, card_w));
+                r = r.push(achievement_card_widget(entry));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(ACH_CARD_WIDTH)));
             }
             rows_col = rows_col.push(r);
         }
@@ -409,17 +393,15 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
         .into()
 }
 
-fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Message> {
+fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
     let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
 
-    let icon_size = 80.0f32;
-
     let icon_el: Element<'_, Message> = if spoiler_hidden {
-        container(text("\u{2754}").size(28).color(Color { a: 0.5, ..C_MUTED }))
-            .width(Length::Fixed(icon_size))
-            .height(Length::Fixed(icon_size))
+        container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
+            .width(Length::Fixed(ACH_CARD_ICON))
+            .height(Length::Fixed(ACH_CARD_ICON))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
             .style(|_theme| container::Style {
@@ -437,8 +419,8 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
         let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
         image(handle)
-            .width(Length::Fixed(icon_size))
-            .height(Length::Fixed(icon_size))
+            .width(Length::Fixed(ACH_CARD_ICON))
+            .height(Length::Fixed(ACH_CARD_ICON))
             .opacity(opacity)
             .into()
     } else {
@@ -454,11 +436,11 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
         };
         container(
             text(if effective { "\u{2713}" } else { "\u{25CB}" })
-                .size(24)
+                .size(20)
                 .color(if effective { C_GREEN } else { C_MUTED }),
         )
-        .width(Length::Fixed(icon_size))
-        .height(Length::Fixed(icon_size))
+        .width(Length::Fixed(ACH_CARD_ICON))
+        .height(Length::Fixed(ACH_CARD_ICON))
         .align_x(Alignment::Center)
         .align_y(Alignment::Center)
         .style(move |_theme| container::Style {
@@ -469,11 +451,6 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
         .into()
     };
 
-    let icon_area = container(icon_el)
-        .width(Length::Fill)
-        .align_x(Alignment::Center)
-        .padding(Padding::from([8u16, 0]));
-
     let display_name = if spoiler_hidden {
         "Hidden Achievement".to_owned()
     } else {
@@ -481,19 +458,42 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
     };
 
     let name_color = if row.is_dirty { C_YELLOW } else { C_FG };
-    let name_label = text(display_name).size(13).color(name_color);
+    let name_label = container(
+        text(display_name)
+            .size(13)
+            .color(name_color)
+            .wrapping(text::Wrapping::None),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(18.0));
 
     let description = if spoiler_hidden {
-        String::new()
+        "Hidden until revealed".to_owned()
     } else {
         row.data.description.clone()
     };
 
-    let desc_el: Option<Element<'_, Message>> = if !description.is_empty() {
-        Some(text(description).size(11).color(C_MUTED).into())
+    let desc_color = if spoiler_hidden {
+        Color { a: 0.5, ..C_MUTED }
     } else {
-        None
+        C_MUTED
     };
+
+    let desc_label = container(
+        text(description)
+            .size(11)
+            .color(desc_color)
+            .wrapping(text::Wrapping::Word),
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(30.0));
+
+    let text_col = column![name_label, desc_label].spacing(2);
+
+    let top_row = row![icon_el, text_col]
+        .spacing(8)
+        .align_y(Alignment::Start)
+        .padding(Padding::from([8u16, 8]));
 
     let (badge_text, badge_color) = if is_protected {
         ("Protected", C_ORANGE)
@@ -528,40 +528,11 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
         ..container::Style::default()
     });
 
-    let badge_row = container(badge)
-        .width(Length::Fill)
-        .align_x(Alignment::End)
-        .padding(Padding::default().right(4).bottom(4));
-
-    let mut text_col = column![name_label].spacing(3);
-    if let Some(d) = desc_el {
-        text_col = text_col.push(d);
-    }
-
-    let text_area = container(text_col)
-        .width(Length::Fill)
-        .padding(Padding::default().left(6).right(6).bottom(4));
-
-    let card_body = column![icon_area, text_area, badge_row].spacing(0);
-
-    let card_container = container(card_body)
-        .width(Length::Fixed(card_w))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
-            border: iced::Border {
-                radius: 8.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    if spoiler_hidden {
+    let bottom_row: Element<'_, Message> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
-        let toggle_id = row.data.id.clone();
-
         let reveal_btn = button(text("Reveal").size(11).color(C_MUTED))
             .on_press(msg(ManagerMessage::RevealHidden(reveal_id)))
-            .padding(Padding::from([4u16, 12]))
+            .padding(Padding::default().left(10).right(10).top(3).bottom(3))
             .style(|_t, _s| button::Style {
                 background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
                 border: iced::Border {
@@ -573,23 +544,37 @@ fn achievement_card_widget(row: &AchievementRow, card_w: f32) -> Element<'_, Mes
                 ..button::Style::default()
             });
 
-        let reveal_area = container(reveal_btn)
-            .width(Length::Fill)
-            .align_x(Alignment::Center)
-            .padding(Padding::from([4u16, 0]));
-
-        let card_with_reveal =
-            container(column![card_container, reveal_area].spacing(4)).width(Length::Fixed(card_w));
-
-        mouse_area(card_with_reveal)
-            .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+        row![reveal_btn, space().width(Length::Fill), badge]
+            .spacing(4)
+            .align_y(Alignment::Center)
+            .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     } else {
-        let toggle_id = row.data.id.clone();
-        mouse_area(card_container)
-            .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+        container(badge)
+            .width(Length::Fill)
+            .align_x(Alignment::End)
+            .padding(Padding::default().right(8).bottom(8))
             .into()
-    }
+    };
+
+    let card_body = column![top_row, bottom_row].spacing(0);
+
+    let card_container = container(card_body)
+        .width(Length::Fixed(ACH_CARD_WIDTH))
+        .height(Length::Fixed(ACH_CARD_HEIGHT))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_CURRENT_LINE)),
+            border: iced::Border {
+                radius: 8.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        });
+
+    let toggle_id = row.data.id.clone();
+    mouse_area(card_container)
+        .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+        .into()
 }
 
 fn stats_tab(state: &ManagerState) -> Element<'_, Message> {

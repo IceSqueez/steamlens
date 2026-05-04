@@ -210,9 +210,15 @@ fn build_card(entry: &GameEntry, card_w: f32) -> Element<'_, crate::Message> {
             .into(),
     };
 
-    let name_label = container(text(entry.summary.name.as_str()).size(12).color(C_TEXT))
-        .width(Length::Fixed(card_w))
-        .padding(Padding::default().left(4).right(4).top(4).bottom(4));
+    let name_label = container(
+        text(entry.summary.name.as_str())
+            .size(12)
+            .color(C_TEXT)
+            .wrapping(text::Wrapping::None),
+    )
+    .width(Length::Fixed(card_w))
+    .height(Length::Fixed(22.0))
+    .padding(Padding::default().left(4).right(4).top(4).bottom(4));
 
     let card_inner = column![capsule_area, name_label].spacing(0);
 
