@@ -618,8 +618,25 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
         });
 
     let toggle_id = row.data.id.clone();
-    mouse_area(card_container)
+    button(card_container)
         .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
+        .padding(0)
+        .style(|_theme, status| {
+            let border = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+                iced::Border {
+                    color: C_PURPLE,
+                    width: 2.0,
+                    radius: 8.0.into(),
+                }
+            } else {
+                iced::Border::default()
+            };
+            button::Style {
+                background: None,
+                border,
+                ..button::Style::default()
+            }
+        })
         .into()
 }
 

@@ -314,9 +314,21 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
             app_id,
         )))
         .padding(0)
-        .style(|_: &iced::Theme, _| button::Style {
-            background: None,
-            ..button::Style::default()
+        .style(|_: &iced::Theme, status| {
+            let border = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+                iced::Border {
+                    color: C_ACCENT,
+                    width: 2.0,
+                    radius: 6.0.into(),
+                }
+            } else {
+                iced::Border::default()
+            };
+            button::Style {
+                background: None,
+                border,
+                ..button::Style::default()
+            }
         })
         .into()
 }
