@@ -1,4 +1,4 @@
-allow-branch = ["master"]
+allow-branch = ["master", "main"]
 sign-commit = false
 push = true
 publish = false
