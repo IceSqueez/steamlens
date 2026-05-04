@@ -494,8 +494,8 @@ mod tests {
         assert!(app.worker.is_none());
     }
 
-    #[test]
-    fn splash_done_transitions_to_library() {
+    #[tokio::test]
+    async fn splash_done_transitions_to_library() {
         let mut app = make_app_splash();
         let _task = update(&mut app, Message::SplashDone);
         assert!(
@@ -505,8 +505,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn go_back_from_not_running_returns_to_library() {
+    #[tokio::test]
+    async fn go_back_from_not_running_returns_to_library() {
         let mut app = make_app_not_running("pipe closed");
         let _task = update(&mut app, Message::GoBack);
         assert!(

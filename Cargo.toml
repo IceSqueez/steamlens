@@ -11,7 +11,7 @@ repository = "https://github.com/IceSqueez/steamlens"
 
 [workspace.dependencies]
 iced = { version = "0.14.0", features = ["tokio", "image"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "process"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 libloading = "0.9"

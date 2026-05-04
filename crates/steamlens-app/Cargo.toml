@@ -10,7 +10,7 @@ readme = "../../README.md"
 
 [dependencies]
 iced = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "io-std", "rt", "sync"] }
+tokio = { workspace = true, features = ["io-util", "io-std", "rt", "sync", "process"] }
 reqwest = { workspace = true }
 image = { workspace = true }
 steamlens-core = { workspace = true }

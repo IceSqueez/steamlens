@@ -1,54 +1,17 @@
 use std::collections::HashMap;
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 
-use steamlens_core::{
-    AchievementData, AchievementIcon, Client, GameSummary, StatData, StatKind, StatValue,
-    SteamCallback,
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::mpsc as async_mpsc;
+
+use steamlens_core::ipc::{
+    WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
 };
+use steamlens_core::{AchievementIcon, GameSummary};
 
 use crate::manager::types::ResetScope;
-
-fn try_resolve_icon(c: &Client, icon_handle: i32) -> Option<AchievementIcon> {
-    if icon_handle == 0 {
-        return None;
-    }
-    c.get_image(icon_handle)
-        .ok()
-        .flatten()
-        .map(|img| AchievementIcon {
-            width: img.width,
-            height: img.height,
-            rgba: img.rgba,
-        })
-}
-
-fn forward_icon_callbacks(
-    callbacks: Vec<SteamCallback>,
-    c: &Client,
-    tx: &mpsc::Sender<SteamReply>,
-) {
-    for cb in callbacks {
-        match cb {
-            SteamCallback::UserAchievementIconFetched {
-                achievement_name,
-                icon_handle,
-                ..
-            } => {
-                if let Some(icon) = try_resolve_icon(c, icon_handle) {
-                    let _ = tx.send(SteamReply::IconUpdated {
-                        name: achievement_name,
-                        icon,
-                    });
-                }
-            }
-            other => {
-                let _ = tx.send(SteamReply::Callback(other));
-            }
-        }
-    }
-}
 
 #[allow(dead_code)]
 pub enum SteamRequest {
@@ -82,8 +45,8 @@ pub enum SteamReply {
     StatsRequested,
     RequestStatsFailed(String),
     AchievementsAndStats {
-        achievements: Vec<AchievementData>,
-        stats: Vec<StatData>,
+        achievements: Vec<steamlens_core::AchievementData>,
+        stats: Vec<steamlens_core::StatData>,
     },
     LoadFailed(String),
     ChangesSaved,
@@ -96,534 +59,673 @@ pub enum SteamReply {
     },
     GlobalPercentagesReady(HashMap<String, f32>),
     GlobalPercentagesFailed(String),
-    Callback(SteamCallback),
+    Callback(steamlens_core::SteamCallback),
     Disconnected,
 }
 
 pub struct SteamWorker {
-    sender: mpsc::SyncSender<SteamRequest>,
+    request_tx: async_mpsc::UnboundedSender<SteamRequest>,
 }
 
 impl SteamWorker {
     pub fn spawn() -> (Self, mpsc::Receiver<SteamReply>) {
-        let (req_tx, req_rx) = mpsc::sync_channel::<SteamRequest>(64);
+        let (req_tx, req_rx) = async_mpsc::unbounded_channel::<SteamRequest>();
         let (rep_tx, rep_rx) = mpsc::channel::<SteamReply>();
 
-        thread::Builder::new()
-            .name("steam-worker".into())
-            .spawn(move || worker_loop(req_rx, rep_tx))
-            .expect("failed to spawn steam-worker thread");
+        tokio::spawn(bridge_loop(req_rx, rep_tx));
 
-        (SteamWorker { sender: req_tx }, rep_rx)
+        (SteamWorker { request_tx: req_tx }, rep_rx)
     }
 
     pub fn send(&self, req: SteamRequest) {
-        let _ = self.sender.try_send(req);
+        let _ = self.request_tx.send(req);
     }
 
     #[cfg(test)]
     pub fn new_disconnected() -> Self {
-        let (req_tx, _req_rx) = mpsc::sync_channel::<SteamRequest>(1);
-        SteamWorker { sender: req_tx }
+        let (req_tx, _req_rx) = async_mpsc::unbounded_channel::<SteamRequest>();
+        SteamWorker { request_tx: req_tx }
     }
 }
 
-fn send_reply(tx: &mpsc::Sender<SteamReply>, reply: SteamReply) {
-    let _ = tx.send(reply);
+fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
+    let _ = tx.send(r);
 }
 
-fn poll_idle_callbacks(client: &Option<Client>, tx: &mpsc::Sender<SteamReply>) {
-    let Some(c) = client else { return };
-    if let Ok(callbacks) = c.poll_callbacks() {
-        forward_icon_callbacks(callbacks, c, tx);
+/// Translates a single `SteamRequest` into the `WorkerCommand` sequence that
+/// the child process must execute. `ScanLibrary`, `ConnectWithApp`, and
+/// `Disconnect` are handled by the bridge loop directly and never reach this
+/// function.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
+    match req {
+        SteamRequest::RequestUserStats => vec![WorkerCommand::LoadAchievementsAndStats],
+
+        SteamRequest::RequestGlobalPercentages => vec![WorkerCommand::RequestGlobalPercentages],
+
+        SteamRequest::ApplyChanges {
+            achievements_to_set,
+            achievements_to_clear,
+            stats_int,
+            stats_float,
+        } => {
+            let mut cmds = Vec::new();
+            for name in achievements_to_set {
+                cmds.push(WorkerCommand::SetAchievement(name.clone()));
+            }
+            for name in achievements_to_clear {
+                cmds.push(WorkerCommand::ClearAchievement(name.clone()));
+            }
+            for (name, value) in stats_int {
+                cmds.push(WorkerCommand::SetStatInt {
+                    name: name.clone(),
+                    value: *value,
+                });
+            }
+            for (name, value) in stats_float {
+                cmds.push(WorkerCommand::SetStatFloat {
+                    name: name.clone(),
+                    value: *value,
+                });
+            }
+            cmds.push(WorkerCommand::StoreStats);
+            cmds
+        }
+
+        SteamRequest::ResetAll { scope, .. } => vec![WorkerCommand::ResetAllStats {
+            include_achievements: *scope == ResetScope::StatsAndAchievements,
+        }],
+
+        SteamRequest::ConnectWithApp(_) | SteamRequest::ScanLibrary | SteamRequest::Disconnect => {
+            vec![]
+        }
     }
 }
 
-fn worker_loop(rx: mpsc::Receiver<SteamRequest>, tx: mpsc::Sender<SteamReply>) {
-    let mut client: Option<Client> = None;
-    let mut connected_app_id: Option<u32> = None;
+/// Maps a `WorkerResponse::Error { context, .. }` to the correct `SteamReply`
+/// failure variant. The `context` strings come from the worker's error
+/// reporting in `worker.rs` and the apply-sequence logic below.
+fn error_reply(context: &str, message: String) -> SteamReply {
+    match context {
+        "connect" => SteamReply::ConnectFailed(message),
+        "load" | "RequestUserStats" | "UserStatsReceived" | "num_achievements"
+        | "poll_callbacks" => SteamReply::LoadFailed(message),
+        "apply" | "StoreStats" | "UserStatsStored" => SteamReply::SaveFailed(message),
+        "reset" | "ResetAllStats" => SteamReply::ResetFailed(message),
+        "global_percentages"
+        | "RequestGlobalPercentages"
+        | "RequestGlobalAchievementPercentages"
+        | "GlobalAchievementPercentages APICall"
+        | "GlobalAchievementPercentagesReady"
+        | "num_achievements (percentages)" => SteamReply::GlobalPercentagesFailed(message),
+        _ => SteamReply::LoadFailed(format!("[{context}] {message}")),
+    }
+}
 
-    loop {
-        match rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(req) => match req {
-                SteamRequest::ScanLibrary => match steamlens_core::scan_installed_games() {
-                    Ok(games) => send_reply(&tx, SteamReply::LibraryScan(games)),
-                    Err(e) => send_reply(&tx, SteamReply::LibraryScanFailed(e.to_string())),
+async fn read_response(stdout: &mut ChildStdout) -> Option<WorkerResponse> {
+    let mut header = [0u8; 4];
+    stdout.read_exact(&mut header).await.ok()?;
+    let len = parse_header(header).ok()?;
+    let mut buf = vec![0u8; len];
+    stdout.read_exact(&mut buf).await.ok()?;
+    decode_frame::<WorkerResponse>(&buf).ok()
+}
+
+async fn write_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> bool {
+    let Ok(framed) = encode_frame(cmd) else {
+        return false;
+    };
+    stdin.write_all(&framed).await.is_ok() && stdin.flush().await.is_ok()
+}
+
+/// Sends a single command to the child and waits for exactly one response.
+/// Returns `None` on timeout or I/O failure.
+async fn round_trip(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    cmd: &WorkerCommand,
+    timeout: Duration,
+) -> Option<WorkerResponse> {
+    if !write_command(stdin, cmd).await {
+        return None;
+    }
+    tokio::time::timeout(timeout, read_response(stdout))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Executes the `ApplyChanges` multi-command sequence:
+/// Set/Clear/SetStat commands each get a 5 s timeout and must ack before the
+/// next is sent. `StoreStats` gets a 15 s timeout (waits for UserStatsStored).
+/// On any error or timeout the sequence aborts and `SaveFailed` is returned.
+async fn run_apply_sequence(
+    achievements_to_set: Vec<String>,
+    achievements_to_clear: Vec<String>,
+    stats_int: HashMap<String, i32>,
+    stats_float: HashMap<String, f32>,
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    rep_tx: &mpsc::Sender<SteamReply>,
+) {
+    let staging_timeout = Duration::from_secs(5);
+
+    let mut staging_cmds = Vec::new();
+    for name in achievements_to_set {
+        staging_cmds.push(WorkerCommand::SetAchievement(name));
+    }
+    for name in achievements_to_clear {
+        staging_cmds.push(WorkerCommand::ClearAchievement(name));
+    }
+    for (name, value) in stats_int {
+        staging_cmds.push(WorkerCommand::SetStatInt { name, value });
+    }
+    for (name, value) in stats_float {
+        staging_cmds.push(WorkerCommand::SetStatFloat { name, value });
+    }
+
+    for cmd in &staging_cmds {
+        match round_trip(stdin, stdout, cmd, staging_timeout).await {
+            Some(WorkerResponse::Ack) => {}
+            Some(WorkerResponse::Error { context, message }) => {
+                reply(rep_tx, error_reply(&context, message));
+                return;
+            }
+            Some(other) => {
+                reply(
+                    rep_tx,
+                    SteamReply::SaveFailed(format!(
+                        "unexpected response during staging: {:?}",
+                        std::mem::discriminant(&other)
+                    )),
+                );
+                return;
+            }
+            None => {
+                reply(
+                    rep_tx,
+                    SteamReply::SaveFailed("timed out waiting for staging Ack".to_owned()),
+                );
+                return;
+            }
+        }
+    }
+
+    let store_timeout = Duration::from_secs(15);
+    match round_trip(stdin, stdout, &WorkerCommand::StoreStats, store_timeout).await {
+        Some(WorkerResponse::Stored) => {
+            reply(rep_tx, SteamReply::ChangesSaved);
+            // After a successful store, re-load achievements+stats so the UI
+            // reflects the new state (mirrors the old in-process worker behaviour).
+            let load_timeout = Duration::from_secs(15);
+            match round_trip(
+                stdin,
+                stdout,
+                &WorkerCommand::LoadAchievementsAndStats,
+                load_timeout,
+            )
+            .await
+            {
+                Some(resp) => handle_worker_response(resp, rep_tx),
+                None => reply(
+                    rep_tx,
+                    SteamReply::LoadFailed("timed out after store".into()),
+                ),
+            }
+        }
+        Some(WorkerResponse::Error { context, message }) => {
+            reply(rep_tx, error_reply(&context, message));
+        }
+        Some(other) => {
+            reply(
+                rep_tx,
+                SteamReply::SaveFailed(format!(
+                    "unexpected StoreStats response: {:?}",
+                    std::mem::discriminant(&other)
+                )),
+            );
+        }
+        None => {
+            reply(
+                rep_tx,
+                SteamReply::SaveFailed("timed out waiting for StoreStats".to_owned()),
+            );
+        }
+    }
+}
+
+/// Translates a `WorkerResponse` received from the child to a `SteamReply` and
+/// sends it on `rep_tx`. Icon and data responses map 1:1; `Stored` maps to
+/// `ChangesSaved`; `ResetDone` maps to `ResetDone`; errors are context-routed.
+fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
+    match resp {
+        WorkerResponse::Hello { steam_id, app_name } => {
+            reply(rep_tx, SteamReply::Connected { steam_id, app_name });
+        }
+        WorkerResponse::Ack => {}
+        WorkerResponse::AchievementsAndStats {
+            achievements,
+            stats,
+        } => {
+            reply(
+                rep_tx,
+                SteamReply::AchievementsAndStats {
+                    achievements,
+                    stats,
                 },
+            );
+        }
+        WorkerResponse::IconUpdated { name, icon } => {
+            reply(rep_tx, SteamReply::IconUpdated { name, icon });
+        }
+        WorkerResponse::GlobalPercentagesReady(map) => {
+            reply(rep_tx, SteamReply::GlobalPercentagesReady(map));
+        }
+        WorkerResponse::Stored => {
+            reply(rep_tx, SteamReply::ChangesSaved);
+        }
+        WorkerResponse::ResetDone => {
+            reply(rep_tx, SteamReply::ResetDone);
+        }
+        WorkerResponse::Error { context, message } => {
+            reply(rep_tx, error_reply(&context, message));
+        }
+        WorkerResponse::Disconnected => {
+            reply(rep_tx, SteamReply::Disconnected);
+        }
+    }
+}
 
-                SteamRequest::ConnectWithApp(app_id) => {
-                    client = None;
-                    connected_app_id = None;
-                    match steamlens_core::connect(app_id) {
-                        Ok(c) => {
-                            let steam_id = c.steam_id();
-                            let app_name = c.app_name();
-                            connected_app_id = Some(app_id);
-                            client = Some(c);
-                            send_reply(&tx, SteamReply::Connected { steam_id, app_name });
-                        }
-                        Err(e) => send_reply(&tx, SteamReply::ConnectFailed(e.to_string())),
+/// Drains any queued responses from `stdout` within `drain_ms` milliseconds.
+/// Used after send to flush icon callbacks that the child emits asynchronously.
+async fn drain_responses(
+    stdout: &mut ChildStdout,
+    rep_tx: &mpsc::Sender<SteamReply>,
+    drain_ms: u64,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(drain_ms);
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, read_response(stdout)).await {
+            Ok(Some(resp)) => handle_worker_response(resp, rep_tx),
+            _ => break,
+        }
+    }
+}
+
+async fn kill_child(child: &mut Child) {
+    let _ = child.start_kill();
+    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+}
+
+async fn bridge_loop(
+    mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
+    rep_tx: mpsc::Sender<SteamReply>,
+) {
+    // Phase 1: wait for the first request which must be `ConnectWithApp` or
+    // a disk-only `ScanLibrary`. Any other request before connection gets a
+    // "not connected" failure reply.
+    let (mut child, mut stdin, mut stdout) = loop {
+        let Some(req) = req_rx.recv().await else {
+            return;
+        };
+        match req {
+            SteamRequest::ScanLibrary => {
+                handle_scan_library(&rep_tx);
+                continue;
+            }
+            SteamRequest::ConnectWithApp(app_id) => {
+                match spawn_worker_child(app_id).await {
+                    Ok(tuple) => break tuple,
+                    Err(e) => {
+                        reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
+                        // Stay in the loop — parent might retry with another app_id.
+                        continue;
                     }
                 }
+            }
+            SteamRequest::Disconnect => {
+                reply(&rep_tx, SteamReply::Disconnected);
+                return;
+            }
+            _ => {
+                reply(
+                    &rep_tx,
+                    SteamReply::RequestStatsFailed("Not connected".to_owned()),
+                );
+                continue;
+            }
+        }
+    };
 
-                SteamRequest::RequestUserStats => {
-                    let Some(c) = &client else {
-                        send_reply(
-                            &tx,
-                            SteamReply::RequestStatsFailed("Not connected".to_owned()),
-                        );
-                        continue;
-                    };
-                    let app_id = connected_app_id.unwrap_or(0);
-                    let steam_id = c.steam_id();
-                    match c.user_stats().request_user_stats(steam_id) {
-                        Ok(()) => {
-                            send_reply(&tx, SteamReply::StatsRequested);
-                            wait_for_stats_then_load(c, app_id, &tx);
-                            trigger_global_percentages(c, app_id, &tx);
+    // Phase 2: read the Hello from the child.
+    let hello_timeout = Duration::from_secs(10);
+    match tokio::time::timeout(hello_timeout, read_response(&mut stdout)).await {
+        Ok(Some(WorkerResponse::Hello { steam_id, app_name })) => {
+            reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
+        }
+        Ok(Some(WorkerResponse::Error { context, message })) => {
+            reply(&rep_tx, error_reply(&context, message));
+            kill_child(&mut child).await;
+            return;
+        }
+        Ok(other) => {
+            reply(
+                &rep_tx,
+                SteamReply::ConnectFailed(format!(
+                    "unexpected first message: {:?}",
+                    other.as_ref().map(std::mem::discriminant)
+                )),
+            );
+            kill_child(&mut child).await;
+            return;
+        }
+        Err(_) => {
+            reply(
+                &rep_tx,
+                SteamReply::ConnectFailed("timed out waiting for worker Hello".to_owned()),
+            );
+            kill_child(&mut child).await;
+            return;
+        }
+    }
+
+    // Phase 3: bidirectional command/response loop.
+    loop {
+        // Poll for icon callbacks or other async responses from the child (up
+        // to 50 ms) before blocking on the next parent request.
+        drain_responses(&mut stdout, &rep_tx, 50).await;
+
+        let Some(req) = req_rx.recv().await else {
+            // Parent dropped the SteamWorker — graceful shutdown.
+            let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+            let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+            return;
+        };
+
+        match req {
+            SteamRequest::ScanLibrary => {
+                handle_scan_library(&rep_tx);
+            }
+
+            SteamRequest::ConnectWithApp(new_app_id) => {
+                // Re-connect: send Shutdown to current child, reap it, spawn fresh.
+                let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+                let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+
+                match spawn_worker_child(new_app_id).await {
+                    Ok((new_child, new_stdin, new_stdout)) => {
+                        child = new_child;
+                        stdin = new_stdin;
+                        stdout = new_stdout;
+                        // Read Hello from fresh child.
+                        let hello_timeout = Duration::from_secs(10);
+                        match tokio::time::timeout(hello_timeout, read_response(&mut stdout)).await
+                        {
+                            Ok(Some(WorkerResponse::Hello { steam_id, app_name })) => {
+                                reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
+                            }
+                            Ok(Some(WorkerResponse::Error { context, message })) => {
+                                reply(&rep_tx, error_reply(&context, message));
+                                kill_child(&mut child).await;
+                                return;
+                            }
+                            _ => {
+                                reply(
+                                    &rep_tx,
+                                    SteamReply::ConnectFailed(
+                                        "timed out waiting for worker Hello on reconnect"
+                                            .to_owned(),
+                                    ),
+                                );
+                                kill_child(&mut child).await;
+                                return;
+                            }
                         }
-                        Err(e) => send_reply(&tx, SteamReply::RequestStatsFailed(e.to_string())),
+                    }
+                    Err(e) => {
+                        reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
+                        return;
                     }
                 }
+            }
 
-                SteamRequest::RequestGlobalPercentages => {
-                    let Some(c) = &client else {
-                        send_reply(
-                            &tx,
-                            SteamReply::GlobalPercentagesFailed("Not connected".to_owned()),
-                        );
-                        continue;
-                    };
-                    let app_id = connected_app_id.unwrap_or(0);
-                    trigger_global_percentages(c, app_id, &tx);
-                }
+            SteamRequest::Disconnect => {
+                let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+                // Read Disconnected acknowledgment with a short timeout.
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(3), read_response(&mut stdout)).await;
+                let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+                reply(&rep_tx, SteamReply::Disconnected);
+                return;
+            }
 
-                SteamRequest::ApplyChanges {
+            SteamRequest::ApplyChanges {
+                achievements_to_set,
+                achievements_to_clear,
+                stats_int,
+                stats_float,
+            } => {
+                run_apply_sequence(
                     achievements_to_set,
                     achievements_to_clear,
                     stats_int,
                     stats_float,
-                } => {
-                    let Some(c) = &client else {
-                        send_reply(&tx, SteamReply::SaveFailed("Not connected".to_owned()));
-                        continue;
-                    };
-                    let stats_iface = c.user_stats();
-
-                    let stage_result = (|| -> Result<(), String> {
-                        for name in &achievements_to_set {
-                            stats_iface
-                                .set_achievement(name)
-                                .map_err(|e| format!("SetAchievement({name}): {e}"))?;
-                        }
-                        for name in &achievements_to_clear {
-                            stats_iface
-                                .clear_achievement(name)
-                                .map_err(|e| format!("ClearAchievement({name}): {e}"))?;
-                        }
-                        for (name, val) in &stats_int {
-                            stats_iface
-                                .set_stat_int(name, *val)
-                                .map_err(|e| format!("SetStatInt({name}): {e}"))?;
-                        }
-                        for (name, val) in &stats_float {
-                            stats_iface
-                                .set_stat_float(name, *val)
-                                .map_err(|e| format!("SetStatFloat({name}): {e}"))?;
-                        }
-                        stats_iface
-                            .store_stats()
-                            .map_err(|e| format!("StoreStats: {e}"))?;
-                        Ok(())
-                    })();
-
-                    if let Err(e) = stage_result {
-                        send_reply(&tx, SteamReply::SaveFailed(e));
-                        continue;
-                    }
-
-                    let app_id = connected_app_id.unwrap_or(0);
-                    let saved = wait_for_store_callback(c, &tx);
-                    if saved {
-                        load_achievements_and_stats(c, app_id, &tx);
-                    } else {
-                        send_reply(
-                            &tx,
-                            SteamReply::SaveFailed(
-                                "Timed out waiting for StoreStats confirmation".to_owned(),
-                            ),
-                        );
-                    }
-                }
-
-                SteamRequest::ResetAll {
-                    scope,
-                    stat_driven_progress_max,
-                } => {
-                    let Some(c) = &client else {
-                        send_reply(&tx, SteamReply::ResetFailed("Not connected".to_owned()));
-                        continue;
-                    };
-                    let stats_iface = c.user_stats();
-                    let achievements_too = scope == ResetScope::StatsAndAchievements;
-                    if let Err(e) = stats_iface.reset_all_stats(achievements_too) {
-                        send_reply(&tx, SteamReply::ResetFailed(format!("ResetAllStats: {e}")));
-                        continue;
-                    }
-                    if let Err(e) = stats_iface.store_stats() {
-                        send_reply(
-                            &tx,
-                            SteamReply::ResetFailed(format!("StoreStats after reset: {e}")),
-                        );
-                        continue;
-                    }
-                    let stored = poll_until_store_confirmed(c, &tx);
-                    if !stored {
-                        send_reply(
-                            &tx,
-                            SteamReply::ResetFailed(
-                                "Timed out waiting for StoreStats confirmation after reset"
-                                    .to_owned(),
-                            ),
-                        );
-                        continue;
-                    }
-                    let _ = stat_driven_progress_max;
-                    send_reply(&tx, SteamReply::ResetDone);
-                }
-
-                SteamRequest::Disconnect => {
-                    drop(client.take());
-                    let _ = connected_app_id.take();
-                    send_reply(&tx, SteamReply::Disconnected);
-                    break;
-                }
-            },
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                poll_idle_callbacks(&client, &tx);
+                    &mut stdin,
+                    &mut stdout,
+                    &rep_tx,
+                )
+                .await;
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-    }
-}
 
-fn load_achievements_and_stats(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
-    let stats_iface = c.user_stats();
-
-    let num = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            send_reply(tx, SteamReply::LoadFailed(e.to_string()));
-            return;
-        }
-    };
-
-    let mut achievements = Vec::with_capacity(num as usize);
-    for i in 0..num {
-        let id = match stats_iface.achievement_name(i) {
-            Ok(n) => n,
-            Err(_) => continue,
-        };
-        let display_name = stats_iface
-            .achievement_display_attribute(&id, "name")
-            .unwrap_or_else(|_| id.clone());
-        let description = stats_iface
-            .achievement_display_attribute(&id, "desc")
-            .unwrap_or_default();
-        let hidden_str = stats_iface
-            .achievement_display_attribute(&id, "hidden")
-            .unwrap_or_default();
-        let is_hidden = hidden_str.trim() == "1";
-        let (is_achieved, unlock_time) = stats_iface
-            .achievement_and_unlock_time(&id)
-            .unwrap_or((false, 0));
-        let unlock_time = if unlock_time == 0 {
-            None
-        } else {
-            Some(unlock_time)
-        };
-
-        let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
-        let icon = if handle == 0 {
-            None
-        } else {
-            c.get_image(handle)
-                .ok()
-                .flatten()
-                .map(|img| AchievementIcon {
-                    width: img.width,
-                    height: img.height,
-                    rgba: img.rgba,
-                })
-        };
-
-        achievements.push(AchievementData {
-            id,
-            display_name,
-            description,
-            is_hidden,
-            is_achieved,
-            unlock_time,
-            permission: 0,
-            icon,
-        });
-    }
-
-    let descriptors = c.stat_descriptors(app_id).unwrap_or_default();
-
-    let mut stats = Vec::with_capacity(descriptors.len());
-    for desc in descriptors {
-        let value = match desc.kind {
-            StatKind::Int => {
-                let v = stats_iface.get_stat_int(&desc.name).unwrap_or(0);
-                StatValue::Int(v)
-            }
-            StatKind::Float => {
-                let v = stats_iface.get_stat_float(&desc.name).unwrap_or(0.0);
-                StatValue::Float(v)
-            }
-        };
-        stats.push(StatData {
-            display_name: desc.name.clone(),
-            id: desc.name,
-            value,
-            original_value: value,
-            max_value: desc.max_value,
-            min_value: desc.min_value,
-            default_value: desc.default_value,
-            is_increment_only: false,
-            permission: 0,
-        });
-    }
-
-    send_reply(
-        tx,
-        SteamReply::AchievementsAndStats {
-            achievements,
-            stats,
-        },
-    );
-}
-
-fn route_non_stats_callback(cb: SteamCallback, c: &Client, tx: &mpsc::Sender<SteamReply>) {
-    match cb {
-        SteamCallback::UserAchievementIconFetched {
-            achievement_name,
-            icon_handle,
-            ..
-        } => {
-            if let Some(icon) = try_resolve_icon(c, icon_handle) {
-                let _ = tx.send(SteamReply::IconUpdated {
-                    name: achievement_name,
-                    icon,
-                });
-            }
-        }
-        other => send_reply(tx, SteamReply::Callback(other)),
-    }
-}
-
-fn wait_for_stats_then_load(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
-    let expected_user = c.steam_id();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    loop {
-        match c.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    match &cb {
-                        SteamCallback::UserStatsReceived {
-                            result,
-                            user_steam_id,
-                            ..
-                        } if *user_steam_id == expected_user => {
-                            if result.is_ok() {
-                                load_achievements_and_stats(c, app_id, tx);
-                            } else {
-                                send_reply(
-                                    tx,
-                                    SteamReply::LoadFailed(format!(
-                                        "UserStatsReceived error: {}",
-                                        result.raw()
-                                    )),
-                                );
-                            }
-                            return;
-                        }
-                        _ => route_non_stats_callback(cb, c, tx),
-                    }
-                }
-            }
-            Err(e) => {
-                send_reply(tx, SteamReply::LoadFailed(format!("poll_callbacks: {e}")));
-                return;
-            }
-        }
-        if std::time::Instant::now() >= deadline {
-            send_reply(
-                tx,
-                SteamReply::LoadFailed(
-                    "Timed out waiting for UserStatsReceived callback".to_owned(),
-                ),
-            );
-            return;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn wait_for_store_callback(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        match c.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    match &cb {
-                        SteamCallback::UserStatsStored { result, .. } => {
-                            if result.is_ok() {
-                                send_reply(tx, SteamReply::ChangesSaved);
-                            } else {
-                                send_reply(
-                                    tx,
-                                    SteamReply::SaveFailed(format!(
-                                        "UserStatsStored error: {}",
-                                        result.raw()
-                                    )),
-                                );
-                            }
-                            return true;
-                        }
-                        _ => route_non_stats_callback(cb, c, tx),
-                    }
-                }
-            }
-            Err(e) => {
-                send_reply(tx, SteamReply::SaveFailed(format!("poll_callbacks: {e}")));
-                return true;
-            }
-        }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn poll_until_store_confirmed(c: &Client, tx: &mpsc::Sender<SteamReply>) -> bool {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        match c.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    if let SteamCallback::UserStatsStored { result, .. } = &cb {
-                        return result.is_ok();
-                    }
-                    route_non_stats_callback(cb, c, tx);
-                }
-            }
-            Err(_) => return false,
-        }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn trigger_global_percentages(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
-    match c.user_stats().request_global_achievement_percentages() {
-        Err(e) => send_reply(tx, SteamReply::GlobalPercentagesFailed(e.to_string())),
-        Ok(handle) => wait_for_global_percentages_call_result(c, handle, app_id, tx),
-    }
-}
-
-fn wait_for_global_percentages_call_result(
-    c: &Client,
-    handle: u64,
-    app_id: u32,
-    tx: &mpsc::Sender<SteamReply>,
-) {
-    const CALLBACK_ID_GLOBAL: i32 = 1110;
-    const PAYLOAD_SIZE: usize = 12;
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
-
-    loop {
-        if let Ok(callbacks) = c.poll_callbacks() {
-            forward_icon_callbacks(callbacks, c, tx);
-        }
-
-        match c.poll_call_result(handle, CALLBACK_ID_GLOBAL, PAYLOAD_SIZE) {
-            Err(e) => {
-                send_reply(
-                    tx,
-                    SteamReply::GlobalPercentagesFailed(format!("poll_call_result: {e}")),
-                );
-                return;
-            }
-            Ok(None) => {}
-            Ok(Some(Err(e))) => {
-                send_reply(
-                    tx,
-                    SteamReply::GlobalPercentagesFailed(format!("APICall failed: {e}")),
-                );
-                return;
-            }
-            Ok(Some(Ok(bytes))) => {
-                if bytes.len() < PAYLOAD_SIZE {
-                    send_reply(
-                        tx,
-                        SteamReply::GlobalPercentagesFailed(
-                            "GlobalAchievementPercentagesReady payload too short".to_owned(),
+            SteamRequest::RequestUserStats => {
+                let timeout = Duration::from_secs(15);
+                match round_trip(
+                    &mut stdin,
+                    &mut stdout,
+                    &WorkerCommand::LoadAchievementsAndStats,
+                    timeout,
+                )
+                .await
+                {
+                    Some(resp) => handle_worker_response(resp, &rep_tx),
+                    None => reply(
+                        &rep_tx,
+                        SteamReply::LoadFailed(
+                            "timed out waiting for AchievementsAndStats".to_owned(),
                         ),
-                    );
-                    return;
+                    ),
                 }
-                let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
-                if result_code == 1 {
-                    collect_and_send_percentages(c, app_id, tx);
-                } else {
-                    send_reply(
-                        tx,
-                        SteamReply::GlobalPercentagesFailed(format!(
-                            "GlobalAchievementPercentagesReady error: {result_code}"
-                        )),
-                    );
+            }
+
+            SteamRequest::RequestGlobalPercentages => {
+                let timeout = Duration::from_secs(15);
+                match round_trip(
+                    &mut stdin,
+                    &mut stdout,
+                    &WorkerCommand::RequestGlobalPercentages,
+                    timeout,
+                )
+                .await
+                {
+                    Some(resp) => handle_worker_response(resp, &rep_tx),
+                    None => reply(
+                        &rep_tx,
+                        SteamReply::GlobalPercentagesFailed(
+                            "timed out waiting for global percentages".to_owned(),
+                        ),
+                    ),
                 }
-                return;
+            }
+
+            SteamRequest::ResetAll { scope, .. } => {
+                let include_achievements = scope == ResetScope::StatsAndAchievements;
+                let timeout = Duration::from_secs(15);
+                match round_trip(
+                    &mut stdin,
+                    &mut stdout,
+                    &WorkerCommand::ResetAllStats {
+                        include_achievements,
+                    },
+                    timeout,
+                )
+                .await
+                {
+                    Some(resp) => handle_worker_response(resp, &rep_tx),
+                    None => reply(
+                        &rep_tx,
+                        SteamReply::ResetFailed("timed out waiting for ResetAllStats".to_owned()),
+                    ),
+                }
             }
         }
-
-        if std::time::Instant::now() >= deadline {
-            send_reply(
-                tx,
-                SteamReply::GlobalPercentagesFailed(
-                    "Timed out waiting for GlobalAchievementPercentagesReady".to_owned(),
-                ),
-            );
-            return;
-        }
-        thread::sleep(Duration::from_millis(50));
     }
 }
 
-fn collect_and_send_percentages(c: &Client, app_id: u32, tx: &mpsc::Sender<SteamReply>) {
-    let stats_iface = c.user_stats();
-    let num = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            send_reply(tx, SteamReply::GlobalPercentagesFailed(e.to_string()));
-            return;
-        }
-    };
-    let mut map = HashMap::with_capacity(num as usize);
-    for i in 0..num {
-        let name = match stats_iface.achievement_name(i) {
-            Ok(n) => n,
-            Err(_) => continue,
-        };
-        if let Ok(pct) = stats_iface.achievement_achieved_percent(&name) {
-            map.insert(name, pct);
+async fn spawn_worker_child(
+    app_id: u32,
+) -> Result<(Child, ChildStdin, ChildStdout), std::io::Error> {
+    let exe = std::env::current_exe()?;
+    let mut child = Command::new(exe)
+        .arg("--worker")
+        .arg(app_id.to_string())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()?;
+
+    let stdin = child.stdin.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdin missing")
+    })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
+    })?;
+    Ok((child, stdin, stdout))
+}
+
+fn handle_scan_library(rep_tx: &mpsc::Sender<SteamReply>) {
+    match steamlens_core::scan_installed_games() {
+        Ok(games) => reply(rep_tx, SteamReply::LibraryScan(games)),
+        Err(e) => reply(rep_tx, SteamReply::LibraryScanFailed(e.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_apply(
+        set: &[&str],
+        clear: &[&str],
+        ints: &[(&str, i32)],
+        floats: &[(&str, f32)],
+    ) -> SteamRequest {
+        SteamRequest::ApplyChanges {
+            achievements_to_set: set.iter().map(|s| s.to_string()).collect(),
+            achievements_to_clear: clear.iter().map(|s| s.to_string()).collect(),
+            stats_int: ints.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            stats_float: floats.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
         }
     }
-    let _ = app_id;
-    send_reply(tx, SteamReply::GlobalPercentagesReady(map));
+
+    #[test]
+    fn translate_request_user_stats() {
+        let cmds = translate_request(&SteamRequest::RequestUserStats);
+        assert_eq!(cmds.len(), 1);
+        assert!(matches!(cmds[0], WorkerCommand::LoadAchievementsAndStats));
+    }
+
+    #[test]
+    fn translate_request_global_percentages() {
+        let cmds = translate_request(&SteamRequest::RequestGlobalPercentages);
+        assert_eq!(cmds.len(), 1);
+        assert!(matches!(cmds[0], WorkerCommand::RequestGlobalPercentages));
+    }
+
+    #[test]
+    fn translate_request_reset_stats_only() {
+        let req = SteamRequest::ResetAll {
+            scope: ResetScope::StatsOnly,
+            stat_driven_progress_max: HashMap::new(),
+        };
+        let cmds = translate_request(&req);
+        assert_eq!(cmds.len(), 1);
+        assert!(
+            matches!(
+                cmds[0],
+                WorkerCommand::ResetAllStats {
+                    include_achievements: false
+                }
+            ),
+            "StatsOnly must produce include_achievements=false"
+        );
+    }
+
+    #[test]
+    fn translate_request_reset_stats_and_achievements() {
+        let req = SteamRequest::ResetAll {
+            scope: ResetScope::StatsAndAchievements,
+            stat_driven_progress_max: HashMap::new(),
+        };
+        let cmds = translate_request(&req);
+        assert_eq!(cmds.len(), 1);
+        assert!(
+            matches!(
+                cmds[0],
+                WorkerCommand::ResetAllStats {
+                    include_achievements: true
+                }
+            ),
+            "StatsAndAchievements must produce include_achievements=true"
+        );
+    }
+
+    #[test]
+    fn translate_request_apply_changes_ordering() {
+        let req = make_apply(
+            &["ACH_A", "ACH_B"],
+            &["ACH_C"],
+            &[("kills", 10)],
+            &[("ratio", 1.5)],
+        );
+        let cmds = translate_request(&req);
+        // Expected: SetAchievement x2, ClearAchievement x1, SetStatInt x1, SetStatFloat x1, StoreStats.
+        assert_eq!(cmds.len(), 6);
+        assert!(matches!(&cmds[0], WorkerCommand::SetAchievement(n) if n == "ACH_A"));
+        assert!(matches!(&cmds[1], WorkerCommand::SetAchievement(n) if n == "ACH_B"));
+        assert!(matches!(&cmds[2], WorkerCommand::ClearAchievement(n) if n == "ACH_C"));
+        // SetStatInt or SetStatFloat can appear in any order (from HashMap iteration).
+        let has_int = cmds[3..5]
+            .iter()
+            .any(|c| matches!(c, WorkerCommand::SetStatInt { name, value } if name == "kills" && *value == 10));
+        let has_float = cmds[3..5]
+            .iter()
+            .any(|c| matches!(c, WorkerCommand::SetStatFloat { name, value } if name == "ratio" && (*value - 1.5).abs() < f32::EPSILON));
+        assert!(has_int, "SetStatInt(kills,10) must be present");
+        assert!(has_float, "SetStatFloat(ratio,1.5) must be present");
+        assert!(matches!(&cmds[5], WorkerCommand::StoreStats));
+    }
+
+    #[test]
+    fn translate_request_apply_empty_changes_still_has_store_stats() {
+        let req = make_apply(&[], &[], &[], &[]);
+        let cmds = translate_request(&req);
+        assert_eq!(cmds.len(), 1, "empty apply must still produce StoreStats");
+        assert!(matches!(cmds[0], WorkerCommand::StoreStats));
+    }
+
+    #[test]
+    fn translate_request_disconnect_produces_no_commands() {
+        let cmds = translate_request(&SteamRequest::Disconnect);
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn translate_request_scan_library_produces_no_commands() {
+        let cmds = translate_request(&SteamRequest::ScanLibrary);
+        assert!(cmds.is_empty());
+    }
 }
