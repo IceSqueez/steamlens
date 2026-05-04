@@ -218,10 +218,12 @@ fn build_card(entry: &GameEntry, card_w: f32) -> Element<'_, crate::Message> {
             .line_height(text::LineHeight::Relative(1.2)),
     )
     .width(Length::Fixed(card_w))
-    .height(Length::Fixed(44.0))
-    .padding(Padding::default().left(4).right(4).top(4).bottom(4));
+    .height(Length::Fixed(32.0))
+    .align_x(Alignment::Start)
+    .align_y(Alignment::End)
+    .padding(Padding::default().left(6).right(6).top(0).bottom(4));
 
-    let total_card_h = capsule_h + 44.0 + 8.0;
+    let total_card_h = capsule_h + 32.0 + 4.0;
 
     let card_inner = column![
         capsule_area,
