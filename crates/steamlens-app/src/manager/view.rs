@@ -602,38 +602,50 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
 
     let card_container = container(card_body)
         .width(Length::Fixed(ACH_CARD_WIDTH))
-        .height(Length::Fixed(ACH_CARD_HEIGHT))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
-            border: iced::Border {
-                radius: 8.0.into(),
-                ..iced::Border::default()
-            },
-            shadow: iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                offset: iced::Vector::new(0.0, 4.0),
-                blur_radius: 10.0,
-            },
-            ..container::Style::default()
-        });
+        .height(Length::Fixed(ACH_CARD_HEIGHT));
 
     let toggle_id = row.data.id.clone();
     button(card_container)
         .on_press(msg(ManagerMessage::AchievementToggled(toggle_id)))
         .padding(0)
         .style(|_theme, status| {
-            let border = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                iced::Border {
-                    color: C_PURPLE,
-                    width: 2.0,
-                    radius: 8.0.into(),
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let bg = if hovered {
+                Color {
+                    r: (C_CURRENT_LINE.r * 1.18).min(1.0),
+                    g: (C_CURRENT_LINE.g * 1.18).min(1.0),
+                    b: (C_CURRENT_LINE.b * 1.18).min(1.0),
+                    a: 1.0,
                 }
             } else {
-                iced::Border::default()
+                C_CURRENT_LINE
+            };
+            let border = iced::Border {
+                color: if hovered {
+                    C_PURPLE
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: if hovered { 2.0 } else { 0.0 },
+                radius: 8.0.into(),
+            };
+            let shadow = if hovered {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                    offset: iced::Vector::new(0.0, 8.0),
+                    blur_radius: 18.0,
+                }
+            } else {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
+                    offset: iced::Vector::new(0.0, 4.0),
+                    blur_radius: 10.0,
+                }
             };
             button::Style {
-                background: None,
+                background: Some(iced::Background::Color(bg)),
                 border,
+                shadow,
                 ..button::Style::default()
             }
         })

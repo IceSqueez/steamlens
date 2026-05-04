@@ -294,20 +294,7 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(total_card_h))
-        .padding(Padding::default().top(8))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                radius: 6.0.into(),
-                ..iced::Border::default()
-            },
-            shadow: iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                offset: iced::Vector::new(0.0, 4.0),
-                blur_radius: 10.0,
-            },
-            ..container::Style::default()
-        });
+        .padding(Padding::default().top(8));
 
     button(card)
         .on_press(crate::Message::Library(LibraryMessage::GameSelected(
@@ -315,18 +302,43 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
         )))
         .padding(0)
         .style(|_: &iced::Theme, status| {
-            let border = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                iced::Border {
-                    color: C_ACCENT,
-                    width: 2.0,
-                    radius: 6.0.into(),
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let bg = if hovered {
+                Color {
+                    r: (C_SURFACE.r * 1.18).min(1.0),
+                    g: (C_SURFACE.g * 1.18).min(1.0),
+                    b: (C_SURFACE.b * 1.18).min(1.0),
+                    a: 1.0,
                 }
             } else {
-                iced::Border::default()
+                C_SURFACE
+            };
+            let border = iced::Border {
+                color: if hovered {
+                    C_ACCENT
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: if hovered { 2.0 } else { 0.0 },
+                radius: 6.0.into(),
+            };
+            let shadow = if hovered {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                    offset: iced::Vector::new(0.0, 8.0),
+                    blur_radius: 18.0,
+                }
+            } else {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
+                    offset: iced::Vector::new(0.0, 4.0),
+                    blur_radius: 10.0,
+                }
             };
             button::Style {
-                background: None,
+                background: Some(iced::Background::Color(bg)),
                 border,
+                shadow,
                 ..button::Style::default()
             }
         })
