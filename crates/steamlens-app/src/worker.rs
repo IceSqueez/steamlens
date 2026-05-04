@@ -134,6 +134,10 @@ async fn handle_command(cmd: WorkerCommand, client: &Client) -> DispatchOutcome 
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
+            let pct = fetch_global_percentages(client);
+            if write_response(&pct).await.is_err() {
+                return DispatchOutcome::Fatal;
+            }
         }
 
         WorkerCommand::SetAchievement(name) => {

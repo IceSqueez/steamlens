@@ -48,7 +48,6 @@ struct App {
     worker: Option<SteamWorker>,
     worker_rx: Option<mpsc::Receiver<SteamReply>>,
     library_state: Option<Box<LibraryState>>,
-    manager_state: Option<Box<ManagerState>>,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -57,7 +56,6 @@ fn boot() -> (App, Task<Message>) {
         worker: None,
         worker_rx: None,
         library_state: None,
-        manager_state: None,
     };
     let splash_task = Task::perform(
         async {
@@ -144,17 +142,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::GoBack => {
             match &app.screen {
                 Screen::Manager(_) => {
-                    // Stash ManagerState for potential same-game restore.
-                    // Worker stays alive — replies while in Library are silently
-                    // dropped by drain_worker_replies (Manager branch won't match).
-                    if let Screen::Manager(state) =
-                        std::mem::replace(&mut app.screen, Screen::Splash)
-                    {
-                        app.manager_state = Some(state);
+                    if let Some(w) = &app.worker {
+                        w.send(SteamRequest::Disconnect);
                     }
+                    app.worker = None;
+                    app.worker_rx = None;
 
-                    if let Some(mut stored) = app.library_state.take() {
-                        stored.has_opened_a_game = true;
+                    if let Some(stored) = app.library_state.take() {
                         app.screen = Screen::Library(stored);
                     } else {
                         let lib_state = LibraryState::new();
@@ -172,8 +166,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.worker = None;
                     app.worker_rx = None;
 
-                    if let Some(mut stored) = app.library_state.take() {
-                        stored.has_opened_a_game = true;
+                    if let Some(stored) = app.library_state.take() {
                         app.screen = Screen::Library(stored);
                     } else {
                         let lib_state = LibraryState::new();
@@ -196,9 +189,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     if app_id == 0 {
                         return Task::none();
                     }
-                    if let Screen::Library(lib_state) = &mut app.screen {
-                        lib_state.has_opened_a_game = true;
-                    }
                     return update(app, Message::OpenManager(app_id));
                 }
                 LibraryMessage::ManualAppIdSubmitted => {
@@ -209,9 +199,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     };
                     if app_id == 0 {
                         return Task::none();
-                    }
-                    if let Screen::Library(lib_state) = &mut app.screen {
-                        lib_state.has_opened_a_game = true;
                     }
                     return update(app, Message::OpenManager(app_id));
                 }
@@ -235,50 +222,23 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::OpenManager(app_id) => {
-            // Stash library state and set the lock so other cards dim.
-            if let Screen::Library(mut lib_state) =
-                std::mem::replace(&mut app.screen, Screen::Splash)
-            {
-                lib_state.locked_app_id = Some(app_id);
+            if let Screen::Library(lib_state) = std::mem::replace(&mut app.screen, Screen::Splash) {
                 app.library_state = Some(lib_state);
             }
 
-            // Check whether a stashed ManagerState for this exact game exists
-            // and whether the worker that served it is still alive.
-            let same_game = app
-                .manager_state
-                .as_ref()
-                .is_some_and(|s| s.app_id == app_id);
-
-            if same_game && app.worker.is_some() {
-                // Fast path: restore UI state, re-use worker, kick a background
-                // refresh so Steam data stays current.
-                let mut state = app.manager_state.take().expect("checked above");
-                // Reset to a loading-friendly phase so the spinner shows briefly
-                // while the refresh arrives — but keep search/filter/scroll alive.
-                state.phase = manager::ManagerPhase::WaitingStats;
-                state.banner = None;
-                if let Some(w) = &app.worker {
-                    w.send(SteamRequest::ConnectWithApp(app_id));
-                }
-                app.screen = Screen::Manager(state);
-            } else {
-                // Slow path: disconnect any old worker, spawn fresh one.
-                app.manager_state = None;
-                if let Some(w) = &app.worker {
-                    w.send(SteamRequest::Disconnect);
-                }
-                app.worker = None;
-                app.worker_rx = None;
-
-                let (worker, rx) = SteamWorker::spawn();
-                worker.send(SteamRequest::ConnectWithApp(app_id));
-
-                let state = ManagerState::new(app_id);
-                app.worker = Some(worker);
-                app.worker_rx = Some(rx);
-                app.screen = Screen::Manager(Box::new(state));
+            if let Some(w) = &app.worker {
+                w.send(SteamRequest::Disconnect);
             }
+            app.worker = None;
+            app.worker_rx = None;
+
+            let (worker, rx) = SteamWorker::spawn();
+            worker.send(SteamRequest::ConnectWithApp(app_id));
+
+            let state = ManagerState::new(app_id);
+            app.worker = Some(worker);
+            app.worker_rx = Some(rx);
+            app.screen = Screen::Manager(Box::new(state));
 
             Task::none()
         }
@@ -464,7 +424,6 @@ mod tests {
             worker: None,
             worker_rx: None,
             library_state: None,
-            manager_state: None,
         }
     }
 
@@ -483,7 +442,6 @@ mod tests {
             worker: None,
             worker_rx: None,
             library_state: None,
-            manager_state: None,
         }
     }
 

@@ -583,7 +583,7 @@ fn achievement_card_widget<'a>(
 ) -> Element<'a, Message> {
     let effective = row.effective_achieved();
     let is_protected = row.data.permission != 0;
-    let spoiler_hidden = row.data.is_hidden && !effective && !row.revealed;
+    let spoiler_hidden = row.data.is_hidden && !row.data.is_achieved && !row.revealed;
 
     let icon_el: Element<'_, Message> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))

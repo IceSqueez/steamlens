@@ -16,7 +16,6 @@ const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_ACCENT: Color = Color::from_rgb(0.741, 0.576, 0.976);
-const C_WARNING: Color = Color::from_rgb(0.545, 0.914, 0.992);
 
 fn spinner_frame(angle: f32) -> &'static str {
     let frames = ["\u{25F4}", "\u{25F7}", "\u{25F6}", "\u{25F5}"];
@@ -53,26 +52,10 @@ pub fn render(state: &LibraryState) -> Element<'_, crate::Message> {
         }
     };
 
-    let alpha_banner: Option<Element<'_, crate::Message>> = if state.has_opened_a_game {
-        let banner = container(
-            text("Switching games requires restart (alpha limitation).")
-                .size(12)
-                .color(C_WARNING),
-        )
-        .padding(Padding::default().left(16).right(16).top(6).bottom(6))
-        .width(Length::Fill);
-        Some(banner.into())
-    } else {
-        None
-    };
-
     let stream_indicator = build_stream_indicator(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
-    if let Some(banner) = alpha_banner {
-        col = col.push(banner);
-    }
     if let Some(indicator) = stream_indicator {
         col = col.push(indicator);
     }
@@ -170,10 +153,7 @@ fn build_grid<'a>(
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
 
-    let entries: Vec<(&'a GameEntry, bool)> = visible
-        .into_iter()
-        .map(|e| (e, state.is_locked_out(e.summary.app_id)))
-        .collect();
+    let entries: Vec<&'a GameEntry> = visible;
 
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
@@ -188,8 +168,8 @@ fn build_grid<'a>(
 
         for chunk in entries.chunks(cols) {
             let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
-            for (entry, locked_out) in chunk {
-                r = r.push(build_card(entry, capsule_size, actual_card_w, *locked_out));
+            for entry in chunk {
+                r = r.push(build_card(entry, capsule_size, actual_card_w));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
@@ -210,52 +190,37 @@ fn build_grid<'a>(
         .into()
 }
 
-fn dim(c: Color, factor: f32) -> Color {
-    Color {
-        r: c.r * factor,
-        g: c.g * factor,
-        b: c.b * factor,
-        a: c.a,
-    }
-}
-
 fn build_card(
     entry: &GameEntry,
     capsule_size: CapsuleSize,
     card_w: f32,
-    locked_out: bool,
 ) -> Element<'_, crate::Message> {
     let app_id = entry.summary.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
 
-    const DIM: f32 = 0.35;
-
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
         CapsuleState::Loaded {
             handle, opacity, ..
-        } => {
-            let effective_opacity = if locked_out { *opacity * DIM } else { *opacity };
+        } => container(
             container(
-                container(
-                    img_widget(handle.clone())
-                        .width(Length::Fixed(capsule_w))
-                        .height(Length::Fixed(capsule_h))
-                        .opacity(effective_opacity),
-                )
-                .style(|_: &iced::Theme| container::Style {
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: iced::Vector::new(2.0, 2.0),
-                        blur_radius: 4.0,
-                    },
-                    ..container::Style::default()
-                }),
+                img_widget(handle.clone())
+                    .width(Length::Fixed(capsule_w))
+                    .height(Length::Fixed(capsule_h))
+                    .opacity(*opacity),
             )
-            .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .align_x(Alignment::Center)
-            .into()
-        }
+            .style(|_: &iced::Theme| container::Style {
+                shadow: iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: iced::Vector::new(2.0, 2.0),
+                    blur_radius: 4.0,
+                },
+                ..container::Style::default()
+            }),
+        )
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(capsule_h))
+        .align_x(Alignment::Center)
+        .into(),
 
         CapsuleState::Pending => container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
@@ -286,12 +251,10 @@ fn build_card(
             .into(),
     };
 
-    let text_color = if locked_out { dim(C_TEXT, DIM) } else { C_TEXT };
-
     let name_label = container(
         text(entry.summary.name.as_str())
             .size(12)
-            .color(text_color)
+            .color(C_TEXT)
             .wrapping(text::Wrapping::Word)
             .line_height(text::LineHeight::Relative(1.2)),
     )
@@ -320,64 +283,55 @@ fn build_card(
         .height(Length::Fixed(total_card_h))
         .padding(Padding::default().top(8));
 
-    let mut btn = button(card).padding(0);
-
-    if !locked_out {
-        btn = btn.on_press(crate::Message::Library(LibraryMessage::GameSelected(
+    button(card)
+        .padding(0)
+        .on_press(crate::Message::Library(LibraryMessage::GameSelected(
             app_id,
-        )));
-    }
+        )))
+        .style(move |_: &iced::Theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
 
-    btn.style(move |_: &iced::Theme, status| {
-        let is_disabled = matches!(status, button::Status::Disabled);
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-        let surface = if is_disabled {
-            dim(C_SURFACE, DIM)
-        } else {
-            C_SURFACE
-        };
-        let bg = if hovered && !is_disabled {
-            Color {
-                r: (C_SURFACE.r * 1.18).min(1.0),
-                g: (C_SURFACE.g * 1.18).min(1.0),
-                b: (C_SURFACE.b * 1.18).min(1.0),
-                a: 1.0,
-            }
-        } else {
-            surface
-        };
-
-        let border = iced::Border {
-            color: if hovered && !is_disabled {
-                C_ACCENT
+            let bg = if hovered {
+                Color {
+                    r: (C_SURFACE.r * 1.18).min(1.0),
+                    g: (C_SURFACE.g * 1.18).min(1.0),
+                    b: (C_SURFACE.b * 1.18).min(1.0),
+                    a: 1.0,
+                }
             } else {
-                Color::TRANSPARENT
-            },
-            width: if hovered && !is_disabled { 2.0 } else { 0.0 },
-            radius: 6.0.into(),
-        };
-        let shadow = if hovered && !is_disabled {
-            iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
-                offset: iced::Vector::new(0.0, 8.0),
-                blur_radius: 18.0,
+                C_SURFACE
+            };
+
+            let border = iced::Border {
+                color: if hovered {
+                    C_ACCENT
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: if hovered { 2.0 } else { 0.0 },
+                radius: 6.0.into(),
+            };
+            let shadow = if hovered {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                    offset: iced::Vector::new(0.0, 8.0),
+                    blur_radius: 18.0,
+                }
+            } else {
+                iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
+                    offset: iced::Vector::new(0.0, 4.0),
+                    blur_radius: 10.0,
+                }
+            };
+            button::Style {
+                background: Some(iced::Background::Color(bg)),
+                border,
+                shadow,
+                ..button::Style::default()
             }
-        } else {
-            iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, if is_disabled { 0.15 } else { 0.45 }),
-                offset: iced::Vector::new(0.0, 4.0),
-                blur_radius: 10.0,
-            }
-        };
-        button::Style {
-            background: Some(iced::Background::Color(bg)),
-            border,
-            shadow,
-            ..button::Style::default()
-        }
-    })
-    .into()
+        })
+        .into()
 }
 
 fn build_footer(state: &LibraryState) -> Element<'_, crate::Message> {
