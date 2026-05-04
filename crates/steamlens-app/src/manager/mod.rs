@@ -8,9 +8,9 @@ use iced::Task;
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
-    AchievementFilter, AchievementRow, ActiveTab, Banner, BannerKind, BulkOp, ResetScope, StatRow,
-    build_apply_payload, dirty_count, has_stat_errors, top_3_legendary_ids,
-    visible_achievement_ids,
+    AchievementFilter, AchievementRow, AchievementSort, ActiveTab, Banner, BannerKind, BulkOp,
+    RarityFilter, ResetScope, StatRow, build_apply_payload, compute_tier_map, dirty_count,
+    has_stat_errors, visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -29,6 +29,8 @@ pub enum ManagerMessage {
     StatEdited(String, String),
     StatEditCommitted(String),
     FilterChanged(AchievementFilter),
+    RarityFilterChanged(RarityFilter),
+    AchievementSortChanged(AchievementSort),
     SearchChanged(String),
     TabChanged(ActiveTab),
     StatsConsentToggled(bool),
@@ -77,6 +79,8 @@ pub struct ManagerState {
     pub active_tab: ActiveTab,
     pub search_query: String,
     pub filter: AchievementFilter,
+    pub achievement_sort: AchievementSort,
+    pub rarity_filter: RarityFilter,
     pub stats_edit_consent: bool,
 
     pub reset_scope: ResetScope,
@@ -104,6 +108,8 @@ impl ManagerState {
             active_tab: ActiveTab::Achievements,
             search_query: String::new(),
             filter: AchievementFilter::All,
+            achievement_sort: AchievementSort::UnlockChance,
+            rarity_filter: RarityFilter::All,
             stats_edit_consent: false,
             reset_scope: ResetScope::Pending,
             reset_confirm_input: String::new(),
@@ -359,6 +365,14 @@ pub fn update(
             state.filter = f;
             Task::none()
         }
+        ManagerMessage::RarityFilterChanged(f) => {
+            state.rarity_filter = f;
+            Task::none()
+        }
+        ManagerMessage::AchievementSortChanged(s) => {
+            state.achievement_sort = s;
+            Task::none()
+        }
         ManagerMessage::SearchChanged(q) => {
             state.search_query = q;
             Task::none()
@@ -382,11 +396,16 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::BulkAction(op) => {
-            let visible: std::collections::HashSet<String> =
-                visible_achievement_ids(&state.achievements, state.filter, &state.search_query)
-                    .into_iter()
-                    .map(|s| s.to_owned())
-                    .collect();
+            let visible: std::collections::HashSet<String> = visible_achievement_ids(
+                &state.achievements,
+                state.filter,
+                &state.search_query,
+                state.achievement_sort,
+                state.rarity_filter,
+            )
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect();
 
             for row in &mut state.achievements {
                 if row.data.permission != 0 {
@@ -608,12 +627,14 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
         iced::Subscription::none()
     };
 
-    let legendary_ids = top_3_legendary_ids(&state.achievements);
+    let tier_map = compute_tier_map(&state.achievements);
     let has_legendary = state.phase == ManagerPhase::Ready
-        && state
-            .achievements
-            .iter()
-            .any(|r| r.appeared && legendary_ids.contains(&r.data.id));
+        && state.achievements.iter().any(|r| {
+            r.appeared
+                && tier_map
+                    .get(&r.data.id)
+                    .is_some_and(|&t| t == types::RarityTier::Legendary)
+        });
     let glow_sub = if has_legendary {
         time::every(std::time::Duration::from_millis(40))
             .map(|_| crate::Message::Manager(ManagerMessage::RareGlowTick))

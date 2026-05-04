@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub use steamlens_core::{AchievementData, StatData, StatValue};
 
@@ -100,7 +100,7 @@ impl StatRow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AchievementFilter {
     All,
     Unlocked,
@@ -124,6 +124,76 @@ impl AchievementFilter {
 }
 
 impl std::fmt::Display for AchievementFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AchievementSort {
+    UnlockChance,
+    RarityAndName,
+    Name,
+    Rarity,
+}
+
+impl AchievementSort {
+    pub fn label(self) -> &'static str {
+        match self {
+            AchievementSort::UnlockChance => "Unlock Chance",
+            AchievementSort::RarityAndName => "Rarity & Name",
+            AchievementSort::Name => "Name",
+            AchievementSort::Rarity => "Rarity",
+        }
+    }
+
+    pub const ALL: &'static [AchievementSort] = &[
+        AchievementSort::UnlockChance,
+        AchievementSort::RarityAndName,
+        AchievementSort::Name,
+        AchievementSort::Rarity,
+    ];
+}
+
+impl std::fmt::Display for AchievementSort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RarityFilter {
+    All,
+    Common,
+    Uncommon,
+    Rare,
+    Mythical,
+    Legendary,
+}
+
+impl RarityFilter {
+    pub fn label(self) -> &'static str {
+        match self {
+            RarityFilter::All => "All Tiers",
+            RarityFilter::Common => "Common",
+            RarityFilter::Uncommon => "Uncommon",
+            RarityFilter::Rare => "Rare",
+            RarityFilter::Mythical => "Mythical",
+            RarityFilter::Legendary => "Legendary",
+        }
+    }
+
+    pub const ALL: &'static [RarityFilter] = &[
+        RarityFilter::All,
+        RarityFilter::Common,
+        RarityFilter::Uncommon,
+        RarityFilter::Rare,
+        RarityFilter::Mythical,
+        RarityFilter::Legendary,
+    ];
+}
+
+impl std::fmt::Display for RarityFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
@@ -232,37 +302,79 @@ fn display_group(row: &AchievementRow) -> u8 {
 
 fn tier_rank(tier: Option<RarityTier>) -> u8 {
     match tier {
-        Some(RarityTier::Legendary) => 0,
-        Some(RarityTier::Mythical) => 1,
+        Some(RarityTier::Common) => 0,
+        Some(RarityTier::Uncommon) => 1,
         Some(RarityTier::Rare) => 2,
-        Some(RarityTier::Uncommon) => 3,
-        Some(RarityTier::Common) => 4,
+        Some(RarityTier::Mythical) => 3,
+        Some(RarityTier::Legendary) => 4,
         None => 5,
     }
 }
 
-fn row_tier(row: &AchievementRow, legendary_ids: &HashSet<String>) -> Option<RarityTier> {
-    row.rarity_percent
-        .map(|p| RarityTier::classify(p, legendary_ids.contains(&row.data.id)))
-}
-
 fn sort_for_display<'a>(
     rows: Vec<&'a AchievementRow>,
-    legendary_ids: &HashSet<String>,
+    tier_map: &HashMap<String, RarityTier>,
+    sort: AchievementSort,
 ) -> Vec<&'a AchievementRow> {
     let mut sorted = rows;
-    sorted.sort_by(|a, b| {
-        let ga = display_group(a);
-        let gb = display_group(b);
-        ga.cmp(&gb)
-            .then_with(|| tier_rank(row_tier(a, legendary_ids)).cmp(&tier_rank(row_tier(b, legendary_ids))))
-            .then_with(|| {
-                a.data
-                    .display_name
-                    .to_lowercase()
-                    .cmp(&b.data.display_name.to_lowercase())
-            })
-    });
+    match sort {
+        AchievementSort::UnlockChance => {
+            sorted.sort_by(|a, b| {
+                display_group(a)
+                    .cmp(&display_group(b))
+                    .then_with(|| {
+                        let pa = a.rarity_percent;
+                        let pb = b.rarity_percent;
+                        match (pa, pb) {
+                            (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(Ordering::Equal),
+                            (Some(_), None) => Ordering::Less,
+                            (None, Some(_)) => Ordering::Greater,
+                            (None, None) => Ordering::Equal,
+                        }
+                    })
+                    .then_with(|| {
+                        a.data
+                            .display_name
+                            .to_lowercase()
+                            .cmp(&b.data.display_name.to_lowercase())
+                    })
+            });
+        }
+        AchievementSort::RarityAndName => {
+            sorted.sort_by(|a, b| {
+                display_group(a)
+                    .cmp(&display_group(b))
+                    .then_with(|| {
+                        tier_rank(tier_map.get(&a.data.id).copied())
+                            .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
+                    })
+                    .then_with(|| {
+                        a.data
+                            .display_name
+                            .to_lowercase()
+                            .cmp(&b.data.display_name.to_lowercase())
+                    })
+            });
+        }
+        AchievementSort::Name => {
+            sorted.sort_by(|a, b| {
+                display_group(a).cmp(&display_group(b)).then_with(|| {
+                    a.data
+                        .display_name
+                        .to_lowercase()
+                        .cmp(&b.data.display_name.to_lowercase())
+                })
+            });
+        }
+        AchievementSort::Rarity => {
+            sorted.sort_by(|a, b| {
+                display_group(a).cmp(&display_group(b)).then_with(|| {
+                    tier_rank(tier_map.get(&a.data.id).copied())
+                        .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
+                })
+            });
+        }
+    }
     sorted
 }
 
@@ -287,46 +399,75 @@ impl RarityTier {
             RarityTier::Legendary => "Legendary",
         }
     }
-
-    pub fn classify(percent: f32, is_legendary: bool) -> Self {
-        if is_legendary {
-            return Self::Legendary;
-        }
-        if percent < 25.0 {
-            Self::Mythical
-        } else if percent < 50.0 {
-            Self::Rare
-        } else if percent < 75.0 {
-            Self::Uncommon
-        } else {
-            Self::Common
-        }
-    }
 }
 
-pub fn top_3_legendary_ids(achievements: &[AchievementRow]) -> HashSet<String> {
-    let mut candidates: Vec<(&str, f32)> = achievements
+pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, RarityTier> {
+    let mut rated: Vec<(String, f32)> = achievements
         .iter()
-        .filter_map(|r| r.rarity_percent.map(|p| (r.data.id.as_str(), p)))
+        .filter_map(|r| r.rarity_percent.map(|p| (r.data.id.clone(), p)))
         .collect();
-    candidates.sort_by(|a, b| {
+
+    if rated.is_empty() {
+        return HashMap::new();
+    }
+
+    rated.sort_by(|a, b| {
         a.1.partial_cmp(&b.1)
             .unwrap_or(Ordering::Equal)
-            .then(a.0.cmp(b.0))
+            .then(a.0.cmp(&b.0))
     });
-    candidates
-        .into_iter()
-        .take(LEGENDARY_TOP_N)
-        .map(|(id, _)| id.to_owned())
-        .collect()
+
+    let total = rated.len();
+    let legendary_n = total.min(LEGENDARY_TOP_N);
+    let remaining = total - legendary_n;
+
+    let mythical_n = (remaining as f32 * 0.10).round() as usize;
+    let rare_n = (remaining as f32 * 0.15).round() as usize;
+    let uncommon_n = (remaining as f32 * 0.25).round() as usize;
+    let common_n = remaining
+        .saturating_sub(mythical_n)
+        .saturating_sub(rare_n)
+        .saturating_sub(uncommon_n);
+
+    let mut map = HashMap::with_capacity(total);
+
+    let mut idx = 0;
+
+    for (id, _) in &rated[idx..idx + legendary_n] {
+        map.insert(id.clone(), RarityTier::Legendary);
+    }
+    idx += legendary_n;
+
+    for (id, _) in &rated[idx..idx + mythical_n] {
+        map.insert(id.clone(), RarityTier::Mythical);
+    }
+    idx += mythical_n;
+
+    for (id, _) in &rated[idx..idx + rare_n] {
+        map.insert(id.clone(), RarityTier::Rare);
+    }
+    idx += rare_n;
+
+    for (id, _) in &rated[idx..idx + uncommon_n] {
+        map.insert(id.clone(), RarityTier::Uncommon);
+    }
+    idx += uncommon_n;
+
+    for (id, _) in &rated[idx..idx + common_n] {
+        map.insert(id.clone(), RarityTier::Common);
+    }
+
+    map
 }
 
 pub fn visible_achievement_ids<'a>(
     achievements: &'a [AchievementRow],
     filter: AchievementFilter,
     search: &str,
+    sort: AchievementSort,
+    rarity_filter: RarityFilter,
 ) -> Vec<&'a str> {
-    let legendary_ids = top_3_legendary_ids(achievements);
+    let tier_map = compute_tier_map(achievements);
     let query = search.to_lowercase();
     let filtered: Vec<&AchievementRow> = achievements
         .iter()
@@ -344,13 +485,31 @@ pub fn visible_achievement_ids<'a>(
                 || row.data.display_name.to_lowercase().contains(&query)
                 || row.data.description.to_lowercase().contains(&query)
                 || row.data.id.to_lowercase().contains(&query);
-            filter_ok && search_ok
+            let rarity_ok = match rarity_filter {
+                RarityFilter::All => true,
+                specific => match tier_map.get(&row.data.id).copied() {
+                    Some(tier) => tier == rarity_filter_to_tier(specific),
+                    None => false,
+                },
+            };
+            filter_ok && search_ok && rarity_ok
         })
         .collect();
-    sort_for_display(filtered, &legendary_ids)
+    sort_for_display(filtered, &tier_map, sort)
         .into_iter()
         .map(|row| row.data.id.as_str())
         .collect()
+}
+
+fn rarity_filter_to_tier(f: RarityFilter) -> RarityTier {
+    match f {
+        RarityFilter::Common => RarityTier::Common,
+        RarityFilter::Uncommon => RarityTier::Uncommon,
+        RarityFilter::Rare => RarityTier::Rare,
+        RarityFilter::Mythical => RarityTier::Mythical,
+        RarityFilter::Legendary => RarityTier::Legendary,
+        RarityFilter::All => unreachable!("All is handled before calling rarity_filter_to_tier"),
+    }
 }
 
 #[cfg(test)]
@@ -378,72 +537,237 @@ mod rarity_tests {
         }
     }
 
+    fn make_appeared(id: &str, rarity: Option<f32>) -> AchievementRow {
+        AchievementRow {
+            appeared: true,
+            ..make_row(id, rarity)
+        }
+    }
+
+    fn make_linear_rows(count: usize) -> Vec<AchievementRow> {
+        (0..count)
+            .map(|i| {
+                let pct = (i as f32 / (count - 1).max(1) as f32) * 100.0;
+                make_row(&format!("a{i}"), Some(pct))
+            })
+            .collect()
+    }
+
     #[test]
-    fn top_3_legendary_returns_empty_when_no_data() {
+    fn compute_tier_map_balanced_distribution() {
+        let rows = make_linear_rows(100);
+        let map = compute_tier_map(&rows);
+
+        let legendary = map
+            .values()
+            .filter(|&&t| t == RarityTier::Legendary)
+            .count();
+        let mythical = map.values().filter(|&&t| t == RarityTier::Mythical).count();
+        let rare = map.values().filter(|&&t| t == RarityTier::Rare).count();
+        let uncommon = map.values().filter(|&&t| t == RarityTier::Uncommon).count();
+        let common = map.values().filter(|&&t| t == RarityTier::Common).count();
+
+        assert_eq!(legendary, 3, "top 3 lowest -> Legendary");
+        assert_eq!(mythical, 10, "~10% of remaining 97 = 10 (rounded)");
+        assert_eq!(rare, 15, "~15% of remaining 97 = 15 (rounded)");
+        assert_eq!(uncommon, 24, "~25% of remaining 97 = 24 (rounded)");
+        assert_eq!(
+            common + legendary + mythical + rare + uncommon,
+            100,
+            "total must sum to 100"
+        );
+        assert!(
+            common >= 45 && common <= 50,
+            "common gets remainder: {common}"
+        );
+    }
+
+    #[test]
+    fn compute_tier_map_skewed_low_distribution() {
+        let rows: Vec<AchievementRow> = (0..100)
+            .map(|i| make_row(&format!("a{i}"), Some(i as f32 * 0.1)))
+            .collect();
+        let map = compute_tier_map(&rows);
+
+        let legendary = map
+            .values()
+            .filter(|&&t| t == RarityTier::Legendary)
+            .count();
+        let mythical = map.values().filter(|&&t| t == RarityTier::Mythical).count();
+        let rare = map.values().filter(|&&t| t == RarityTier::Rare).count();
+        let uncommon = map.values().filter(|&&t| t == RarityTier::Uncommon).count();
+        let common = map.values().filter(|&&t| t == RarityTier::Common).count();
+
+        assert_eq!(legendary, 3);
+        assert!(
+            mythical > 0,
+            "Mythical tier must not be empty even with all-low percents"
+        );
+        assert!(common > 0, "Common must exist");
+        assert_eq!(legendary + mythical + rare + uncommon + common, 100);
+    }
+
+    #[test]
+    fn compute_tier_map_handles_fewer_than_3_total() {
+        let rows = vec![make_row("a1", Some(2.0)), make_row("a2", Some(5.0))];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["a1"], RarityTier::Legendary);
+        assert_eq!(map["a2"], RarityTier::Legendary);
+    }
+
+    #[test]
+    fn compute_tier_map_excludes_unrated() {
         let rows = vec![
-            make_row("a1", None),
-            make_row("a2", None),
-            make_row("a3", None),
+            make_row("rated1", Some(10.0)),
+            make_row("rated2", Some(50.0)),
+            make_row("rated3", Some(90.0)),
+            make_row("unrated", None),
         ];
-        assert!(top_3_legendary_ids(&rows).is_empty());
+        let map = compute_tier_map(&rows);
+        assert!(
+            !map.contains_key("unrated"),
+            "None rows must not appear in map"
+        );
+        assert_eq!(map.len(), 3);
     }
 
     #[test]
-    fn top_3_legendary_returns_all_when_fewer_than_3() {
+    fn sort_by_name_ignores_tier() {
         let rows = vec![
-            make_row("a1", Some(2.0)),
-            make_row("a2", Some(7.5)),
-            make_row("a3", None),
+            make_appeared("zebra", Some(1.0)),
+            make_appeared("apple", Some(90.0)),
+            make_appeared("mango", Some(30.0)),
         ];
-        let ids = top_3_legendary_ids(&rows);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains("a1"));
-        assert!(ids.contains("a2"));
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            RarityFilter::All,
+        );
+        assert_eq!(ids, vec!["apple", "mango", "zebra"]);
     }
 
     #[test]
-    fn top_3_legendary_takes_lowest_3() {
+    fn sort_by_unlock_chance_high_percent_first() {
         let rows = vec![
-            make_row("a1", Some(0.5)),
-            make_row("a2", Some(1.2)),
-            make_row("a3", Some(3.0)),
-            make_row("a4", Some(5.5)),
-            make_row("a5", Some(8.1)),
+            make_appeared("rare_ach", Some(2.0)),
+            make_appeared("common_ach", Some(95.0)),
+            make_appeared("mid_ach", Some(40.0)),
         ];
-        let ids = top_3_legendary_ids(&rows);
-        assert_eq!(ids.len(), 3);
-        assert!(ids.contains("a1"));
-        assert!(ids.contains("a2"));
-        assert!(ids.contains("a3"));
-        assert!(!ids.contains("a4"));
-        assert!(!ids.contains("a5"));
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            RarityFilter::All,
+        );
+        assert_eq!(ids[0], "common_ach", "highest % first");
+        assert_eq!(ids[1], "mid_ach");
+        assert_eq!(ids[2], "rare_ach", "lowest % last");
     }
 
     #[test]
-    fn top_3_legendary_picks_globally_lowest_regardless_of_threshold() {
-        let rows = vec![make_row("a1", Some(62.0)), make_row("a2", Some(80.0))];
-        let ids = top_3_legendary_ids(&rows);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains("a1"));
-        assert!(ids.contains("a2"));
+    fn sort_by_unlock_chance_none_goes_to_end() {
+        let rows = vec![
+            make_appeared("no_data", None),
+            make_appeared("has_data", Some(50.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            RarityFilter::All,
+        );
+        assert_eq!(ids[0], "has_data");
+        assert_eq!(ids[1], "no_data", "None rarity goes to end");
     }
 
     #[test]
-    fn classify_boundaries() {
-        assert_eq!(RarityTier::classify(100.0, false), RarityTier::Common);
-        assert_eq!(RarityTier::classify(75.0, false), RarityTier::Common);
-        assert_eq!(RarityTier::classify(74.9, false), RarityTier::Uncommon);
-        assert_eq!(RarityTier::classify(50.0, false), RarityTier::Uncommon);
-        assert_eq!(RarityTier::classify(49.9, false), RarityTier::Rare);
-        assert_eq!(RarityTier::classify(25.0, false), RarityTier::Rare);
-        assert_eq!(RarityTier::classify(24.9, false), RarityTier::Mythical);
-        assert_eq!(RarityTier::classify(0.0, false), RarityTier::Mythical);
+    fn sort_by_rarity_ignores_name() {
+        let rows: Vec<AchievementRow> = (0..10)
+            .map(|i| make_appeared(&format!("a{i}"), Some(i as f32 * 10.0)))
+            .collect();
+        let map = compute_tier_map(&rows);
+        let common_count = map.values().filter(|&&t| t == RarityTier::Common).count();
+
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Rarity,
+            RarityFilter::All,
+        );
+        assert_eq!(ids.len(), 10);
+
+        for pos in 0..common_count {
+            let tier = map.get(ids[pos]).copied();
+            assert_eq!(
+                tier,
+                Some(RarityTier::Common),
+                "position {pos} should be Common (tier_rank=0 sorts first), got {:?}",
+                tier
+            );
+        }
+
+        let common_idx_end = ids.len() - 1;
+        let tier_last = map.get(ids[common_idx_end]).copied();
+        assert_eq!(
+            tier_last,
+            Some(RarityTier::Legendary),
+            "last position should be Legendary (tier_rank=4 sorts last)"
+        );
     }
 
     #[test]
-    fn classify_legendary_priority_over_mythical() {
-        assert_eq!(RarityTier::classify(0.5, true), RarityTier::Legendary);
-        assert_eq!(RarityTier::classify(0.0, true), RarityTier::Legendary);
-        assert_eq!(RarityTier::classify(80.0, true), RarityTier::Legendary);
+    fn rarity_filter_legendary_only() {
+        let rows: Vec<AchievementRow> = make_linear_rows(10)
+            .into_iter()
+            .map(|mut r| {
+                r.appeared = true;
+                r
+            })
+            .collect();
+        let map = compute_tier_map(&rows);
+        let legendary_count = map
+            .values()
+            .filter(|&&t| t == RarityTier::Legendary)
+            .count();
+
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            RarityFilter::Legendary,
+        );
+        assert_eq!(
+            ids.len(),
+            legendary_count,
+            "filter must return exactly the legendary tier count"
+        );
+    }
+
+    #[test]
+    fn rarity_filter_excludes_no_data_when_specific() {
+        let rows = vec![
+            make_appeared("r1", Some(10.0)),
+            make_appeared("r2", Some(50.0)),
+            make_appeared("r3", Some(90.0)),
+            make_appeared("no_data", None),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            RarityFilter::Common,
+        );
+        assert!(
+            !ids.contains(&"no_data"),
+            "unrated must be excluded by specific filter"
+        );
     }
 }

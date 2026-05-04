@@ -675,7 +675,8 @@ mod tests {
     #[test]
     fn sort_orders_unlocked_then_locked_then_hidden() {
         use manager::types::{
-            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            visible_achievement_ids,
         };
 
         fn row(
@@ -708,7 +709,13 @@ mod tests {
             row("E", "Epsilon", true, true, false),
         ];
 
-        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+        let ids = visible_achievement_ids(
+            &achievements,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            RarityFilter::All,
+        );
 
         assert_eq!(ids.len(), 5);
         assert_eq!(ids[0], "A", "A (unlocked) first");
@@ -721,7 +728,8 @@ mod tests {
     #[test]
     fn dirty_unlock_does_not_change_group_until_apply() {
         use manager::types::{
-            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            visible_achievement_ids,
         };
 
         let mut zebra = AchievementRow::from_data(AchievementData {
@@ -750,7 +758,13 @@ mod tests {
         ant.appeared = true;
 
         let achievements = vec![zebra, ant];
-        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+        let ids = visible_achievement_ids(
+            &achievements,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            RarityFilter::All,
+        );
 
         assert_eq!(
             ids[0], "ANT",
@@ -765,7 +779,8 @@ mod tests {
     #[test]
     fn case_insensitive_sort() {
         use manager::types::{
-            AchievementData, AchievementFilter, AchievementRow, visible_achievement_ids,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            visible_achievement_ids,
         };
 
         fn unlocked_row(id: &str, name: &str) -> AchievementRow {
@@ -789,7 +804,13 @@ mod tests {
             unlocked_row("A", "apple"),
         ];
 
-        let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
+        let ids = visible_achievement_ids(
+            &achievements,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            RarityFilter::All,
+        );
 
         assert_eq!(ids[0], "A", "apple first (case-insensitive)");
         assert_eq!(ids[1], "B", "Banana second");

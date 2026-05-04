@@ -5,8 +5,8 @@ use iced::widget::{
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use super::types::{
-    AchievementFilter, AchievementRow, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope,
-    StatRow, top_3_legendary_ids, visible_achievement_ids,
+    AchievementFilter, AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp,
+    RarityFilter, RarityTier, ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
 };
 use super::{ManagerMessage, ManagerPhase, ManagerState};
 use crate::Message;
@@ -21,8 +21,8 @@ const C_PURPLE: Color = Color::from_rgb(0.741, 0.576, 0.976);
 const C_RED: Color = Color::from_rgb(1.0, 0.333, 0.333);
 const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
-const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.85, 0.4);
-const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.4, 0.85);
+const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
+const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 fn msg(m: ManagerMessage) -> Message {
     Message::Manager(m)
 }
@@ -358,6 +358,18 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
     .text_size(13)
     .padding(8);
 
+    let rarity_pick = pick_list(RarityFilter::ALL, Some(state.rarity_filter), |f| {
+        msg(ManagerMessage::RarityFilterChanged(f))
+    })
+    .text_size(13)
+    .padding(8);
+
+    let sort_pick = pick_list(AchievementSort::ALL, Some(state.achievement_sort), |s| {
+        msg(ManagerMessage::AchievementSortChanged(s))
+    })
+    .text_size(13)
+    .padding(8);
+
     let bulk_unlock = button(text("Unlock All").size(13))
         .on_press(msg(ManagerMessage::BulkAction(BulkOp::Unlock)))
         .padding(Padding::from([6u16, 10]));
@@ -368,10 +380,18 @@ fn filter_row(state: &ManagerState) -> Element<'_, Message> {
         .on_press(msg(ManagerMessage::BulkAction(BulkOp::Invert)))
         .padding(Padding::from([6u16, 10]));
 
-    let r = row![search, filter_pick, bulk_unlock, bulk_lock, bulk_invert,]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::from([8u16, 16]));
+    let r = row![
+        search,
+        filter_pick,
+        rarity_pick,
+        sort_pick,
+        bulk_unlock,
+        bulk_lock,
+        bulk_invert,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .padding(Padding::from([8u16, 16]));
 
     container(r)
         .width(Length::Fill)
@@ -432,13 +452,34 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
         },
         Some(RarityTier::Rare) => container::Style {
             shadow: iced::Shadow {
-                color: Color { a: 0.4, ..C_PURPLE },
+                color: Color { a: 0.7, ..C_PURPLE },
                 offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 8.0,
+                blur_radius: 14.0,
+            },
+            border: iced::Border {
+                color: C_PURPLE,
+                width: 1.5,
+                radius: 8.0.into(),
             },
             ..container::Style::default()
         },
-        _ => container::Style {
+        Some(RarityTier::Uncommon) => container::Style {
+            shadow: iced::Shadow {
+                color: Color { a: 0.7, ..C_CYAN },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 14.0,
+            },
+            ..container::Style::default()
+        },
+        Some(RarityTier::Common) => container::Style {
+            shadow: iced::Shadow {
+                color: Color { a: 0.7, ..C_GREEN },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 14.0,
+            },
+            ..container::Style::default()
+        },
+        None => container::Style {
             shadow: iced::Shadow {
                 color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
                 offset: iced::Vector::new(1.5, 1.5),
@@ -450,8 +491,13 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
 }
 
 fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
-    let visible_ids =
-        visible_achievement_ids(&state.achievements, state.filter, &state.search_query);
+    let visible_ids = visible_achievement_ids(
+        &state.achievements,
+        state.filter,
+        &state.search_query,
+        state.achievement_sort,
+        state.rarity_filter,
+    );
 
     let shown = visible_ids.len();
     let total = state.achievements.len();
@@ -475,7 +521,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
 
     let query_owned = state.search_query.clone();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
-    let legendary_ids = top_3_legendary_ids(&state.achievements);
+    let tier_map = compute_tier_map(&state.achievements);
 
     let grid = responsive(move |size| {
         const SIDE_PADDING: f32 = 16.0;
@@ -496,10 +542,7 @@ fn achievement_list(state: &ManagerState) -> Element<'_, Message> {
                 .spacing(ACH_CARD_GAP as u32)
                 .align_y(Alignment::Start);
             for entry in chunk {
-                let is_legendary = legendary_ids.contains(entry.data.id.as_str());
-                let tier = entry
-                    .rarity_percent
-                    .map(|p| RarityTier::classify(p, is_legendary));
+                let tier = tier_map.get(&entry.data.id).copied();
                 r = r.push(achievement_card_widget(
                     entry,
                     actual_card_w,
