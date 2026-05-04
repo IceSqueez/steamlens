@@ -475,11 +475,10 @@ pub fn visible_achievement_ids<'a>(
             if !row.appeared {
                 return false;
             }
-            let effective = row.effective_achieved();
             let filter_ok = match filter {
                 AchievementFilter::All => true,
-                AchievementFilter::Unlocked => effective,
-                AchievementFilter::Locked => !effective,
+                AchievementFilter::Unlocked => row.data.is_achieved,
+                AchievementFilter::Locked => !row.data.is_achieved,
             };
             let search_ok = query.is_empty()
                 || row.data.display_name.to_lowercase().contains(&query)
