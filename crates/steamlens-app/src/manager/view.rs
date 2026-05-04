@@ -441,11 +441,21 @@ fn achievement_card_widget(row: &AchievementRow) -> Element<'_, Message> {
     } else if let Some(ico) = &row.data.icon {
         let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
-        image(handle)
-            .width(Length::Fixed(ACH_CARD_ICON))
-            .height(Length::Fixed(ACH_CARD_ICON))
-            .opacity(opacity)
-            .into()
+        container(
+            image(handle)
+                .width(Length::Fixed(ACH_CARD_ICON))
+                .height(Length::Fixed(ACH_CARD_ICON))
+                .opacity(opacity),
+        )
+        .style(|_theme| container::Style {
+            shadow: iced::Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                offset: iced::Vector::new(1.5, 1.5),
+                blur_radius: 3.0,
+            },
+            ..container::Style::default()
+        })
+        .into()
     } else {
         let icon_bg = if effective {
             C_CURRENT_LINE

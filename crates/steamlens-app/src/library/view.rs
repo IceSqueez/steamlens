@@ -215,10 +215,20 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
         CapsuleState::Loaded {
             handle, opacity, ..
         } => container(
-            img_widget(handle.clone())
-                .width(Length::Fixed(capsule_w))
-                .height(Length::Fixed(capsule_h))
-                .opacity(*opacity),
+            container(
+                img_widget(handle.clone())
+                    .width(Length::Fixed(capsule_w))
+                    .height(Length::Fixed(capsule_h))
+                    .opacity(*opacity),
+            )
+            .style(|_: &iced::Theme| container::Style {
+                shadow: iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: iced::Vector::new(2.0, 2.0),
+                    blur_radius: 4.0,
+                },
+                ..container::Style::default()
+            }),
         )
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h))
@@ -267,10 +277,15 @@ fn build_card(entry: &GameEntry, capsule_size: CapsuleSize) -> Element<'_, crate
     .align_y(Alignment::End)
     .padding(Padding::default().left(6).right(6).top(0).bottom(4));
 
-    let total_card_h = capsule_h + 32.0 + 4.0 + 8.0;
+    let total_card_h = capsule_h + 32.0 + 4.0 + 8.0 + 9.0;
+
+    let separator = container(iced::widget::rule::horizontal(1))
+        .padding(Padding::default().left(8).right(8).top(8).bottom(0))
+        .width(Length::Fixed(card_w));
 
     let card_inner = column![
         capsule_area,
+        separator,
         iced::widget::Space::new().height(Length::Fill),
         name_label,
     ]
