@@ -38,12 +38,15 @@ split_commits = false
 commit_preprocessors = [
   { pattern = "^Merge branch", replace = "chore(merge): Merge branch" },
   { pattern = "^Merge pull request", replace = "chore(merge): Merge pull request" },
+  { pattern = "^Merge remote-tracking branch", replace = "chore(merge): Merge remote-tracking branch" },
+  { pattern = "^Initial commit", replace = "chore(init): bootstrap repository" },
   { pattern = "^ci\\(GitHubCI\\)", replace = "ci(github)" },
 ]
 
 commit_parsers = [
   { message = "^chore: Release [a-z0-9-_]+ version", skip = true },
   { message = "^chore\\(merge\\)", skip = true },
+  { message = "^chore\\(init\\)", skip = true },
   { message = "^chore\\(release\\): prepare for", skip = true },
   { message = "^chore\\(version\\)", skip = true },
   { message = "^docs\\(changelog\\)", skip = true },
