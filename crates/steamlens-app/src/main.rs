@@ -46,6 +46,7 @@ struct App {
     screen: Screen,
     worker: Option<SteamWorker>,
     worker_rx: Option<mpsc::Receiver<SteamReply>>,
+    library_state: Option<Box<LibraryState>>,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -53,6 +54,7 @@ fn boot() -> (App, Task<Message>) {
         screen: Screen::Splash,
         worker: None,
         worker_rx: None,
+        library_state: None,
     };
     let splash_task = Task::perform(
         async {
@@ -137,27 +139,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Exit => iced::exit(),
 
         Message::GoBack => {
-            if let Screen::Manager(_) = &app.screen {
+            let returning_from_manager_or_error =
+                matches!(&app.screen, Screen::Manager(_) | Screen::SteamNotRunning { .. });
+            if returning_from_manager_or_error {
                 if let Some(w) = &app.worker {
                     w.send(SteamRequest::Disconnect);
                 }
                 app.worker = None;
                 app.worker_rx = None;
 
-                let mut lib_state = LibraryState::new();
-                lib_state.has_opened_a_game = true;
-                let (worker, rx) = SteamWorker::spawn();
-                library::trigger_scan(&worker);
-                app.worker = Some(worker);
-                app.worker_rx = Some(rx);
-                app.screen = Screen::Library(Box::new(lib_state));
-            } else if let Screen::SteamNotRunning { .. } = &app.screen {
-                let lib_state = LibraryState::new();
-                let (worker, rx) = SteamWorker::spawn();
-                library::trigger_scan(&worker);
-                app.worker = Some(worker);
-                app.worker_rx = Some(rx);
-                app.screen = Screen::Library(Box::new(lib_state));
+                if let Some(mut stored) = app.library_state.take() {
+                    stored.has_opened_a_game = true;
+                    app.screen = Screen::Library(stored);
+                } else {
+                    let lib_state = LibraryState::new();
+                    let (worker, rx) = SteamWorker::spawn();
+                    library::trigger_scan(&worker);
+                    app.worker = Some(worker);
+                    app.worker_rx = Some(rx);
+                    app.screen = Screen::Library(Box::new(lib_state));
+                }
             }
             Task::none()
         }
@@ -213,6 +214,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             app.worker = None;
             app.worker_rx = None;
+
+            if let Screen::Library(lib_state) =
+                std::mem::replace(&mut app.screen, Screen::Splash)
+            {
+                app.library_state = Some(lib_state);
+            }
 
             let (worker, rx) = SteamWorker::spawn();
             worker.send(SteamRequest::ConnectWithApp(app_id));
@@ -392,6 +399,7 @@ mod tests {
             },
             worker: None,
             worker_rx: None,
+            library_state: None,
         }
     }
 
@@ -409,6 +417,7 @@ mod tests {
             screen: Screen::Splash,
             worker: None,
             worker_rx: None,
+            library_state: None,
         }
     }
 
