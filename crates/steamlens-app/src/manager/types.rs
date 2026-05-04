@@ -56,6 +56,8 @@ pub struct AchievementRow {
     pub data: AchievementData,
     pub is_dirty: bool,
     pub revealed: bool,
+    pub appeared: bool,
+    pub card_opacity: f32,
 }
 
 impl AchievementRow {
@@ -64,6 +66,8 @@ impl AchievementRow {
             data,
             is_dirty: false,
             revealed: false,
+            appeared: false,
+            card_opacity: 0.0,
         }
     }
 
@@ -296,6 +300,9 @@ pub fn visible_achievement_ids<'a>(
     let filtered: Vec<&AchievementRow> = achievements
         .iter()
         .filter(|row| {
+            if !row.appeared {
+                return false;
+            }
             let effective = row.effective_achieved();
             let filter_ok = match filter {
                 AchievementFilter::All => true,

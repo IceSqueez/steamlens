@@ -1,14 +1,17 @@
+use std::collections::VecDeque;
+
 use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
 
-pub(crate) const FADE_DELTA: f32 = 0.107;
+pub(crate) const FADE_DELTA: f32 = 0.2;
 
 #[derive(Clone)]
 pub struct GameEntry {
     pub summary: GameSummary,
     pub capsule: CapsuleState,
+    pub revealed: bool,
 }
 
 impl std::fmt::Debug for GameEntry {
@@ -87,6 +90,7 @@ pub enum LibraryMessage {
     ManualAppIdSubmitted,
     RescanRequested,
     FadeTick,
+    RevealTick,
 }
 
 impl std::fmt::Debug for LibraryMessage {
@@ -114,6 +118,7 @@ impl std::fmt::Debug for LibraryMessage {
             LibraryMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
             LibraryMessage::RescanRequested => write!(f, "RescanRequested"),
             LibraryMessage::FadeTick => write!(f, "FadeTick"),
+            LibraryMessage::RevealTick => write!(f, "RevealTick"),
         }
     }
 }
@@ -128,6 +133,7 @@ pub enum LibraryPhase {
 pub struct LibraryState {
     pub phase: LibraryPhase,
     pub games: Vec<GameEntry>,
+    pub reveal_queue: VecDeque<u32>,
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
@@ -151,6 +157,7 @@ impl LibraryState {
         Self {
             phase: LibraryPhase::Scanning,
             games: Vec::new(),
+            reveal_queue: VecDeque::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -162,7 +169,11 @@ impl LibraryState {
     pub fn has_fading_capsules(&self) -> bool {
         self.games
             .iter()
-            .any(|g| matches!(g.capsule, CapsuleState::Loaded { opacity, .. } if opacity < 1.0))
+            .any(|g| matches!(g.capsule, CapsuleState::Loaded { opacity, .. } if g.revealed && opacity < 1.0))
+    }
+
+    pub fn has_pending_reveals(&self) -> bool {
+        !self.reveal_queue.is_empty()
     }
 
     pub fn visible_games(&self) -> Vec<&GameEntry> {
@@ -170,7 +181,9 @@ impl LibraryState {
         let mut result: Vec<&GameEntry> = self
             .games
             .iter()
-            .filter(|g| query.is_empty() || g.summary.name.to_lowercase().contains(&query))
+            .filter(|g| {
+                g.revealed && (query.is_empty() || g.summary.name.to_lowercase().contains(&query))
+            })
             .collect();
 
         sort_entries(&mut result, self.sort);
@@ -222,6 +235,7 @@ mod tests {
         GameEntry {
             summary: make_summary(app_id, name, last_played),
             capsule: CapsuleState::Pending,
+            revealed: true,
         }
     }
 
@@ -229,6 +243,7 @@ mod tests {
         LibraryState {
             phase: LibraryPhase::Loaded,
             games,
+            reveal_queue: VecDeque::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -329,6 +344,7 @@ mod tests {
                 height: 1,
                 opacity: 0.0,
             },
+            revealed: true,
         }]);
 
         assert!(state.has_fading_capsules(), "precondition: opacity < 1.0");
@@ -353,6 +369,56 @@ mod tests {
         assert!(
             !state.has_fading_capsules(),
             "has_fading_capsules must return false when all opacity == 1.0"
+        );
+    }
+
+    #[test]
+    fn library_reveal_tick_pops_one_from_queue() {
+        let entries: Vec<GameEntry> = (1u32..=3)
+            .map(|id| GameEntry {
+                summary: make_summary(id, &format!("Game {id}"), None),
+                capsule: CapsuleState::Pending,
+                revealed: false,
+            })
+            .collect();
+
+        let mut state = LibraryState {
+            phase: LibraryPhase::Loaded,
+            games: entries,
+            reveal_queue: VecDeque::from([1u32, 2, 3]),
+            search: String::new(),
+            sort: LibrarySort::LastPlayed,
+            capsule_size: CapsuleSize::default(),
+            manual_app_id_input: String::new(),
+            has_opened_a_game: false,
+        };
+
+        assert!(state.has_pending_reveals(), "precondition: queue not empty");
+        assert!(
+            state.games.iter().all(|g| !g.revealed),
+            "precondition: none revealed"
+        );
+
+        for expected_remaining in [2usize, 1, 0] {
+            if let Some(app_id) = state.reveal_queue.pop_front() {
+                if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
+                    entry.revealed = true;
+                }
+            }
+            assert_eq!(
+                state.reveal_queue.len(),
+                expected_remaining,
+                "queue length after pop"
+            );
+        }
+
+        assert!(
+            state.games.iter().all(|g| g.revealed),
+            "all 3 entries must be revealed after 3 pops"
+        );
+        assert!(
+            !state.has_pending_reveals(),
+            "has_pending_reveals must be false when queue is empty"
         );
     }
 }

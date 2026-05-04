@@ -9,7 +9,7 @@ use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{CapsuleState, FADE_DELTA, GameEntry, LibraryMessage, LibraryPhase, LibraryState};
 
-const MAX_CONCURRENT_DOWNLOADS: usize = 8;
+const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
 pub fn handle_steam_reply(state: &mut LibraryState, reply: SteamReply) -> Task<crate::Message> {
     match reply {
@@ -33,8 +33,10 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
                 .map(|s| GameEntry {
                     summary: s.clone(),
                     capsule: CapsuleState::Pending,
+                    revealed: false,
                 })
                 .collect();
+            state.reveal_queue.clear();
             state.phase = LibraryPhase::Loaded;
 
             let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
@@ -58,8 +60,10 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
 
         LibraryMessage::CapsuleSizeChanged(new_size) => {
             state.capsule_size = new_size;
+            state.reveal_queue.clear();
             for entry in &mut state.games {
                 entry.capsule = CapsuleState::Pending;
+                entry.revealed = false;
             }
             let app_ids: Vec<u32> = state.games.iter().map(|g| g.summary.app_id).collect();
             spawn_capsule_queue(app_ids, new_size)
@@ -82,6 +86,20 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
                     height,
                     opacity: 0.0,
                 };
+            }
+            state.reveal_queue.push_back(app_id);
+            Task::none()
+        }
+
+        LibraryMessage::RevealTick => {
+            let pop_count = state.reveal_queue.len().min(3);
+            for _ in 0..pop_count {
+                if let Some(app_id) = state.reveal_queue.pop_front()
+                    && let Some(entry) =
+                        state.games.iter_mut().find(|g| g.summary.app_id == app_id)
+                {
+                    entry.revealed = true;
+                }
             }
             Task::none()
         }
@@ -119,6 +137,7 @@ pub fn update(state: &mut LibraryState, message: LibraryMessage) -> Task<crate::
         LibraryMessage::RescanRequested => {
             state.phase = LibraryPhase::Scanning;
             state.games.clear();
+            state.reveal_queue.clear();
             Task::none()
         }
     }

@@ -328,7 +328,7 @@ fn subscription(app: &App) -> Subscription<Message> {
 
     let fade_sub = if let Screen::Library(state) = &app.screen {
         if state.has_fading_capsules() {
-            iced::time::every(std::time::Duration::from_millis(16))
+            iced::time::every(std::time::Duration::from_millis(33))
                 .map(|_| Message::Library(LibraryMessage::FadeTick))
         } else {
             Subscription::none()
@@ -337,7 +337,18 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    Subscription::batch([keyboard_sub, poll_sub, manager_sub, fade_sub])
+    let reveal_sub = if let Screen::Library(state) = &app.screen {
+        if state.has_pending_reveals() {
+            iced::time::every(std::time::Duration::from_millis(150))
+                .map(|_| Message::Library(LibraryMessage::RevealTick))
+        } else {
+            Subscription::none()
+        }
+    } else {
+        Subscription::none()
+    };
+
+    Subscription::batch([keyboard_sub, poll_sub, manager_sub, fade_sub, reveal_sub])
 }
 
 fn theme(_app: &App) -> iced::Theme {
@@ -592,6 +603,7 @@ mod tests {
                 icon: None,
             });
             r.revealed = revealed;
+            r.appeared = true;
             r
         }
 
@@ -630,8 +642,9 @@ mod tests {
             icon: None,
         });
         zebra.is_dirty = true;
+        zebra.appeared = true;
 
-        let ant = AchievementRow::from_data(AchievementData {
+        let mut ant = AchievementRow::from_data(AchievementData {
             id: "ANT".to_owned(),
             display_name: "Ant".to_owned(),
             description: String::new(),
@@ -641,6 +654,7 @@ mod tests {
             permission: 0,
             icon: None,
         });
+        ant.appeared = true;
 
         let achievements = vec![zebra, ant];
         let ids = visible_achievement_ids(&achievements, AchievementFilter::All, "");
@@ -662,7 +676,7 @@ mod tests {
         };
 
         fn unlocked_row(id: &str, name: &str) -> AchievementRow {
-            AchievementRow::from_data(AchievementData {
+            let mut r = AchievementRow::from_data(AchievementData {
                 id: id.to_owned(),
                 display_name: name.to_owned(),
                 description: String::new(),
@@ -671,7 +685,9 @@ mod tests {
                 unlock_time: None,
                 permission: 0,
                 icon: None,
-            })
+            });
+            r.appeared = true;
+            r
         }
 
         let achievements = vec![

@@ -1,6 +1,8 @@
 pub mod types;
 mod view;
 
+use std::collections::VecDeque;
+
 use iced::Task;
 
 use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
@@ -9,6 +11,8 @@ use types::{
     AchievementFilter, AchievementRow, ActiveTab, Banner, BannerKind, BulkOp, ResetScope, StatRow,
     build_apply_payload, dirty_count, has_stat_errors, visible_achievement_ids,
 };
+
+pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -43,6 +47,8 @@ pub enum ManagerMessage {
     RevealHidden(String),
     SpinnerTick,
     FadeInTick(f32),
+    RevealTick,
+    ManagerFadeTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -63,6 +69,7 @@ pub struct ManagerState {
 
     pub achievements: Vec<AchievementRow>,
     pub stats: Vec<StatRow>,
+    pub reveal_queue: VecDeque<String>,
 
     pub active_tab: ActiveTab,
     pub search_query: String,
@@ -88,6 +95,7 @@ impl ManagerState {
             phase: ManagerPhase::Connecting,
             achievements: Vec::new(),
             stats: Vec::new(),
+            reveal_queue: VecDeque::new(),
             active_tab: ActiveTab::Achievements,
             search_query: String::new(),
             filter: AchievementFilter::All,
@@ -107,6 +115,16 @@ impl ManagerState {
 
     pub fn has_stat_errors(&self) -> bool {
         has_stat_errors(&self.stats)
+    }
+
+    pub fn has_pending_reveals(&self) -> bool {
+        !self.reveal_queue.is_empty()
+    }
+
+    pub fn has_fading_cards(&self) -> bool {
+        self.achievements
+            .iter()
+            .any(|r| r.appeared && r.card_opacity < 1.0)
     }
 }
 
@@ -156,6 +174,13 @@ pub fn handle_steam_reply(state: &mut ManagerState, reply: SteamReply) -> Task<c
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
             state.phase = ManagerPhase::Ready;
             state.fade_in = 0.0;
+
+            state.reveal_queue = state
+                .achievements
+                .iter()
+                .map(|r| r.data.id.clone())
+                .collect();
+
             Task::none()
         }
         SteamReply::LoadFailed(e) => {
@@ -268,6 +293,11 @@ pub fn update(
             state.stats = stats.into_iter().map(StatRow::from_data).collect();
             state.phase = ManagerPhase::Ready;
             state.fade_in = 0.0;
+            state.reveal_queue = state
+                .achievements
+                .iter()
+                .map(|r| r.data.id.clone())
+                .collect();
             Task::none()
         }
         ManagerMessage::LoadFailed(e) => {
@@ -359,6 +389,7 @@ pub fn update(
             state.phase = ManagerPhase::WaitingStats;
             state.achievements.clear();
             state.stats.clear();
+            state.reveal_queue.clear();
             state.banner = None;
             let steam_id_placeholder = 0u64;
             worker.send(SteamRequest::RequestUserStats);
@@ -435,13 +466,7 @@ pub fn update(
             state.phase = ManagerPhase::WaitingStats;
             state.achievements.clear();
             state.stats.clear();
-            for row in &mut state.achievements {
-                row.is_dirty = false;
-            }
-            for row in &mut state.stats {
-                row.is_dirty = false;
-                row.edit_error = None;
-            }
+            state.reveal_queue.clear();
             worker.send(SteamRequest::RequestUserStats);
             Task::none()
         }
@@ -484,6 +509,24 @@ pub fn update(
             Task::none()
         }
         ManagerMessage::FadeInTick(_) => Task::none(),
+
+        ManagerMessage::RevealTick => {
+            if let Some(id) = state.reveal_queue.pop_front()
+                && let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id)
+            {
+                row.appeared = true;
+            }
+            Task::none()
+        }
+
+        ManagerMessage::ManagerFadeTick => {
+            for row in &mut state.achievements {
+                if row.appeared && row.card_opacity < 1.0 {
+                    row.card_opacity = (row.card_opacity + MANAGER_FADE_DELTA).min(1.0);
+                }
+            }
+            Task::none()
+        }
     }
 }
 
@@ -505,12 +548,28 @@ pub fn subscription(state: &ManagerState) -> iced::Subscription<crate::Message> 
 
     let needs_tick = needs_spinner || (state.phase == ManagerPhase::Ready && state.fade_in < 1.0);
 
-    if needs_tick {
+    let spinner_sub = if needs_tick {
         time::every(std::time::Duration::from_millis(33))
             .map(|_| crate::Message::Manager(ManagerMessage::SpinnerTick))
     } else {
         iced::Subscription::none()
-    }
+    };
+
+    let reveal_sub = if state.has_pending_reveals() {
+        time::every(std::time::Duration::from_millis(30))
+            .map(|_| crate::Message::Manager(ManagerMessage::RevealTick))
+    } else {
+        iced::Subscription::none()
+    };
+
+    let fade_sub = if state.has_fading_cards() {
+        time::every(std::time::Duration::from_millis(33))
+            .map(|_| crate::Message::Manager(ManagerMessage::ManagerFadeTick))
+    } else {
+        iced::Subscription::none()
+    };
+
+    iced::Subscription::batch([spinner_sub, reveal_sub, fade_sub])
 }
 
 #[cfg(test)]
@@ -574,5 +633,55 @@ mod tests {
         let _task = handle_steam_reply(&mut state, reply);
 
         assert!(state.achievements[0].data.icon.is_none());
+    }
+
+    #[test]
+    fn manager_reveal_tick_pops_one_from_queue() {
+        use std::collections::VecDeque;
+
+        let mut state = ManagerState::new(0);
+        for i in 1u8..=3 {
+            let id = format!("ACH_{i}");
+            state
+                .achievements
+                .push(types::AchievementRow::from_data(types::AchievementData {
+                    id: id.clone(),
+                    display_name: id.clone(),
+                    description: String::new(),
+                    is_hidden: false,
+                    is_achieved: false,
+                    unlock_time: None,
+                    permission: 0,
+                    icon: None,
+                }));
+        }
+        state.reveal_queue =
+            VecDeque::from(["ACH_1".to_owned(), "ACH_2".to_owned(), "ACH_3".to_owned()]);
+        state.phase = ManagerPhase::Ready;
+
+        assert!(state.has_pending_reveals(), "precondition: queue not empty");
+        assert!(
+            state.achievements.iter().all(|r| !r.appeared),
+            "precondition: none appeared"
+        );
+
+        let worker = SteamWorker::new_disconnected();
+        for expected_remaining in [2usize, 1, 0] {
+            let _task = update(&mut state, ManagerMessage::RevealTick, &worker);
+            assert_eq!(
+                state.reveal_queue.len(),
+                expected_remaining,
+                "queue length after pop"
+            );
+        }
+
+        assert!(
+            state.achievements.iter().all(|r| r.appeared),
+            "all 3 achievements must be appeared after 3 RevealTick calls"
+        );
+        assert!(
+            !state.has_pending_reveals(),
+            "has_pending_reveals must be false when queue is empty"
+        );
     }
 }
