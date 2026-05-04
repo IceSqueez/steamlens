@@ -139,8 +139,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Exit => iced::exit(),
 
         Message::GoBack => {
-            let returning_from_manager_or_error =
-                matches!(&app.screen, Screen::Manager(_) | Screen::SteamNotRunning { .. });
+            let returning_from_manager_or_error = matches!(
+                &app.screen,
+                Screen::Manager(_) | Screen::SteamNotRunning { .. }
+            );
             if returning_from_manager_or_error {
                 if let Some(w) = &app.worker {
                     w.send(SteamRequest::Disconnect);
@@ -215,9 +217,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.worker = None;
             app.worker_rx = None;
 
-            if let Screen::Library(lib_state) =
-                std::mem::replace(&mut app.screen, Screen::Splash)
-            {
+            if let Screen::Library(lib_state) = std::mem::replace(&mut app.screen, Screen::Splash) {
                 app.library_state = Some(lib_state);
             }
 

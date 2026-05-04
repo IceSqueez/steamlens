@@ -130,10 +130,21 @@ fn loaded_view(state: &ManagerState) -> Element<'_, Message> {
 fn header_bar(state: &ManagerState) -> Element<'_, Message> {
     let back_btn = button(text("\u{2190} Back").size(13).color(C_PURPLE))
         .on_press(Message::GoBack)
-        .padding(Padding::from([8u16, 0]))
-        .style(|_theme, _status| button::Style {
-            background: None,
-            ..button::Style::default()
+        .padding(Padding::from([8u16, 8]))
+        .style(|_theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: if hovered {
+                    Some(iced::Background::Color(Color {
+                        a: 0.15,
+                        ..C_PURPLE
+                    }))
+                } else {
+                    None
+                },
+                border: dracula_border_radius(4.0),
+                ..button::Style::default()
+            }
         });
 
     let title = text(&state.game_name).size(20).color(C_FG);
@@ -205,18 +216,36 @@ fn tab_bar_widget(state: &ManagerState) -> Element<'_, Message> {
 }
 
 fn tab_btn(label: String, active: bool, on_press: Message) -> Element<'static, Message> {
-    let color = if active { C_PURPLE } else { C_MUTED };
-    button(text(label).size(14).color(color))
+    button(text(label).size(14))
         .on_press(on_press)
         .padding(Padding::from([6u16, 12]))
-        .style(move |_theme, _status| button::Style {
-            background: if active {
+        .style(move |_theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let bg = if active {
                 Some(iced::Background::Color(C_CURRENT_LINE))
+            } else if hovered {
+                Some(iced::Background::Color(Color {
+                    r: C_CURRENT_LINE.r * 0.6,
+                    g: C_CURRENT_LINE.g * 0.6,
+                    b: C_CURRENT_LINE.b * 0.6,
+                    a: 1.0,
+                }))
             } else {
                 None
-            },
-            border: dracula_border_radius(4.0),
-            ..button::Style::default()
+            };
+            let text_color = if active {
+                C_PURPLE
+            } else if hovered {
+                C_FG
+            } else {
+                C_MUTED
+            };
+            button::Style {
+                background: bg,
+                border: dracula_border_radius(4.0),
+                text_color,
+                ..button::Style::default()
+            }
         })
         .into()
 }
@@ -817,20 +846,23 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
     let reset_btn = button(text("\u{26A0} Reset...").size(13).color(C_RED))
         .on_press(msg(ManagerMessage::ResetClicked))
         .padding(Padding::from([8u16, 16]))
-        .style(|_t, _s| button::Style {
-            background: Some(iced::Background::Color(Color {
-                r: 1.0,
-                g: 0.333,
-                b: 0.333,
-                a: 0.1,
-            })),
-            border: iced::Border {
-                color: C_RED,
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            text_color: C_RED,
-            ..button::Style::default()
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(iced::Background::Color(Color {
+                    r: 1.0,
+                    g: 0.333,
+                    b: 0.333,
+                    a: if hovered { 0.25 } else { 0.1 },
+                })),
+                border: iced::Border {
+                    color: C_RED,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: C_RED,
+                ..button::Style::default()
+            }
         });
 
     let cancel_label = if dirty > 0 {
@@ -842,21 +874,40 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
         "Cancel".to_owned()
     };
 
-    let cancel_style = |_t: &_, _s: _| button::Style {
-        background: Some(iced::Background::Color(C_CURRENT_LINE)),
-        border: dracula_border_radius(4.0),
-        ..button::Style::default()
-    };
-
     let cancel_btn = if dirty > 0 && !is_busy {
-        button(text(cancel_label).size(13))
+        button(text(cancel_label).size(13).color(C_FG))
             .on_press(msg(ManagerMessage::DiscardChanges))
             .padding(Padding::from([8u16, 16]))
-            .style(cancel_style)
+            .style(|_t, status| {
+                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                button::Style {
+                    background: if hovered {
+                        Some(iced::Background::Color(Color { a: 0.2, ..C_MUTED }))
+                    } else {
+                        None
+                    },
+                    border: iced::Border {
+                        color: C_MUTED,
+                        width: 2.0,
+                        radius: 4.0.into(),
+                    },
+                    text_color: C_FG,
+                    ..button::Style::default()
+                }
+            })
     } else {
-        button(text(cancel_label).size(13))
+        button(text(cancel_label).size(13).color(Color { a: 0.4, ..C_FG }))
             .padding(Padding::from([8u16, 16]))
-            .style(cancel_style)
+            .style(|_t, _status| button::Style {
+                background: None,
+                border: iced::Border {
+                    color: Color { a: 0.3, ..C_MUTED },
+                    width: 2.0,
+                    radius: 4.0.into(),
+                },
+                text_color: Color { a: 0.4, ..C_FG },
+                ..button::Style::default()
+            })
     };
 
     let apply_label = if dirty > 0 {
@@ -870,11 +921,33 @@ fn footer_bar(state: &ManagerState) -> Element<'_, Message> {
         button(text(apply_label).size(13))
             .on_press(msg(ManagerMessage::ApplyChanges))
             .padding(Padding::from([8u16, 16]))
-            .style(|_t, _s| button::Style {
-                background: Some(iced::Background::Color(C_PURPLE)),
-                border: dracula_border_radius(4.0),
-                text_color: Color::BLACK,
-                ..button::Style::default()
+            .style(|_t, status| {
+                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                let bg_color = if hovered {
+                    Color {
+                        r: (C_PURPLE.r * 0.9 + 0.1).min(1.0),
+                        g: (C_PURPLE.g * 0.9 + 0.1).min(1.0),
+                        b: (C_PURPLE.b * 0.9 + 0.1).min(1.0),
+                        a: 1.0,
+                    }
+                } else {
+                    C_PURPLE
+                };
+                button::Style {
+                    background: Some(iced::Background::Color(bg_color)),
+                    border: dracula_border_radius(4.0),
+                    text_color: Color::BLACK,
+                    shadow: if hovered {
+                        iced::Shadow {
+                            color: Color { a: 0.6, ..C_PURPLE },
+                            offset: iced::Vector::new(0.0, 0.0),
+                            blur_radius: 8.0,
+                        }
+                    } else {
+                        iced::Shadow::default()
+                    },
+                    ..button::Style::default()
+                }
             })
     } else {
         button(text(apply_label).size(13))
