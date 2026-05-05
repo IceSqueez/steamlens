@@ -8,6 +8,7 @@ use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
+use crate::skeleton::skeleton_box;
 use crate::theme::{
     C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED,
     C_TEXT_PRIMARY,
@@ -16,7 +17,7 @@ use crate::theme::{
 use super::ProfileViewState;
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
 use super::types::{
-    CapsuleState, GameEntry, LibrarySort, LoaderPhase, ProfileViewMessage, ProfileViewPhase,
+    CapsuleAsset, GameEntry, LibrarySort, LoaderPhase, ProfileViewMessage, ProfileViewPhase,
 };
 
 const CARD_GAP: f32 = 12.0;
@@ -43,39 +44,39 @@ fn card_width(size: CapsuleSize) -> f32 {
     capsule_w + 16.0
 }
 
+fn total_card_height(capsule_h: f32) -> f32 {
+    capsule_h + 32.0 + 4.0 + 8.0 + 9.0
+}
+
 pub fn render_with_cache_actions<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
-    render_inner(state, user_profile, cached_entries)
+    render_inner(state, user_profile, cached_entries, skeleton_phase)
 }
 
 fn render_inner<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     let header = build_header(state);
 
     let profile_section = build_profile_section(state, user_profile, cached_entries);
 
     let body: Element<'_, crate::Message> = match &state.phase {
-        ProfileViewPhase::Scanning => center_text("Scanning library…"),
+        ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
         ProfileViewPhase::Error(e) => error_view(e),
         ProfileViewPhase::Loaded => {
-            let visible: Vec<&GameEntry> = state
-                .visible_games()
-                .into_iter()
-                .filter(|g| g.progress.is_some())
-                .collect();
+            let visible = state.visible_games();
 
-            if visible.is_empty() && !state.games.is_empty() {
-                center_text("Loading achievement data…")
-            } else if visible.is_empty() {
+            if visible.is_empty() {
                 center_text("No games found.")
             } else {
-                build_grid(state, visible)
+                build_grid(state, visible, skeleton_phase)
             }
         }
     };
@@ -134,10 +135,12 @@ fn build_unified_loader<'a>(state: &'a ProfileViewState) -> Option<Element<'a, c
             let pulse_dots = build_pulse_dots(pulse);
             row![
                 pulse_dots,
-                text("Discovering your library…").size(12).color(Color {
-                    a: alpha_opacity,
-                    ..C_MUTED
-                }),
+                text("Discovering your library\u{2026}")
+                    .size(12)
+                    .color(Color {
+                        a: alpha_opacity,
+                        ..C_MUTED
+                    }),
             ]
             .spacing(10)
             .align_y(Alignment::Center)
@@ -574,6 +577,7 @@ fn build_icon_button(
 fn build_grid<'a>(
     state: &'a ProfileViewState,
     visible: Vec<&'a GameEntry>,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
@@ -594,7 +598,12 @@ fn build_grid<'a>(
         for chunk in entries.chunks(cols) {
             let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
             for entry in chunk {
-                r = r.push(build_card(entry, capsule_size, actual_card_w));
+                r = r.push(build_card(
+                    entry,
+                    capsule_size,
+                    actual_card_w,
+                    skeleton_phase,
+                ));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
@@ -639,19 +648,76 @@ fn build_card(
     entry: &GameEntry,
     capsule_size: CapsuleSize,
     card_w: f32,
+    skeleton_phase: f32,
 ) -> Element<'_, crate::Message> {
     let app_id = entry.summary.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
+    let total_h = total_card_height(capsule_h);
 
+    if !entry.is_hydrated() {
+        return build_skeleton_card(entry, card_w, capsule_w, capsule_h, total_h, skeleton_phase);
+    }
+
+    build_hydrated_card(entry, app_id, card_w, capsule_w, capsule_h, total_h)
+}
+
+fn build_skeleton_card<'a>(
+    entry: &'a GameEntry,
+    card_w: f32,
+    capsule_w: f32,
+    capsule_h: f32,
+    total_h: f32,
+    phase: f32,
+) -> Element<'a, crate::Message> {
+    let title_width_ratio = match entry.summary.app_id % 5 {
+        0 => 0.75,
+        1 => 0.60,
+        2 => 0.85,
+        3 => 0.55,
+        _ => 0.70,
+    };
+
+    let capsule_skel = skeleton_box(capsule_w, capsule_h, phase);
+
+    let name_skel = skeleton_box(card_w * title_width_ratio, 12.0, phase);
+
+    let progress_skel = skeleton_box(card_w, 3.0, phase);
+
+    let separator_space = iced::widget::Space::new()
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(4.0 + 8.0));
+
+    let name_container = container(name_skel)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(32.0))
+        .align_x(Alignment::Start)
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(6).right(6).top(8).bottom(8));
+
+    let card_inner =
+        column![capsule_skel, separator_space, name_container, progress_skel,].spacing(0);
+
+    container(card_inner)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(total_h))
+        .padding(Padding::default().top(8))
+        .into()
+}
+
+fn build_hydrated_card<'a>(
+    entry: &'a GameEntry,
+    app_id: u32,
+    card_w: f32,
+    capsule_w: f32,
+    capsule_h: f32,
+    total_h: f32,
+) -> Element<'a, crate::Message> {
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
-        CapsuleState::Loaded {
-            handle, opacity, ..
-        } => container(
+        CapsuleAsset::Loaded { handle, .. } => container(
             container(
                 img_widget(handle.clone())
                     .width(Length::Fixed(capsule_w))
-                    .height(Length::Fixed(capsule_h))
-                    .opacity(*opacity),
+                    .height(Length::Fixed(capsule_h)),
             )
             .style(|_: &iced::Theme| container::Style {
                 shadow: iced::Shadow {
@@ -667,7 +733,7 @@ fn build_card(
         .align_x(Alignment::Center)
         .into(),
 
-        CapsuleState::Pending => container(iced::widget::Space::new())
+        CapsuleAsset::Pending => container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
             .height(Length::Fixed(capsule_h))
             .style(|_: &iced::Theme| container::Style {
@@ -680,7 +746,7 @@ fn build_card(
             })
             .into(),
 
-        CapsuleState::Unavailable => container(text("no image").size(10).color(C_MUTED))
+        CapsuleAsset::Unavailable => container(text("no image").size(10).color(C_MUTED))
             .width(Length::Fixed(card_w))
             .height(Length::Fixed(capsule_h))
             .align_x(Alignment::Center)
@@ -713,8 +779,6 @@ fn build_card(
     .align_y(Alignment::End)
     .padding(Padding::default().left(6).right(6).top(0).bottom(4));
 
-    let total_card_h = capsule_h + 32.0 + 4.0 + 8.0 + 9.0;
-
     let separator = container(iced::widget::rule::horizontal(1))
         .padding(Padding::default().left(8).right(8).top(8).bottom(0))
         .width(Length::Fixed(card_w));
@@ -729,10 +793,9 @@ fn build_card(
 
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(total_card_h))
+        .height(Length::Fixed(total_h))
         .padding(Padding::default().top(8));
 
-    let has_progress = entry.progress.is_some();
     let is_gold = entry
         .progress
         .as_ref()
@@ -813,34 +876,30 @@ fn build_card(
             }
         });
 
-    if !has_progress {
-        card_btn.into()
-    } else {
-        tooltip(
-            card_btn,
-            container(
-                text(format!(
-                    "{tooltip_earned} / {tooltip_total} achievements ({tooltip_pct}%)"
-                ))
-                .size(11)
-                .color(C_TEXT),
-            )
-            .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color::from_rgba(
-                    0.15, 0.15, 0.2, 0.95,
-                ))),
-                border: iced::Border {
-                    color: Color { a: 0.5, ..C_ACCENT },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..container::Style::default()
-            }),
-            tooltip::Position::Bottom,
+    tooltip(
+        card_btn,
+        container(
+            text(format!(
+                "{tooltip_earned} / {tooltip_total} achievements ({tooltip_pct}%)"
+            ))
+            .size(11)
+            .color(C_TEXT),
         )
-        .into()
-    }
+        .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(Color::from_rgba(
+                0.15, 0.15, 0.2, 0.95,
+            ))),
+            border: iced::Border {
+                color: Color { a: 0.5, ..C_ACCENT },
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..container::Style::default()
+        }),
+        tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 fn build_progress_overlay<'a>(

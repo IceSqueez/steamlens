@@ -823,6 +823,7 @@ fn view(app: &App) -> Element<'_, Message> {
             pv_state,
             app.user_profile.as_ref(),
             &app.cached_entries,
+            app.skeleton_phase,
         ),
 
         Screen::SteamNotRunning { reason } => {
@@ -921,8 +922,11 @@ fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element
     stack![content, overlay_col].into()
 }
 
-fn has_active_skeletons(_app: &App) -> bool {
-    false
+fn has_active_skeletons(app: &App) -> bool {
+    match &app.screen {
+        Screen::ProfileView(pv) => pv.games.iter().any(|g| !g.is_hydrated()),
+        _ => false,
+    }
 }
 
 fn subscription(app: &App) -> Subscription<Message> {
@@ -942,28 +946,6 @@ fn subscription(app: &App) -> Subscription<Message> {
 
     let game_view_sub = if let Screen::GameView(state) = &app.screen {
         game_view::subscription(state)
-    } else {
-        Subscription::none()
-    };
-
-    let fade_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.has_fading_capsules() {
-            iced::time::every(std::time::Duration::from_millis(33))
-                .map(|_| Message::ProfileView(ProfileViewMessage::FadeTick))
-        } else {
-            Subscription::none()
-        }
-    } else {
-        Subscription::none()
-    };
-
-    let reveal_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.has_pending_reveals() {
-            iced::time::every(std::time::Duration::from_millis(150))
-                .map(|_| Message::ProfileView(ProfileViewMessage::RevealTick))
-        } else {
-            Subscription::none()
-        }
     } else {
         Subscription::none()
     };
@@ -1020,8 +1002,6 @@ fn subscription(app: &App) -> Subscription<Message> {
         keyboard_sub,
         poll_sub,
         game_view_sub,
-        fade_sub,
-        reveal_sub,
         profile_view_spinner_sub,
         progress_sub,
         loader_pulse_sub,
@@ -1562,7 +1542,7 @@ mod tests {
 
     #[tokio::test]
     async fn clear_game_cache_removes_cached_entry_and_clears_progress() {
-        use profile_view::types::{CapsuleState, GameEntry};
+        use profile_view::types::{CapsuleAsset, GameEntry};
         use steamlens_core::GameSummary;
 
         let app_id: u32 = 440;
@@ -1577,8 +1557,7 @@ mod tests {
         };
         let game_entry = GameEntry {
             summary,
-            capsule: CapsuleState::Unavailable,
-            revealed: true,
+            capsule: CapsuleAsset::Unavailable,
             progress: Some(crate::progress_scan::ProgressData {
                 earned: 10,
                 total: 520,

@@ -595,7 +595,7 @@ fn build_closest_row<'a>(
 mod tests {
     use super::*;
     use crate::cache::types::{CachedAchievement, CachedProgress, GameCacheEntry};
-    use crate::profile_view::types::{CapsuleState, GameEntry};
+    use crate::profile_view::types::{CapsuleAsset, GameEntry};
     use crate::progress_scan::ProgressData;
     use steamlens_core::GameSummary;
 
@@ -613,8 +613,7 @@ mod tests {
     fn make_entry_with_progress(app_id: u32, earned: u32, total: u32) -> GameEntry {
         GameEntry {
             summary: make_summary_gs(app_id),
-            capsule: CapsuleState::Unavailable,
-            revealed: true,
+            capsule: CapsuleAsset::Unavailable,
             progress: Some(ProgressData { earned, total }),
         }
     }
@@ -784,8 +783,7 @@ mod tests {
         let games: Vec<GameEntry> = vec![
             GameEntry {
                 summary: make_summary_gs(1),
-                capsule: CapsuleState::Unavailable,
-                revealed: true,
+                capsule: CapsuleAsset::Unavailable,
                 progress: None,
             },
             make_entry_with_progress(2, 10, 50),

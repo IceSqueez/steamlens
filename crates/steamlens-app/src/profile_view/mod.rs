@@ -10,8 +10,7 @@ use crate::progress_scan::ProgressData;
 use crate::steam_worker::{SteamRequest, SteamWorker};
 
 use types::{
-    CapsuleState, FADE_DELTA, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
-    StoredCapsule,
+    CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState, StoredCapsule,
 };
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
@@ -23,12 +22,10 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
                 .iter()
                 .map(|s| GameEntry {
                     summary: s.clone(),
-                    capsule: CapsuleState::Pending,
-                    revealed: false,
+                    capsule: CapsuleAsset::Pending,
                     progress: None,
                 })
                 .collect();
-            state.reveal_queue.clear();
             state.capsule_handles.clear();
             state.progress_scanner = None;
             state.progress_rx = None;
@@ -55,22 +52,18 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
 
         ProfileViewMessage::CapsuleSizeChanged(new_size) => {
             state.capsule_size = new_size;
-            state.reveal_queue.clear();
 
             let mut miss_ids: Vec<u32> = Vec::new();
             for entry in &mut state.games {
                 let key = (entry.summary.app_id, new_size);
                 if let Some(cached) = state.capsule_handles.get(&key) {
-                    entry.capsule = CapsuleState::Loaded {
+                    entry.capsule = CapsuleAsset::Loaded {
                         handle: cached.handle.clone(),
                         width: cached.width,
                         height: cached.height,
-                        opacity: 1.0,
                     };
-                    entry.revealed = true;
                 } else {
-                    entry.capsule = CapsuleState::Pending;
-                    entry.revealed = false;
+                    entry.capsule = CapsuleAsset::Pending;
                     miss_ids.push(entry.summary.app_id);
                 }
             }
@@ -102,36 +95,11 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
                 return Task::none();
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
-                entry.capsule = CapsuleState::Loaded {
+                entry.capsule = CapsuleAsset::Loaded {
                     handle,
                     width,
                     height,
-                    opacity: 0.0,
                 };
-            }
-            state.reveal_queue.push_back(app_id);
-            Task::none()
-        }
-
-        ProfileViewMessage::RevealTick => {
-            let pop_count = state.reveal_queue.len().min(3);
-            for _ in 0..pop_count {
-                if let Some(app_id) = state.reveal_queue.pop_front()
-                    && let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id)
-                {
-                    entry.revealed = true;
-                }
-            }
-            Task::none()
-        }
-
-        ProfileViewMessage::FadeTick => {
-            for entry in &mut state.games {
-                if let CapsuleState::Loaded { opacity, .. } = &mut entry.capsule
-                    && *opacity < 1.0
-                {
-                    *opacity = (*opacity + FADE_DELTA).min(1.0);
-                }
             }
             Task::none()
         }
@@ -141,7 +109,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
                 return Task::none();
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
-                entry.capsule = CapsuleState::Unavailable;
+                entry.capsule = CapsuleAsset::Unavailable;
             }
             Task::none()
         }
@@ -175,7 +143,6 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
         ProfileViewMessage::RescanRequested => {
             state.phase = ProfileViewPhase::Scanning;
             state.games.clear();
-            state.reveal_queue.clear();
             state.capsule_handles.clear();
             state.progress_scanner = None;
             state.progress_rx = None;
@@ -260,6 +227,7 @@ pub fn view_with_cache_actions<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
+    skeleton_phase: f32,
 ) -> iced::Element<'a, crate::Message> {
-    view::render_with_cache_actions(state, user_profile, cached_entries)
+    view::render_with_cache_actions(state, user_profile, cached_entries, skeleton_phase)
 }

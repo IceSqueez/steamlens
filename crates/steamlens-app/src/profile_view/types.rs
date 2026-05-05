@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::time::Instant;
 
 use iced::widget::image::Handle as ImageHandle;
@@ -6,8 +6,6 @@ use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
 use crate::progress_scan::ProgressData;
-
-pub(crate) const FADE_DELTA: f32 = 0.2;
 
 #[derive(Clone)]
 pub struct StoredCapsule {
@@ -23,13 +21,39 @@ impl std::fmt::Debug for StoredCapsule {
 }
 
 #[derive(Clone)]
+pub enum CapsuleAsset {
+    Pending,
+    Loaded {
+        handle: ImageHandle,
+        width: u32,
+        height: u32,
+    },
+    Unavailable,
+}
+
+impl std::fmt::Debug for CapsuleAsset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CapsuleAsset::Pending => write!(f, "Pending"),
+            CapsuleAsset::Loaded { width, height, .. } => {
+                write!(f, "Loaded({width}x{height})")
+            }
+            CapsuleAsset::Unavailable => write!(f, "Unavailable"),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct GameEntry {
     pub summary: GameSummary,
-    pub capsule: CapsuleState,
-    pub revealed: bool,
-    /// Per-game achievement progress fetched asynchronously by the background
-    /// scanner.  `None` until the scanner reports a result for this game.
+    pub capsule: CapsuleAsset,
     pub progress: Option<ProgressData>,
+}
+
+impl GameEntry {
+    pub fn is_hydrated(&self) -> bool {
+        self.progress.is_some() && !matches!(self.capsule, CapsuleAsset::Pending)
+    }
 }
 
 impl std::fmt::Debug for GameEntry {
@@ -39,35 +63,6 @@ impl std::fmt::Debug for GameEntry {
             .field("name", &self.summary.name)
             .field("progress", &self.progress)
             .finish_non_exhaustive()
-    }
-}
-
-#[derive(Clone)]
-pub enum CapsuleState {
-    Pending,
-    Loaded {
-        handle: ImageHandle,
-        width: u32,
-        height: u32,
-        opacity: f32,
-    },
-    Unavailable,
-}
-
-impl std::fmt::Debug for CapsuleState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CapsuleState::Pending => write!(f, "Pending"),
-            CapsuleState::Loaded {
-                width,
-                height,
-                opacity,
-                ..
-            } => {
-                write!(f, "Loaded({width}x{height}, opacity={opacity:.2})")
-            }
-            CapsuleState::Unavailable => write!(f, "Unavailable"),
-        }
     }
 }
 
@@ -82,7 +77,7 @@ impl std::fmt::Display for LibrarySort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LibrarySort::LastPlayed => write!(f, "Last Played"),
-            LibrarySort::NameAsc => write!(f, "Name (A–Z)"),
+            LibrarySort::NameAsc => write!(f, "Name (A\u{2013}Z)"),
         }
     }
 }
@@ -109,17 +104,13 @@ pub enum ProfileViewMessage {
     ManualAppIdChanged(String),
     ManualAppIdSubmitted,
     RescanRequested,
-    FadeTick,
-    RevealTick,
     SpinnerTick(f32),
-    /// Background progress scan delivered a result for one game.
     ProgressFetched {
         app_id: u32,
         earned: u32,
         total: u32,
     },
     ProgressScanDone,
-    /// Drives the indeterminate loader pulse animation (phase α).
     LoaderPulseTick,
 }
 
@@ -147,8 +138,6 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
             ProfileViewMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
             ProfileViewMessage::RescanRequested => write!(f, "RescanRequested"),
-            ProfileViewMessage::FadeTick => write!(f, "FadeTick"),
-            ProfileViewMessage::RevealTick => write!(f, "RevealTick"),
             ProfileViewMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
             ProfileViewMessage::ProgressFetched {
                 app_id,
@@ -171,24 +160,16 @@ pub enum ProfileViewPhase {
 pub struct ProfileViewState {
     pub phase: ProfileViewPhase,
     pub games: Vec<GameEntry>,
-    pub reveal_queue: VecDeque<u32>,
     pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
     pub manual_app_id_input: String,
     pub spinner_angle: f32,
-    /// Live background progress scanner, `None` when idle.
     pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
-    /// Receiver half of the progress result channel.  Taken once when the scan
-    /// starts and drained on every `ProgressFetched` / `ProgressScanDone` tick.
     pub progress_rx:
         Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
-    /// Loader pulse phase [0.0, 1.0) — drives the indeterminate animation in
-    /// phase α. Runtime-only; not persisted to settings.
     pub loader_pulse_phase: f32,
-    /// Set when loader first enters phase γ (fully loaded). Drives the 300 ms
-    /// ease-out fade-out before unmounting. Runtime-only; not persisted.
     pub loader_hiding_since: Option<Instant>,
 }
 
@@ -208,7 +189,6 @@ impl ProfileViewState {
         Self {
             phase: ProfileViewPhase::Scanning,
             games: Vec::new(),
-            reveal_queue: VecDeque::new(),
             capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
@@ -223,23 +203,10 @@ impl ProfileViewState {
     }
 
     pub fn is_streaming(&self) -> bool {
-        self.has_pending_reveals()
-            || self.has_fading_capsules()
-            || self
-                .games
-                .iter()
-                .any(|g| matches!(g.capsule, CapsuleState::Pending))
-            || self.progress_scanner.is_some()
-    }
-
-    pub fn has_fading_capsules(&self) -> bool {
         self.games
             .iter()
-            .any(|g| matches!(g.capsule, CapsuleState::Loaded { opacity, .. } if g.revealed && opacity < 1.0))
-    }
-
-    pub fn has_pending_reveals(&self) -> bool {
-        !self.reveal_queue.is_empty()
+            .any(|g| matches!(g.capsule, CapsuleAsset::Pending))
+            || self.progress_scanner.is_some()
     }
 
     pub fn visible_games(&self) -> Vec<&GameEntry> {
@@ -344,8 +311,7 @@ mod tests {
     fn make_entry(app_id: u32, name: &str, last_played: Option<u32>) -> GameEntry {
         GameEntry {
             summary: make_summary(app_id, name, last_played),
-            capsule: CapsuleState::Pending,
-            revealed: true,
+            capsule: CapsuleAsset::Pending,
             progress: None,
         }
     }
@@ -354,7 +320,6 @@ mod tests {
         ProfileViewState {
             phase: ProfileViewPhase::Loaded,
             games,
-            reveal_queue: VecDeque::new(),
             capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
@@ -366,6 +331,84 @@ mod tests {
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
         }
+    }
+
+    #[test]
+    fn is_hydrated_requires_progress_and_terminal_capsule() {
+        let summary = make_summary(1, "TestGame", None);
+        let progress = Some(ProgressData {
+            earned: 5,
+            total: 10,
+        });
+
+        let pending_no_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Pending,
+            progress: None,
+        };
+        assert!(
+            !pending_no_progress.is_hydrated(),
+            "Pending + None -> not hydrated"
+        );
+
+        let pending_with_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Pending,
+            progress,
+        };
+        assert!(
+            !pending_with_progress.is_hydrated(),
+            "Pending + Some(progress) -> not hydrated"
+        );
+
+        let unavailable_no_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Unavailable,
+            progress: None,
+        };
+        assert!(
+            !unavailable_no_progress.is_hydrated(),
+            "Unavailable + None -> not hydrated"
+        );
+
+        let unavailable_with_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Unavailable,
+            progress,
+        };
+        assert!(
+            unavailable_with_progress.is_hydrated(),
+            "Unavailable + Some(progress) -> hydrated"
+        );
+
+        let dummy_handle = iced::widget::image::Handle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
+        let loaded_no_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Loaded {
+                handle: dummy_handle.clone(),
+                width: 1,
+                height: 1,
+            },
+            progress: None,
+        };
+        assert!(
+            !loaded_no_progress.is_hydrated(),
+            "Loaded + None -> not hydrated"
+        );
+
+        let loaded_with_progress = GameEntry {
+            summary: summary.clone(),
+            capsule: CapsuleAsset::Loaded {
+                handle: dummy_handle,
+                width: 1,
+                height: 1,
+            },
+            progress,
+        };
+        assert!(
+            loaded_with_progress.is_hydrated(),
+            "Loaded + Some(progress) -> hydrated"
+        );
     }
 
     #[test]
@@ -448,104 +491,6 @@ mod tests {
     }
 
     #[test]
-    fn fade_tick_advances_opacity_until_one() {
-        use iced::widget::image::Handle as ImageHandle;
-
-        let dummy_handle = ImageHandle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
-        let mut state = make_state_with_games(vec![GameEntry {
-            summary: make_summary(1, "TestGame", None),
-            capsule: CapsuleState::Loaded {
-                handle: dummy_handle,
-                width: 1,
-                height: 1,
-                opacity: 0.0,
-            },
-            revealed: true,
-            progress: None,
-        }]);
-
-        assert!(state.has_fading_capsules(), "precondition: opacity < 1.0");
-
-        for _ in 0..10 {
-            for entry in &mut state.games {
-                if let CapsuleState::Loaded { opacity, .. } = &mut entry.capsule {
-                    *opacity = (*opacity + super::FADE_DELTA).min(1.0);
-                }
-            }
-        }
-
-        if let CapsuleState::Loaded { opacity, .. } = &state.games[0].capsule {
-            assert_eq!(
-                *opacity, 1.0,
-                "opacity must be clamped to 1.0 after 10 ticks"
-            );
-        } else {
-            panic!("expected Loaded capsule");
-        }
-
-        assert!(
-            !state.has_fading_capsules(),
-            "has_fading_capsules must return false when all opacity == 1.0"
-        );
-    }
-
-    #[test]
-    fn profile_view_reveal_tick_pops_one_from_queue() {
-        let entries: Vec<GameEntry> = (1u32..=3)
-            .map(|id| GameEntry {
-                summary: make_summary(id, &format!("Game {id}"), None),
-                capsule: CapsuleState::Pending,
-                revealed: false,
-                progress: None,
-            })
-            .collect();
-
-        let mut state = ProfileViewState {
-            phase: ProfileViewPhase::Loaded,
-            games: entries,
-            reveal_queue: VecDeque::from([1u32, 2, 3]),
-            capsule_handles: HashMap::new(),
-            search: String::new(),
-            sort: LibrarySort::LastPlayed,
-            capsule_size: CapsuleSize::default(),
-            manual_app_id_input: String::new(),
-            spinner_angle: 0.0,
-            progress_scanner: None,
-            progress_rx: None,
-            loader_pulse_phase: 0.0,
-            loader_hiding_since: None,
-        };
-
-        assert!(state.has_pending_reveals(), "precondition: queue not empty");
-        assert!(
-            state.games.iter().all(|g| !g.revealed),
-            "precondition: none revealed"
-        );
-
-        for expected_remaining in [2usize, 1, 0] {
-            if let Some(app_id) = state.reveal_queue.pop_front()
-                && let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id)
-            {
-                entry.revealed = true;
-            }
-            assert_eq!(
-                state.reveal_queue.len(),
-                expected_remaining,
-                "queue length after pop"
-            );
-        }
-
-        assert!(
-            state.games.iter().all(|g| g.revealed),
-            "all 3 entries must be revealed after 3 pops"
-        );
-        assert!(
-            !state.has_pending_reveals(),
-            "has_pending_reveals must be false when queue is empty"
-        );
-    }
-
-    #[test]
     fn profile_view_spinner_tick_updates_angle() {
         let mut state = make_state_with_games(vec![]);
         assert_eq!(
@@ -589,8 +534,7 @@ mod tests {
 
         let entry = GameEntry {
             summary: make_summary(app_id, "Terraria", None),
-            capsule: CapsuleState::Pending,
-            revealed: false,
+            capsule: CapsuleAsset::Pending,
             progress: None,
         };
         let mut state = make_state_with_games(vec![entry]);
@@ -602,34 +546,21 @@ mod tests {
         for entry in &mut state.games {
             let key = (entry.summary.app_id, state.capsule_size);
             if let Some(cached) = state.capsule_handles.get(&key) {
-                entry.capsule = CapsuleState::Loaded {
+                entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
                     width: cached.width,
                     height: cached.height,
-                    opacity: 1.0,
                 };
-                entry.revealed = true;
             } else {
-                entry.capsule = CapsuleState::Pending;
-                entry.revealed = false;
+                entry.capsule = CapsuleAsset::Pending;
             }
         }
 
-        assert!(
-            state.reveal_queue.is_empty(),
-            "reveal queue must remain empty on cache hit path"
-        );
         let g = &state.games[0];
-        assert!(g.revealed, "entry must be marked revealed on cache hit");
-        match &g.capsule {
-            CapsuleState::Loaded { opacity, .. } => {
-                assert!(
-                    (*opacity - 1.0).abs() < f32::EPSILON,
-                    "opacity must be 1.0 (no fade) on cache hit"
-                );
-            }
-            other => panic!("expected Loaded, got {other:?}"),
-        }
+        assert!(
+            matches!(g.capsule, CapsuleAsset::Loaded { .. }),
+            "entry capsule must be Loaded on cache hit"
+        );
     }
 
     #[test]
@@ -637,8 +568,7 @@ mod tests {
         let app_id = 105600u32;
         let entry = GameEntry {
             summary: make_summary(app_id, "Terraria", None),
-            capsule: CapsuleState::Pending,
-            revealed: false,
+            capsule: CapsuleAsset::Pending,
             progress: None,
         };
         let mut state = make_state_with_games(vec![entry]);
@@ -647,27 +577,19 @@ mod tests {
         for entry in &mut state.games {
             let key = (entry.summary.app_id, state.capsule_size);
             if let Some(cached) = state.capsule_handles.get(&key) {
-                entry.capsule = CapsuleState::Loaded {
+                entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
                     width: cached.width,
                     height: cached.height,
-                    opacity: 1.0,
                 };
-                entry.revealed = true;
             } else {
-                entry.capsule = CapsuleState::Pending;
-                entry.revealed = false;
+                entry.capsule = CapsuleAsset::Pending;
             }
         }
 
-        assert!(
-            state.reveal_queue.is_empty(),
-            "reveal queue must stay empty — populated only by CapsuleLoaded, not CapsuleSizeChanged"
-        );
         let g = &state.games[0];
-        assert!(!g.revealed, "entry must not be revealed on cache miss");
         assert!(
-            matches!(g.capsule, CapsuleState::Pending),
+            matches!(g.capsule, CapsuleAsset::Pending),
             "entry capsule must be Pending on cache miss"
         );
     }
@@ -683,8 +605,7 @@ mod tests {
         let mut state = make_state_with_games(vec![
             GameEntry {
                 summary: make_summary(1, "A", None),
-                capsule: CapsuleState::Unavailable,
-                revealed: true,
+                capsule: CapsuleAsset::Unavailable,
                 progress: Some(crate::progress_scan::ProgressData {
                     earned: 5,
                     total: 10,
@@ -692,8 +613,7 @@ mod tests {
             },
             GameEntry {
                 summary: make_summary(2, "B", None),
-                capsule: CapsuleState::Unavailable,
-                revealed: true,
+                capsule: CapsuleAsset::Unavailable,
                 progress: None,
             },
         ]);
@@ -711,8 +631,7 @@ mod tests {
     fn loader_phase_gamma_when_all_have_progress() {
         let mut state = make_state_with_games(vec![GameEntry {
             summary: make_summary(1, "A", None),
-            capsule: CapsuleState::Unavailable,
-            revealed: true,
+            capsule: CapsuleAsset::Unavailable,
             progress: Some(crate::progress_scan::ProgressData {
                 earned: 5,
                 total: 10,
