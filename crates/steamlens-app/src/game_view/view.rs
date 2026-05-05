@@ -9,8 +9,8 @@ use super::types::{
     RarityFilter, RarityTier, ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
-use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::Message;
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
 
 const C_BG: Color = Color::from_rgb(0.157, 0.165, 0.212);
 const C_CURRENT_LINE: Color = Color::from_rgb(0.267, 0.278, 0.353);
@@ -176,7 +176,11 @@ fn header_bar(state: &GameViewState) -> Element<'_, Message> {
                     width: 1.0,
                     radius: 6.0.into(),
                 },
-                text_color: if hovered { C_TEXT_PRIMARY } else { C_TEXT_MUTED },
+                text_color: if hovered {
+                    C_TEXT_PRIMARY
+                } else {
+                    C_TEXT_MUTED
+                },
                 ..button::Style::default()
             }
         });
