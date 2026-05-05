@@ -839,8 +839,6 @@ mod tests {
             name: format!("Game {app_id}"),
             last_played: None,
             achievement_count: 10,
-            last_updated: 0,
-            manifest_path: std::path::PathBuf::new(),
         }
     }
 

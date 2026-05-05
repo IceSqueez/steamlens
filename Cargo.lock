@@ -4005,6 +4005,7 @@ dependencies = [
  "libloading 0.9.0",
  "postcard",
  "serde",
+ "serde_json",
  "static_assertions",
  "steamlens-vdf",
  "thiserror 2.0.17",

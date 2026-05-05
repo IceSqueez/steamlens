@@ -18,12 +18,12 @@ pub mod steam_state;
 mod user_stats;
 
 pub use client::{Client, Image, connect};
-pub use error::{LibraryScanError, SteamError};
+pub use error::{LibraryError, SteamError};
 pub use ipc::{
     AchievementData, AchievementIcon, FrameError, StatData, StatValue, WorkerCommand,
     WorkerResponse,
 };
-pub use library::{GameSummary, scan_installed_games};
+pub use library::{GameSummary, enumerate_owned_games};
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use profile::{ProfileError, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;

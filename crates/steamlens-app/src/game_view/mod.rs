@@ -187,6 +187,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         SteamReply::AchievementsAndStats {
             achievements,
             stats,
+            genre: _,
         } => {
             let prev_revealed: std::collections::HashSet<String> = state
                 .achievements
@@ -286,7 +287,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             Task::none()
         }
         SteamReply::Disconnected => Task::none(),
-        SteamReply::LibraryScan(_) | SteamReply::LibraryScanFailed(_) => Task::none(),
         SteamReply::GlobalPercentagesReady(map) => {
             for row in &mut state.achievements {
                 if let Some(&pct) = map.get(&row.data.id) {

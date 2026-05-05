@@ -5,8 +5,8 @@ use steamlens_core::GameSummary;
 
 use crate::cache::store::{CacheIoError, atomic_write};
 
-const CURRENT_PROFILE_SCHEMA: u32 = 1;
-const CURRENT_LIBRARY_SCHEMA: u32 = 1;
+const CURRENT_PROFILE_SCHEMA: u32 = 2;
+const CURRENT_LIBRARY_SCHEMA: u32 = 2;
 
 /// Persistent profile snapshot written after every successful Steam probe.
 ///
@@ -20,6 +20,9 @@ pub struct CachedProfile {
     pub persona_name: String,
     pub account_name: String,
     pub avatar_png_bytes: Option<Vec<u8>>,
+    /// Steam root directory derived from pipe at probe time.
+    /// Used on Steam-not-running boots to resolve localconfig.vdf paths.
+    pub steam_root: Option<PathBuf>,
     /// Unix timestamp of when this snapshot was written.
     pub cached_at: u64,
 }
@@ -126,6 +129,7 @@ pub fn make_cached_profile(
     persona_name: String,
     account_name: String,
     avatar_png_bytes: Option<Vec<u8>>,
+    steam_root: Option<PathBuf>,
 ) -> CachedProfile {
     CachedProfile {
         schema_version: CURRENT_PROFILE_SCHEMA,
@@ -133,6 +137,7 @@ pub fn make_cached_profile(
         persona_name,
         account_name,
         avatar_png_bytes,
+        steam_root,
         cached_at: now_epoch(),
     }
 }
@@ -171,6 +176,7 @@ mod tests {
             persona_name: "TestUser".to_owned(),
             account_name: "test_login".to_owned(),
             avatar_png_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+            steam_root: Some(PathBuf::from("/tmp/synthetic_steam_root")),
             cached_at: 1_777_926_953,
         }
     }
@@ -183,8 +189,6 @@ mod tests {
                 name: "Terraria".to_owned(),
                 last_played: Some(1_777_926_953),
                 achievement_count: 88,
-                last_updated: 1_770_000_000,
-                manifest_path: PathBuf::from("/tmp/appmanifest_105600.acf"),
             }],
             cached_at: 1_777_926_953,
         }
@@ -205,6 +209,7 @@ mod tests {
         assert_eq!(restored.persona_name, original.persona_name);
         assert_eq!(restored.account_name, original.account_name);
         assert_eq!(restored.avatar_png_bytes, original.avatar_png_bytes);
+        assert_eq!(restored.steam_root, original.steam_root);
         assert_eq!(restored.cached_at, original.cached_at);
     }
 
@@ -228,7 +233,7 @@ mod tests {
     async fn profile_cache_schema_mismatch_returns_none() {
         let dir = tempdir();
         let path = dir.join("schema.json");
-        let bad = r#"{"schema_version":99,"steam_id":1,"persona_name":"X","account_name":"x","avatar_png_bytes":null,"cached_at":0}"#;
+        let bad = r#"{"schema_version":1,"steam_id":1,"persona_name":"X","account_name":"x","avatar_png_bytes":null,"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_profile_cache_from_path(&path).await;
         assert!(result.is_none(), "stale schema must be treated as miss");
@@ -271,7 +276,7 @@ mod tests {
     async fn library_cache_schema_mismatch_returns_none() {
         let dir = tempdir();
         let path = dir.join("library.json");
-        let bad = r#"{"schema_version":99,"games":[],"cached_at":0}"#;
+        let bad = r#"{"schema_version":1,"games":[],"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_library_cache_from_path(&path).await;
         assert!(result.is_none());
@@ -279,7 +284,7 @@ mod tests {
 
     #[test]
     fn make_cached_profile_sets_schema_and_timestamp() {
-        let p = make_cached_profile(1, "u".into(), "l".into(), None);
+        let p = make_cached_profile(1, "u".into(), "l".into(), None, None);
         assert_eq!(p.schema_version, CURRENT_PROFILE_SCHEMA);
         assert!(p.cached_at > 0, "cached_at must be set to a real epoch");
     }

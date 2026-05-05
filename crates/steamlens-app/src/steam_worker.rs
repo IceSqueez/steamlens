@@ -9,14 +9,13 @@ use tokio::sync::mpsc as async_mpsc;
 use steamlens_core::ipc::{
     WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
 };
-use steamlens_core::{AchievementIcon, GameSummary};
+use steamlens_core::AchievementIcon;
 
 use crate::game_view::types::ResetScope;
 
 #[allow(dead_code)]
 pub enum SteamRequest {
     ConnectWithApp(u32),
-    ScanLibrary,
     RequestUserStats,
     RequestGlobalPercentages,
     ApplyChanges {
@@ -40,13 +39,12 @@ pub enum SteamReply {
         app_name: Option<String>,
     },
     ConnectFailed(String),
-    LibraryScan(Vec<GameSummary>),
-    LibraryScanFailed(String),
     StatsRequested,
     RequestStatsFailed(String),
     AchievementsAndStats {
         achievements: Vec<steamlens_core::AchievementData>,
         stats: Vec<steamlens_core::StatData>,
+        genre: Option<String>,
     },
     LoadFailed(String),
     ChangesSaved,
@@ -93,9 +91,8 @@ fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
 }
 
 /// Translates a single `SteamRequest` into the `WorkerCommand` sequence that
-/// the child process must execute. `ScanLibrary`, `ConnectWithApp`, and
-/// `Disconnect` are handled by the bridge loop directly and never reach this
-/// function.
+/// the child process must execute. `ConnectWithApp` and `Disconnect` are
+/// handled by the bridge loop directly and never reach this function.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
     match req {
@@ -136,7 +133,7 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
             include_achievements: *scope == ResetScope::StatsAndAchievements,
         }],
 
-        SteamRequest::ConnectWithApp(_) | SteamRequest::ScanLibrary | SteamRequest::Disconnect => {
+        SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {
             vec![]
         }
     }
@@ -306,12 +303,14 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         WorkerResponse::AchievementsAndStats {
             achievements,
             stats,
+            genre,
         } => {
             reply(
                 rep_tx,
                 SteamReply::AchievementsAndStats {
                     achievements,
                     stats,
+                    genre,
                 },
             );
         }
@@ -373,18 +372,13 @@ async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
     rep_tx: mpsc::Sender<SteamReply>,
 ) {
-    // Phase 1: wait for the first request which must be `ConnectWithApp` or
-    // a disk-only `ScanLibrary`. Any other request before connection gets a
-    // "not connected" failure reply.
+    // Phase 1: wait for the first request which must be `ConnectWithApp`.
+    // Any other request before connection gets a "not connected" failure reply.
     let (mut child, mut stdin, mut stdout) = loop {
         let Some(req) = req_rx.recv().await else {
             return;
         };
         match req {
-            SteamRequest::ScanLibrary => {
-                handle_scan_library(&rep_tx);
-                continue;
-            }
             SteamRequest::ConnectWithApp(app_id) => {
                 match spawn_worker_child(app_id).await {
                     Ok(tuple) => break tuple,
@@ -455,10 +449,6 @@ async fn bridge_loop(
         };
 
         match req {
-            SteamRequest::ScanLibrary => {
-                handle_scan_library(&rep_tx);
-            }
-
             SteamRequest::ConnectWithApp(new_app_id) => {
                 // Re-connect: send Shutdown to current child, reap it, spawn fresh.
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
@@ -615,13 +605,6 @@ async fn spawn_worker_child(
     Ok((child, stdin, stdout))
 }
 
-fn handle_scan_library(rep_tx: &mpsc::Sender<SteamReply>) {
-    match steamlens_core::scan_installed_games() {
-        Ok(games) => reply(rep_tx, SteamReply::LibraryScan(games)),
-        Err(e) => reply(rep_tx, SteamReply::LibraryScanFailed(e.to_string())),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,9 +715,4 @@ mod tests {
         assert!(cmds.is_empty());
     }
 
-    #[test]
-    fn translate_request_scan_library_produces_no_commands() {
-        let cmds = translate_request(&SteamRequest::ScanLibrary);
-        assert!(cmds.is_empty());
-    }
 }

@@ -61,6 +61,8 @@ pub fn run(app_id: u32) -> ! {
 }
 
 async fn probe_main() -> i32 {
+    let t0 = std::time::Instant::now();
+    eprintln!("[probe] connect…");
     let client = match steamlens_core::connect(0) {
         Ok(c) => c,
         Err(e) => {
@@ -72,6 +74,7 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
+    eprintln!("[probe] connected in {:?}", t0.elapsed());
 
     let steam_id = client.steam_id();
 
@@ -86,13 +89,40 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
+    eprintln!("[probe] persona+steamid in {:?}", t0.elapsed());
 
     let avatar_png = encode_avatar_png(&client);
+    eprintln!(
+        "[probe] avatar in {:?} ({} bytes)",
+        t0.elapsed(),
+        avatar_png.as_ref().map(|v| v.len()).unwrap_or(0)
+    );
+
+    let t_enum = std::time::Instant::now();
+    // Pass `true` to filter via BIsSubscribedApp — drops entries Steam no
+    // longer recognises as currently owned (expired free weekends, refunds,
+    // license revocations). For these apps Steam pipe rejects the per-game
+    // connect with a misleading "Steam client is not running" because the
+    // app context fails ownership validation.
+    let games = match steamlens_core::enumerate_owned_games(&client, true) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("[probe] enumerate_owned_games failed: {e}");
+            Vec::new()
+        }
+    };
+    eprintln!(
+        "[probe] enumerate_owned_games: {} games in {:?} (total {:?})",
+        games.len(),
+        t_enum.elapsed(),
+        t0.elapsed()
+    );
 
     let resp = WorkerResponse::ProbeResult {
         steam_id,
         persona_name,
         avatar_png,
+        games,
     };
     if write_response(&resp).await.is_err() {
         return 1;
@@ -113,9 +143,12 @@ fn encode_avatar_png(client: &steamlens_core::Client) -> Option<Vec<u8>> {
 }
 
 async fn worker_main(app_id: u32) -> i32 {
+    let t0 = std::time::Instant::now();
+    eprintln!("[worker app_id={app_id}] connect…");
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
+            eprintln!("[worker app_id={app_id}] connect failed in {:?}: {e}", t0.elapsed());
             let _ = write_response(&WorkerResponse::Error {
                 context: "connect".into(),
                 message: e.to_string(),
@@ -124,12 +157,14 @@ async fn worker_main(app_id: u32) -> i32 {
             return 1;
         }
     };
+    eprintln!("[worker app_id={app_id}] connected in {:?}", t0.elapsed());
 
     let connected = WorkerResponse::SteamConnected {
         steam_id: client.steam_id(),
         app_name: client.app_name(),
     };
     if write_response(&connected).await.is_err() {
+        eprintln!("[worker app_id={app_id}] write SteamConnected failed");
         return 1;
     }
 
@@ -320,6 +355,18 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
         }
     };
 
+    // Early exit: this app has no achievements at all. Skip the schema/state
+    // walk, skip stat descriptors, skip genre fetch — the parent's filter will
+    // drop the card from the UI and cache. This also means `RequestGlobalPercentages`
+    // (sent next by the parent's protocol) becomes a no-op against empty data.
+    if num == 0 {
+        return WorkerResponse::AchievementsAndStats {
+            achievements: Vec::new(),
+            stats: Vec::new(),
+            genre: None,
+        };
+    }
+
     let mut achievements = Vec::with_capacity(num as usize);
     for i in 0..num {
         let id = match stats_iface.achievement_name(i) {
@@ -398,9 +445,12 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
         });
     }
 
+    let genre = client.get_app_data(app_id, c"common/primary_genre");
+
     WorkerResponse::AchievementsAndStats {
         achievements,
         stats,
+        genre,
     }
 }
 
@@ -454,18 +504,41 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                     if let SteamCallback::UserStatsReceived {
                         result,
                         user_steam_id,
+                        game_id,
                         ..
                     } = cb
-                        && user_steam_id == expected_user
                     {
+                        if user_steam_id != expected_user {
+                            continue;
+                        }
+                        eprintln!(
+                            "[worker] UserStatsReceived: result={} game={}",
+                            result.raw(),
+                            game_id,
+                        );
                         if result.is_ok() {
                             return None;
-                        } else {
-                            return Some(WorkerResponse::Error {
-                                context: "UserStatsReceived".into(),
-                                message: format!("result code {}", result.raw()),
+                        }
+                        // EResult 2 (k_EResultFail) for RequestUserStats means
+                        // "no stats schema for this app for this user" — Steam's
+                        // way of saying the game doesn't have an achievement/stats
+                        // backend configured. Treat as a clean "no achievements"
+                        // result (parent's filter drops the card). Do NOT report
+                        // this as a real error — it's not a failure, just a
+                        // game without achievements.
+                        if result.raw() == 2 {
+                            return Some(WorkerResponse::AchievementsAndStats {
+                                achievements: Vec::new(),
+                                stats: Vec::new(),
+                                genre: None,
                             });
                         }
+                        // Other non-OK codes are genuine errors (transient or
+                        // permission-related). Bubble them up.
+                        return Some(WorkerResponse::Error {
+                            context: "UserStatsReceived".into(),
+                            message: format!("result code {}", result.raw()),
+                        });
                     }
                 }
             }

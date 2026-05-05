@@ -9,8 +9,6 @@ use iced::widget::image::Handle as ImageHandle;
 
 use crate::capsule_cache::{self, CapsuleSize};
 use crate::progress_scan::ProgressData;
-use crate::steam_worker::{SteamRequest, SteamWorker};
-
 use types::{
     CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState, StoredCapsule,
 };
@@ -237,10 +235,6 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
         .collect();
 
     Task::batch(tasks)
-}
-
-pub fn trigger_scan(worker: &SteamWorker) {
-    worker.send(SteamRequest::ScanLibrary);
 }
 
 pub fn view_with_cache_actions<'a>(

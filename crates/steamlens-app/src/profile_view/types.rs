@@ -111,6 +111,7 @@ impl std::fmt::Display for LibrarySort {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum ProfileViewMessage {
     ScanComplete(Vec<GameSummary>),
     ScanFailed(String),
@@ -404,8 +405,6 @@ mod tests {
             name: name.to_owned(),
             last_played,
             achievement_count: 1,
-            last_updated: 0,
-            manifest_path: std::path::PathBuf::new(),
         }
     }
 

@@ -4,6 +4,8 @@ use thiserror::Error;
 
 pub use types::{AchievementData, AchievementIcon, StatData, StatValue};
 
+use crate::library::GameSummary;
+
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Error)]
@@ -61,6 +63,10 @@ pub enum WorkerResponse {
     AchievementsAndStats {
         achievements: Vec<AchievementData>,
         stats: Vec<StatData>,
+        /// Primary genre as reported by Steam app metadata.
+        /// `None` when the metadata key is unavailable. Empty when
+        /// achievements is empty (early-exit short-circuits the fetch).
+        genre: Option<String>,
     },
     IconUpdated {
         name: String,
@@ -81,10 +87,14 @@ pub enum WorkerResponse {
     ///
     /// `avatar_png` is `None` only when `GetMediumFriendAvatar` returned handle
     /// 0 (Steam has not loaded the image yet, or the user has no avatar set).
+    ///
+    /// `games` is the full owned library enumerated during the same probe run.
+    /// An empty `Vec` means enumeration failed; the parent falls back to cache.
     ProbeResult {
         steam_id: u64,
         persona_name: String,
         avatar_png: Option<Vec<u8>>,
+        games: Vec<GameSummary>,
     },
     Error {
         context: String,
@@ -221,6 +231,7 @@ mod tests {
                     is_increment_only: true,
                     permission: 0,
                 }],
+                genre: Some("Action".to_owned()),
             },
             WorkerResponse::IconUpdated {
                 name: "ACH_FOO".to_owned(),
@@ -245,11 +256,26 @@ mod tests {
                 steam_id: 76561198000000042,
                 persona_name: "TestUser".to_owned(),
                 avatar_png: Some(vec![137, 80, 78, 71, 13, 10, 26, 10]),
+                games: vec![
+                    crate::library::GameSummary {
+                        app_id: 12345,
+                        name: "Synthetic Game Alpha".to_owned(),
+                        last_played: Some(1_700_000_000),
+                        achievement_count: 0,
+                    },
+                    crate::library::GameSummary {
+                        app_id: 67890,
+                        name: "Synthetic Game Beta".to_owned(),
+                        last_played: None,
+                        achievement_count: 0,
+                    },
+                ],
             },
             WorkerResponse::ProbeResult {
                 steam_id: 1,
                 persona_name: "anonymous".to_owned(),
                 avatar_png: None,
+                games: vec![],
             },
             WorkerResponse::Error {
                 context: "StoreStats".to_owned(),
@@ -464,6 +490,12 @@ mod tests {
             steam_id: 76561198000000042,
             persona_name: "TestUser".to_owned(),
             avatar_png: Some(avatar_bytes.clone()),
+            games: vec![crate::library::GameSummary {
+                app_id: 12345,
+                name: "Synthetic Game".to_owned(),
+                last_played: Some(1_700_000_000),
+                achievement_count: 0,
+            }],
         };
         let framed = encode_frame(&resp).expect("encode must succeed");
         assert!(framed.len() >= 4);
@@ -474,10 +506,13 @@ mod tests {
                 steam_id,
                 persona_name,
                 avatar_png: Some(png),
+                games,
             } => {
                 assert_eq!(steam_id, 76561198000000042);
                 assert_eq!(persona_name, "TestUser");
                 assert_eq!(png, avatar_bytes);
+                assert_eq!(games.len(), 1);
+                assert_eq!(games[0].app_id, 12345);
             }
             other => panic!("unexpected variant: {other:?}"),
         }
@@ -489,6 +524,7 @@ mod tests {
             steam_id: 1,
             persona_name: "Ghost".to_owned(),
             avatar_png: None,
+            games: vec![],
         };
         let framed = encode_frame(&resp).expect("encode must succeed");
         let payload = &framed[4..];
@@ -498,9 +534,11 @@ mod tests {
                 steam_id,
                 persona_name,
                 avatar_png: None,
+                games,
             } => {
                 assert_eq!(steam_id, 1);
                 assert_eq!(persona_name, "Ghost");
+                assert!(games.is_empty());
             }
             other => panic!("unexpected variant: {other:?}"),
         }

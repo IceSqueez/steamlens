@@ -1,6 +1,10 @@
+mod localconfig;
+mod packageinfo;
 mod parser;
 pub mod text;
 
+pub use localconfig::parse_localconfig_last_played;
+pub use packageinfo::{PackageInfoError, parse_packageinfo};
 pub use parser::{KeyValuePair, Value, VdfError};
 pub use text::{TextValue, TextVdfError, parse as parse_text};
 

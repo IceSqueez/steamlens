@@ -1,15 +1,17 @@
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
 use core::marker::PhantomData;
 use core::ptr::addr_of;
 use std::ffi::CString;
+use std::path::PathBuf;
 
-use crate::error::SteamError;
+use crate::error::{LibraryError, SteamError};
 use crate::ffi::interfaces::{
-    CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamClient018, ISteamFriends009,
-    ISteamUser012, ISteamUtils005,
+    CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamApps008, ISteamClient018,
+    ISteamFriends009, ISteamUser012, ISteamUtils005,
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
+use crate::library::{GameSummary, enumerate_owned_games_impl};
 use crate::stat_schema::{StatDescriptor, load as load_stat_descriptors};
 use crate::steam_callback::{SteamCallback, callback_decode};
 use crate::user_stats::UserStats;
@@ -18,6 +20,7 @@ const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
 const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
+const STEAM_APPS_008_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION008";
 const STEAM_UTILS_VERSION: &str = "SteamUtils005";
 const STEAM_FRIENDS_VERSION: &str = "SteamFriends009";
 
@@ -34,9 +37,10 @@ pub struct Image {
 
 pub struct Client {
     steam_client: RawInterface,
-    _steam_user: RawInterface,
+    steam_user: RawInterface,
     steam_user_stats: RawInterface,
     steam_apps: RawInterface,
+    steam_apps_008: RawInterface,
     steam_utils: RawInterface,
     steam_friends: RawInterface,
     pipe: HSteamPipe,
@@ -125,8 +129,96 @@ impl Client {
     /// Data is served from Steam's local appcache — no network request is made.
     /// The returned string is owned and heap-allocated; no pointer into Steam's
     /// memory is retained after this call returns.
-    pub fn app_name(&self) -> Option<String> {
-        if self.app_id == 0 || self.steam_apps.is_null() {
+    /// Returns `true` if the active user has a current license for `app_id`,
+    /// per `ISteamApps008::BIsSubscribedApp`. Returns `false` for refunded,
+    /// expired, or never-owned apps. Returns `false` if `apps008` is null
+    /// (interface unavailable on this Steam build).
+    pub fn is_subscribed_app(&self, app_id: u32) -> bool {
+        if self.steam_apps_008.is_null() {
+            return false;
+        }
+        // SAFETY: `self.steam_apps_008` was vended as
+        // "STEAMAPPS_INTERFACE_VERSION008" so its vtable layout matches
+        // `ISteamApps008`. Slot 6 is `is_subscribed_app(this, app_id) -> bool`
+        // per the canonical interface definition. No pointer to Steam-owned
+        // memory is retained.
+        unsafe {
+            let vtbl = opaque::vtable::<ISteamApps008>(self.steam_apps_008);
+            ((*vtbl).is_subscribed_app)(self.steam_apps_008, app_id)
+        }
+    }
+
+    /// Returns the path to the current user's Steam data folder.
+    ///
+    /// Calls `ISteamUser012::GetUserDataFolder` (vtable slot 6), which writes
+    /// a NUL-terminated path such as `/home/x/.local/share/Steam/userdata/12345`
+    /// into a caller-owned stack buffer. The result is copied into a `PathBuf`
+    /// before returning.
+    ///
+    /// # Errors
+    ///
+    /// [`SteamError::UserDataFolderUnavailable`] when the call returns `false`
+    /// or the returned path is empty.
+    pub fn user_data_folder(&self) -> Result<PathBuf, SteamError> {
+        let mut buf = [0u8; 1024];
+
+        // SAFETY: `self.steam_user` was vended as "SteamUser012" so its vtable
+        // layout matches `ISteamUser012`. Slot 6 is `GetUserDataFolder(this,
+        // buffer, buffer_size) -> bool` per the canonical interface definition.
+        // `buf.as_mut_ptr()` points to 1024 bytes of stack-allocated storage
+        // that lives for the duration of this call. Steam writes at most
+        // `buffer_size` bytes (1024) into the buffer. The NUL-terminated bytes
+        // are read into an owned `PathBuf` immediately after the call before
+        // any subsequent Steam call. No pointer into Steam-owned memory is
+        // retained after this call returns.
+        let ok = unsafe {
+            let vtbl = opaque::vtable::<ISteamUser012>(self.steam_user);
+            ((*vtbl).get_user_data_folder)(
+                self.steam_user,
+                buf.as_mut_ptr().cast::<c_char>(),
+                buf.len() as i32,
+            )
+        };
+
+        if !ok {
+            return Err(SteamError::UserDataFolderUnavailable);
+        }
+
+        let nul_pos = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        if nul_pos == 0 {
+            return Err(SteamError::UserDataFolderUnavailable);
+        }
+
+        let path_str = std::str::from_utf8(&buf[..nul_pos])
+            .map_err(|_| SteamError::UserDataFolderUnavailable)?;
+
+        Ok(PathBuf::from(path_str))
+    }
+
+    /// Returns the Steam installation root by deriving it from `user_data_folder`.
+    ///
+    /// `GetUserDataFolder` returns `<steam_root>/userdata/<steamid3>`.
+    /// This method strips the last two path components (`<steamid3>` and
+    /// `userdata`) to produce `<steam_root>`.
+    ///
+    /// # Errors
+    ///
+    /// [`SteamError::UserDataFolderUnavailable`] when `user_data_folder` fails.
+    /// [`SteamError::MalformedUserDataPath`] when the returned path does not
+    /// end with a `userdata/<steamid3>` component pair.
+    pub fn steam_root(&self) -> Result<PathBuf, SteamError> {
+        let udf = self.user_data_folder()?;
+        strip_userdata_suffix(udf)
+    }
+
+    /// Returns the human-readable display name for the given `app_id`, or
+    /// `None` when Steam has no entry for the app or the returned buffer is
+    /// empty.
+    ///
+    /// Data is served from Steam's local appcache — no network request is made.
+    /// The returned string is owned; no pointer into Steam memory is retained.
+    pub fn app_name_for(&self, app_id: u32) -> Option<String> {
+        if app_id == 0 || self.steam_apps.is_null() {
             return None;
         }
 
@@ -134,20 +226,20 @@ impl Client {
         let mut buf = [0u8; 1024];
 
         // SAFETY: `self.steam_apps` was vended as "STEAMAPPS_INTERFACE_VERSION001"
-        // so its vtable layout matches `ISteamApps001`. `self.app_id` is the
-        // app-specific ID stored at connect time. `key.as_ptr()` is a static
-        // NUL-terminated C string. `buf.as_mut_ptr()` is a valid, aligned,
-        // uniquely-owned buffer of `buf.len()` bytes — Steam writes at most
-        // `value_length` bytes into it. The written bytes are read immediately
-        // after the call before any other Steam call can occur. No pointer into
-        // Steam-owned memory is retained.
+        // so its vtable layout matches `ISteamApps001`. Slot 0 is
+        // `GetAppData(this, app_id, key, value, value_length) -> i32`.
+        // `key.as_ptr()` is a static NUL-terminated C string. `buf.as_mut_ptr()`
+        // is a valid, aligned, uniquely-owned buffer of `buf.len()` bytes.
+        // Steam writes at most `value_length` bytes into it. The written bytes
+        // are copied into an owned `String` immediately after the call. No
+        // pointer into Steam-owned memory is retained.
         let written = unsafe {
             let vtbl = opaque::vtable::<ISteamApps001>(self.steam_apps);
             ((*vtbl).get_app_data)(
                 self.steam_apps,
-                self.app_id,
+                app_id,
                 key.as_ptr(),
-                buf.as_mut_ptr().cast::<core::ffi::c_char>(),
+                buf.as_mut_ptr().cast::<c_char>(),
                 buf.len() as i32,
             )
         };
@@ -167,6 +259,95 @@ impl Client {
         }
 
         String::from_utf8(trimmed.to_vec()).ok()
+    }
+
+    pub fn app_name(&self) -> Option<String> {
+        self.app_name_for(self.app_id)
+    }
+
+    /// Returns `true` if the app's content is currently installed on disk
+    /// (ISteamApps008 slot 19 `BIsAppInstalled`). False for owned-but-not-
+    /// downloaded games. Distinguishing this matters because connecting a
+    /// Steam pipe with an app_id whose content is not installed makes Steam
+    /// reject the bind (observed: `connect(app_id)` returns generic failure
+    /// or "SteamNotRunning" for these app_ids).
+    pub fn is_app_installed(&self, app_id: u32) -> bool {
+        if self.steam_apps_008.is_null() {
+            return false;
+        }
+        // SAFETY: steam_apps_008 vended as ISteamApps008. Slot 19 is
+        // `BIsAppInstalled(this, app_id) -> bool`.
+        unsafe {
+            let vtbl = opaque::vtable::<ISteamApps008>(self.steam_apps_008);
+            ((*vtbl).is_app_installed)(self.steam_apps_008, app_id)
+        }
+    }
+
+    /// Returns the app's type as reported by Steam (`"Game"`, `"DLC"`,
+    /// `"Tool"`, `"Music"`, `"Config"`, `"Beta"`, `"Demo"`, `"Application"`,
+    /// `"Music"`, `"Video"`, `"Mod"`, `"Hardware"`, `"Series"`, etc.).
+    /// Case is not normalized by Steam — callers must compare
+    /// case-insensitively. Returns `None` when the type is not cached
+    /// locally (rare; observed ~6 % of a typical packageinfo).
+    pub fn app_type(&self, app_id: u32) -> Option<String> {
+        self.get_app_data(app_id, c"type")
+    }
+
+    /// Generic accessor for Steam's per-app metadata via `ISteamApps001::GetAppData`.
+    ///
+    /// `key` must be a NUL-terminated C string. Common keys: `c"name"`,
+    /// `c"type"`, `c"header_image"`, `c"oslist"`. Returns `None` when the key
+    /// has no value cached locally; Steam may begin a background fetch and
+    /// the next call after `AppDataChanged_t` fires can return a value.
+    pub fn get_app_data(&self, app_id: u32, key: &core::ffi::CStr) -> Option<String> {
+        if app_id == 0 || self.steam_apps.is_null() {
+            return None;
+        }
+        let mut buf = [0u8; 1024];
+        // SAFETY: same contract as `app_name_for`.
+        let written = unsafe {
+            let vtbl = opaque::vtable::<ISteamApps001>(self.steam_apps);
+            ((*vtbl).get_app_data)(
+                self.steam_apps,
+                app_id,
+                key.as_ptr(),
+                buf.as_mut_ptr().cast::<c_char>(),
+                buf.len() as i32,
+            )
+        };
+        if written <= 0 {
+            return None;
+        }
+        let len = (written as usize).min(buf.len());
+        let trimmed = buf[..len]
+            .iter()
+            .position(|&b| b == 0)
+            .map_or(&buf[..len], |nul| &buf[..nul]);
+        if trimmed.is_empty() {
+            return None;
+        }
+        String::from_utf8(trimmed.to_vec()).ok()
+    }
+
+    /// Enumerate all games the logged-in user has a license for, returning a
+    /// sorted `Vec<GameSummary>`.
+    ///
+    /// When `apply_subscribed_filter` is `true`, each candidate app_id from
+    /// `packageinfo.vdf` is verified via `BIsSubscribedApp` before inclusion.
+    /// When `false`, all app_ids from `packageinfo.vdf` that return a non-empty
+    /// name from `GetAppData` are included — useful for testing the raw
+    /// candidate set before enabling the ownership filter.
+    ///
+    /// # Errors
+    ///
+    /// [`LibraryError::SteamRoot`] — could not derive the Steam root from the pipe.
+    /// [`LibraryError::PackageInfoIo`] — `packageinfo.vdf` could not be read.
+    /// [`LibraryError::PackageInfoParse`] — `packageinfo.vdf` is malformed.
+    pub fn enumerate_owned_games(
+        &self,
+        apply_subscribed_filter: bool,
+    ) -> Result<Vec<GameSummary>, LibraryError> {
+        enumerate_owned_games_impl(self, apply_subscribed_filter)
     }
 
     /// Returns the user-stats sub-interface for achievement and stat operations.
@@ -601,6 +782,20 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_version.as_ptr())
     };
 
+    let apps_008_version =
+        CString::new(STEAM_APPS_008_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
+            version: STEAM_APPS_008_VERSION.to_owned(),
+        })?;
+
+    // SAFETY: same handle/lifetime contract as the apps001 load above.
+    // The returned pointer is to a Steam-owned `ISteamApps008` object whose
+    // vtable layout matches the struct declared for that version string.
+    // Null return is non-fatal: `is_subscribed_app()` guards on null.
+    let steam_apps_008 = unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_008_version.as_ptr())
+    };
+
     let utils_version =
         CString::new(STEAM_UTILS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
             version: STEAM_UTILS_VERSION.to_owned(),
@@ -638,9 +833,10 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
 
     Ok(Client {
         steam_client,
-        _steam_user: steam_user,
+        steam_user,
         steam_user_stats,
         steam_apps,
+        steam_apps_008,
         steam_utils,
         steam_friends,
         pipe,
@@ -654,7 +850,7 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
 impl Drop for Client {
     fn drop(&mut self) {
         // SAFETY: Drop releases the user handle, then the pipe handle.
-        // Sub-interface object pointers (`_steam_user`) are owned by
+        // Sub-interface object pointers (`steam_user`) are owned by
         // `steamclient.so` and are not separately released. The library
         // itself is owned by a process-global `OnceLock` and is never
         // unloaded — Steam's internal IPC/dispatch threads hold code
@@ -672,5 +868,76 @@ impl Drop for Client {
                 ((*vtbl).release_steam_pipe)(self.steam_client, self.pipe);
             }
         }
+    }
+}
+
+fn strip_userdata_suffix(path: PathBuf) -> Result<PathBuf, SteamError> {
+    // Steam's GetUserDataFolder returns paths like:
+    //   <steam_root>/userdata/<steamid3>/<app_id>/local
+    // when the pipe was opened with a specific app_id (or 0 for probes).
+    // The number of trailing components after `userdata` is therefore not
+    // fixed. Find the `userdata` component and return its parent.
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().and_then(|s| s.to_str()) == Some("userdata")
+            && let Some(parent) = ancestor.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            return Ok(parent.to_path_buf());
+        }
+    }
+    Err(SteamError::MalformedUserDataPath { observed: path })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steam_root_from_userdata_path_standard() {
+        let udf = PathBuf::from("/home/x/.local/share/Steam/userdata/12345");
+        let root = strip_userdata_suffix(udf).unwrap();
+        assert_eq!(root, PathBuf::from("/home/x/.local/share/Steam"));
+    }
+
+    #[test]
+    fn steam_root_from_real_steam_format_with_app_id_and_local() {
+        let udf = PathBuf::from("/home/x/.local/share/Steam/userdata/12345/0/local");
+        let root = strip_userdata_suffix(udf).unwrap();
+        assert_eq!(root, PathBuf::from("/home/x/.local/share/Steam"));
+    }
+
+    #[test]
+    fn steam_root_from_real_format_with_specific_app_id() {
+        let udf = PathBuf::from("/opt/steam/userdata/9876/480/remote/cloud");
+        let root = strip_userdata_suffix(udf).unwrap();
+        assert_eq!(root, PathBuf::from("/opt/steam"));
+    }
+
+    #[test]
+    fn steam_root_from_short_path() {
+        let udf = PathBuf::from("/opt/steam/userdata/9876");
+        let root = strip_userdata_suffix(udf).unwrap();
+        assert_eq!(root, PathBuf::from("/opt/steam"));
+    }
+
+    #[test]
+    fn steam_root_missing_userdata_component_returns_error() {
+        let udf = PathBuf::from("/home/x/.local/share/Steam/12345");
+        let err = strip_userdata_suffix(udf).unwrap_err();
+        assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
+    }
+
+    #[test]
+    fn steam_root_wrong_parent_name_returns_error() {
+        let udf = PathBuf::from("/home/x/notsteam/notuserdata/12345");
+        let err = strip_userdata_suffix(udf).unwrap_err();
+        assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
+    }
+
+    #[test]
+    fn steam_root_only_two_components_returns_error() {
+        let udf = PathBuf::from("userdata/12345");
+        let err = strip_userdata_suffix(udf).unwrap_err();
+        assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
     }
 }

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use steamlens_vdf::PackageInfoError;
+
 #[derive(Debug, Error)]
 pub enum SteamError {
     #[error("Steam client is not running. Please start Steam and try again.")]
@@ -60,22 +62,37 @@ pub enum SteamError {
         #[source]
         source: steamlens_vdf::VdfError,
     },
+
+    /// `ISteamUser012::GetUserDataFolder` returned `false` or an empty path.
+    #[error("Steam GetUserDataFolder returned false or an empty path")]
+    UserDataFolderUnavailable,
+
+    /// `GetUserDataFolder` returned a path that does not end with
+    /// `userdata/<steamid3>` — the steam root cannot be derived from it.
+    #[error(
+        "Cannot derive Steam root from user data folder path: {observed}",
+        observed = .observed.display()
+    )]
+    MalformedUserDataPath { observed: PathBuf },
 }
 
-/// Errors that can occur while scanning the local Steam library for installed
-/// games.  Per-game failures (bad `.acf` files, missing schema) are silently
-/// swallowed; only catalogue-level failures propagate here.
+/// Errors that can occur while enumerating the owned Steam game library.
+///
+/// Per-game failures (name lookup returning empty, missing localconfig) are
+/// silently swallowed; only catalogue-level failures propagate here.
 #[derive(Debug, Error)]
-pub enum LibraryScanError {
-    /// Reading `libraryfolders.vdf` failed with an I/O error AND the fallback
-    /// default-root path also failed.
-    #[error("Failed to read Steam library folders file: {0}")]
-    LibraryFoldersIo(#[source] io::Error),
+pub enum LibraryError {
+    /// Deriving the Steam root from the pipe failed.
+    #[error("Could not determine Steam root: {0}")]
+    SteamRoot(#[source] SteamError),
 
-    /// `libraryfolders.vdf` was parsed successfully but contained no library
-    /// paths — this should not happen with a valid Steam installation.
-    #[error("No Steam library paths found in libraryfolders.vdf")]
-    NoLibrariesFound,
+    /// Reading `appcache/packageinfo.vdf` failed with an I/O error.
+    #[error("Failed to read packageinfo.vdf: {0}")]
+    PackageInfoIo(#[source] io::Error),
+
+    /// `packageinfo.vdf` was read but could not be parsed.
+    #[error("Failed to parse packageinfo.vdf: {0}")]
+    PackageInfoParse(#[source] PackageInfoError),
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {

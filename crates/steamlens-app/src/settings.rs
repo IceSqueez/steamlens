@@ -12,6 +12,7 @@ const CURRENT_SETTINGS_VERSION: u32 = 1;
 /// On Linux: `$HOME/.local/share/Steam`
 /// On macOS: `$HOME/Library/Application Support/Steam`
 /// On Windows: `%ProgramFiles(x86)%\Steam`
+#[allow(dead_code)]
 pub fn default_steam_root() -> PathBuf {
     #[cfg(target_os = "linux")]
     {

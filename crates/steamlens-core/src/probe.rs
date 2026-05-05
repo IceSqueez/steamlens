@@ -5,6 +5,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::ipc::{WorkerResponse, decode_frame, parse_header};
+use crate::library::GameSummary;
 
 /// Live Steam profile data obtained by the probe child process.
 ///
@@ -17,6 +18,9 @@ pub struct ProbedProfile {
     /// PNG-encoded avatar image, or `None` when Steam reported handle 0
     /// (no avatar set, or the image was not yet loaded on the Steam side).
     pub avatar_png_bytes: Option<Vec<u8>>,
+    /// Full owned game library enumerated during the probe run.
+    /// Empty when enumeration failed; callers fall back to cached library.
+    pub games: Vec<GameSummary>,
 }
 
 /// Errors returned by `probe_steam`.
@@ -63,7 +67,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         .arg("--probe")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()?;
 
     let stdout = child
@@ -93,10 +97,12 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
             steam_id,
             persona_name,
             avatar_png,
+            games,
         } => Ok(ProbedProfile {
             steam_id,
             persona_name,
             avatar_png_bytes: avatar_png,
+            games,
         }),
         WorkerResponse::Error { message, .. } => {
             if is_not_running_message(&message) {

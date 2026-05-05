@@ -37,6 +37,11 @@ pub struct ScannedGameData {
     /// (treat as missing rarity data; the cache entry will have an empty
     /// `tier_breakdown`).
     pub global_percentages: HashMap<String, f32>,
+    /// Primary genre as reported by Steam (e.g. "Action", "Strategy").
+    /// `None` for games where Steam doesn't expose `common/primary_genre`,
+    /// or when the worker took the early-exit path for a no-achievements game.
+    #[allow(dead_code)] // pending UI consumer (genre tag on cards)
+    pub genre: Option<String>,
 }
 
 impl ScannedGameData {
@@ -302,11 +307,18 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
     };
 
     send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsLite).await?;
-    let (achievements, stats) = read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
+    let (achievements, stats, genre) =
+        read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
 
-    send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
-    let global_percentages =
-        read_percentages_skipping_async(&mut stdout, PERCENTAGES_TIMEOUT).await;
+    // Skip the percentage round-trip when the worker reported zero achievements
+    // (early-exit path). The card will be filtered out at the parent and there's
+    // no rarity data to map onto an empty achievement set.
+    let global_percentages = if achievements.is_empty() {
+        HashMap::new()
+    } else {
+        send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
+        read_percentages_skipping_async(&mut stdout, PERCENTAGES_TIMEOUT).await
+    };
 
     let _ = send_command(&mut stdin, &WorkerCommand::Shutdown).await;
 
@@ -315,6 +327,7 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         achievements,
         stats,
         global_percentages,
+        genre,
     })
 }
 
@@ -326,7 +339,7 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
 async fn read_achievements_skipping_async(
     stdout: &mut ChildStdout,
     total_timeout: Duration,
-) -> Result<(Vec<AchievementData>, Vec<StatData>), std::io::Error> {
+) -> Result<(Vec<AchievementData>, Vec<StatData>, Option<String>), std::io::Error> {
     let deadline = tokio::time::Instant::now() + total_timeout;
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -354,7 +367,8 @@ async fn read_achievements_skipping_async(
             WorkerResponse::AchievementsAndStats {
                 achievements,
                 stats,
-            } => return Ok((achievements, stats)),
+                genre,
+            } => return Ok((achievements, stats, genre)),
             WorkerResponse::Error { message, .. } => {
                 return Err(std::io::Error::other(message));
             }
@@ -451,6 +465,7 @@ mod tests {
             ],
             stats: Vec::new(),
             global_percentages: HashMap::new(),
+            genre: None,
         };
         assert_eq!(data.earned_count(), 2);
         assert_eq!(data.total_count(), 3);

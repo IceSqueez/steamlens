@@ -103,7 +103,8 @@ pub struct ISteamUser012 {
     _reserved_03_initiate_game_connection: usize,
     _reserved_04_terminate_game_connection: usize,
     _reserved_05_track_app_usage_event: usize,
-    _reserved_06_get_user_data_folder: usize,
+    pub get_user_data_folder:
+        unsafe extern "C" fn(this: *mut c_void, buffer: *mut c_char, buffer_size: i32) -> bool,
     _reserved_07_start_voice_recording: usize,
     _reserved_08_stop_voice_recording: usize,
     _reserved_09_get_compressed_voice: usize,
@@ -253,6 +254,38 @@ pub struct ISteamApps001 {
         value: *mut c_char,
         value_length: i32,
     ) -> i32,
+}
+
+#[repr(C)]
+pub struct ISteamApps008 {
+    pub is_subscribed: unsafe extern "C" fn(this: *mut c_void) -> bool,
+    _reserved_01_is_low_violence: usize,
+    _reserved_02_is_cybercafe: usize,
+    _reserved_03_is_vac_banned: usize,
+    _reserved_04_get_current_game_language: usize,
+    _reserved_05_get_available_game_languages: usize,
+    pub is_subscribed_app: unsafe extern "C" fn(this: *mut c_void, app_id: u32) -> bool,
+    _reserved_07_is_dlc_installed: usize,
+    _reserved_08_get_earliest_purchase_unix_time: usize,
+    _reserved_09_is_subscribed_from_free_weekend: usize,
+    _reserved_10_get_dlc_count: usize,
+    _reserved_11_get_dlc_data_by_index: usize,
+    _reserved_12_install_dlc: usize,
+    _reserved_13_uninstall_dlc: usize,
+    _reserved_14_request_app_proof_of_purchase_key: usize,
+    _reserved_15_get_current_beta_name: usize,
+    _reserved_16_mark_content_corrupt: usize,
+    _reserved_17_get_installed_depots: usize,
+    _reserved_18_get_app_install_dir: usize,
+    pub is_app_installed: unsafe extern "C" fn(this: *mut c_void, app_id: u32) -> bool,
+    _reserved_20_get_app_owner: usize,
+    _reserved_21_get_launch_query_param: usize,
+    _reserved_22_get_dlc_download_progress: usize,
+    _reserved_23_get_app_build_id: usize,
+    _reserved_24_request_all_proof_of_purchase_keys: usize,
+    _reserved_25_get_file_details: usize,
+    _reserved_26_get_launch_command_line: usize,
+    _reserved_27_is_subscribed_from_family_sharing: usize,
 }
 
 /// Vtable layout for `ISteamUtils005` as vended by
