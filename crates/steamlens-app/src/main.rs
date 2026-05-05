@@ -44,7 +44,7 @@ enum Message {
     PollWorker,
     KeyboardEvent(keyboard::Event),
     DrainProgressResults,
-    SplashDone,
+    SplashMinElapsed,
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
@@ -84,10 +84,12 @@ struct App {
     steamid3: u64,
     /// Local Steam user profile (persona name + avatar). Loaded once at boot.
     user_profile: Option<UserProfile>,
-    /// True for ~600 ms after boot — renders the splash overlay instead of the
-    /// underlying screen so iced has time to settle and the user sees a
-    /// branded handover before the live view appears.
-    splash_visible: bool,
+    /// Splash overlay stays visible until BOTH the 750 ms minimum has elapsed
+    /// AND the library scan has reported back (`ScanComplete` or `ScanFailed`).
+    /// Whichever takes longer wins — splash is a branded handover for the
+    /// actual load, not a cosmetic delay.
+    splash_min_elapsed: bool,
+    splash_scan_done: bool,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -120,15 +122,16 @@ fn boot() -> (App, Task<Message>) {
         steam_root,
         steamid3,
         user_profile: profile_result.ok(),
-        splash_visible: true,
+        splash_min_elapsed: false,
+        splash_scan_done: false,
     };
 
-    let splash_task = Task::perform(
-        async { tokio::time::sleep(std::time::Duration::from_millis(600)).await },
-        |_| Message::SplashDone,
+    let min_splash_task = Task::perform(
+        async { tokio::time::sleep(std::time::Duration::from_millis(750)).await },
+        |_| Message::SplashMinElapsed,
     );
 
-    (app, splash_task)
+    (app, min_splash_task)
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -152,12 +155,17 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             return Task::none();
         }
 
-        match &reply {
-            SteamReply::LibraryScan(_) | SteamReply::LibraryScanFailed(_) => {
-                if let Screen::ProfileView(state) = &mut app.screen {
-                    let t = profile_view::handle_steam_reply(state, reply);
-                    tasks.push(t);
-                }
+        match reply {
+            SteamReply::LibraryScan(games) => {
+                tasks.push(Task::done(Message::ProfileView(
+                    ProfileViewMessage::ScanComplete(games),
+                )));
+                continue;
+            }
+            SteamReply::LibraryScanFailed(reason) => {
+                tasks.push(Task::done(Message::ProfileView(
+                    ProfileViewMessage::ScanFailed(reason),
+                )));
                 continue;
             }
             _ => {}
@@ -303,7 +311,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.settings.library.search = new_search.clone();
                     mark_settings_dirty(app);
                 }
+                ProfileViewMessage::ScanFailed(_) => {
+                    app.splash_scan_done = true;
+                }
                 ProfileViewMessage::ScanComplete(summaries) => {
+                    app.splash_scan_done = true;
                     let games = summaries.clone();
                     let steam_root = app.steam_root.clone();
                     let steamid3 = app.steamid3;
@@ -626,8 +638,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::SplashDone => {
-            app.splash_visible = false;
+        Message::SplashMinElapsed => {
+            app.splash_min_elapsed = true;
             Task::none()
         }
 
@@ -826,10 +838,10 @@ fn view(app: &App) -> Element<'_, Message> {
         screen_content
     };
 
-    if app.splash_visible {
-        splash_view()
-    } else {
+    if app.splash_min_elapsed && app.splash_scan_done {
         with_toast
+    } else {
+        splash_view()
     }
 }
 
@@ -1044,7 +1056,8 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
-            splash_visible: false,
+            splash_min_elapsed: true,
+            splash_scan_done: true,
         }
     }
 
@@ -1583,7 +1596,8 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
-            splash_visible: false,
+            splash_min_elapsed: true,
+            splash_scan_done: true,
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));

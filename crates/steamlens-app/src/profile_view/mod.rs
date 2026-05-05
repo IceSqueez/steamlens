@@ -7,7 +7,7 @@ use iced::widget::image::Handle as ImageHandle;
 
 use crate::capsule_cache::{self, CapsuleSize};
 use crate::progress_scan::ProgressData;
-use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
+use crate::steam_worker::{SteamRequest, SteamWorker};
 
 use types::{
     CapsuleState, FADE_DELTA, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
@@ -15,20 +15,6 @@ use types::{
 };
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
-
-pub fn handle_steam_reply(state: &mut ProfileViewState, reply: SteamReply) -> Task<crate::Message> {
-    match reply {
-        SteamReply::LibraryScan(games) => {
-            let msg = ProfileViewMessage::ScanComplete(games);
-            update(state, msg)
-        }
-        SteamReply::LibraryScanFailed(e) => {
-            let msg = ProfileViewMessage::ScanFailed(e);
-            update(state, msg)
-        }
-        _ => Task::none(),
-    }
-}
 
 pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task<crate::Message> {
     match message {
