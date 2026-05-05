@@ -635,11 +635,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         Ok(result) => {
                             if let Some(data) = result.data {
                                 let scan_app_id = result.app_id;
+                                let earned = data.earned_count();
+                                let total = data.total_count();
+
                                 tasks.push(Task::done(Message::ProfileView(
                                     ProfileViewMessage::ProgressFetched {
                                         app_id: scan_app_id,
-                                        earned: data.earned,
-                                        total: data.total,
+                                        earned,
+                                        total,
                                     },
                                 )));
 
@@ -648,10 +651,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                     .iter()
                                     .find(|g| g.summary.app_id == scan_app_id)
                                 {
-                                    let entry = cache::invalidate::make_progress_cache_entry(
+                                    let entry = build_cache_entry_from_scan(
+                                        &data,
                                         &game.summary,
-                                        data.earned,
-                                        data.total,
                                         &app.steam_root,
                                         app.steamid3,
                                     );
@@ -986,6 +988,81 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
 
     state.phase = GameViewPhase::Connecting;
     state.reveal_queue.clear();
+}
+
+fn build_cache_entry_from_scan(
+    scanned: &progress_scan::ScannedGameData,
+    summary: &steamlens_core::GameSummary,
+    steam_root: &std::path::Path,
+    steamid3: u64,
+) -> GameCacheEntry {
+    use cache::types::{CachedAchievement, CachedProgress, CachedStat};
+    use steamlens_core::{StatValue, read_last_played};
+
+    let achievements: Vec<CachedAchievement> = scanned
+        .achievements
+        .iter()
+        .map(|a| {
+            let global_percent = scanned.global_percentages.get(&a.id).copied();
+            CachedAchievement {
+                api_name: a.id.clone(),
+                display_name: a.display_name.clone(),
+                description: a.description.clone(),
+                hidden: a.is_hidden,
+                icon_path: None,
+                icon_locked_path: None,
+                earned: a.is_achieved,
+                earned_at: a.unlock_time.map(|t| t as u64),
+                global_percent: global_percent.map(|p| p as f64),
+            }
+        })
+        .collect();
+
+    let stats: Vec<CachedStat> = scanned
+        .stats
+        .iter()
+        .map(|s| {
+            let (value_int, value_float) = match s.value {
+                StatValue::Int(i) => (Some(i as i64), None),
+                StatValue::Float(f) => (None, Some(f as f64)),
+            };
+            CachedStat {
+                api_name: s.id.clone(),
+                display_name: s.display_name.clone(),
+                value_int,
+                value_float,
+                default_value: None,
+            }
+        })
+        .collect();
+
+    let earned = achievements.iter().filter(|a| a.earned).count() as u32;
+    let total = achievements.len() as u32;
+
+    let steam_last_played = read_last_played(steam_root, steamid3, summary.app_id).unwrap_or(0);
+    let cached_at = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let mut entry = GameCacheEntry {
+        schema_version: cache::CURRENT_SCHEMA_VERSION,
+        app_id: summary.app_id,
+        name: scanned
+            .app_name
+            .clone()
+            .unwrap_or_else(|| summary.name.clone()),
+        steam_last_updated: summary.last_updated,
+        steam_last_played,
+        cached_at,
+        achievements,
+        stats,
+        progress: CachedProgress { earned, total },
+        tier_breakdown: Vec::new(),
+    };
+
+    recompute_tier_breakdown_if_missing(&mut entry);
+    entry
 }
 
 fn build_game_view_cache_entry(
@@ -1649,6 +1726,169 @@ mod tests {
         );
         // No state change expected — handler only logs.
         assert_eq!(app.steam_running, None);
+    }
+
+    fn make_summary_for_scan(app_id: u32, name: &str) -> steamlens_core::GameSummary {
+        steamlens_core::GameSummary {
+            app_id,
+            name: name.to_owned(),
+            last_played: None,
+            achievement_count: 3,
+            last_updated: 1_770_000_000,
+            manifest_path: std::path::PathBuf::new(),
+        }
+    }
+
+    fn make_scanned_data(
+        app_name: Option<&str>,
+        achievements: Vec<(String, bool, Option<f32>)>,
+    ) -> progress_scan::ScannedGameData {
+        use std::collections::HashMap;
+        use steamlens_core::AchievementData;
+
+        let mut percentages = HashMap::new();
+        for (id, _, pct) in &achievements {
+            if let Some(p) = pct {
+                percentages.insert(id.clone(), *p);
+            }
+        }
+
+        let achievement_data: Vec<AchievementData> = achievements
+            .into_iter()
+            .map(|(id, achieved, _)| AchievementData {
+                id: id.clone(),
+                display_name: id,
+                description: String::new(),
+                is_hidden: false,
+                is_achieved: achieved,
+                unlock_time: None,
+                permission: 0,
+                icon: None,
+            })
+            .collect();
+
+        progress_scan::ScannedGameData {
+            app_name: app_name.map(|s| s.to_owned()),
+            achievements: achievement_data,
+            stats: Vec::new(),
+            global_percentages: percentages,
+        }
+    }
+
+    #[test]
+    fn build_cache_entry_from_scan_counts_progress_correctly() {
+        let scanned = make_scanned_data(
+            Some("Terraria"),
+            vec![
+                ("ACH_A".to_owned(), true, Some(50.0)),
+                ("ACH_B".to_owned(), false, Some(10.0)),
+                ("ACH_C".to_owned(), true, Some(5.0)),
+            ],
+        );
+        let summary = make_summary_for_scan(105600, "TerrariaFallback");
+        let entry = build_cache_entry_from_scan(
+            &scanned,
+            &summary,
+            std::path::Path::new("/tmp/nonexistent"),
+            0,
+        );
+        assert_eq!(entry.progress.earned, 2);
+        assert_eq!(entry.progress.total, 3);
+        assert_eq!(entry.app_id, 105600);
+        assert_eq!(
+            entry.name, "Terraria",
+            "scanner-supplied name takes priority over GameSummary name"
+        );
+        assert_eq!(entry.steam_last_updated, 1_770_000_000);
+    }
+
+    #[test]
+    fn build_cache_entry_from_scan_falls_back_to_summary_name() {
+        let scanned = make_scanned_data(None, vec![("X".to_owned(), false, None)]);
+        let summary = make_summary_for_scan(1, "FallbackName");
+        let entry = build_cache_entry_from_scan(
+            &scanned,
+            &summary,
+            std::path::Path::new("/tmp/nonexistent"),
+            0,
+        );
+        assert_eq!(entry.name, "FallbackName");
+    }
+
+    #[test]
+    fn build_cache_entry_from_scan_attaches_global_percent_to_achievements() {
+        let scanned = make_scanned_data(
+            None,
+            vec![
+                ("RARE".to_owned(), true, Some(2.5)),
+                ("MID".to_owned(), true, Some(40.0)),
+                ("MISSING_PCT".to_owned(), true, None),
+            ],
+        );
+        let summary = make_summary_for_scan(99, "Game");
+        let entry = build_cache_entry_from_scan(
+            &scanned,
+            &summary,
+            std::path::Path::new("/tmp/nonexistent"),
+            0,
+        );
+        let by_id: std::collections::HashMap<&str, &cache::types::CachedAchievement> = entry
+            .achievements
+            .iter()
+            .map(|a| (a.api_name.as_str(), a))
+            .collect();
+        assert_eq!(by_id["RARE"].global_percent, Some(2.5));
+        assert_eq!(by_id["MID"].global_percent, Some(40.0));
+        assert_eq!(
+            by_id["MISSING_PCT"].global_percent, None,
+            "achievements absent from percentages map must keep None"
+        );
+    }
+
+    #[test]
+    fn build_cache_entry_from_scan_computes_tier_breakdown_when_pct_present() {
+        let scanned = make_scanned_data(
+            None,
+            vec![
+                ("A".to_owned(), true, Some(1.0)),
+                ("B".to_owned(), true, Some(50.0)),
+                ("C".to_owned(), false, Some(99.0)),
+                ("D".to_owned(), true, Some(20.0)),
+            ],
+        );
+        let summary = make_summary_for_scan(99, "Game");
+        let entry = build_cache_entry_from_scan(
+            &scanned,
+            &summary,
+            std::path::Path::new("/tmp/nonexistent"),
+            0,
+        );
+        assert!(
+            !entry.tier_breakdown.is_empty(),
+            "tier_breakdown must be populated when global_percentages present"
+        );
+    }
+
+    #[test]
+    fn build_cache_entry_from_scan_empty_tier_breakdown_without_pct() {
+        let scanned = make_scanned_data(
+            None,
+            vec![
+                ("A".to_owned(), true, None),
+                ("B".to_owned(), false, None),
+            ],
+        );
+        let summary = make_summary_for_scan(99, "Game");
+        let entry = build_cache_entry_from_scan(
+            &scanned,
+            &summary,
+            std::path::Path::new("/tmp/nonexistent"),
+            0,
+        );
+        assert!(
+            entry.tier_breakdown.is_empty(),
+            "no global_percent → no tier classification"
+        );
     }
 
     #[test]

@@ -1,11 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
-use steamlens_core::{GameSummary, read_all_last_played, read_last_played, read_manifest_state};
+use steamlens_core::{GameSummary, read_all_last_played, read_manifest_state};
 
-use crate::cache::{
-    CURRENT_SCHEMA_VERSION, CacheHit, GameCacheEntry, store::load_game_cache_from_path,
-};
+use crate::cache::{CURRENT_SCHEMA_VERSION, CacheHit, store::load_game_cache_from_path};
 use crate::settings::steamlens_root;
 
 /// Result of the boot-time cache classification pass.
@@ -24,13 +21,6 @@ pub struct ClassifyResult {
 
 fn cache_root() -> PathBuf {
     steamlens_root().join("cache").join("games")
-}
-
-fn now_epoch() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 /// Classifies each game as a cache hit or dirty, applying Rule M and Rule R.
@@ -112,36 +102,6 @@ async fn peek_schema_version(cache_path: &Path) -> Option<u32> {
     let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     let v = value.get("schema_version")?.as_u64()? as u32;
     Some(v)
-}
-
-/// Build a minimal `GameCacheEntry` from a `ProgressScanner` result.
-///
-/// Called after `ProgressFetched` arrives so the next boot can avoid re-running
-/// the IPC scan for this game.  Achievements and stats are left empty (the
-/// scanner only fetches counts); Manager open will write a full entry on close.
-pub fn make_progress_cache_entry(
-    game: &GameSummary,
-    earned: u32,
-    total: u32,
-    steam_root: &Path,
-    steamid3: u64,
-) -> GameCacheEntry {
-    use crate::cache::types::CachedProgress;
-
-    let steam_last_played = read_last_played(steam_root, steamid3, game.app_id).unwrap_or(0);
-
-    GameCacheEntry {
-        schema_version: CURRENT_SCHEMA_VERSION,
-        app_id: game.app_id,
-        name: game.name.clone(),
-        steam_last_updated: game.last_updated,
-        steam_last_played,
-        cached_at: now_epoch(),
-        achievements: Vec::new(),
-        stats: Vec::new(),
-        progress: CachedProgress { earned, total },
-        tier_breakdown: Vec::new(),
-    }
 }
 
 #[cfg(test)]
