@@ -185,6 +185,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             && let Some(w) = &app.worker
         {
             w.send(SteamRequest::RequestUserStats);
+            w.send(SteamRequest::RequestGlobalPercentages);
         }
 
         if let SteamReply::ResetDone = &reply

@@ -487,6 +487,7 @@ pub fn update(
             state.banner = None;
             let steam_id_placeholder = 0u64;
             worker.send(SteamRequest::RequestUserStats);
+            worker.send(SteamRequest::RequestGlobalPercentages);
             let _ = steam_id_placeholder;
             Task::none()
         }
@@ -569,6 +570,7 @@ pub fn update(
             state.stats.clear();
             state.reveal_queue.clear();
             worker.send(SteamRequest::RequestUserStats);
+            worker.send(SteamRequest::RequestGlobalPercentages);
             Task::none()
         }
         GameViewMessage::ResetFailed(e) => {
