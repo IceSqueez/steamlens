@@ -8,11 +8,8 @@ use crate::cache::store::{CacheIoError, atomic_write};
 const CURRENT_PROFILE_SCHEMA: u32 = 2;
 const CURRENT_LIBRARY_SCHEMA: u32 = 2;
 
-/// Persistent profile snapshot written after every successful Steam probe.
-///
-/// Used as fallback when a future boot finds Steam not running. The avatar PNG
-/// is embedded directly so a single file restore is enough — keeps disk layout
-/// trivial at the cost of a few extra KiB per profile.
+/// Fallback snapshot for Steam-not-running boots. Avatar PNG is
+/// embedded so a single-file restore is sufficient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedProfile {
     pub schema_version: u32,
@@ -20,17 +17,10 @@ pub struct CachedProfile {
     pub persona_name: String,
     pub account_name: String,
     pub avatar_png_bytes: Option<Vec<u8>>,
-    /// Steam root directory derived from pipe at probe time.
-    /// Used on Steam-not-running boots to resolve localconfig.vdf paths.
     pub steam_root: Option<PathBuf>,
-    /// Unix timestamp of when this snapshot was written.
     pub cached_at: u64,
 }
 
-/// Persistent library snapshot written after every successful library scan.
-///
-/// On Steam-not-running boots, restored from disk so the user still sees
-/// their last-known game list (with cards rendering from per-game caches).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedLibrary {
     pub schema_version: u32,
@@ -57,15 +47,12 @@ fn now_epoch() -> u64 {
         .as_secs()
 }
 
-/// Atomically write the profile snapshot to its canonical path.
 pub async fn write_profile_cache(profile: &CachedProfile) -> Result<(), CacheIoError> {
     let bytes =
         serde_json::to_vec_pretty(profile).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     atomic_write(&profile_path(), &bytes).await
 }
 
-/// Read the profile snapshot from disk. Returns `None` when the file is
-/// missing, unparsable, or has a stale `schema_version`.
 pub async fn load_profile_cache() -> Option<CachedProfile> {
     load_profile_cache_from_path(&profile_path()).await
 }
@@ -90,15 +77,12 @@ pub(crate) async fn load_profile_cache_from_path(path: &std::path::Path) -> Opti
     Some(entry)
 }
 
-/// Atomically write the library snapshot to its canonical path.
 pub async fn write_library_cache(library: &CachedLibrary) -> Result<(), CacheIoError> {
     let bytes =
         serde_json::to_vec_pretty(library).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     atomic_write(&library_path(), &bytes).await
 }
 
-/// Read the library snapshot from disk. Returns `None` when the file is
-/// missing, unparsable, or has a stale `schema_version`.
 pub async fn load_library_cache() -> Option<CachedLibrary> {
     load_library_cache_from_path(&library_path()).await
 }
@@ -123,7 +107,6 @@ pub(crate) async fn load_library_cache_from_path(path: &std::path::Path) -> Opti
     Some(entry)
 }
 
-/// Build a `CachedProfile` from current live data ready for `write_profile_cache`.
 pub fn make_cached_profile(
     steam_id: u64,
     persona_name: String,
@@ -142,7 +125,6 @@ pub fn make_cached_profile(
     }
 }
 
-/// Build a `CachedLibrary` from a freshly scanned game list ready for `write_library_cache`.
 pub fn make_cached_library(games: Vec<GameSummary>) -> CachedLibrary {
     CachedLibrary {
         schema_version: CURRENT_LIBRARY_SCHEMA,

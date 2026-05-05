@@ -1,18 +1,6 @@
-//! Unit tests for typed callback decoding.
-//!
-//! All tests here run without a live Steam connection — they operate on
-//! hand-crafted byte payloads. No `#[ignore]` needed.
-//!
-//! Payload layouts (Pack=1, little-endian, same as Steamworks SDK structs):
-//!
-//! UserStatsReceived (id 1101, 20 bytes):
-//!   [0..8]  u64  game_id
-//!   [8..12] i32  result
-//!   [12..20] u64 user_steam_id
-//!
-//! UserStatsStored (id 1102, 12 bytes):
-//!   [0..8]  u64  game_id
-//!   [8..12] i32  result
+//! Payload layouts (Pack=1, LE):
+//!   UserStatsReceived (1101, 20 B): u64 game_id | i32 result | u64 user_steam_id
+//!   UserStatsStored   (1102, 12 B): u64 game_id | i32 result
 
 use steamlens_core::{RawCallback, SteamCallback, SteamResult};
 
@@ -30,8 +18,6 @@ fn make_user_stats_stored(game_id: u64, result: i32) -> Vec<u8> {
     payload.extend_from_slice(&result.to_le_bytes());
     payload
 }
-
-// ── SteamResult ──────────────────────────────────────────────────────────────
 
 #[test]
 fn steam_result_ok_round_trip() {
@@ -56,8 +42,6 @@ fn steam_result_zero_is_other_not_ok() {
     assert!(!r.is_ok());
     assert_eq!(r.raw(), 0);
 }
-
-// ── UserStatsReceived decoding ────────────────────────────────────────────────
 
 #[test]
 fn decode_user_stats_received_ok() {
@@ -107,8 +91,6 @@ fn decode_user_stats_received_truncated_returns_unknown() {
     );
 }
 
-// ── UserStatsStored decoding ──────────────────────────────────────────────────
-
 #[test]
 fn decode_user_stats_stored_ok() {
     let payload = make_user_stats_stored(480, 1);
@@ -138,8 +120,6 @@ fn decode_user_stats_stored_truncated_returns_unknown() {
     );
 }
 
-// ── Unknown callback passthrough ──────────────────────────────────────────────
-
 #[test]
 fn unknown_callback_id_returns_unknown_variant() {
     let raw = RawCallback {
@@ -166,15 +146,8 @@ fn unknown_callback_empty_payload_round_trips() {
     assert!(matches!(cb, SteamCallback::Unknown(_)));
 }
 
-// ── Exact-minimum-size boundary tests ─────────────────────────────────────────
-//
-// These tests verify that a payload of exactly the documented minimum size
-// decodes to the typed variant (not Unknown). One byte fewer produces Unknown.
-
 #[test]
 fn decode_user_stats_received_exact_min_len() {
-    // UserStatsReceived minimum: 20 bytes (u64 game_id + i32 result + u64 user_steam_id).
-    // Hand-crafted: game_id=105600 (Terraria, LE), result=1 (Ok), user_steam_id=76561198000000042.
     let game_id: u64 = 105600;
     let result: i32 = 1;
     let user_steam_id: u64 = 76561198000000042;
@@ -203,8 +176,6 @@ fn decode_user_stats_received_exact_min_len() {
 
 #[test]
 fn decode_user_stats_stored_exact_min_len() {
-    // UserStatsStored minimum: 12 bytes (u64 game_id + i32 result).
-    // Hand-crafted: game_id=105600 (Terraria, LE), result=1 (Ok).
     let game_id: u64 = 105600;
     let result: i32 = 1;
 

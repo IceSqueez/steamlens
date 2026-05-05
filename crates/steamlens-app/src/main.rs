@@ -48,9 +48,6 @@ enum Message {
     DrainProgressResults,
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, String>),
-    /// Re-run the Steam liveness probe and library scan from scratch — emitted
-    /// by the loader-strip Retry button when Steam was off and we had no cache
-    /// fallback. Doesn't show splash again (user is already past it).
     RetrySteamConnect,
     ProfileCacheLoaded(Option<CachedProfile>),
     LibraryCacheLoaded(Option<CachedLibrary>),
@@ -94,40 +91,17 @@ struct App {
     settings: Settings,
     settings_dirty_since: Option<Instant>,
     toast: Option<ToastState>,
-    /// Full cache entries keyed by app_id.  Populated after classify_games
-    /// completes.  Used to seed GameViewState on open (Rule R scaffold).
     cached_entries: HashMap<u32, GameCacheEntry>,
-    /// Cache hits queued for streamed dispatch — drained in small batches by
-    /// `Message::DrainHitQueue` so 339 games don't land in cached_entries in
-    /// a single Message handler (the layout-storm root cause).
     pending_hit_queue: VecDeque<CacheHit>,
-    /// Steam root path cached at boot for use in cache write helpers.
     steam_root: std::path::PathBuf,
-    /// SteamID3 cached at boot; 0 when profile load fails.
     steamid3: u64,
-    /// Local Steam user profile (persona name + avatar). Loaded once at boot.
     user_profile: Option<UserProfile>,
-    /// Decoded avatar `ImageHandle`, cached at boot. Reused across renders so
-    /// the avatar PNG is decoded once (not on every view() invocation).
     profile_avatar_handle: Option<iced::widget::image::Handle>,
-    /// Splash overlay stays visible until ALL of: the 750 ms minimum has
-    /// elapsed, the library scan has reported back, and the Steam liveness
-    /// probe has resolved. Whichever takes longest wins — splash is a branded
-    /// handover for the actual load, not a cosmetic delay.
     splash_min_elapsed: bool,
     splash_scan_done: bool,
     splash_probe_done: bool,
-    /// `None` while the probe is in flight; `Some(true)` once we confirmed
-    /// Steam is up; `Some(false)` after a probe failure (Steam off, timeout,
-    /// FFI error). UI uses this to decide whether to show the
-    /// "Steam is not running" banner.
     steam_running: Option<bool>,
     skeleton_phase: f32,
-    /// Cache of app_ids that scanned as having no achievements. Each entry
-    /// records the package change_number observed at scan time; entries are
-    /// considered valid only while the change_number matches the current
-    /// packageinfo value. Loaded at boot, mutated as scans complete, written
-    /// back asynchronously.
     no_ach_cache: cache::NoAchievementsCache,
 }
 
@@ -648,13 +622,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 continue;
                             };
 
-                            // No achievements → drop the card from the grid
-                            // and skip cache write. The worker took the
-                            // early-exit path; this app is not interesting
-                            // for SteamLens (we only manage achievements).
-                            // Also record (app_id, change_number) into the
-                            // no-achievements cache so the next boot skips
-                            // this app entirely until its package changes.
+                            // Record (app_id, change_number) so the next
+                            // boot skips this app until its package
+                            // advances.
                             if data.achievements.is_empty() {
                                 let change_number = pv_state
                                     .games
@@ -678,7 +648,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 continue;
                             }
 
-                            // unbox so we don't change the indentation below
                             {
                                 let earned = data.earned_count();
                                 let total = data.total_count();
@@ -847,10 +816,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     if !p.games.is_empty() {
                         app.splash_scan_done = true;
-                        // Apply the no-achievements cache filter: drop apps
-                        // we previously confirmed have no achievements AND
-                        // whose package change_number has not advanced.
-                        // Mismatch / absence → keep the app for re-scan.
                         let no_ach = &app.no_ach_cache;
                         let filtered: Vec<_> = p
                             .games
@@ -1283,8 +1248,6 @@ fn view(app: &App) -> Element<'_, Message> {
         if has_data {
             steam_off_banner(screen_content)
         } else {
-            // Loader strip already surfaces "Steam is not running" + Retry —
-            // no banner, would just duplicate the message.
             screen_content
         }
     } else {
@@ -1770,9 +1733,6 @@ mod tests {
             cached_at: 0,
         };
         let _t = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
-        // The handler dispatches Task::done(Message::ProfileView(ScanComplete(...))).
-        // We can't intercept the Task here, but the predicate (games_present == false)
-        // is what gates dispatch — verify by checking the precondition holds.
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(pv.games.is_empty(), "precondition: games empty");
         } else {
@@ -1838,7 +1798,6 @@ mod tests {
             &mut app,
             Message::PersistentCacheWritten("profile", Err("disk full".to_owned())),
         );
-        // No state change expected — handler only logs.
         assert_eq!(app.steam_running, None);
     }
 

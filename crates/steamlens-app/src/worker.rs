@@ -99,11 +99,8 @@ async fn probe_main() -> i32 {
     );
 
     let t_enum = std::time::Instant::now();
-    // Pass `true` to filter via BIsSubscribedApp — drops entries Steam no
-    // longer recognises as currently owned (expired free weekends, refunds,
-    // license revocations). For these apps Steam pipe rejects the per-game
-    // connect with a misleading "Steam client is not running" because the
-    // app context fails ownership validation.
+    // `BIsSubscribedApp` filter avoids per-game connect rejections
+    // (refunded / expired free-weekend / revoked-license app_ids).
     let games = match steamlens_core::enumerate_owned_games(&client, true) {
         Ok(g) => g,
         Err(e) => {
@@ -228,7 +225,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             }
         }
 
-        WorkerCommand::LoadAchievementsAndStatsLite => {
+        WorkerCommand::LoadAchievementsAndStatsWithoutIcons => {
             let resp = load_achievements_and_stats(client, app_id, false);
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
@@ -355,10 +352,6 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
         }
     };
 
-    // Early exit: this app has no achievements at all. Skip the schema/state
-    // walk, skip stat descriptors, skip genre fetch — the parent's filter will
-    // drop the card from the UI and cache. This also means `RequestGlobalPercentages`
-    // (sent next by the parent's protocol) becomes a no-op against empty data.
     if num == 0 {
         return WorkerResponse::AchievementsAndStats {
             achievements: Vec::new(),
@@ -519,13 +512,8 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                         if result.is_ok() {
                             return None;
                         }
-                        // EResult 2 (k_EResultFail) for RequestUserStats means
-                        // "no stats schema for this app for this user" — Steam's
-                        // way of saying the game doesn't have an achievement/stats
-                        // backend configured. Treat as a clean "no achievements"
-                        // result (parent's filter drops the card). Do NOT report
-                        // this as a real error — it's not a failure, just a
-                        // game without achievements.
+                        // EResult 2 here means "no stats schema for this
+                        // app" — surface as empty achievements, not error.
                         if result.raw() == 2 {
                             return Some(WorkerResponse::AchievementsAndStats {
                                 achievements: Vec::new(),
@@ -533,8 +521,6 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                                 genre: None,
                             });
                         }
-                        // Other non-OK codes are genuine errors (transient or
-                        // permission-related). Bubble them up.
                         return Some(WorkerResponse::Error {
                             context: "UserStatsReceived".into(),
                             message: format!("result code {}", result.raw()),
@@ -643,9 +629,8 @@ fn fetch_global_percentages(client: &Client) -> WorkerResponse {
 
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     loop {
-        // Drain broadcast callbacks to prevent Steam's internal queue from stalling.
-        // Icons arriving here are dropped — the parent will see them when it next
-        // polls for icon updates via the async dispatch loop.
+        // Drain broadcasts to keep Steam's internal queue moving; icon
+        // events arriving here are dropped (parent retries later).
         let _ = client.poll_callbacks();
 
         match client.poll_call_result(handle, CALLBACK_ID_GLOBAL, PAYLOAD_SIZE) {

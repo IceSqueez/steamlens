@@ -73,10 +73,6 @@ pub struct GameViewState {
     pub app_id: u32,
     pub game_name: String,
     pub phase: GameViewPhase,
-    /// The `last_updated` value from the Steam app manifest at the time the
-    /// GameView was opened.  Written back to the cache on GoBack so the next
-    /// cold boot can compare against the live manifest and skip an IPC
-    /// re-scan for this game.
     pub steam_last_updated: u64,
 
     pub achievements: Vec<AchievementRow>,

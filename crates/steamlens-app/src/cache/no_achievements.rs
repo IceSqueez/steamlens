@@ -1,15 +1,5 @@
-//! Persistent cache of app_ids that scanned as having no achievements.
-//!
-//! Records the package's `change_number` at scan time so the entry can be
-//! invalidated when Steam pushes any update for the package (which advances
-//! the change_number). The cache lets cold-start subsequent runs skip
-//! scanning the ~hundreds of owned non-achievement games (DLCs that slipped
-//! the type filter, free-weekend leftovers, games whose stats schema Steam
-//! never configured, etc.).
-//!
-//! Storage: `<XDG_CACHE>/steamlens/cache/no_achievements.json`.
-//! Atomic write via `.tmp` + rename. Schema-versioned; old caches are
-//! discarded on version mismatch (no shims, per CLAUDE.md).
+//! Cache of app_ids that scanned with no achievements, keyed by
+//! package `change_number` so entries invalidate when Steam advances it.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,7 +13,6 @@ pub const CURRENT_NO_ACHIEVEMENTS_SCHEMA: u32 = 1;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NoAchievementsCache {
     pub schema_version: u32,
-    /// app_id → package change_number observed when "no achievements" was recorded.
     pub entries: HashMap<u32, u32>,
 }
 
@@ -35,9 +24,6 @@ impl NoAchievementsCache {
         }
     }
 
-    /// Returns `true` when `app_id` is recorded and the recorded
-    /// `change_number` exactly matches `current`. A mismatch (or absence)
-    /// returns `false` — the caller must scan the app again.
     pub fn is_known_empty(&self, app_id: u32, current_change: u32) -> bool {
         match self.entries.get(&app_id) {
             Some(&recorded) => recorded == current_change,
@@ -94,8 +80,8 @@ mod tests {
         let mut cache = NoAchievementsCache::new();
         cache.insert(12345, 100);
         assert!(cache.is_known_empty(12345, 100));
-        assert!(!cache.is_known_empty(12345, 101)); // change_number bumped
-        assert!(!cache.is_known_empty(99999, 100)); // not in cache
+        assert!(!cache.is_known_empty(12345, 101));
+        assert!(!cache.is_known_empty(99999, 100));
     }
 
     #[test]

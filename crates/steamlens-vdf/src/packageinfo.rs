@@ -6,48 +6,29 @@ use crate::parser::{Value, VdfError};
 
 const PACKAGEINFO_MAGIC: u32 = 0x0656_5528;
 
-/// Errors produced by the `packageinfo.vdf` binary parser.
 #[derive(Debug, Error)]
 pub enum PackageInfoError {
-    /// The first 4 bytes of the file did not match the expected magic number.
     #[error(
         "packageinfo.vdf magic mismatch: expected 0x{:08x}, got 0x{magic:08x}",
         PACKAGEINFO_MAGIC
     )]
     MalformedHeader { magic: u32 },
 
-    /// The file ended before a complete record could be read.
     #[error("packageinfo.vdf is truncated")]
     Truncated,
 
-    /// A binary KV blob inside a package record failed to parse.
     #[error("packageinfo.vdf inner KV parse error: {0}")]
     InnerKvParse(#[source] VdfError),
 
-    /// A package record contained no `appids` child section.
-    ///
-    /// This variant is currently used for packages that parse correctly but
-    /// contain no `appids` key; those are silently skipped during enumeration.
-    /// Kept for completeness and future diagnostics.
     #[error("packageinfo.vdf record is missing the appids block")]
     MissingAppidsBlock,
 }
 
-/// Parse the binary `packageinfo.vdf` wrapper and return a sorted
-/// `(app_id → change_number)` map deduplicating apps that appear in
-/// multiple packages.
-///
-/// `change_number` is the package's PICS change number — it advances when
-/// any depot/manifest of the package is updated. When an app appears in
-/// multiple packages we keep the maximum `change_number` (most recent
-/// observed change). Callers can use this number as a coarse "has this
-/// app's package been touched since I last looked?" signal for cache
-/// invalidation; it over-invalidates by package boundary (any sibling app
-/// update bumps it) but never under-invalidates.
-///
-/// The slice must contain the full file contents, starting with the 8-byte
-/// header. Truncated or corrupted records error out — partial results are
-/// not returned.
+/// Parse the full `packageinfo.vdf` (header + records) and return a
+/// sorted `(app_id, change_number)` list. When an app appears in
+/// several packages, the maximum `change_number` is kept — the PICS
+/// change number is a coarse "package touched?" signal that
+/// over-invalidates but never under-invalidates.
 pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<(u32, u32)>, PackageInfoError> {
     if bytes.len() < 8 {
         return Err(PackageInfoError::Truncated);
@@ -78,18 +59,21 @@ pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<(u32, u32)>, PackageInfoErr
             break;
         }
 
-        // sha1 (20 bytes) + change_number (4 bytes) + pics_token (8 bytes) = 32 bytes
-        if cursor + 32 > bytes.len() {
+        const SHA1_LEN: usize = 20;
+        const CHANGE_NUMBER_LEN: usize = 4;
+        const PICS_TOKEN_LEN: usize = 8;
+        const RECORD_HEADER_LEN: usize = SHA1_LEN + CHANGE_NUMBER_LEN + PICS_TOKEN_LEN;
+
+        if cursor + RECORD_HEADER_LEN > bytes.len() {
             return Err(PackageInfoError::Truncated);
         }
-        // Skip sha1 (20 bytes), then read change_number (4 bytes), then skip pics_token (8 bytes)
         let change_number = u32::from_le_bytes([
             bytes[cursor + 20],
             bytes[cursor + 21],
             bytes[cursor + 22],
             bytes[cursor + 23],
         ]);
-        cursor += 32;
+        cursor += RECORD_HEADER_LEN;
 
         let blob_slice = &bytes[cursor..];
         let blob_len = match scan_kv_blob_length(blob_slice) {
@@ -142,11 +126,6 @@ pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<(u32, u32)>, PackageInfoErr
     Ok(app_ids.into_iter().collect())
 }
 
-/// Walk a binary KV stream starting at `bytes[0]` and return the byte count
-/// consumed by the outermost section (including its closing `0x08` marker).
-///
-/// Returns `None` when the stream is malformed or truncated before the
-/// matching close marker is found.
 pub(crate) fn scan_kv_blob_length(bytes: &[u8]) -> Option<usize> {
     let mut i = 0usize;
     let mut depth: i32 = 0;
@@ -202,7 +181,7 @@ mod tests {
     fn magic_bytes() -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(&PACKAGEINFO_MAGIC.to_le_bytes());
-        v.extend_from_slice(&1u32.to_le_bytes()); // universe = 1
+        v.extend_from_slice(&1u32.to_le_bytes());
         v
     }
 
@@ -213,9 +192,9 @@ mod tests {
     fn package_record(package_id: u32, change_number: u32, app_ids: &[u32]) -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(&package_id.to_le_bytes());
-        v.extend_from_slice(&[0u8; 20]); // sha1
+        v.extend_from_slice(&[0u8; 20]);
         v.extend_from_slice(&change_number.to_le_bytes());
-        v.extend_from_slice(&[0u8; 8]); // pics_token
+        v.extend_from_slice(&[0u8; 8]);
 
         let blob = build_package_blob(package_id, app_ids);
         v.extend_from_slice(&blob);
@@ -225,29 +204,28 @@ mod tests {
     fn build_package_blob(package_id: u32, app_ids: &[u32]) -> Vec<u8> {
         let mut appids_children = Vec::new();
         for (i, &id) in app_ids.iter().enumerate() {
-            // Each app_id stored as Int32, key is stringified index
             let key = i.to_string();
-            appids_children.push(0x02u8); // Int32
+            appids_children.push(0x02u8);
             appids_children.extend_from_slice(key.as_bytes());
             appids_children.push(0x00);
             appids_children.extend_from_slice(&(id as i32).to_le_bytes());
         }
-        appids_children.push(0x08); // end appids section
+        appids_children.push(0x08);
 
         let mut inner = Vec::new();
-        inner.push(0x00u8); // Section tag
+        inner.push(0x00u8);
         inner.extend_from_slice(b"appids");
         inner.push(0x00);
         inner.extend_from_slice(&appids_children);
-        inner.push(0x08); // end inner section
+        inner.push(0x08);
 
         let pkg_key = package_id.to_string();
         let mut blob = Vec::new();
-        blob.push(0x00u8); // Section tag for outer key = package_id string
+        blob.push(0x00u8);
         blob.extend_from_slice(pkg_key.as_bytes());
         blob.push(0x00);
         blob.extend_from_slice(&inner);
-        blob.push(0x08); // end outer blob
+        blob.push(0x08);
         blob
     }
 
@@ -263,7 +241,7 @@ mod tests {
 
     #[test]
     fn truncated_header_returns_error() {
-        let bytes = [0x28u8, 0x55, 0x56]; // only 3 bytes — too short
+        let bytes = [0x28u8, 0x55, 0x56];
         let err = parse_packageinfo(&bytes).unwrap_err();
         assert!(matches!(err, PackageInfoError::Truncated));
     }
@@ -294,25 +272,22 @@ mod tests {
         bytes.extend_from_slice(&terminator());
 
         let ids = parse_packageinfo(&bytes).unwrap();
-        // app_id 200 is in both packages; we keep max(100, 200) = 200
         assert_eq!(ids, vec![(100, 100), (200, 200), (300, 200)]);
     }
 
     #[test]
     fn package_without_appids_block_is_silently_skipped() {
         let mut bytes = magic_bytes();
-        // A package with no appids section — just an empty inner blob
         let mut record = Vec::new();
-        record.extend_from_slice(&99u32.to_le_bytes()); // package_id
-        record.extend_from_slice(&[0u8; 32]); // sha1 + change_number + pics_token
-        // blob: outer section with one child (no appids)
+        record.extend_from_slice(&99u32.to_le_bytes());
+        record.extend_from_slice(&[0u8; 32]);
         let blob = {
             let mut b = Vec::new();
-            b.push(0x00u8); // Section
+            b.push(0x00u8);
             b.extend_from_slice(b"99");
             b.push(0x00);
-            b.push(0x08); // empty inner section
-            b.push(0x08); // end outer
+            b.push(0x08);
+            b.push(0x08);
             b
         };
         record.extend_from_slice(&blob);
@@ -326,8 +301,7 @@ mod tests {
     #[test]
     fn truncated_mid_record_returns_truncated_error() {
         let mut bytes = magic_bytes();
-        bytes.extend_from_slice(&100u32.to_le_bytes()); // package_id
-        // deliberately stop here — no sha1, no blob
+        bytes.extend_from_slice(&100u32.to_le_bytes());
         let err = parse_packageinfo(&bytes).unwrap_err();
         assert!(matches!(err, PackageInfoError::Truncated));
     }

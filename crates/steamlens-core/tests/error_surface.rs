@@ -1,6 +1,3 @@
-//! Pure unit-style tests that exercise the public surface of `SteamError`
-//! without touching Steam. These run on CI.
-
 use std::path::PathBuf;
 
 use steamlens_core::SteamError;
@@ -12,8 +9,6 @@ fn steam_not_running_renders_user_facing_message() {
         msg.contains("Steam"),
         "SteamNotRunning Display must mention Steam, got: {msg}"
     );
-    // The message is shown in the UI; it must not contain raw type names
-    // or debug clutter.
     assert!(!msg.contains("SteamError::"));
     assert!(!msg.contains("{"));
 }
@@ -34,8 +29,6 @@ fn install_not_found_lists_searched_paths() {
 #[test]
 fn install_not_found_with_empty_search_list_does_not_panic() {
     let err = SteamError::SteamInstallNotFound { searched: vec![] };
-    // The Display impl must not panic when the slice is empty (regression
-    // guard for any future refactor that does `paths[0]`).
     let _ = err.to_string();
 }
 

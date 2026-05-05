@@ -5,17 +5,12 @@ use steamlens_core::GameSummary;
 use crate::cache::{CURRENT_SCHEMA_VERSION, CacheHit, store::load_game_cache_from_path};
 use crate::settings::steamlens_root;
 
-/// Result of the boot-time cache classification pass.
 #[derive(Debug, Clone, Default)]
 pub struct ClassifyResult {
-    /// Games whose cache entry is still valid — no IPC scan needed.
     pub hits: Vec<CacheHit>,
-    /// App IDs that require a fresh IPC scan (dirty: new game, stale manifest,
-    /// recently played, or schema version bumped).
     pub dirty: Vec<u32>,
-    /// Number of cache files discarded because their `schema_version` did not
-    /// match `CURRENT_SCHEMA_VERSION`.  Used to show a one-time toast on
-    /// upgrades.
+    /// Count of cache files discarded because their `schema_version`
+    /// did not match `CURRENT_SCHEMA_VERSION`; drives the upgrade toast.
     pub schema_bumped: u32,
 }
 
@@ -23,17 +18,6 @@ fn cache_root() -> PathBuf {
     steamlens_root().join("cache").join("games")
 }
 
-/// Classifies each game as a cache hit or dirty.
-///
-/// With the pipe-first pipeline, ACF manifests are no longer available as
-/// change signals. The simplified rule: if a valid cache entry exists and
-/// `last_played` from the enumeration pipeline has not advanced past
-/// `entry.cached_at`, the entry is a hit. Otherwise dirty.
-///
-/// Schema version mismatches are always dirty regardless of play state.
-///
-/// This function is `async` and must be called from within a tokio runtime.
-/// Wrap it in `Task::perform` so it does not block the UI thread.
 pub async fn classify_games(
     games: &[GameSummary],
     _steam_root: &Path,
@@ -42,8 +26,6 @@ pub async fn classify_games(
     classify_games_with_root(games, &cache_root()).await
 }
 
-/// Testable variant that accepts an explicit cache root instead of the
-/// platform default.  Call this from tests using a `TempDir`.
 pub(crate) async fn classify_games_with_root(
     games: &[GameSummary],
     cache_root: &Path,

@@ -183,10 +183,6 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             Task::none()
         }
 
-        // Spawning the FullGameScanner lives in main.rs (it owns cache writes
-        // and `cached_entries`). This message is handled there before reaching
-        // this switch — so this arm should never run, but it must exist for
-        // exhaustive matching.
         ProfileViewMessage::RetryFailedScans => Task::none(),
     }
 }

@@ -14,33 +14,19 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const PERCENTAGES_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Per-game progress counts derived from a scan, used by the UI to render
-/// counters before the full cache entry is materialised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressData {
     pub earned: u32,
     pub total: u32,
 }
 
-/// Full per-game payload returned by a successful scan.
-///
-/// Combines the achievement+stat list (from `LoadAchievementsAndStats`) with
-/// the global rarity percentages (from `RequestGlobalPercentages`) plus the
-/// game's display name from the worker's `SteamConnected` frame.
 #[derive(Debug, Clone)]
 pub struct ScannedGameData {
     pub app_name: Option<String>,
     pub achievements: Vec<AchievementData>,
     pub stats: Vec<StatData>,
-    /// Map of `api_name` → percentage of all owners who unlocked this
-    /// achievement. Empty when Steam declined to provide percentages
-    /// (treat as missing rarity data; the cache entry will have an empty
-    /// `tier_breakdown`).
     pub global_percentages: HashMap<String, f32>,
-    /// Primary genre as reported by Steam (e.g. "Action", "Strategy").
-    /// `None` for games where Steam doesn't expose `common/primary_genre`,
-    /// or when the worker took the early-exit path for a no-achievements game.
-    #[allow(dead_code)] // pending UI consumer (genre tag on cards)
+    #[allow(dead_code)]
     pub genre: Option<String>,
 }
 
@@ -54,25 +40,13 @@ impl ScannedGameData {
     }
 }
 
-/// Result of a single game's scan, success or failure.
 #[derive(Debug, Clone)]
 pub struct ProgressResult {
     pub app_id: u32,
-    /// `None` when the worker child failed, timed out, or returned an
-    /// `Error` frame for any of the three protocol stages.
+    /// `None` on worker crash, timeout, or error frame.
     pub data: Option<ScannedGameData>,
 }
 
-/// Streams full per-game scan results in a bounded concurrent manner.
-///
-/// Spawns up to `MAX_CONCURRENT` (3) child worker processes at once. Each
-/// child connects to Steam, fetches achievements + stats + global rarity
-/// percentages, then exits. As workers finish, the next game from the queue
-/// is started. Results arrive via the tokio channel returned from
-/// [`ProgressScanner::take_receiver`].
-///
-/// Drop the scanner to cancel all in-flight workers (their `Child` handles
-/// are killed in `Drop`).
 pub struct ProgressScanner {
     queue: VecDeque<u32>,
     in_flight: Vec<tokio::task::JoinHandle<ProgressResult>>,
@@ -97,8 +71,6 @@ impl ProgressScanner {
         self.result_rx.take()
     }
 
-    /// Drive the scanner forward: retire finished tasks, spawn new ones from
-    /// the queue. Returns `true` while there is still work pending.
     pub fn poll(&mut self) -> bool {
         self.retire_finished();
         self.spawn_pending();
@@ -306,13 +278,14 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         }
     };
 
-    send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsLite).await?;
+    send_command(
+        &mut stdin,
+        &WorkerCommand::LoadAchievementsAndStatsWithoutIcons,
+    )
+    .await?;
     let (achievements, stats, genre) =
         read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
 
-    // Skip the percentage round-trip when the worker reported zero achievements
-    // (early-exit path). The card will be filtered out at the parent and there's
-    // no rarity data to map onto an empty achievement set.
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
     } else {
@@ -331,11 +304,6 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
     })
 }
 
-/// Reads `WorkerResponse` frames from `stdout` and returns the achievements/
-/// stats payload from the first `AchievementsAndStats` frame seen, discarding
-/// async noise that arrives in between (`IconUpdated` from the child's
-/// background callback poll, leftover `GlobalPercentagesReady` from previous
-/// commands, etc.). Bounded by an overall `total_timeout`.
 async fn read_achievements_skipping_async(
     stdout: &mut ChildStdout,
     total_timeout: Duration,
@@ -372,16 +340,11 @@ async fn read_achievements_skipping_async(
             WorkerResponse::Error { message, .. } => {
                 return Err(std::io::Error::other(message));
             }
-            // Async noise — keep reading.
             _ => continue,
         }
     }
 }
 
-/// Reads frames until a `GlobalPercentagesReady(map)` arrives. Async noise
-/// (icon callbacks, etc.) is silently discarded. On timeout, error frame, or
-/// pipe close, returns an empty map — percentages are nice-to-have during a
-/// bulk scan; missing rarity data just yields an empty `tier_breakdown`.
 async fn read_percentages_skipping_async(
     stdout: &mut ChildStdout,
     total_timeout: Duration,

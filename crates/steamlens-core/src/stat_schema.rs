@@ -4,24 +4,18 @@ use steamlens_vdf::Value;
 
 use crate::error::SteamError;
 
-/// The numeric kind of a Steam stat counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatKind {
     Int,
     Float,
 }
 
-/// Metadata for a single Steam stat counter read from the local schema cache.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatDescriptor {
-    /// API name exactly as Steam expects it (e.g. `"NumFishCaught"`).
     pub name: String,
     pub kind: StatKind,
-    /// Upper bound advertised by the schema, if present.
     pub max_value: Option<u64>,
-    /// Default value advertised by the schema, if present.
     pub default_value: Option<i64>,
-    /// Lower bound advertised by the schema, if present.
     pub min_value: Option<i64>,
 }
 

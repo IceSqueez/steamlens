@@ -7,23 +7,16 @@ use thiserror::Error;
 use crate::ipc::{WorkerResponse, decode_frame, parse_header};
 use crate::library::GameSummary;
 
-/// Live Steam profile data obtained by the probe child process.
-///
-/// Produced by `probe_steam` when the Steam client is running and the child
-/// worker exits cleanly with a `WorkerResponse::ProbeResult` frame.
 #[derive(Debug, Clone)]
 pub struct ProbedProfile {
     pub steam_id: u64,
     pub persona_name: String,
-    /// PNG-encoded avatar image, or `None` when Steam reported handle 0
-    /// (no avatar set, or the image was not yet loaded on the Steam side).
+    /// `None` when Steam reported handle 0 (no avatar set or not yet loaded).
     pub avatar_png_bytes: Option<Vec<u8>>,
-    /// Full owned game library enumerated during the probe run.
-    /// Empty when enumeration failed; callers fall back to cached library.
+    /// Empty when enumeration failed — caller falls back to cache.
     pub games: Vec<GameSummary>,
 }
 
-/// Errors returned by `probe_steam`.
 #[derive(Debug, Error)]
 pub enum ProbeError {
     #[error("Steam is not running")]
@@ -39,27 +32,9 @@ pub enum ProbeError {
     Io(#[from] io::Error),
 }
 
-/// Spawns the parent's own executable in `--probe` mode, reads exactly one
-/// `WorkerResponse` frame from the child's stdout, kills the child, and
-/// returns the profile or a typed error.
-///
-/// The child path is resolved via `std::env::current_exe()` so this works
-/// regardless of how the binary was invoked.
-///
-/// # Timeout
-///
-/// The `timeout` parameter bounds the total time the child is allowed to run
-/// before it is killed and `ProbeError::Timeout` is returned. The timeout
-/// covers child startup, Steam pipe connection, and avatar fetch — all three
-/// steps.
-///
-/// # Errors
-///
-/// - `ProbeError::Io` — could not find or spawn the executable.
-/// - `ProbeError::Timeout` — child did not produce a response within `timeout`.
-/// - `ProbeError::SteamNotRunning` — child sent an `Error` frame whose message
-///   matches a known "not running" pattern.
-/// - `ProbeError::Worker` — child sent an `Error` frame with any other message.
+/// Spawns `current_exe() --probe`, reads one `WorkerResponse` frame
+/// from the child's stdout, then kills it. `timeout` bounds the total
+/// run (startup + pipe connect + avatar fetch).
 pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError> {
     let exe = std::env::current_exe()?;
 
@@ -211,9 +186,6 @@ mod tests {
         assert!(!is_not_running_message("timed out"));
     }
 
-    /// Spawns a short-lived `--probe` child, immediately kills it, and verifies
-    /// that the read path returns an error rather than panicking.
-    /// Does NOT require a running Steam client.
     #[test]
     fn probe_child_killed_early_does_not_panic() {
         use std::process::{Command, Stdio};

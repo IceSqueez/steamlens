@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-/// Errors produced by the text KeyValue parser.
 #[derive(Debug, Error)]
 pub enum TextVdfError {
     #[error("unexpected end of input")]
@@ -16,9 +15,8 @@ pub enum TextVdfError {
     InvalidUtf8,
 }
 
-/// A value from a text KeyValue document — either a leaf string or a nested
-/// block of ordered key-value pairs.  Duplicate keys within a block are
-/// preserved in insertion order, which matches Steam's own behaviour.
+/// Duplicate keys in a `Block` are preserved in insertion order to
+/// match Steam's text-VDF behaviour.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextValue {
     String(std::string::String),
@@ -26,9 +24,6 @@ pub enum TextValue {
 }
 
 impl TextValue {
-    /// Return the first child whose key matches `key`, or `None`.
-    ///
-    /// Only meaningful on `Block` variants; returns `None` for `String`.
     pub fn get(&self, key: &str) -> Option<&TextValue> {
         match self {
             TextValue::Block(pairs) => pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v),
@@ -36,7 +31,6 @@ impl TextValue {
         }
     }
 
-    /// Return the inner string slice if this is a `String` variant.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             TextValue::String(s) => Some(s.as_str()),
@@ -44,7 +38,6 @@ impl TextValue {
         }
     }
 
-    /// Return the inner pairs slice if this is a `Block` variant.
     pub fn as_block(&self) -> Option<&[(std::string::String, TextValue)]> {
         match self {
             TextValue::Block(pairs) => Some(pairs.as_slice()),
@@ -53,13 +46,9 @@ impl TextValue {
     }
 }
 
-/// Parse a text KeyValue document (`.acf`, `libraryfolders.vdf`, etc.).
-///
-/// The root is returned as a [`TextValue::Block`] containing one or more
-/// top-level sections.  A naked `"key" "value"` pair at the root without an
-/// enclosing block is accepted and produces a single-entry `Block`.
-///
-/// Returns [`TextVdfError`] on any parse failure; never panics.
+/// Parse a text KV document (`.acf`, `libraryfolders.vdf`). The root
+/// is a [`TextValue::Block`]; a bare `"key" "value"` at the top level
+/// without enclosing braces is also accepted.
 pub fn parse(input: &str) -> Result<TextValue, TextVdfError> {
     let mut parser = Parser::new(input);
     let pairs = parser.read_pairs(false)?;
@@ -119,7 +108,7 @@ impl<'a> Parser<'a> {
 
     fn read_quoted_string(&mut self) -> Result<std::string::String, TextVdfError> {
         debug_assert_eq!(self.peek(), Some('"'));
-        self.advance(1); // consume opening "
+        self.advance(1);
 
         let mut out = std::string::String::new();
         loop {
@@ -131,7 +120,7 @@ impl<'a> Parser<'a> {
                 }
                 Some('\\') => {
                     let line = self.line;
-                    self.advance(1); // consume backslash
+                    self.advance(1);
                     match self.peek() {
                         None => return Err(TextVdfError::Truncated),
                         Some('n') => {
@@ -185,7 +174,7 @@ impl<'a> Parser<'a> {
                 }
                 Some('}') => {
                     if inside_block {
-                        self.advance(1); // consume '}'
+                        self.advance(1);
                         return Ok(pairs);
                     } else {
                         return Err(TextVdfError::UnexpectedToken {
@@ -201,7 +190,7 @@ impl<'a> Parser<'a> {
                     match self.peek() {
                         None => return Err(TextVdfError::Truncated),
                         Some('{') => {
-                            self.advance(1); // consume '{'
+                            self.advance(1);
                             let children = self.read_pairs(true)?;
                             pairs.push((key, TextValue::Block(children)));
                         }
@@ -234,7 +223,6 @@ mod tests {
 
     #[test]
     fn parse_simple_kv_at_root() {
-        // Naked key-value at root without a surrounding block — we allow this.
         let input = r#""key" "value""#;
         let result = parse(input).unwrap();
         let pairs = result.as_block().unwrap();
@@ -321,7 +309,7 @@ mod tests {
 
     #[test]
     fn parse_truncated_returns_error() {
-        let input = r#""key""#; // key with no value and no closing
+        let input = r#""key""#;
         let result = parse(input);
         assert!(result.is_err());
     }

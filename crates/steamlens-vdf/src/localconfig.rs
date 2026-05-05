@@ -2,15 +2,9 @@ use std::collections::HashMap;
 
 use crate::text::parse as parse_text;
 
-/// Parse the text VDF `localconfig.vdf` file and return a map of
-/// `app_id → LastPlayed` Unix timestamps.
-///
-/// Navigates `UserLocalConfigStore/Software/Valve/Steam/apps` and collects
-/// entries whose `LastPlayed` value is present and non-zero.
-///
-/// Any parse errors or missing sections are silently ignored and the function
-/// returns an empty map — `localconfig.vdf` is a supplementary source and
-/// its absence or corruption must never block the boot pipeline.
+/// Parse `localconfig.vdf` and return `app_id → LastPlayed` Unix
+/// timestamps, dropping zero values. Errors collapse to an empty map —
+/// this file is supplementary and must not block boot.
 pub fn parse_localconfig_last_played(content: &str) -> HashMap<u32, u32> {
     let root = match parse_text(content) {
         Ok(v) => v,

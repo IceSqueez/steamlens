@@ -90,9 +90,6 @@ fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
     let _ = tx.send(r);
 }
 
-/// Translates a single `SteamRequest` into the `WorkerCommand` sequence that
-/// the child process must execute. `ConnectWithApp` and `Disconnect` are
-/// handled by the bridge loop directly and never reach this function.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
     match req {
@@ -139,9 +136,6 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
     }
 }
 
-/// Maps a `WorkerResponse::Error { context, .. }` to the correct `SteamReply`
-/// failure variant. The `context` strings come from the worker's error
-/// reporting in `worker.rs` and the apply-sequence logic below.
 fn error_reply(context: &str, message: String) -> SteamReply {
     match context {
         "connect" => SteamReply::ConnectFailed(message),
@@ -175,8 +169,6 @@ async fn write_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> bool {
     stdin.write_all(&framed).await.is_ok() && stdin.flush().await.is_ok()
 }
 
-/// Sends a single command to the child and waits for exactly one response.
-/// Returns `None` on timeout or I/O failure.
 async fn round_trip(
     stdin: &mut ChildStdin,
     stdout: &mut ChildStdout,
@@ -192,10 +184,6 @@ async fn round_trip(
         .flatten()
 }
 
-/// Executes the `ApplyChanges` multi-command sequence:
-/// Set/Clear/SetStat commands each get a 5 s timeout and must ack before the
-/// next is sent. `StoreStats` gets a 15 s timeout (waits for UserStatsStored).
-/// On any error or timeout the sequence aborts and `SaveFailed` is returned.
 async fn run_apply_sequence(
     achievements_to_set: Vec<String>,
     achievements_to_clear: Vec<String>,
@@ -252,8 +240,6 @@ async fn run_apply_sequence(
     match round_trip(stdin, stdout, &WorkerCommand::StoreStats, store_timeout).await {
         Some(WorkerResponse::Stored) => {
             reply(rep_tx, SteamReply::ChangesSaved);
-            // After a successful store, re-load achievements+stats so the UI
-            // reflects the new state (mirrors the old in-process worker behaviour).
             let load_timeout = Duration::from_secs(15);
             match round_trip(
                 stdin,
@@ -291,9 +277,6 @@ async fn run_apply_sequence(
     }
 }
 
-/// Translates a `WorkerResponse` received from the child to a `SteamReply` and
-/// sends it on `rep_tx`. Icon and data responses map 1:1; `Stored` maps to
-/// `ChangesSaved`; `ResetDone` maps to `ResetDone`; errors are context-routed.
 fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
     match resp {
         WorkerResponse::SteamConnected { steam_id, app_name } => {
@@ -326,14 +309,8 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         WorkerResponse::ResetDone => {
             reply(rep_tx, SteamReply::ResetDone);
         }
-        WorkerResponse::AchievementCount { .. } => {
-            // QuickAchievementCount is only used by ProgressScanner workers which
-            // never route through the bridge — silently ignore if one arrives here.
-        }
-        WorkerResponse::ProbeResult { .. } => {
-            // ProbeResult is only produced by the probe child — it is consumed
-            // by probe_steam() and never routed through the per-app bridge.
-        }
+        WorkerResponse::AchievementCount { .. } => {}
+        WorkerResponse::ProbeResult { .. } => {}
         WorkerResponse::Error { context, message } => {
             reply(rep_tx, error_reply(&context, message));
         }
@@ -343,8 +320,6 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
     }
 }
 
-/// Drains any queued responses from `stdout` within `drain_ms` milliseconds.
-/// Used after send to flush icon callbacks that the child emits asynchronously.
 async fn drain_responses(
     stdout: &mut ChildStdout,
     rep_tx: &mpsc::Sender<SteamReply>,
@@ -372,8 +347,6 @@ async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
     rep_tx: mpsc::Sender<SteamReply>,
 ) {
-    // Phase 1: wait for the first request which must be `ConnectWithApp`.
-    // Any other request before connection gets a "not connected" failure reply.
     let (mut child, mut stdin, mut stdout) = loop {
         let Some(req) = req_rx.recv().await else {
             return;
@@ -384,7 +357,6 @@ async fn bridge_loop(
                     Ok(tuple) => break tuple,
                     Err(e) => {
                         reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
-                        // Stay in the loop — parent might retry with another app_id.
                         continue;
                     }
                 }
@@ -403,7 +375,6 @@ async fn bridge_loop(
         }
     };
 
-    // Phase 2: read the SteamConnected handshake from the child.
     let connect_timeout = Duration::from_secs(10);
     match tokio::time::timeout(connect_timeout, read_response(&mut stdout)).await {
         Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
@@ -435,14 +406,11 @@ async fn bridge_loop(
         }
     }
 
-    // Phase 3: bidirectional command/response loop.
     loop {
-        // Poll for icon callbacks or other async responses from the child (up
-        // to 50 ms) before blocking on the next parent request.
+        // Drain icon callbacks (≤50 ms) before blocking on the next request.
         drain_responses(&mut stdout, &rep_tx, 50).await;
 
         let Some(req) = req_rx.recv().await else {
-            // Parent dropped the SteamWorker — graceful shutdown.
             let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
             let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
             return;
@@ -450,7 +418,6 @@ async fn bridge_loop(
 
         match req {
             SteamRequest::ConnectWithApp(new_app_id) => {
-                // Re-connect: send Shutdown to current child, reap it, spawn fresh.
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
                 let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
 
@@ -459,7 +426,6 @@ async fn bridge_loop(
                         child = new_child;
                         stdin = new_stdin;
                         stdout = new_stdout;
-                        // Read SteamConnected handshake from fresh child.
                         let connect_timeout = Duration::from_secs(10);
                         match tokio::time::timeout(connect_timeout, read_response(&mut stdout))
                             .await
@@ -494,7 +460,6 @@ async fn bridge_loop(
 
             SteamRequest::Disconnect => {
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-                // Read Disconnected acknowledgment with a short timeout.
                 let _ =
                     tokio::time::timeout(Duration::from_secs(3), read_response(&mut stdout)).await;
                 let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
@@ -684,12 +649,11 @@ mod tests {
             &[("ratio", 1.5)],
         );
         let cmds = translate_request(&req);
-        // Expected: SetAchievement x2, ClearAchievement x1, SetStatInt x1, SetStatFloat x1, StoreStats.
         assert_eq!(cmds.len(), 6);
         assert!(matches!(&cmds[0], WorkerCommand::SetAchievement(n) if n == "ACH_A"));
         assert!(matches!(&cmds[1], WorkerCommand::SetAchievement(n) if n == "ACH_B"));
         assert!(matches!(&cmds[2], WorkerCommand::ClearAchievement(n) if n == "ACH_C"));
-        // SetStatInt or SetStatFloat can appear in any order (from HashMap iteration).
+        // SetStatInt and SetStatFloat order varies (HashMap iteration).
         let has_int = cmds[3..5]
             .iter()
             .any(|c| matches!(c, WorkerCommand::SetStatInt { name, value } if name == "kills" && *value == 10));

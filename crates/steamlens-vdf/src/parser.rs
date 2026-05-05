@@ -1,15 +1,11 @@
-/// A key-value pair within a binary KeyValue section.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyValuePair {
     pub key: String,
     pub value: Value,
 }
 
-/// A typed value read from a binary KeyValue stream.
-///
-/// `WideString` (type tag 0x05 in the on-disk format) is deliberately absent.
-/// Encountering it produces [`VdfError::UnsupportedType`] rather than a panic
-/// or a silent skip, so callers can decide how to handle it.
+/// `WideString` (tag 0x05) surfaces as [`VdfError::UnsupportedType`]
+/// rather than a panic or silent skip.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Section(Vec<KeyValuePair>),
@@ -55,12 +51,7 @@ impl Value {
         }
     }
 
-    /// Walk a `/`-separated path through nested sections and return the first
-    /// matching [`Value`], or `None` if any segment is absent.
-    ///
-    /// Comparison is case-sensitive and matches the first child whose key
-    /// equals the segment (Steam schema keys are lowercase ASCII in practice,
-    /// but the format imposes no constraint).
+    /// Walk a `/`-separated, case-sensitive path through nested sections.
     pub fn get(&self, path: &str) -> Option<&Value> {
         let mut current = self;
         for segment in path.split('/') {
@@ -71,7 +62,6 @@ impl Value {
     }
 }
 
-/// Errors produced by the binary KeyValue parser.
 #[derive(Debug, thiserror::Error)]
 pub enum VdfError {
     #[error("unexpected end of input at byte offset {offset}")]
@@ -89,10 +79,6 @@ pub enum VdfError {
         source: std::string::FromUtf8Error,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Binary reader
-// ---------------------------------------------------------------------------
 
 pub(crate) struct Cursor<'a> {
     data: &'a [u8],
@@ -136,7 +122,6 @@ impl<'a> Cursor<'a> {
                 break;
             }
         }
-        // self.pos now points one past the null byte; the string is [start..self.pos-1]
         let raw = self.data[start..self.pos - 1].to_vec();
         String::from_utf8(raw).map_err(|source| VdfError::InvalidUtf8 {
             offset: start,
@@ -173,7 +158,6 @@ impl<'a> Cursor<'a> {
             let tag_offset = self.pos;
             let tag = self.read_u8()?;
 
-            // Tag 0x08 = End — section is complete.
             if tag == 0x08 {
                 return Ok(Value::Section(children));
             }
@@ -181,37 +165,19 @@ impl<'a> Cursor<'a> {
             let key = self.read_null_terminated()?;
 
             let value = match tag {
-                // None / Section (tag 0x00) — recurse
                 0x00 => self.read_section()?,
-
-                // String (tag 0x01) — null-terminated UTF-8
                 0x01 => Value::String(self.read_null_terminated()?),
-
-                // Int32 (tag 0x02) — 4-byte little-endian signed
                 0x02 => Value::Int32(self.read_i32()?),
-
-                // Float32 (tag 0x03) — 4-byte little-endian IEEE 754
                 0x03 => Value::Float32(self.read_f32()?),
-
-                // Pointer (tag 0x04) — 4-byte little-endian u32; stored as UInt64
-                // for lossless representation (same value, wider container).
                 0x04 => Value::UInt64(u64::from(self.read_u32()?)),
-
-                // WideString (tag 0x05) — not supported; the reference throws on this tag.
                 0x05 => {
                     return Err(VdfError::UnsupportedType {
                         tag: 0x05,
                         offset: tag_offset,
                     });
                 }
-
-                // Color (tag 0x06) — 4-byte little-endian RGBA u32; stored as UInt64
-                // for lossless representation.
                 0x06 => Value::UInt64(u64::from(self.read_u32()?)),
-
-                // UInt64 (tag 0x07) — 8-byte little-endian unsigned
                 0x07 => Value::UInt64(self.read_u64()?),
-
                 other => {
                     return Err(VdfError::UnknownTypeTag {
                         tag: other,

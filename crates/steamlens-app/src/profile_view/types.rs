@@ -204,12 +204,7 @@ pub struct ProfileViewState {
     pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
     pub progress_rx:
         Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
-    /// App IDs whose scan returned `data: None` (worker child failed). Cleared
-    /// on rescan. Used by the loader strip to surface "N / M failed" + Retry.
     pub failed_app_ids: HashSet<u32>,
-    /// Mirror of `App.steam_running` — set by main.rs on probe result, read
-    /// here so the loader can report `SteamOff` without callers threading the
-    /// app-level field through every render path.
     pub steam_running: Option<bool>,
     pub loader_pulse_phase: f32,
     pub loader_hiding_since: Option<Instant>,
@@ -267,8 +262,6 @@ impl ProfileViewState {
         result
     }
 
-    /// Returns the current loader phase based on Steam state, game list, and
-    /// per-game scan progress / failure tracking.
     pub fn loader_phase(&self) -> LoaderPhase {
         if self.games.is_empty() {
             if self.steam_running == Some(false) {
@@ -292,9 +285,6 @@ impl ProfileViewState {
         }
     }
 
-    /// Returns true while the loader should be subscribed for pulse ticks.
-    /// Failed and SteamOff are static (no animation needed); Gamma needs
-    /// pulse only during the 300 ms fade-out window.
     pub fn loader_needs_pulse_subscription(&self) -> bool {
         match self.loader_phase() {
             LoaderPhase::Alpha | LoaderPhase::Beta { .. } => true,
@@ -307,14 +297,6 @@ impl ProfileViewState {
     }
 }
 
-/// The phases of the unified loader strip.
-///
-/// - Alpha: library is empty, scan still pending (indeterminate pulse).
-/// - Beta: games exist, scan in progress (determinate bar X/N).
-/// - Gamma: all games loaded successfully (fades out and unmounts).
-/// - Failed: some games failed to load (steady, with Retry).
-/// - SteamOff: Steam is not running and no cache to fall back to (steady,
-///   with Retry that re-probes Steam + rescans library).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoaderPhase {
     Alpha,

@@ -21,12 +21,7 @@ pub enum FrameError {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerCommand {
     LoadAchievementsAndStats,
-    /// Same as `LoadAchievementsAndStats` but skips per-achievement icon
-    /// fetches.  Used by the bulk library scanner where icons are not needed
-    /// (the cache only stores icon paths, never raw RGBA, and GameView
-    /// re-fetches icons via async callbacks anyway).  Cuts the IPC payload
-    /// from tens of MB to ~50 KB per game.
-    LoadAchievementsAndStatsLite,
+    LoadAchievementsAndStatsWithoutIcons,
     SetAchievement(String),
     ClearAchievement(String),
     SetStatInt {
@@ -42,19 +37,12 @@ pub enum WorkerCommand {
         include_achievements: bool,
     },
     RequestGlobalPercentages,
-    /// Request only the count of earned and total achievements.  Faster than
-    /// `LoadAchievementsAndStats` because it skips stat reads and global
-    /// percentages — used by the background progress scanner.
     QuickAchievementCount,
     Shutdown,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerResponse {
-    /// Sent by the child immediately after `steamclient.so` is loaded, the
-    /// Steam pipe is created, and the user/app interfaces have been vended.
-    /// Acts as the "I'm alive and connected to Steam" handshake the parent
-    /// waits for before issuing any commands.
     SteamConnected {
         steam_id: u64,
         app_name: Option<String>,
@@ -63,9 +51,6 @@ pub enum WorkerResponse {
     AchievementsAndStats {
         achievements: Vec<AchievementData>,
         stats: Vec<StatData>,
-        /// Primary genre as reported by Steam app metadata.
-        /// `None` when the metadata key is unavailable. Empty when
-        /// achievements is empty (early-exit short-circuits the fetch).
         genre: Option<String>,
     },
     IconUpdated {
@@ -75,21 +60,10 @@ pub enum WorkerResponse {
     GlobalPercentagesReady(std::collections::HashMap<String, f32>),
     Stored,
     ResetDone,
-    /// Lightweight achievement count returned in response to
-    /// [`WorkerCommand::QuickAchievementCount`].
     AchievementCount {
         earned: u32,
         total: u32,
     },
-    /// Result of a `--probe` run: live Steam profile data fetched without an
-    /// app context.  Sent as the single response frame by the probe child and
-    /// then the child exits.
-    ///
-    /// `avatar_png` is `None` only when `GetMediumFriendAvatar` returned handle
-    /// 0 (Steam has not loaded the image yet, or the user has no avatar set).
-    ///
-    /// `games` is the full owned library enumerated during the same probe run.
-    /// An empty `Vec` means enumeration failed; the parent falls back to cache.
     ProbeResult {
         steam_id: u64,
         persona_name: String,
@@ -103,10 +77,6 @@ pub enum WorkerResponse {
     Disconnected,
 }
 
-/// Returns the 4-byte LE length header for a payload of `payload_len` bytes.
-///
-/// The caller appends the payload bytes immediately after this header. The
-/// combined wire format is therefore `[u32 LE length][payload bytes]`.
 pub fn frame_header(payload_len: usize) -> Result<[u8; 4], FrameError> {
     if payload_len > MAX_FRAME_BYTES {
         return Err(FrameError::TooLarge {
@@ -118,10 +88,6 @@ pub fn frame_header(payload_len: usize) -> Result<[u8; 4], FrameError> {
     Ok(len_u32.to_le_bytes())
 }
 
-/// Parses the 4-byte LE length header written by [`frame_header`].
-///
-/// Returns the payload byte count. Returns [`FrameError::TooLarge`] if the
-/// encoded length exceeds [`MAX_FRAME_BYTES`].
 pub fn parse_header(bytes: [u8; 4]) -> Result<usize, FrameError> {
     let len = u32::from_le_bytes(bytes) as usize;
     if len > MAX_FRAME_BYTES {
@@ -133,10 +99,6 @@ pub fn parse_header(bytes: [u8; 4]) -> Result<usize, FrameError> {
     Ok(len)
 }
 
-/// Serialises `msg` with postcard and prepends the 4-byte LE length header.
-///
-/// Returns the complete framed bytes (header + payload). The caller writes
-/// these bytes verbatim to the transport.
 pub fn encode_frame<T: serde::Serialize>(msg: &T) -> Result<Vec<u8>, FrameError> {
     let payload = postcard::to_allocvec(msg).map_err(|e| FrameError::Encode(e.to_string()))?;
     if payload.len() > MAX_FRAME_BYTES {
@@ -152,9 +114,6 @@ pub fn encode_frame<T: serde::Serialize>(msg: &T) -> Result<Vec<u8>, FrameError>
     Ok(out)
 }
 
-/// Deserialises `bytes` (the payload slice, **without** the length header) into `T`.
-///
-/// Returns [`FrameError::Decode`] on any postcard error including trailing bytes.
 pub fn decode_frame<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, FrameError> {
     postcard::from_bytes(bytes).map_err(|e| FrameError::Decode(e.to_string()))
 }
@@ -169,7 +128,7 @@ mod tests {
     fn all_commands() -> Vec<WorkerCommand> {
         vec![
             WorkerCommand::LoadAchievementsAndStats,
-            WorkerCommand::LoadAchievementsAndStatsLite,
+            WorkerCommand::LoadAchievementsAndStatsWithoutIcons,
             WorkerCommand::SetAchievement("ACH_WIN".to_owned()),
             WorkerCommand::ClearAchievement("ACH_LOSE".to_owned()),
             WorkerCommand::SetStatInt {

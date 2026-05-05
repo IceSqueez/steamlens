@@ -7,11 +7,6 @@ use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
 
-/// Returns the platform-default Steam root directory.
-///
-/// On Linux: `$HOME/.local/share/Steam`
-/// On macOS: `$HOME/Library/Application Support/Steam`
-/// On Windows: `%ProgramFiles(x86)%\Steam`
 #[allow(dead_code)]
 pub fn default_steam_root() -> PathBuf {
     #[cfg(target_os = "linux")]
@@ -32,11 +27,8 @@ pub fn default_steam_root() -> PathBuf {
     }
 }
 
-/// Returns `$HOME/.steamlens/` on all platforms.
-///
-/// Falls back to the process working directory when the home environment
-/// variable is absent — this keeps the function infallible and avoids
-/// panicking at startup on unusual system configurations.
+/// Falls back to the process working directory when the home env var
+/// is absent — keeps boot infallible on unusual system configurations.
 pub fn steamlens_root() -> PathBuf {
     #[cfg(not(target_os = "windows"))]
     let home = std::env::var("HOME").unwrap_or_default();
@@ -55,7 +47,6 @@ pub fn steamlens_root() -> PathBuf {
     }
 }
 
-/// Returns the path to `settings.toml` inside the SteamLens root directory.
 pub fn settings_path() -> PathBuf {
     steamlens_root().join("settings.toml")
 }
@@ -92,10 +83,6 @@ impl Default for UiSettings {
     }
 }
 
-/// Layout mode for the Library screen.
-///
-/// Accepts `"grid"` or `"list"` in `settings.toml`. The `list` variant is
-/// reserved for a future phase — the Library currently renders only grid layout.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryView {
@@ -192,15 +179,8 @@ impl Default for Settings {
     }
 }
 
-/// Loads settings from disk, returning defaults on any error.
-///
-/// Errors that trigger fallback to defaults:
-/// - File missing or not readable
-/// - TOML parse failure (corrupted content, wrong types)
-/// - `schema_version` mismatch (future or past format)
-/// - Path points to a directory instead of a file
-///
-/// All error conditions are logged at `warn` level. The function never panics.
+/// Returns `Settings::default()` on any error (missing file, TOML parse
+/// failure, schema mismatch, path-is-a-directory). Logs and never panics.
 pub fn load_settings() -> Settings {
     let path = settings_path();
 
@@ -428,7 +408,7 @@ mod tests {
         assert_eq!(
             LibrarySettings::default().view,
             LibraryView::Grid,
-            "default view must be Grid per RFC §2"
+            "default view must be Grid"
         );
     }
 

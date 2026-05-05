@@ -4,17 +4,13 @@ use std::path::{Path, PathBuf};
 use steamlens_vdf::{TextValue, TextVdfError, parse_text};
 use thiserror::Error;
 
-/// Profile of the Steam user currently logged into the local client, read
-/// entirely from disk — no live Steam pipe required.
+/// Disk-only snapshot of the logged-in user; no Steam pipe needed.
 #[derive(Debug, Clone)]
 pub struct UserProfile {
-    /// 64-bit SteamID (Steam community ID, not Steam3 ID).
+    /// 64-bit Steam community ID (not Steam3).
     pub steam_id: u64,
-    /// Display name as shown in the Steam overlay and friends list.
     pub persona_name: String,
-    /// Login account name (ASCII, used for login — rarely displayed).
     pub account_name: String,
-    /// Raw PNG bytes of the cached avatar, or `None` if no avatar is cached.
     pub avatar_png_bytes: Option<Vec<u8>>,
 }
 
@@ -28,18 +24,14 @@ pub enum ProfileError {
     NoUsers,
 }
 
-/// Load the profile of the most-recently-active local Steam user from disk.
-///
-/// Reads `<steam_root>/config/loginusers.vdf` (text VDF), selects the entry
-/// where `MostRecent == "1"`, falling back to the first entry if none is
-/// flagged. Also reads the cached avatar PNG from
-/// `<steam_root>/config/avatarcache/<steam_id>.png` if it exists.
+/// Reads `<steam_root>/config/loginusers.vdf`, picks the entry with
+/// `MostRecent == "1"` (or the first entry as fallback), and pairs it
+/// with `config/avatarcache/<steam_id>.png` when present.
 pub fn load_local_profile() -> Result<UserProfile, ProfileError> {
     let root = default_steam_root();
     load_profile_from_root(&root)
 }
 
-/// Testable entry point; accepts an explicit Steam root path.
 pub fn load_profile_from_root(steam_root: &Path) -> Result<UserProfile, ProfileError> {
     let vdf_path = steam_root.join("config/loginusers.vdf");
     let content = std::fs::read_to_string(&vdf_path)?;

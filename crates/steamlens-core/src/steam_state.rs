@@ -3,24 +3,14 @@ use std::path::Path;
 
 use steamlens_vdf::parse_text;
 
-/// Snapshot of the fields needed to detect whether a game's Steam state has
-/// changed since the last cache write.
 pub struct ManifestState {
-    /// Unix timestamp from `AppState.LastUpdated` in the appmanifest ACF.
     pub last_updated: u64,
-    /// Steam build identifier string from `AppState.buildid`.
     pub build_id: String,
 }
 
-/// Read `LastUpdated` and `buildid` from an appmanifest ACF file.
-///
-/// Returns `None` on file-missing, I/O error, or VDF parse failure.
-///
-/// **Rule M (RFC-002 §7.1):** a missing manifest is a normal, expected state
-/// for uninstalled games — callers MUST treat `None` as "no invalidation
-/// signal", not as an error.  Do not log warnings or return an error on
-/// `NotFound`; simply return `None` and let the caller preserve the existing
-/// cache entry.
+/// `None` on missing file / I/O / parse failure. Callers MUST treat
+/// `None` as "no invalidation signal" (not an error) — a missing
+/// manifest is the normal state for uninstalled games.
 pub fn read_manifest_state(manifest_path: &Path) -> Option<ManifestState> {
     let content = std::fs::read_to_string(manifest_path).ok()?;
     let root = parse_text(&content).ok()?;
@@ -44,16 +34,9 @@ pub fn read_manifest_state(manifest_path: &Path) -> Option<ManifestState> {
     })
 }
 
-/// Read `LastPlayed` for one app from the active user's `localconfig.vdf`.
-///
-/// Walks `UserLocalConfigStore → Software → Valve → Steam → apps → <app_id>
-/// → LastPlayed` (five levels deep, as verified on Linux with Steam client
-/// version current as of 2026-05-04).
-///
-/// Returns `None` on any missing key, parse failure, or missing file.  Per
-/// RFC-002 Risk #1, older Steam clients may omit the `Software/Valve/Steam`
-/// nesting; `None` is the correct and safe fallback in that case — callers
-/// must not dirty the cache solely because `LastPlayed` is unavailable.
+/// `None` on missing key / parse failure / missing file. Older Steam
+/// clients may omit the `Software/Valve/Steam` nesting — callers MUST
+/// NOT dirty the cache solely because `LastPlayed` is unavailable.
 pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u64> {
     let vdf_path = steam_root
         .join("userdata")
@@ -76,13 +59,9 @@ pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option
     last_played_str.parse::<u64>().ok()
 }
 
-/// Parse `localconfig.vdf` once and return all `LastPlayed` timestamps keyed by
-/// app_id. Returns an empty `HashMap` on missing file or parse failure (callers
-/// must treat absent entries as `None`-equivalent — never as a dirty signal).
-///
-/// Prefer this over calling [`read_last_played`] in a loop: the localconfig
-/// file is typically ~500 KB and re-parsing it per app multiplies wall-clock
-/// time linearly with library size.
+/// Prefer this over per-app [`read_last_played`] in a loop —
+/// `localconfig.vdf` is ~500 KB and re-parsing it per app scales
+/// linearly with library size.
 pub fn read_all_last_played(steam_root: &Path, steamid3: u64) -> HashMap<u32, u64> {
     let vdf_path = steam_root
         .join("userdata")

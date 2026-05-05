@@ -3,12 +3,8 @@ use core::ffi::{c_char, c_void};
 pub type HSteamPipe = i32;
 pub type HSteamUser = i32;
 
-/// Wire-level callback message as written by Steam into the buffer passed to
-/// `Steam_BGetCallback`. The layout matches the C-style struct that Steam
-/// writes on the stack: 4-byte user handle, 4-byte callback id, pointer-sized
-/// param pointer, 4-byte param byte count. `Pack = 1` in the canonical
-/// reference means no implicit padding is inserted between fields; we must
-/// declare this accordingly so Steam's write lines up with our reads.
+/// `#[repr(C, packed)]` is load-bearing — Steam writes this struct
+/// with `#pragma pack(1)`; any implicit padding desyncs reads.
 #[repr(C, packed)]
 pub struct CallbackMessage {
     pub user: HSteamUser,
@@ -119,12 +115,8 @@ pub struct ISteamUser012 {
 pub type CreateInterfaceFn =
     unsafe extern "C" fn(version: *const c_char, return_code: *mut i32) -> *mut c_void;
 
-/// Vtable layout for `ISteamUserStats013` as vended by
-/// `GetISteamUserStats("STEAMUSERSTATS_INTERFACE_VERSION013")`.
-///
-/// Field order must match the canonical interface definition exactly —
-/// Steam dispatches by vtable index (positional), so reordering fields
-/// changes which method is called.
+/// `STEAMUSERSTATS_INTERFACE_VERSION013` vtable — field order is
+/// load-bearing; positional dispatch by Steam.
 #[repr(C)]
 pub struct ISteamUserStats013 {
     pub get_stat_float:
@@ -203,16 +195,7 @@ pub struct ISteamUserStats013 {
     _reserved_43_get_achievement_progress_limits_integer: usize,
 }
 
-/// Vtable layout for `ISteamFriends009` as vended by
-/// `GetISteamFriends("SteamFriends009")`.
-///
-/// Field order must match the canonical interface definition exactly.
-/// Steam dispatches by vtable index — reordering fields silently calls
-/// the wrong method.
-///
-/// Only the methods required for the probe are typed; all others are
-/// reserved as `usize` placeholders so the positional dispatch is correct
-/// even though we never call those slots.
+/// `SteamFriends009` vtable — field order is load-bearing.
 #[repr(C)]
 pub struct ISteamFriends009 {
     pub get_persona_name: unsafe extern "C" fn(this: *mut c_void) -> *const c_char,
@@ -288,12 +271,7 @@ pub struct ISteamApps008 {
     _reserved_27_is_subscribed_from_family_sharing: usize,
 }
 
-/// Vtable layout for `ISteamUtils005` as vended by
-/// `GetISteamUtils("SteamUtils005")`.
-///
-/// Field order must match the canonical interface definition exactly.
-/// Steam dispatches by vtable index; reordering fields silently changes
-/// which method is called.
+/// `SteamUtils005` vtable — field order is load-bearing.
 #[repr(C)]
 pub struct ISteamUtils005 {
     _reserved_00_get_seconds_since_app_active: usize,

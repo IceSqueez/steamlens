@@ -28,21 +28,11 @@ pub fn shared() -> Result<&'static SteamLibrary, SteamError> {
 impl SteamLibrary {
     fn load() -> Result<Self, SteamError> {
         let path = discover_steamclient_path()?;
-        // SAFETY: `Library::new` runs the loaded library's initializers.
-        // `steamclient.so` is a well-behaved shared object shipped by Valve;
-        // its initializers do not invoke arbitrary user code in this
-        // process. The path was resolved by `discover_steamclient_path`
-        // which only accepts paths inside the user's Steam install.
-        //
-        // The library MUST live for the entire process lifetime.
-        // `steamclient.so`'s ELF initialisers spawn auxiliary pthreads
-        // (callback dispatch, IPC reader) that retain code-pointers into
-        // this library's text segment for the process lifetime; unloading
-        // it via `dlclose` unmaps that text segment and crashes those
-        // threads on their next instruction. The `SteamLibrary` value is
-        // therefore owned by the global `STEAM_LIBRARY` `OnceLock` above
-        // and intentionally leaked — `Drop` for `Library` (which calls
-        // `dlclose`) must never run.
+        // SAFETY: `steamclient.so`'s ELF initialisers spawn auxiliary
+        // pthreads that hold code-pointers into the library's text
+        // segment, so the handle is parked in the `STEAM_LIBRARY`
+        // `OnceLock` for process lifetime — `dlclose` would unmap the
+        // text segment and crash those threads.
         let handle = unsafe { Library::new(&path) }
             .map_err(|source| SteamError::LibraryLoadFailed { path, source })?;
         Ok(Self { handle })
@@ -55,11 +45,8 @@ impl SteamLibrary {
         call_handle: *mut i32,
     ) -> Result<bool, SteamError> {
         let symbol_name = b"Steam_BGetCallback\0";
-        // SAFETY: `Steam_BGetCallback` is a documented C export of
-        // `steamclient.so`. Its signature is
-        // `bool Steam_BGetCallback(HSteamPipe, CallbackMessage*, int*)`.
-        // The symbol name is NUL-terminated. We type-erase it through the
-        // `BGetCallbackFn` alias which matches the export exactly.
+        // SAFETY: NUL-terminated symbol; `BGetCallbackFn` matches the
+        // exported `bool Steam_BGetCallback(HSteamPipe, CallbackMessage*, int*)`.
         let func: Symbol<BGetCallbackFn> = unsafe {
             self.handle
                 .get(symbol_name)
@@ -68,20 +55,15 @@ impl SteamLibrary {
                     source,
                 })?
         };
-        // SAFETY: `pipe` is a valid handle returned by `CreateSteamPipe`.
-        // `msg` points to a `CallbackMessage` that lives on the caller's
-        // stack and remains valid for the duration of this call. Steam
-        // writes through `msg` only when it returns `true`; we copy the
-        // payload before calling `free_last_callback`. `call_handle` may
-        // be null — Steam skips writing back when it is.
+        // SAFETY: live pipe; Steam writes through `msg` only on `true`
+        // return; `call_handle` may be null.
         Ok(unsafe { func(pipe, msg, call_handle) })
     }
 
     pub fn free_last_callback(&self, pipe: HSteamPipe) -> Result<(), SteamError> {
         let symbol_name = b"Steam_FreeLastCallback\0";
-        // SAFETY: `Steam_FreeLastCallback` is a documented C export of
-        // `steamclient.so` whose signature is `bool Steam_FreeLastCallback(HSteamPipe)`.
-        // The symbol name is NUL-terminated and typed via `FreeLastCallbackFn`.
+        // SAFETY: NUL-terminated symbol; `FreeLastCallbackFn` matches
+        // `bool Steam_FreeLastCallback(HSteamPipe)`.
         let func: Symbol<FreeLastCallbackFn> = unsafe {
             self.handle
                 .get(symbol_name)
@@ -90,21 +72,16 @@ impl SteamLibrary {
                     source,
                 })?
         };
-        // SAFETY: `pipe` is the same valid handle used in the preceding
-        // `b_get_callback` call. Steam_FreeLastCallback must be called once
-        // per successful `b_get_callback`; we call it immediately after
-        // copying the payload, before any further use of the pipe.
+        // SAFETY: called exactly once per successful `b_get_callback`,
+        // before any further pipe use.
         unsafe { func(pipe) };
         Ok(())
     }
 
     pub fn create_interface(&self, version: &str) -> Result<RawInterface, SteamError> {
         let symbol_name = b"CreateInterface\0";
-        // SAFETY: `CreateInterface` is a documented C export of every
-        // shipped Steam client library. Its signature
-        // `void* CreateInterface(const char* version, int* return_code)`
-        // is stable across Steam updates. We type the symbol as
-        // `CreateInterfaceFn` which matches that signature exactly.
+        // SAFETY: NUL-terminated symbol; `CreateInterfaceFn` matches
+        // `void* CreateInterface(const char*, int*)`.
         let create: Symbol<CreateInterfaceFn> = unsafe {
             self.handle
                 .get(symbol_name)
@@ -116,9 +93,8 @@ impl SteamLibrary {
         let c_version = CString::new(version).map_err(|_| SteamError::InvalidInterfaceVersion {
             version: version.to_owned(),
         })?;
-        // SAFETY: `c_version` is a NUL-terminated UTF-8 string and outlives
-        // this call. Passing a null `return_code` is the standard pattern;
-        // Steam skips writing back when the pointer is null.
+        // SAFETY: `c_version` is NUL-terminated and outlives the call;
+        // null `return_code` skips the write-back path.
         let raw = unsafe { create(c_version.as_ptr(), core::ptr::null_mut()) };
         if raw.is_null() {
             return Err(SteamError::InterfaceUnavailable {

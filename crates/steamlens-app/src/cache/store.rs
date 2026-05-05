@@ -10,13 +10,8 @@ pub enum CacheIoError {
     Serialize(String),
 }
 
-/// Atomically writes `bytes` to `path`.
-///
-/// The write goes to `<path>.tmp` in the same directory, the file is
-/// `sync_data()`-d, then renamed over `path`. On POSIX this rename is atomic;
-/// on Windows 10+ NTFS the move-file-ex replaces the destination atomically.
-/// Keeping the `.tmp` file on the same filesystem as the target guarantees the
-/// rename never crosses a mount boundary.
+/// `<path>.tmp` is fsync'd then renamed over `path` (atomic on POSIX;
+/// same-filesystem `.tmp` avoids cross-mount surprises).
 pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -36,7 +31,6 @@ pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError>
     Ok(())
 }
 
-/// Returns the on-disk path for one game cache entry.
 pub fn game_cache_path(app_id: u32) -> PathBuf {
     crate::settings::steamlens_root()
         .join("cache")
@@ -64,11 +58,6 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
     Some(entry)
 }
 
-/// Writes a cache entry atomically to its canonical on-disk path.
-///
-/// The entry is serialised to pretty-printed JSON (human-inspectable during
-/// development) then passed to `atomic_write`, which creates parent directories
-/// and performs an fsync-then-rename sequence.
 pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError> {
     let bytes =
         serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;

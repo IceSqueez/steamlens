@@ -8,12 +8,8 @@ pub use packageinfo::{PackageInfoError, parse_packageinfo};
 pub use parser::{KeyValuePair, Value, VdfError};
 pub use text::{TextValue, TextVdfError, parse as parse_text};
 
-/// Parse a binary KeyValue stream, returning the root as [`Value::Section`].
-///
-/// The byte slice must contain a complete, well-formed binary KV blob as
-/// written by Steam into `appcache/stats/UserGameStatsSchema_<appid>.bin`
-/// and `UserGameStats_<steamid32>_<appid>.bin`.  Truncated or corrupted
-/// input yields a [`VdfError`] — the function never panics.
+/// Parse a binary KV blob (`appcache/stats/UserGameStatsSchema_*.bin`,
+/// `packageinfo.vdf` records) into a root [`Value::Section`].
 pub fn parse(bytes: &[u8]) -> Result<Value, VdfError> {
     let mut cursor = parser::Cursor::new(bytes);
     cursor.read_section()
@@ -23,11 +19,9 @@ pub fn parse(bytes: &[u8]) -> Result<Value, VdfError> {
 mod tests {
     use super::*;
 
-    // ---- helpers -----------------------------------------------------------
-
     fn section_bytes(inner: &[u8]) -> Vec<u8> {
         let mut v = inner.to_vec();
-        v.push(0x08); // End
+        v.push(0x08);
         v
     }
 
@@ -69,11 +63,9 @@ mod tests {
         v.extend_from_slice(key.as_bytes());
         v.push(0x00);
         v.extend_from_slice(inner);
-        v.push(0x08); // End
+        v.push(0x08);
         v
     }
-
-    // ---- tests -------------------------------------------------------------
 
     #[test]
     fn parse_empty_input_errors() {
@@ -89,7 +81,6 @@ mod tests {
 
     #[test]
     fn parse_simple_string() {
-        // [0x01, 'k','e','y',0, 'v','a','l',0, 0x08]
         let mut bytes = string_entry("key", "val");
         bytes.push(0x08);
         let result = parse(&bytes).unwrap();
@@ -149,7 +140,6 @@ mod tests {
 
     #[test]
     fn parse_nested_sections() {
-        // outer -> inner -> [string "a"="b"]
         let leaf = section_bytes(&string_entry("a", "b"));
         let inner = section_entry("inner", &leaf);
         let mut outer = section_entry("outer", &inner);
@@ -178,7 +168,6 @@ mod tests {
 
     #[test]
     fn parse_unknown_tag_errors() {
-        // 0x99 is not a known type tag
         let bytes = [0x99, b'k', 0x00, 0x08];
         let err = parse(&bytes).unwrap_err();
         assert!(matches!(err, VdfError::UnknownTypeTag { tag: 0x99, .. }));
@@ -186,7 +175,6 @@ mod tests {
 
     #[test]
     fn parse_wstring_unsupported() {
-        // Tag 0x05 = WideString — must return UnsupportedType, not panic
         let bytes = [0x05, b'k', 0x00, 0x08];
         let err = parse(&bytes).unwrap_err();
         assert!(matches!(err, VdfError::UnsupportedType { tag: 0x05, .. }));
@@ -194,23 +182,20 @@ mod tests {
 
     #[test]
     fn parse_truncated_string_errors() {
-        // String value with no null terminator
-        let bytes = [0x01, b'k', 0x00, b'v', b'a', b'l']; // no 0x00 at end
+        let bytes = [0x01, b'k', 0x00, b'v', b'a', b'l'];
         let err = parse(&bytes).unwrap_err();
         assert!(matches!(err, VdfError::UnexpectedEof { .. }));
     }
 
     #[test]
     fn parse_truncated_int32_errors() {
-        // Only 3 bytes of i32 data instead of 4
-        let bytes = [0x02, b'n', 0x00, 0x01, 0x02, 0x03]; // missing 4th byte
+        let bytes = [0x02, b'n', 0x00, 0x01, 0x02, 0x03];
         let err = parse(&bytes).unwrap_err();
         assert!(matches!(err, VdfError::UnexpectedEof { .. }));
     }
 
     #[test]
     fn parse_invalid_utf8_in_key_errors() {
-        // 0xFF 0xFE is not valid UTF-8
         let bytes = [0x01, 0xFF, 0xFE, 0x00, b'v', 0x00, 0x08];
         let err = parse(&bytes).unwrap_err();
         assert!(matches!(err, VdfError::InvalidUtf8 { .. }));
@@ -218,10 +203,9 @@ mod tests {
 
     #[test]
     fn parse_empty_string_value() {
-        // A string value that is just a null byte — valid, produces String("")
         let mut bytes = vec![0x01];
-        bytes.extend_from_slice(b"k\x00"); // key
-        bytes.push(0x00); // empty value
+        bytes.extend_from_slice(b"k\x00");
+        bytes.push(0x00);
         bytes.push(0x08);
         let result = parse(&bytes).unwrap();
         assert_eq!(
@@ -232,8 +216,6 @@ mod tests {
             }])
         );
     }
-
-    // ---- Value helpers -----------------------------------------------------
 
     #[test]
     fn value_get_path() {

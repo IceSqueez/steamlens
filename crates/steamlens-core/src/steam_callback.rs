@@ -5,17 +5,11 @@ pub const CALLBACK_ID_USER_STATS_STORED: i32 = 1102;
 pub const CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED: i32 = 1109;
 pub const CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
 
-/// A Steam EResult value.
-///
-/// Carries the raw integer code returned in callback payloads. Only `k_EResultOK`
-/// (code 1) is given a named variant; all other codes are preserved as `Other(i32)`
-/// so callers can inspect them without this crate needing to enumerate all 100+
-/// Steamworks result codes.
+/// Only `k_EResultOK` (1) is named; other Steamworks codes are
+/// preserved as `Other(i32)` for caller inspection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamResult {
-    /// `k_EResultOK = 1` — the operation succeeded.
     Ok,
-    /// Any result code other than 1. The wrapped value is the raw `EResult` integer.
     Other(i32),
 }
 
@@ -40,62 +34,29 @@ impl SteamResult {
     }
 }
 
-/// A typed Steam callback received from the callback poller.
-///
-/// Obtain values via [`crate::Client::poll_callbacks`]. Poll at ~10 Hz from an
-/// `iced::Subscription` on the UI thread.
-///
-/// Variants are produced by decoding raw callback payloads from Steam. Unknown
-/// or malformed payloads fall back to the `Unknown` variant — the raw bytes are
-/// preserved so callers can inspect or log them without data loss.
-///
-/// # Exhaustiveness
-///
-/// This enum is `#[non_exhaustive]`: new callback variants will be added as
-/// SteamLens wires additional Steam callback IDs. All `match` expressions must
-/// include a wildcard arm (`_ => { ... }` or `other => { ... }`) to handle
-/// variants added in future versions.
+/// Unknown or malformed payloads fall through to `Unknown(RawCallback)`.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum SteamCallback {
-    /// Steam has delivered the requested stats and achievements for a user.
-    ///
-    /// Emitted in response to a `RequestUserStats` call. Until this arrives with
-    /// `result.is_ok()`, `get_stat_*` and `get_achievement` methods return Steam
-    /// defaults (0 / `false`).
     UserStatsReceived {
         game_id: u64,
         result: SteamResult,
         user_steam_id: u64,
     },
-
-    /// Steam has persisted staged stat changes for a user.
-    ///
-    /// Emitted after a successful `StoreStats` call.
-    UserStatsStored { game_id: u64, result: SteamResult },
-
-    /// Steam has loaded an achievement icon image and it is ready to fetch.
-    ///
-    /// Emitted asynchronously after `RequestUserStats` completes, once per
-    /// achievement whose icon Steam has transferred. `icon_handle` is the
-    /// handle to pass to `Client::get_image`. A handle of 0 means the image
-    /// is not yet available.
+    UserStatsStored {
+        game_id: u64,
+        result: SteamResult,
+    },
     UserAchievementIconFetched {
         game_id: u64,
         achievement_name: String,
         achieved: bool,
         icon_handle: i32,
     },
-
-    /// Global achievement percentage data is ready to query.
-    ///
-    /// Emitted after `RequestGlobalAchievementPercentages` completes. When
-    /// `result.is_ok()`, call `achievement_achieved_percent` for each achievement
-    /// name to read the global unlock percentage (0.0–100.0).
-    GlobalAchievementPercentagesReady { game_id: u64, result: SteamResult },
-
-    /// An unrecognised or malformed callback. The raw id and payload bytes are
-    /// preserved for inspection and logging.
+    GlobalAchievementPercentagesReady {
+        game_id: u64,
+        result: SteamResult,
+    },
     Unknown(RawCallback),
 }
 

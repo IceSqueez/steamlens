@@ -232,8 +232,6 @@ pub fn top5_closest_to_complete(
         .collect()
 }
 
-/// Renders the full profile widget: 2-column main area (stats left, closest-to-complete right)
-/// plus an optional bottom loader strip.
 #[allow(clippy::too_many_arguments)]
 pub fn profile_widget<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,

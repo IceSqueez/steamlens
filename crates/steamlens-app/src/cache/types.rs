@@ -32,13 +32,8 @@ pub struct CachedAchievement {
     pub global_percent: Option<f64>,
 }
 
-/// Cached snapshot of a single stat value.
-///
-/// `value_int` and `value_float` are mutually exclusive at the Steam API
-/// layer: integer stats carry `value_int` with `value_float` as `None`,
-/// and float stats carry `value_float` with `value_int` as `None`.
-/// Both are stored as `Option` here so the JSON representation can render
-/// `null` for the unused variant without an enum wrapper.
+/// `value_int` and `value_float` are mutually exclusive — Steam tags
+/// each stat as INT or FLOAT.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedStat {
     pub api_name: String,

@@ -52,23 +52,17 @@ pub enum SteamError {
     #[error("Achievement {name:?} not found or returned null from Steam")]
     AchievementNotFound { name: String },
 
-    /// The schema cache file exists but could not be parsed.
-    ///
-    /// A missing file is not an error — `stat_descriptors` returns an empty
-    /// `Vec` in that case. This variant fires only when the file is present but
-    /// the binary KeyValue data is truncated or otherwise corrupt.
+    /// Raised only for present-but-corrupt schema files; missing files
+    /// yield an empty descriptor list instead.
     #[error("Failed to parse Steam schema cache: {source}")]
     SchemaParseError {
         #[source]
         source: steamlens_vdf::VdfError,
     },
 
-    /// `ISteamUser012::GetUserDataFolder` returned `false` or an empty path.
     #[error("Steam GetUserDataFolder returned false or an empty path")]
     UserDataFolderUnavailable,
 
-    /// `GetUserDataFolder` returned a path that does not end with
-    /// `userdata/<steamid3>` — the steam root cannot be derived from it.
     #[error(
         "Cannot derive Steam root from user data folder path: {observed}",
         observed = .observed.display()
@@ -76,21 +70,14 @@ pub enum SteamError {
     MalformedUserDataPath { observed: PathBuf },
 }
 
-/// Errors that can occur while enumerating the owned Steam game library.
-///
-/// Per-game failures (name lookup returning empty, missing localconfig) are
-/// silently swallowed; only catalogue-level failures propagate here.
 #[derive(Debug, Error)]
 pub enum LibraryError {
-    /// Deriving the Steam root from the pipe failed.
     #[error("Could not determine Steam root: {0}")]
     SteamRoot(#[source] SteamError),
 
-    /// Reading `appcache/packageinfo.vdf` failed with an I/O error.
     #[error("Failed to read packageinfo.vdf: {0}")]
     PackageInfoIo(#[source] io::Error),
 
-    /// `packageinfo.vdf` was read but could not be parsed.
     #[error("Failed to parse packageinfo.vdf: {0}")]
     PackageInfoParse(#[source] PackageInfoError),
 }

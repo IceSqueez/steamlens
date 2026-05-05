@@ -1,13 +1,5 @@
-/// A single Steam callback message with its payload copied into owned memory.
-///
-/// The `id` field identifies the callback type (e.g. 1701 for
-/// `SteamServersConnected`). `payload` contains the raw bytes of the callback
-/// parameter struct as written by Steam; callers that know the concrete type
-/// for a given `id` may reinterpret the slice with `unsafe { &*(payload.as_ptr()
-/// as *const ConcreteStruct) }`.
-///
-/// The payload is owned — Steam's internal buffer has already been freed by
-/// the time this value is visible to callers. There is no use-after-free risk.
+/// `payload` is owned — Steam's internal buffer is freed before this
+/// value becomes visible.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawCallback {
     pub id: i32,
