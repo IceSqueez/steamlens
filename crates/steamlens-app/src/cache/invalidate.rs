@@ -121,6 +121,7 @@ mod tests {
                 total: 10,
             },
             tier_breakdown: Vec::new(),
+            genre: None,
         }
     }
 

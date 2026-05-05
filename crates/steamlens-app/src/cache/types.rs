@@ -17,6 +17,8 @@ pub struct GameCacheEntry {
     pub progress: CachedProgress,
     #[serde(default)]
     pub tier_breakdown: Vec<(RarityTier, u32)>,
+    #[serde(default)]
+    pub genre: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

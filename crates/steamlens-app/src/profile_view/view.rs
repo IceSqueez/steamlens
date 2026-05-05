@@ -499,10 +499,11 @@ fn build_grid<'a>(
                 row![iced::widget::Space::new().width(Length::Fixed(gap))];
             for entry in chunk {
                 let app_id = entry.summary.app_id;
-                let tier_breakdown = cached_entries
-                    .get(&app_id)
+                let cached = cached_entries.get(&app_id);
+                let tier_breakdown = cached
                     .map(|e| e.tier_breakdown.as_slice())
                     .unwrap_or(&[]);
+                let genre = cached.and_then(|e| e.genre.as_deref());
                 let is_pinned = pinned.contains(&app_id);
                 let is_hovered = hovered_card == Some(app_id);
                 r = r.push(build_card(
@@ -511,6 +512,7 @@ fn build_grid<'a>(
                     card_w,
                     skeleton_phase,
                     tier_breakdown,
+                    genre,
                     is_pinned,
                     is_hovered,
                 ));
@@ -562,12 +564,14 @@ fn rarity_color_for_tier(tier: RarityTier) -> Color {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_card<'a>(
     entry: &'a GameEntry,
     capsule_size: CapsuleSize,
     card_w: f32,
     skeleton_phase: f32,
     tier_breakdown: &'a [(RarityTier, u32)],
+    genre: Option<&'a str>,
     is_pinned: bool,
     is_hovered: bool,
 ) -> Element<'a, crate::Message> {
@@ -596,6 +600,7 @@ fn build_card<'a>(
         capsule_h,
         total_h,
         tier_breakdown,
+        genre,
         is_pinned,
         is_hovered,
     });
@@ -687,6 +692,7 @@ struct HydratedCardParams<'a> {
     capsule_h: f32,
     total_h: f32,
     tier_breakdown: &'a [(RarityTier, u32)],
+    genre: Option<&'a str>,
     is_pinned: bool,
     is_hovered: bool,
 }
@@ -700,6 +706,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         capsule_h,
         total_h,
         tier_breakdown,
+        genre,
         is_pinned,
         is_hovered,
     } = p;
@@ -783,7 +790,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         .padding(Padding::default().left(8).right(8).top(8).bottom(0))
         .width(Length::Fixed(card_w));
 
-    let tags_row = build_tags_row(entry, card_w);
+    let tags_row = build_tags_row(entry, card_w, genre);
 
     let card_inner = column![
         capsule_stack,
@@ -1023,7 +1030,11 @@ fn build_hover_overlay<'a>(
         .into()
 }
 
-fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::Message> {
+fn build_tags_row<'a>(
+    entry: &'a GameEntry,
+    card_w: f32,
+    genre: Option<&'a str>,
+) -> Element<'a, crate::Message> {
     let progress = entry.progress.as_ref();
 
     let completion_tag: Option<Element<'_, crate::Message>> = progress.and_then(|p| {
@@ -1085,8 +1096,8 @@ fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::M
         Some(pill.into())
     });
 
-    let genre_tag: Element<'_, crate::Message> = {
-        let label = text("Genre").size(10).color(C_TEXT_MUTED);
+    let genre_tag: Option<Element<'_, crate::Message>> = genre.map(|g| {
+        let label = text(g).size(10).color(C_TEXT_MUTED);
         container(label)
             .padding(Padding::default().left(8).right(8).top(2).bottom(2))
             .style(|_: &iced::Theme| container::Style {
@@ -1105,7 +1116,7 @@ fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::M
                 ..container::Style::default()
             })
             .into()
-    };
+    });
 
     let mut tags: iced::widget::Row<'_, crate::Message> =
         row![].spacing(6).align_y(Alignment::Center);
@@ -1113,7 +1124,9 @@ fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::M
     if let Some(ctag) = completion_tag {
         tags = tags.push(ctag);
     }
-    tags = tags.push(genre_tag);
+    if let Some(gtag) = genre_tag {
+        tags = tags.push(gtag);
+    }
 
     container(tags)
         .width(Length::Fixed(card_w))

@@ -861,6 +861,7 @@ mod tests {
             stats: vec![],
             progress: CachedProgress { earned, total },
             tier_breakdown: Vec::new(),
+            genre: None,
         }
     }
 
@@ -881,6 +882,7 @@ mod tests {
             stats: vec![],
             progress: CachedProgress { earned, total },
             tier_breakdown: Vec::new(),
+            genre: None,
         }
     }
 

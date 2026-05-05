@@ -1134,6 +1134,7 @@ fn build_cache_entry_from_scan(
         stats,
         progress: CachedProgress { earned, total },
         tier_breakdown: Vec::new(),
+        genre: scanned.genre.clone(),
     };
 
     recompute_tier_breakdown_if_missing(&mut entry);
@@ -1209,6 +1210,7 @@ fn build_game_view_cache_entry(
         stats,
         progress: CachedProgress { earned, total },
         tier_breakdown: state.tier_breakdown.clone(),
+        genre: None,
     }
 }
 
@@ -2634,6 +2636,7 @@ mod tests {
                             total: 520,
                         },
                         tier_breakdown: Vec::new(),
+                        genre: None,
                     },
                 );
                 m
