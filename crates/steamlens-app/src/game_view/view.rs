@@ -1648,28 +1648,6 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
         GameViewPhase::Saving | GameViewPhase::Resetting
     );
 
-    let reset_btn = button(text("\u{26A0} Reset...").size(13).color(C_RED))
-        .on_press(msg(GameViewMessage::ResetClicked))
-        .padding(Padding::from([8u16, 16]))
-        .style(|_t, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: Some(iced::Background::Color(Color {
-                    r: 1.0,
-                    g: 0.333,
-                    b: 0.333,
-                    a: if hovered { 0.25 } else { 0.1 },
-                })),
-                border: iced::Border {
-                    color: C_RED,
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                text_color: C_RED,
-                ..button::Style::default()
-            }
-        });
-
     let cancel_label = if dirty > 0 {
         format!(
             "Cancel  {dirty} change{}",
@@ -1775,7 +1753,6 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
     };
 
     let footer_row = row![
-        reset_btn,
         space().width(Length::Fill),
         spinner_el,
         cancel_btn,
