@@ -137,6 +137,7 @@ impl AchievementFilter {
         }
     }
 
+    #[allow(dead_code)]
     pub const ALL: &'static [AchievementFilter] = &[
         AchievementFilter::All,
         AchievementFilter::Unlocked,
@@ -207,6 +208,7 @@ impl RarityFilter {
         }
     }
 
+    #[allow(dead_code)]
     pub const ALL: &'static [RarityFilter] = &[
         RarityFilter::All,
         RarityFilter::Common,
@@ -404,7 +406,7 @@ fn sort_for_display<'a>(
 
 const LEGENDARY_TOP_N: usize = 3;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RarityTier {
     Common,
     Uncommon,
@@ -495,7 +497,8 @@ pub fn visible_achievement_ids<'a>(
     filter: AchievementFilter,
     search: &str,
     sort: AchievementSort,
-    rarity_filter: RarityFilter,
+    rarity_tier_set: &std::collections::HashSet<RarityTier>,
+    include_hidden: bool,
 ) -> Vec<&'a str> {
     let tier_map = compute_tier_map(achievements);
     let query = search.to_lowercase();
@@ -505,27 +508,31 @@ pub fn visible_achievement_ids<'a>(
             if !row.appeared {
                 return false;
             }
+            let is_spoiler = row.is_spoiler_hidden();
+            if is_spoiler
+                && !include_hidden
+                && !matches!(filter, AchievementFilter::All | AchievementFilter::Hidden)
+            {
+                return false;
+            }
             let filter_ok = match filter {
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
-                AchievementFilter::Locked => !row.data.is_achieved && !row.is_spoiler_hidden(),
-                AchievementFilter::Hidden => row.is_spoiler_hidden(),
+                AchievementFilter::Locked => !row.data.is_achieved && !is_spoiler,
+                AchievementFilter::Hidden => is_spoiler,
             };
             let search_ok = query.is_empty()
                 || row.data.display_name.to_lowercase().contains(&query)
                 || row.data.description.to_lowercase().contains(&query)
                 || row.data.id.to_lowercase().contains(&query);
-            let rarity_ok = match rarity_filter {
-                RarityFilter::All => true,
-                specific => {
-                    if row.is_spoiler_hidden() {
-                        false
-                    } else {
-                        match tier_map.get(&row.data.id).copied() {
-                            Some(tier) => tier == rarity_filter_to_tier(specific),
-                            None => false,
-                        }
-                    }
+            let rarity_ok = if rarity_tier_set.is_empty() {
+                true
+            } else if is_spoiler {
+                false
+            } else {
+                match tier_map.get(&row.data.id).copied() {
+                    Some(tier) => rarity_tier_set.contains(&tier),
+                    None => false,
                 }
             };
             filter_ok && search_ok && rarity_ok
@@ -537,14 +544,14 @@ pub fn visible_achievement_ids<'a>(
         .collect()
 }
 
-fn rarity_filter_to_tier(f: RarityFilter) -> RarityTier {
+pub fn rarity_filter_to_tier_set(f: RarityFilter) -> std::collections::HashSet<RarityTier> {
     match f {
-        RarityFilter::Common => RarityTier::Common,
-        RarityFilter::Uncommon => RarityTier::Uncommon,
-        RarityFilter::Rare => RarityTier::Rare,
-        RarityFilter::Mythical => RarityTier::Mythical,
-        RarityFilter::Legendary => RarityTier::Legendary,
-        RarityFilter::All => unreachable!("All is handled before calling rarity_filter_to_tier"),
+        RarityFilter::All => std::collections::HashSet::new(),
+        RarityFilter::Common => [RarityTier::Common].into(),
+        RarityFilter::Uncommon => [RarityTier::Uncommon].into(),
+        RarityFilter::Rare => [RarityTier::Rare].into(),
+        RarityFilter::Mythical => [RarityTier::Mythical].into(),
+        RarityFilter::Legendary => [RarityTier::Legendary].into(),
     }
 }
 
@@ -680,7 +687,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert_eq!(ids, vec!["apple", "mango", "zebra"]);
     }
@@ -697,7 +705,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::UnlockChance,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert_eq!(ids[0], "common_ach", "highest % first");
         assert_eq!(ids[1], "mid_ach");
@@ -715,7 +724,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::UnlockChance,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert_eq!(ids[0], "has_data");
         assert_eq!(ids[1], "no_data", "None rarity goes to end");
@@ -734,7 +744,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Rarity,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert_eq!(ids.len(), 10);
 
@@ -777,7 +788,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            RarityFilter::Legendary,
+            &std::collections::HashSet::from([RarityTier::Legendary]),
+            false,
         );
         assert_eq!(
             ids.len(),
@@ -799,7 +811,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            RarityFilter::Common,
+            &std::collections::HashSet::from([RarityTier::Common]),
+            false,
         );
         assert!(
             !ids.contains(&"no_data"),
@@ -820,7 +833,8 @@ mod rarity_tests {
             AchievementFilter::Locked,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"dirty_unlock"),
@@ -853,7 +867,8 @@ mod rarity_tests {
             AchievementFilter::Unlocked,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"dirty_lock"),
@@ -898,7 +913,8 @@ mod rarity_tests {
             AchievementFilter::Locked,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"regular_locked"),
@@ -922,7 +938,8 @@ mod rarity_tests {
             AchievementFilter::Unlocked,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"earned_secret"),
@@ -946,7 +963,8 @@ mod rarity_tests {
             AchievementFilter::Hidden,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert_eq!(
             ids.len(),
@@ -964,7 +982,8 @@ mod rarity_tests {
             AchievementFilter::Hidden,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.is_empty(),
@@ -983,7 +1002,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"spoiler"),
@@ -1004,7 +1024,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Name,
-            RarityFilter::Legendary,
+            &std::collections::HashSet::from([RarityTier::Legendary]),
+            false,
         );
         assert!(
             !ids.contains(&"hidden_legendary"),
@@ -1025,7 +1046,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Name,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
         assert!(
             ids.contains(&"hidden_legendary"),
@@ -1046,7 +1068,8 @@ mod rarity_tests {
             AchievementFilter::All,
             "",
             AchievementSort::Name,
-            RarityFilter::Legendary,
+            &std::collections::HashSet::from([RarityTier::Legendary]),
+            false,
         );
         assert!(
             ids.contains(&"earned_legendary"),

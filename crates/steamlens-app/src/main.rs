@@ -61,6 +61,7 @@ enum Message {
     #[allow(dead_code)]
     ClearGameCache(u32),
     SkeletonTick,
+    #[allow(dead_code)]
     FocusLibrarySearch,
 }
 
@@ -672,21 +673,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ..
             } = event
             {
-                if modifiers.control() && c.as_str() == "s" {
-                    if let Screen::GameView(state) = &mut app.screen
-                        && state.dirty_count() > 0
-                        && !state.has_stat_errors()
-                        && let Some(w) = &app.worker
-                    {
-                        return game_view::update(state, GameViewMessage::ApplyChanges, w);
-                    }
+                if modifiers.control()
+                    && c.as_str() == "s"
+                    && let Screen::GameView(state) = &mut app.screen
+                    && state.dirty_count() > 0
+                    && !state.has_stat_errors()
+                    && let Some(w) = &app.worker
+                {
+                    return game_view::update(state, GameViewMessage::ApplyChanges, w);
                 }
-                if modifiers.command() && c.as_str() == "k" {
-                    if matches!(app.screen, Screen::ProfileView(_)) {
-                        return iced::widget::operation::focus(
-                            profile_view::library_search_id(),
-                        );
-                    }
+                if modifiers.command()
+                    && c.as_str() == "k"
+                    && matches!(app.screen, Screen::ProfileView(_))
+                {
+                    return iced::widget::operation::focus(profile_view::library_search_id());
                 }
             }
             Task::none()
@@ -1268,7 +1268,7 @@ mod tests {
     #[test]
     fn sort_orders_unlocked_then_locked_then_hidden() {
         use game_view::types::{
-            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort,
             visible_achievement_ids,
         };
 
@@ -1307,7 +1307,8 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
 
         assert_eq!(ids.len(), 5);
@@ -1321,7 +1322,7 @@ mod tests {
     #[test]
     fn dirty_unlock_does_not_change_group_until_apply() {
         use game_view::types::{
-            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort,
             visible_achievement_ids,
         };
 
@@ -1356,7 +1357,8 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
 
         assert_eq!(
@@ -1372,7 +1374,7 @@ mod tests {
     #[test]
     fn case_insensitive_sort() {
         use game_view::types::{
-            AchievementData, AchievementFilter, AchievementRow, AchievementSort, RarityFilter,
+            AchievementData, AchievementFilter, AchievementRow, AchievementSort,
             visible_achievement_ids,
         };
 
@@ -1402,7 +1404,8 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            RarityFilter::All,
+            &std::collections::HashSet::new(),
+            false,
         );
 
         assert_eq!(ids[0], "A", "apple first (case-insensitive)");

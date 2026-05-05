@@ -1,7 +1,7 @@
 pub mod types;
 mod view;
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use iced::Task;
 
@@ -9,8 +9,8 @@ use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, Banner, BannerKind, BulkOp,
-    RarityFilter, ResetScope, StatRow, build_apply_payload, compute_tier_map, dirty_count,
-    has_stat_errors, visible_achievement_ids,
+    RarityFilter, RarityTier, ResetScope, StatRow, build_apply_payload, compute_tier_map,
+    dirty_count, has_stat_errors, rarity_filter_to_tier_set, visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -30,6 +30,9 @@ pub enum GameViewMessage {
     StatEditCommitted(String),
     FilterChanged(AchievementFilter),
     RarityFilterChanged(RarityFilter),
+    RarityTierToggled(RarityTier),
+    RarityFilterCleared,
+    HiddenPillToggled,
     AchievementSortChanged(AchievementSort),
     SearchChanged(String),
     TabChanged(ActiveTab),
@@ -86,6 +89,8 @@ pub struct GameViewState {
     pub filter: AchievementFilter,
     pub achievement_sort: AchievementSort,
     pub rarity_filter: RarityFilter,
+    pub rarity_tier_set: HashSet<RarityTier>,
+    pub include_hidden: bool,
     pub stats_edit_consent: bool,
 
     pub reset_scope: ResetScope,
@@ -116,6 +121,8 @@ impl GameViewState {
             filter: AchievementFilter::All,
             achievement_sort: AchievementSort::UnlockChance,
             rarity_filter: RarityFilter::All,
+            rarity_tier_set: HashSet::new(),
+            include_hidden: false,
             stats_edit_consent: false,
             reset_scope: ResetScope::Pending,
             reset_confirm_input: String::new(),
@@ -373,6 +380,24 @@ pub fn update(
         }
         GameViewMessage::RarityFilterChanged(f) => {
             state.rarity_filter = f;
+            state.rarity_tier_set = rarity_filter_to_tier_set(f);
+            Task::none()
+        }
+        GameViewMessage::RarityTierToggled(tier) => {
+            if state.rarity_tier_set.contains(&tier) {
+                state.rarity_tier_set.remove(&tier);
+            } else {
+                state.rarity_tier_set.insert(tier);
+            }
+            Task::none()
+        }
+        GameViewMessage::RarityFilterCleared => {
+            state.rarity_tier_set.clear();
+            state.include_hidden = false;
+            Task::none()
+        }
+        GameViewMessage::HiddenPillToggled => {
+            state.include_hidden = !state.include_hidden;
             Task::none()
         }
         GameViewMessage::AchievementSortChanged(s) => {
@@ -407,7 +432,8 @@ pub fn update(
                 state.filter,
                 &state.search_query,
                 state.achievement_sort,
-                state.rarity_filter,
+                &state.rarity_tier_set,
+                state.include_hidden,
             )
             .into_iter()
             .map(|s| s.to_owned())
