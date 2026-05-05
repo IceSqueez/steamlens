@@ -23,9 +23,7 @@ const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
 
 fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
-    let cols_max = ((viewport + min_gap) / (card_w + min_gap))
-        .floor()
-        .max(1.0) as usize;
+    let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
 
     let mut cols = cols_max;
     loop {
@@ -947,7 +945,10 @@ mod grid_tests {
         let (cols, gap) = compute_grid(1000.0, 250.0, 12.0);
         assert_eq!(cols, 3);
         let expected_gap = (1000.0 - 3.0 * 250.0) / 4.0;
-        assert!((gap - expected_gap).abs() < 0.01, "expected gap={expected_gap}, got {gap}");
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected gap={expected_gap}, got {gap}"
+        );
     }
 
     #[test]
@@ -955,7 +956,10 @@ mod grid_tests {
         let (cols, gap) = compute_grid(300.0, 200.0, 12.0);
         assert_eq!(cols, 1);
         let expected_gap = (300.0 - 200.0) / 2.0;
-        assert!((gap - expected_gap).abs() < 0.01, "expected gap={expected_gap}, got {gap}");
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected gap={expected_gap}, got {gap}"
+        );
     }
 
     #[test]

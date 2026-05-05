@@ -876,7 +876,7 @@ fn view(app: &App) -> Element<'_, Message> {
             center(content).into()
         }
 
-        Screen::GameView(state) => game_view::view(state),
+        Screen::GameView(state) => game_view::view(state, app.skeleton_phase),
     };
 
     let with_toast = if let Some(toast) = &app.toast {
@@ -959,6 +959,12 @@ fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element
 fn has_active_skeletons(app: &App) -> bool {
     match &app.screen {
         Screen::ProfileView(pv) => pv.games.iter().any(|g| !g.is_hydrated()),
+        Screen::GameView(state) => matches!(
+            state.phase,
+            game_view::GameViewPhase::Connecting
+                | game_view::GameViewPhase::WaitingStats
+                | game_view::GameViewPhase::LoadingData
+        ),
         _ => false,
     }
 }
@@ -1661,5 +1667,71 @@ mod tests {
         } else {
             panic!("expected ProfileView screen");
         }
+    }
+
+    fn make_app_with_game_view_phase(phase: game_view::GameViewPhase) -> App {
+        let mut state = GameViewState::new(570);
+        state.phase = phase;
+        App {
+            screen: Screen::GameView(Box::new(state)),
+            worker: None,
+            worker_rx: None,
+            profile_view_state: None,
+            settings: Settings::default(),
+            settings_dirty_since: None,
+            toast: None,
+            cached_entries: HashMap::new(),
+            steam_root: std::path::PathBuf::from("/tmp"),
+            steamid3: 0,
+            user_profile: None,
+            splash_min_elapsed: true,
+            splash_scan_done: true,
+            skeleton_phase: 0.0,
+        }
+    }
+
+    #[test]
+    fn has_active_skeletons_true_for_game_view_waiting_stats() {
+        let app = make_app_with_game_view_phase(game_view::GameViewPhase::WaitingStats);
+        assert!(
+            has_active_skeletons(&app),
+            "WaitingStats must activate skeleton subscription"
+        );
+    }
+
+    #[test]
+    fn has_active_skeletons_true_for_game_view_connecting() {
+        let app = make_app_with_game_view_phase(game_view::GameViewPhase::Connecting);
+        assert!(
+            has_active_skeletons(&app),
+            "Connecting must activate skeleton subscription"
+        );
+    }
+
+    #[test]
+    fn has_active_skeletons_true_for_game_view_loading_data() {
+        let app = make_app_with_game_view_phase(game_view::GameViewPhase::LoadingData);
+        assert!(
+            has_active_skeletons(&app),
+            "LoadingData must activate skeleton subscription"
+        );
+    }
+
+    #[test]
+    fn has_active_skeletons_false_for_game_view_ready() {
+        let app = make_app_with_game_view_phase(game_view::GameViewPhase::Ready);
+        assert!(
+            !has_active_skeletons(&app),
+            "Ready phase must NOT activate skeleton subscription"
+        );
+    }
+
+    #[test]
+    fn has_active_skeletons_false_for_not_running_screen() {
+        let app = make_app_not_running("Steam not running");
+        assert!(
+            !has_active_skeletons(&app),
+            "SteamNotRunning screen must not trigger skeletons"
+        );
     }
 }

@@ -2,7 +2,9 @@ use iced::widget::{
     button, column, container, image, mouse_area, opaque, pick_list, responsive, rich_text, row,
     scrollable, space, span, stack, text, text_input,
 };
-use iced::{Alignment, Color, Element, Length, Padding};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
+
+use crate::skeleton::skeleton_box;
 
 use super::types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp, RarityTier,
@@ -14,6 +16,8 @@ use crate::theme::{
     C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
     C_TEXT_SECONDARY,
 };
+
+const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
 const C_BG: Color = Color::from_rgb(0.157, 0.165, 0.212);
 const C_CURRENT_LINE: Color = Color::from_rgb(0.267, 0.278, 0.353);
@@ -38,13 +42,13 @@ fn dracula_border_radius(r: f32) -> iced::Border {
     }
 }
 
-pub fn render(state: &GameViewState) -> Element<'_, Message> {
+pub fn render(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
     match state.phase {
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
-            loading_view(state)
+            loading_view(state, skeleton_phase)
         }
         GameViewPhase::Saving | GameViewPhase::Resetting => {
-            let base = loaded_view(state);
+            let base = loaded_view(state, skeleton_phase);
             let label = if state.phase == GameViewPhase::Saving {
                 "Saving changes..."
             } else {
@@ -53,7 +57,7 @@ pub fn render(state: &GameViewState) -> Element<'_, Message> {
             stack![base, opaque(saving_overlay(state.spinner_angle, label))].into()
         }
         GameViewPhase::Ready => {
-            let base = loaded_view(state);
+            let base = loaded_view(state, skeleton_phase);
             if state.show_reset_modal {
                 stack![base, opaque(reset_modal(state))].into()
             } else {
@@ -64,7 +68,7 @@ pub fn render(state: &GameViewState) -> Element<'_, Message> {
     }
 }
 
-fn loading_view(state: &GameViewState) -> Element<'_, Message> {
+fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
     let phase_label = match state.phase {
         GameViewPhase::Connecting => "Connecting to Steam...",
         GameViewPhase::WaitingStats => "Requesting stats from Steam...",
@@ -72,27 +76,42 @@ fn loading_view(state: &GameViewState) -> Element<'_, Message> {
         _ => "Loading...",
     };
 
-    let content = column![
-        text(&state.game_name).size(20).color(C_FG),
-        text(format!("App ID: {}", state.app_id))
-            .size(13)
-            .color(C_MUTED),
+    let status_row = row![
         text(spinner_frame(state.spinner_angle))
-            .size(24)
+            .size(16)
             .color(C_PURPLE),
-        text(phase_label).size(14).color(C_MUTED),
-        button(text("Cancel").size(13))
+        text(phase_label).size(13).color(C_MUTED),
+        space().width(Length::Fill),
+        button(text("Cancel").size(12))
             .on_press(Message::GoBack)
-            .padding(Padding::from([8, 16])),
+            .padding(Padding::default().left(12).right(12).top(4).bottom(4))
+            .style(|_theme, _status| button::Style {
+                background: None,
+                border: iced::Border {
+                    color: C_BORDER,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: C_TEXT_MUTED,
+                ..button::Style::default()
+            }),
     ]
-    .spacing(16)
-    .align_x(Alignment::Center);
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .padding(Padding::default().left(16).right(16).top(8).bottom(8));
 
-    container(content)
+    let status_bar = container(status_row)
         .width(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            ..container::Style::default()
+        });
+
+    let skeleton_grid = build_skeleton_ach_grid(state, skeleton_phase);
+
+    column![status_bar, skeleton_grid]
+        .spacing(0)
         .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
         .into()
 }
 
@@ -115,11 +134,11 @@ fn error_view(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
-fn loaded_view(state: &GameViewState) -> Element<'_, Message> {
+fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
     let hdr = header_bar(state);
     let tabs = tab_bar_widget(state);
     let body = match state.active_tab {
-        ActiveTab::Achievements => achievements_tab(state),
+        ActiveTab::Achievements => achievements_tab(state, skeleton_phase),
         ActiveTab::Stats => stats_tab(state),
     };
     let footer = footer_bar(state);
@@ -358,7 +377,7 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
         .into()
 }
 
-fn achievements_tab(state: &GameViewState) -> Element<'_, Message> {
+fn achievements_tab<'a>(state: &'a GameViewState, skeleton_phase: f32) -> Element<'a, Message> {
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
@@ -375,7 +394,7 @@ fn achievements_tab(state: &GameViewState) -> Element<'_, Message> {
     if let Some(indicator) = build_reveal_indicator(state) {
         col = col.push(indicator);
     }
-    col = col.push(achievement_list(state));
+    col = col.push(achievement_list(state, skeleton_phase));
     col = col.push(action_footer(state, filtered_count));
     col.into()
 }
@@ -407,9 +426,7 @@ const ACH_MIN_GAP: f32 = 12.0;
 const ACH_CARD_WIDTH: f32 = 260.0;
 
 fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
-    let cols_max = ((viewport + min_gap) / (card_w + min_gap))
-        .floor()
-        .max(1.0) as usize;
+    let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
 
     let mut cols = cols_max;
     loop {
@@ -847,8 +864,8 @@ fn tier_color(tier: RarityTier) -> Color {
 fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Style {
     match tier {
         Some(RarityTier::Legendary) => {
-            let alpha = 0.65 + 0.35 * glow_pulse;
-            let blur = 18.0 + 22.0 * glow_pulse;
+            let alpha = 0.75 + 0.25 * glow_pulse;
+            let blur = 22.0 + 16.0 * glow_pulse;
             container::Style {
                 shadow: iced::Shadow {
                     color: Color {
@@ -869,11 +886,11 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
         Some(RarityTier::Mythical) => container::Style {
             shadow: iced::Shadow {
                 color: Color {
-                    a: 0.7,
+                    a: 0.45,
                     ..C_MYTHICAL
                 },
                 offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 14.0,
+                blur_radius: 16.0,
             },
             border: iced::Border {
                 color: C_MYTHICAL,
@@ -922,7 +939,7 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
     }
 }
 
-fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
+fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
@@ -955,8 +972,8 @@ fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
             .padding(Padding::default().top(8).bottom(4));
 
         for chunk in cards.chunks(cols) {
-            let mut r: iced::widget::Row<'_, Message> = row![space().width(Length::Fixed(gap))]
-                .align_y(Alignment::Start);
+            let mut r: iced::widget::Row<'_, Message> =
+                row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
                 r = r.push(achievement_card_widget(
@@ -965,6 +982,7 @@ fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
                     query_owned.clone(),
                     glow_pulse,
                     tier,
+                    skeleton_phase,
                 ));
                 r = r.push(space().width(Length::Fixed(gap)));
             }
@@ -988,12 +1006,111 @@ fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
+fn build_skeleton_ach_grid(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+    let count = if state.achievements.is_empty() {
+        6
+    } else {
+        state.achievements.len()
+    };
+
+    let grid = responsive(move |size| {
+        let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
+
+        let mut rows_col: iced::widget::Column<'_, Message> = column![]
+            .spacing(ACH_CARD_GAP as u32)
+            .padding(Padding::default().top(8).bottom(4));
+
+        let total_cards = count;
+        let mut rendered = 0;
+
+        while rendered < total_cards {
+            let chunk_size = (total_cards - rendered).min(cols);
+            let mut r: iced::widget::Row<'_, Message> =
+                row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
+            for _ in 0..chunk_size {
+                r = r.push(build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase));
+                r = r.push(space().width(Length::Fixed(gap)));
+            }
+            let needed = cols - chunk_size;
+            for _ in 0..needed {
+                r = r.push(space().width(Length::Fixed(ACH_CARD_WIDTH)));
+                r = r.push(space().width(Length::Fixed(gap)));
+            }
+            rows_col = rows_col.push(r);
+            rendered += chunk_size;
+        }
+
+        scrollable(rows_col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    });
+
+    container(grid)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, Message> {
+    let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, phase);
+
+    let title_w = card_w * 0.60;
+    let desc_w = card_w * 0.80;
+
+    let text_col = column![
+        skeleton_box(title_w, 13.0, phase),
+        skeleton_box(desc_w, 11.0, phase),
+    ]
+    .spacing(4);
+
+    let top_row = row![icon, text_col]
+        .spacing(8)
+        .align_y(Alignment::Start)
+        .padding(Padding::from([8u16, 8]));
+
+    let pill1 = skeleton_box(80.0, 18.0, phase);
+    let pill2 = skeleton_box(60.0, 18.0, phase);
+
+    let bottom_row = container(
+        row![pill1, space().width(Length::Fill), pill2]
+            .align_y(Alignment::Center)
+            .padding(Padding::default().right(8).bottom(8)),
+    )
+    .width(Length::Fill);
+
+    let card_body = column![
+        top_row,
+        iced::widget::Space::new().height(Length::Fixed(10.0)),
+        iced::widget::rule::horizontal(1),
+        iced::widget::Space::new().height(Length::Fill),
+        bottom_row,
+    ]
+    .spacing(0);
+
+    let card_container = container(card_body)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(ACH_CARD_HEIGHT))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_CURRENT_LINE)),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        });
+
+    card_container.into()
+}
+
 fn achievement_card_widget<'a>(
     row: &'a AchievementRow,
     card_w: f32,
     search_query: String,
     glow_pulse: f32,
     tier: Option<RarityTier>,
+    _skeleton_phase: f32,
 ) -> Element<'a, Message> {
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
@@ -1116,6 +1233,8 @@ fn achievement_card_widget<'a>(
 
     let desc_color = if spoiler_hidden {
         Color { a: 0.5, ..C_MUTED }
+    } else if !effective {
+        C_LOCKED_DESC
     } else {
         C_MUTED
     };
@@ -1171,26 +1290,31 @@ fn achievement_card_widget<'a>(
         .padding(Padding::from([8u16, 8]));
 
     let badge_text = row.status_label();
+    let is_locked_badge = badge_text == "Locked";
     let badge_color = match badge_text {
         "Protected" => C_ORANGE,
         "Pending" => C_YELLOW,
         "Unlocked" => C_GREEN,
-        _ => C_MUTED,
+        _ => C_TEXT_MUTED,
     };
 
-    let badge = container(text(badge_text).size(10).color(Color {
-        a: 0.9,
-        ..badge_color
+    let badge = container(text(badge_text).size(10).color(if is_locked_badge {
+        C_TEXT_MUTED
+    } else {
+        Color {
+            a: 0.9,
+            ..badge_color
+        }
     }))
     .padding(Padding::default().left(6).right(6).top(2).bottom(2))
     .style(move |_theme| container::Style {
-        background: Some(iced::Background::Color(Color {
-            a: 0.15,
+        background: Some(Background::Color(Color {
+            a: if is_locked_badge { 0.10 } else { 0.15 },
             ..badge_color
         })),
-        border: iced::Border {
+        border: Border {
             color: Color {
-                a: 0.4,
+                a: if is_locked_badge { 0.25 } else { 0.4 },
                 ..badge_color
             },
             width: 1.0,
@@ -1208,11 +1332,28 @@ fn achievement_card_widget<'a>(
             _ => 0.18,
         };
         let label = format!("{} \u{00B7} {:.1}%", t.label(), pct);
-        let rb = container(text(label).size(10).color(Color { a: 0.95, ..tc }))
-            .padding(Padding::default().left(7).right(7).top(3).bottom(3))
+
+        let dot = container(space())
+            .width(Length::Fixed(6.0))
+            .height(Length::Fixed(6.0))
             .style(move |_theme| container::Style {
-                background: Some(iced::Background::Color(Color { a: bg_alpha, ..tc })),
-                border: iced::Border {
+                background: Some(Background::Color(tc)),
+                border: Border {
+                    radius: 3.0.into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            });
+
+        let pill_content = row![dot, text(label).size(10).color(Color { a: 0.95, ..tc })]
+            .spacing(5)
+            .align_y(Alignment::Center);
+
+        let rb = container(pill_content)
+            .padding(Padding::default().left(8).right(8).top(3).bottom(3))
+            .style(move |_theme| container::Style {
+                background: Some(Background::Color(Color { a: bg_alpha, ..tc })),
+                border: Border {
                     color: Color { a: 0.5, ..tc },
                     width: 1.0,
                     radius: 8.0.into(),
@@ -1226,18 +1367,27 @@ fn achievement_card_widget<'a>(
 
     let bottom_row: Element<'_, Message> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
-        let reveal_btn = button(text("Reveal").size(11).color(C_MUTED))
+        let reveal_btn = button(text("Reveal").size(11).color(C_ACCENT))
             .on_press(msg(GameViewMessage::RevealHidden(reveal_id)))
-            .padding(Padding::default().left(10).right(10).top(3).bottom(3))
-            .style(|_t, _s| button::Style {
-                background: Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED })),
-                border: iced::Border {
-                    color: Color { a: 0.3, ..C_MUTED },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                text_color: C_MUTED,
-                ..button::Style::default()
+            .padding(Padding::default().left(12).right(12).top(3).bottom(3))
+            .style(|_t, status| {
+                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                button::Style {
+                    background: Some(Background::Color(Color {
+                        a: if hovered { 0.28 } else { 0.18 },
+                        ..C_ACCENT
+                    })),
+                    border: Border {
+                        color: Color {
+                            a: if hovered { 0.65 } else { 0.45 },
+                            ..C_ACCENT
+                        },
+                        width: 1.0,
+                        radius: 12.0.into(),
+                    },
+                    text_color: C_ACCENT,
+                    ..button::Style::default()
+                }
             });
 
         row![reveal_btn, space().width(Length::Fill), badge]
@@ -1274,10 +1424,11 @@ fn achievement_card_widget<'a>(
         .height(Length::Fixed(ACH_CARD_HEIGHT));
 
     let toggle_id = row.data.id.clone();
+    let is_hidden_card = spoiler_hidden;
     button(card_container)
         .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)))
         .padding(0)
-        .style(|_theme, status| {
+        .style(move |_theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             let bg = if hovered {
                 Color {
@@ -1289,14 +1440,25 @@ fn achievement_card_widget<'a>(
             } else {
                 C_CURRENT_LINE
             };
-            let border = iced::Border {
-                color: if hovered {
-                    C_PURPLE
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: if hovered { 2.0 } else { 0.0 },
-                radius: 8.0.into(),
+            let border = if is_hidden_card {
+                Border {
+                    color: Color {
+                        a: if hovered { 0.55 } else { 0.40 },
+                        ..C_BORDER
+                    },
+                    width: 1.0,
+                    radius: 10.0.into(),
+                }
+            } else {
+                Border {
+                    color: if hovered {
+                        C_PURPLE
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                    width: if hovered { 2.0 } else { 0.0 },
+                    radius: 8.0.into(),
+                }
             };
             let shadow = if hovered {
                 iced::Shadow {
@@ -1312,7 +1474,7 @@ fn achievement_card_widget<'a>(
                 }
             };
             button::Style {
-                background: Some(iced::Background::Color(bg)),
+                background: Some(Background::Color(bg)),
                 border,
                 shadow,
                 ..button::Style::default()
@@ -1884,6 +2046,74 @@ fn highlight_split<'a>(source: &'a str, query: &str) -> Option<(&'a str, &'a str
     let matched = &source[byte_offset..match_end];
     let after = &source[match_end..];
     Some((before, matched, after))
+}
+
+#[cfg(test)]
+mod skeleton_polish_tests {
+    use super::{ACH_CARD_HEIGHT, ACH_CARD_ICON, ACH_CARD_WIDTH, C_LOCKED_DESC};
+    use crate::theme::C_TEXT_MUTED;
+    use iced::Color;
+
+    #[test]
+    fn skeleton_card_height_matches_hydrated_card_height() {
+        assert_eq!(
+            ACH_CARD_HEIGHT, 140.0,
+            "skeleton and hydrated paths both use ACH_CARD_HEIGHT — must agree"
+        );
+    }
+
+    #[test]
+    fn skeleton_icon_size_matches_hydrated_icon_size() {
+        assert_eq!(
+            ACH_CARD_ICON, 64.0,
+            "icon placeholder size must match real icon size"
+        );
+    }
+
+    #[test]
+    fn card_width_constant_is_reasonable() {
+        const { assert!(ACH_CARD_WIDTH >= 200.0 && ACH_CARD_WIDTH <= 400.0) };
+    }
+
+    #[test]
+    fn locked_desc_color_is_lighter_than_text_muted() {
+        let locked = C_LOCKED_DESC;
+        let muted = C_TEXT_MUTED;
+        let luminance = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+        assert!(
+            luminance(locked) >= luminance(muted),
+            "C_LOCKED_DESC must be lighter than or equal to C_TEXT_MUTED — locked descriptions should be more readable"
+        );
+    }
+
+    #[test]
+    fn locked_desc_color_has_correct_rgb() {
+        let Color { r, g, b, .. } = C_LOCKED_DESC;
+        let r8 = (r * 255.0).round() as u8;
+        let g8 = (g * 255.0).round() as u8;
+        let b8 = (b * 255.0).round() as u8;
+        assert_eq!(r8, 0x99, "red channel");
+        assert_eq!(g8, 0x94, "green channel");
+        assert_eq!(b8, 0xb0, "blue channel");
+    }
+
+    #[test]
+    fn skeleton_grid_uses_same_card_dimensions_as_hydrated() {
+        let title_w = ACH_CARD_WIDTH * 0.60;
+        let desc_w = ACH_CARD_WIDTH * 0.80;
+        assert!(
+            title_w < ACH_CARD_WIDTH,
+            "title skeleton must be narrower than card"
+        );
+        assert!(
+            desc_w < ACH_CARD_WIDTH,
+            "desc skeleton must be narrower than card"
+        );
+        assert!(
+            title_w < desc_w,
+            "title skeleton must be narrower than desc skeleton"
+        );
+    }
 }
 
 #[cfg(test)]

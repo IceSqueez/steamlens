@@ -609,8 +609,8 @@ pub fn update(
     }
 }
 
-pub fn view(state: &GameViewState) -> iced::Element<'_, crate::Message> {
-    view::render(state)
+pub fn view(state: &GameViewState, skeleton_phase: f32) -> iced::Element<'_, crate::Message> {
+    view::render(state, skeleton_phase)
 }
 
 pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message> {
