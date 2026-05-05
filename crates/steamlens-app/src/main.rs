@@ -9,7 +9,7 @@ mod steam_worker;
 mod theme;
 mod worker;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,7 @@ use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Alignment, Color, Element, Length, Subscription, Task};
 
-use cache::{ClassifyResult, GameCacheEntry};
+use cache::{CacheHit, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewMessage, GameViewState};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
@@ -52,6 +52,7 @@ enum Message {
     ToastRequest(String),
     ToastTick,
     CacheClassified(ClassifyResult),
+    DrainHitQueue,
     CacheWritten {
         app_id: u32,
         result: Result<(), String>,
@@ -86,6 +87,10 @@ struct App {
     /// Full cache entries keyed by app_id.  Populated after classify_games
     /// completes.  Used to seed GameViewState on open (Rule R scaffold).
     cached_entries: HashMap<u32, GameCacheEntry>,
+    /// Cache hits queued for streamed dispatch — drained in small batches by
+    /// `Message::DrainHitQueue` so 339 games don't land in cached_entries in
+    /// a single Message handler (the layout-storm root cause).
+    pending_hit_queue: VecDeque<CacheHit>,
     /// Steam root path cached at boot for use in cache write helpers.
     steam_root: std::path::PathBuf,
     /// SteamID3 cached at boot; 0 when profile load fails.
@@ -137,6 +142,7 @@ fn boot() -> (App, Task<Message>) {
         settings_dirty_since: None,
         toast: None,
         cached_entries: HashMap::new(),
+        pending_hit_queue: VecDeque::new(),
         steam_root,
         steamid3,
         user_profile,
@@ -367,35 +373,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 schema_bumped,
             } = result;
 
-            if let Screen::ProfileView(pv_state) = &mut app.screen {
-                for hit in &hits {
-                    if let Some(entry) = pv_state
-                        .games
-                        .iter_mut()
-                        .find(|g| g.summary.app_id == hit.app_id)
-                    {
-                        use crate::progress_scan::ProgressData;
-                        entry.progress = Some(ProgressData {
-                            earned: hit.entry.progress.earned,
-                            total: hit.entry.progress.total,
-                        });
-                    }
-                    let mut entry = hit.entry.clone();
-                    recompute_tier_breakdown_if_missing(&mut entry);
-                    app.cached_entries.insert(hit.app_id, entry);
-                }
+            app.pending_hit_queue.extend(hits);
 
-                if !dirty.is_empty() {
-                    let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
-                    pv_state.progress_rx = scanner.take_receiver();
-                    pv_state.progress_scanner = Some(scanner);
-                }
-            } else {
-                for hit in &hits {
-                    let mut entry = hit.entry.clone();
-                    recompute_tier_breakdown_if_missing(&mut entry);
-                    app.cached_entries.insert(hit.app_id, entry);
-                }
+            if let Screen::ProfileView(pv_state) = &mut app.screen
+                && !dirty.is_empty()
+            {
+                let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
+                pv_state.progress_rx = scanner.take_receiver();
+                pv_state.progress_scanner = Some(scanner);
             }
 
             if schema_bumped > 0 {
@@ -403,6 +388,31 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     "Cache rebuilt: {} entries updated",
                     schema_bumped
                 )));
+            }
+            Task::none()
+        }
+
+        Message::DrainHitQueue => {
+            const HITS_PER_TICK: usize = 8;
+            for _ in 0..HITS_PER_TICK {
+                let Some(hit) = app.pending_hit_queue.pop_front() else {
+                    break;
+                };
+                let mut entry = hit.entry;
+                recompute_tier_breakdown_if_missing(&mut entry);
+                if let Screen::ProfileView(pv_state) = &mut app.screen
+                    && let Some(game) = pv_state
+                        .games
+                        .iter_mut()
+                        .find(|g| g.summary.app_id == hit.app_id)
+                {
+                    use crate::progress_scan::ProgressData;
+                    game.progress = Some(ProgressData {
+                        earned: entry.progress.earned,
+                        total: entry.progress.total,
+                    });
+                }
+                app.cached_entries.insert(hit.app_id, entry);
             }
             Task::none()
         }
@@ -1104,6 +1114,12 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let hit_drain_sub = if !app.pending_hit_queue.is_empty() {
+        iced::time::every(Duration::from_millis(16)).map(|_| Message::DrainHitQueue)
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch([
         keyboard_sub,
         poll_sub,
@@ -1114,6 +1130,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         skeleton_sub,
         settings_flush_sub,
         toast_sub,
+        hit_drain_sub,
     ])
 }
 
@@ -1166,6 +1183,7 @@ mod tests {
             settings_dirty_since: None,
             toast: None,
             cached_entries: HashMap::new(),
+        pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
@@ -1711,6 +1729,7 @@ mod tests {
                 );
                 m
             },
+            pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
@@ -1754,6 +1773,7 @@ mod tests {
             settings_dirty_since: None,
             toast: None,
             cached_entries: HashMap::new(),
+        pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,

@@ -60,18 +60,21 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
     let mut common_count: u32 = 0;
 
     for entry in cached_entries.values() {
-        achievement_total += entry.progress.total;
-        earned_total += entry.progress.earned;
-
         if entry.achievements.is_empty() {
             continue;
         }
-
         let tier_map = compute_tier_map_from_cached(&entry.achievements);
+        if tier_map.is_empty() {
+            continue;
+        }
+
+        achievement_total += entry.achievements.len() as u32;
+
         for ach in &entry.achievements {
             if !ach.earned {
                 continue;
             }
+            earned_total += 1;
             match tier_map.get(&ach.api_name).copied() {
                 Some(RarityTier::Legendary) => legendary_count += 1,
                 Some(RarityTier::Mythical) => mythical_count += 1,
@@ -436,8 +439,10 @@ fn build_rarity_bar(summary: &ProfileSummary) -> Element<'static, crate::Message
     ];
 
     let total_unlocked: u32 = tiers.iter().map(|(_, c)| c).sum();
+    let total = summary.achievement_total;
+    let locked = total.saturating_sub(total_unlocked);
 
-    if total_unlocked == 0 {
+    if total == 0 {
         return container(iced::widget::Space::new())
             .width(Length::Fill)
             .height(Length::Fixed(8.0))
@@ -470,6 +475,17 @@ fn build_rarity_bar(summary: &ProfileSummary) -> Element<'static, crate::Message
         bar_row = bar_row.push(segment);
     }
 
+    if locked > 0 {
+        let locked_segment = container(iced::widget::Space::new())
+            .width(Length::FillPortion(locked.min(u16::MAX as u32) as u16))
+            .height(Length::Fixed(8.0))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(C_TEXT_DIM)),
+                ..container::Style::default()
+            });
+        bar_row = bar_row.push(locked_segment);
+    }
+
     container(bar_row)
         .width(Length::Fill)
         .height(Length::Fixed(8.0))
@@ -493,32 +509,39 @@ fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, crate::Messa
         (RarityTier::Legendary, summary.legendary_count),
     ];
 
+    let total_unlocked: u32 = tiers.iter().map(|(_, c)| c).sum();
+    let locked = summary.achievement_total.saturating_sub(total_unlocked);
+
     let mut cards = row![].spacing(6);
 
     for (tier, count) in tiers {
-        cards = cards.push(build_rarity_card(tier, count));
+        cards = cards.push(build_count_card(rarity_color(tier), rarity_label(tier), count));
     }
+
+    cards = cards.push(build_count_card(C_TEXT_DIM, "LOCKED", locked));
 
     cards.into()
 }
 
-fn build_rarity_card<'a>(tier: RarityTier, count: u32) -> Element<'a, crate::Message> {
-    let color = rarity_color(tier);
-    let label = rarity_label(tier);
+fn build_count_card<'a>(
+    accent: Color,
+    label: &'static str,
+    count: u32,
+) -> Element<'a, crate::Message> {
     let count_str = format_thousands(count);
 
     let stripe = container(iced::widget::Space::new())
         .width(Length::Fixed(3.0))
         .height(Length::Fill)
         .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(color)),
+            background: Some(iced::Background::Color(accent)),
             ..container::Style::default()
         });
 
-    let number = text(count_str).size(18).color(color);
-    let tier_label = text(label).size(10).color(C_TEXT_MUTED);
+    let number = text(count_str).size(18).color(accent);
+    let label_text = text(label).size(10).color(C_TEXT_MUTED);
 
-    let info_col = column![number, tier_label]
+    let info_col = column![number, label_text]
         .spacing(4)
         .padding(Padding::default().left(8).right(6).top(6).bottom(6));
 
@@ -527,7 +550,7 @@ fn build_rarity_card<'a>(tier: RarityTier, count: u32) -> Element<'a, crate::Mes
     container(card_inner)
         .width(Length::FillPortion(1))
         .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color { a: 0.08, ..color })),
+            background: Some(iced::Background::Color(Color { a: 0.08, ..accent })),
             border: iced::Border {
                 radius: 4.0.into(),
                 ..iced::Border::default()
