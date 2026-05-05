@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image as img_widget, mouse_area, responsive, row, scrollable, stack,
-    text, text_input,
+    text, text_input, tooltip,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -234,18 +234,23 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
 
 fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {
     let label = text("SORT").size(11).color(C_TEXT_MUTED);
-    let segment = segment_row(&[
-        (
-            "Last played",
-            current == LibrarySort::LastPlayed,
-            crate::Message::ProfileView(ProfileViewMessage::SortChanged(LibrarySort::LastPlayed)),
-        ),
-        (
-            "A\u{2013}Z",
-            current == LibrarySort::NameAsc,
-            crate::Message::ProfileView(ProfileViewMessage::SortChanged(LibrarySort::NameAsc)),
-        ),
-    ]);
+    let order = [
+        LibrarySort::NameAsc,
+        LibrarySort::LastPlayed,
+        LibrarySort::Completion,
+    ];
+    let items: Vec<(&'static str, Option<&'static str>, bool, crate::Message)> = order
+        .iter()
+        .map(|&s| {
+            (
+                s.short_label(),
+                Some(s.tooltip()),
+                current == s,
+                crate::Message::ProfileView(ProfileViewMessage::SortChanged(s)),
+            )
+        })
+        .collect();
+    let segment = segment_row(&items);
     row![label, segment]
         .spacing(6)
         .align_y(Alignment::Center)
@@ -257,11 +262,13 @@ fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> 
     let segment = segment_row(&[
         (
             "S",
+            None,
             current == CapsuleSize::Small,
             crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Small)),
         ),
         (
             "M",
+            None,
             current == CapsuleSize::Medium,
             crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(
                 CapsuleSize::Medium,
@@ -269,6 +276,7 @@ fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> 
         ),
         (
             "L",
+            None,
             current == CapsuleSize::Large,
             crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Large)),
         ),
@@ -279,11 +287,13 @@ fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> 
         .into()
 }
 
-fn segment_row(items: &[(&'static str, bool, crate::Message)]) -> Element<'static, crate::Message> {
+fn segment_row(
+    items: &[(&'static str, Option<&'static str>, bool, crate::Message)],
+) -> Element<'static, crate::Message> {
     let mut r = row![].spacing(0).align_y(Alignment::Center);
     let last_idx = items.len().saturating_sub(1);
 
-    for (idx, (label, active, msg)) in items.iter().enumerate() {
+    for (idx, (label, hint, active, msg)) in items.iter().enumerate() {
         let active = *active;
         let msg = msg.clone();
 
@@ -323,7 +333,28 @@ fn segment_row(items: &[(&'static str, bool, crate::Message)]) -> Element<'stati
             }
         });
 
-        r = r.push(btn);
+        let item_el: Element<'static, crate::Message> = match hint {
+            Some(text_str) => tooltip(
+                btn,
+                container(text(*text_str).size(11).color(C_TEXT_PRIMARY))
+                    .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+                    .style(|_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(Color::from_rgba(
+                            0.10, 0.09, 0.14, 0.95,
+                        ))),
+                        border: iced::Border {
+                            color: Color { a: 0.5, ..C_ACCENT },
+                            width: 1.0,
+                            radius: 4.0.into(),
+                        },
+                        ..container::Style::default()
+                    }),
+                tooltip::Position::Bottom,
+            )
+            .into(),
+            None => btn.into(),
+        };
+        r = r.push(item_el);
 
         if idx < last_idx {
             let divider = container(iced::widget::Space::new().width(1.0).height(20.0))

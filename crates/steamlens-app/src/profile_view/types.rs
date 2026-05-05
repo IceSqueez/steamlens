@@ -79,6 +79,25 @@ pub struct TopEntry {
 pub enum LibrarySort {
     LastPlayed,
     NameAsc,
+    Completion,
+}
+
+impl LibrarySort {
+    pub fn short_label(&self) -> &'static str {
+        match self {
+            LibrarySort::NameAsc => "A–Z",
+            LibrarySort::LastPlayed => "LP",
+            LibrarySort::Completion => "C",
+        }
+    }
+
+    pub fn tooltip(&self) -> &'static str {
+        match self {
+            LibrarySort::NameAsc => "Sort by name (A → Z)",
+            LibrarySort::LastPlayed => "Sort by last played",
+            LibrarySort::Completion => "Sort by completion % (highest first)",
+        }
+    }
 }
 
 impl std::fmt::Display for LibrarySort {
@@ -86,6 +105,7 @@ impl std::fmt::Display for LibrarySort {
         match self {
             LibrarySort::LastPlayed => write!(f, "Last Played"),
             LibrarySort::NameAsc => write!(f, "Name (A\u{2013}Z)"),
+            LibrarySort::Completion => write!(f, "Completion"),
         }
     }
 }
@@ -326,6 +346,28 @@ fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
                     .cmp(&b.summary.name.to_lowercase())
             });
         }
+        LibrarySort::Completion => {
+            entries.sort_by(|a, b| {
+                let pct_b = completion_pct(b);
+                let pct_a = completion_pct(a);
+                pct_b
+                    .partial_cmp(&pct_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        a.summary
+                            .name
+                            .to_lowercase()
+                            .cmp(&b.summary.name.to_lowercase())
+                    })
+            });
+        }
+    }
+}
+
+fn completion_pct(entry: &GameEntry) -> f32 {
+    match entry.progress {
+        Some(p) if p.total > 0 => p.earned as f32 / p.total as f32,
+        _ => -1.0,
     }
 }
 
@@ -482,6 +524,73 @@ mod tests {
         assert_eq!(names[0], "Apple");
         assert_eq!(names[1], "banana");
         assert_eq!(names[2], "cherry");
+    }
+
+    fn make_entry_with_progress(
+        app_id: u32,
+        name: &str,
+        earned: u32,
+        total: u32,
+    ) -> GameEntry {
+        GameEntry {
+            summary: make_summary(app_id, name, None),
+            capsule: CapsuleAsset::Pending,
+            progress: Some(ProgressData { earned, total }),
+        }
+    }
+
+    #[test]
+    fn sort_completion_descending_highest_pct_first() {
+        let mut state = make_state_with_games(vec![
+            make_entry_with_progress(1, "Half", 50, 100),  // 50%
+            make_entry_with_progress(2, "Done", 99, 100),  // 99%
+            make_entry_with_progress(3, "Tiny", 1, 100),   //  1%
+            make_entry_with_progress(4, "Mid", 75, 100),   // 75%
+        ]);
+        state.sort = LibrarySort::Completion;
+
+        let visible = state.visible_games(&[]);
+        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+
+        assert_eq!(names, vec!["Done", "Mid", "Half", "Tiny"]);
+    }
+
+    #[test]
+    fn sort_completion_games_without_progress_sort_to_end() {
+        let mut state = make_state_with_games(vec![
+            make_entry_with_progress(1, "Real", 50, 100),
+            make_entry(2, "NoData", None),
+            make_entry_with_progress(3, "Hot", 90, 100),
+        ]);
+        state.sort = LibrarySort::Completion;
+
+        let visible = state.visible_games(&[]);
+        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+
+        assert_eq!(names, vec!["Hot", "Real", "NoData"]);
+    }
+
+    #[test]
+    fn sort_completion_ties_break_by_name_ascending() {
+        let mut state = make_state_with_games(vec![
+            make_entry_with_progress(1, "Bravo", 50, 100),
+            make_entry_with_progress(2, "Alpha", 50, 100),
+            make_entry_with_progress(3, "charlie", 50, 100),
+        ]);
+        state.sort = LibrarySort::Completion;
+
+        let visible = state.visible_games(&[]);
+        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+
+        assert_eq!(names, vec!["Alpha", "Bravo", "charlie"]);
+    }
+
+    #[test]
+    fn library_sort_short_label_and_tooltip() {
+        assert_eq!(LibrarySort::NameAsc.short_label(), "A\u{2013}Z");
+        assert_eq!(LibrarySort::LastPlayed.short_label(), "LP");
+        assert_eq!(LibrarySort::Completion.short_label(), "C");
+        assert!(!LibrarySort::Completion.tooltip().is_empty());
     }
 
     #[test]
