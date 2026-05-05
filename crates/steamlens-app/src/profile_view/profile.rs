@@ -9,7 +9,7 @@ use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::game_view::types::RarityTier;
 use crate::profile_view::types::LoaderPhase;
 use crate::theme::{
-    C_ACCENT, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
+    C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
 };
 
 use super::types::{GameEntry, TopEntry};
@@ -231,6 +231,7 @@ pub fn top5_closest_to_complete(
 
 /// Renders the full profile widget: 2-column main area (stats left, closest-to-complete right)
 /// plus an optional bottom loader strip.
+#[allow(clippy::too_many_arguments)]
 pub fn profile_widget<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
@@ -239,8 +240,15 @@ pub fn profile_widget<'a>(
     loader_phase: LoaderPhase,
     loader_hiding_since: Option<Instant>,
     games_count: usize,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
-    let left_col = build_left_column(user_profile, avatar_handle, summary, games_count);
+    let left_col = build_left_column(
+        user_profile,
+        avatar_handle,
+        summary,
+        games_count,
+        skeleton_phase,
+    );
     let right_col = build_right_column(top5);
 
     const PROFILE_ROW_HEIGHT: f32 = 290.0;
@@ -290,8 +298,15 @@ fn build_left_column<'a>(
     avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     games_count: usize,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
-    let header_row = build_profile_header(user_profile, avatar_handle, summary, games_count);
+    let header_row = build_profile_header(
+        user_profile,
+        avatar_handle,
+        summary,
+        games_count,
+        skeleton_phase,
+    );
     let rarity_bar = build_rarity_bar(summary);
     let rarity_cards = build_rarity_cards(summary);
 
@@ -305,16 +320,17 @@ fn build_profile_header<'a>(
     avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     games_count: usize,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     let persona = user_profile
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
 
-    let avatar = build_avatar(avatar_handle, persona);
+    let avatar = build_avatar(avatar_handle, skeleton_phase);
 
-    let nick_label = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
+    let nickname = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
 
-    let level_chip = container(text("Lvl \u{2014}").size(11).color(C_ACCENT))
+    let profile_level = container(text("lvl \u{2014}").size(11).color(C_ACCENT))
         .padding(Padding::default().left(6).right(6).top(2).bottom(2))
         .style(|_: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(Color {
@@ -332,15 +348,18 @@ fn build_profile_header<'a>(
             ..container::Style::default()
         });
 
-    let nick_row = row![nick_label, level_chip]
+    let nickname_row = row![nickname, profile_level]
         .spacing(6)
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Start);
 
-    let games_label = text(format!("{games_count} games tracked"))
+    let tracked_games = text(format!("{games_count} games tracked"))
         .size(12)
         .color(C_TEXT_MUTED);
 
-    let left_info = column![nick_row, games_label].spacing(2);
+    let info = column![nickname_row, tracked_games].spacing(2);
+    let info_block = container(info)
+        .height(Length::Fill)
+        .align_y(Alignment::Start);
 
     let earned = summary.earned_total;
     let total = summary.achievement_total;
@@ -351,7 +370,7 @@ fn build_profile_header<'a>(
     };
 
     let earned_text = text(format_thousands(earned))
-        .size(24)
+        .size(16)
         .color(C_TEXT_PRIMARY);
     let total_text = text(format!("/ {}", format_thousands(total)))
         .size(16)
@@ -362,26 +381,29 @@ fn build_profile_header<'a>(
         .spacing(6)
         .align_y(Alignment::Center);
 
-    let right_info = column![counter_row, pct_text]
+    let earnings = column![counter_row, pct_text]
         .spacing(4)
         .align_x(Alignment::End);
+    let earnings_block = container(earnings)
+        .height(Length::Fill)
+        .align_y(Alignment::End);
 
     row![
         avatar,
-        left_info,
+        info_block,
         iced::widget::Space::new().width(Length::Fill),
-        right_info,
+        earnings_block,
     ]
     .spacing(14)
-    .align_y(Alignment::Center)
+    .height(Length::Fixed(AVATAR_SIZE))
     .into()
 }
 
-const AVATAR_SIZE: f32 = 112.0;
+const AVATAR_SIZE: f32 = 100.0;
 
 fn build_avatar<'a>(
     avatar_handle: Option<&'a ImageHandle>,
-    persona: &'a str,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     if let Some(handle) = avatar_handle {
         return container(
@@ -401,47 +423,7 @@ fn build_avatar<'a>(
         .into();
     }
 
-    build_avatar_initials(persona)
-}
-
-fn build_avatar_initials(persona: &str) -> Element<'_, crate::Message> {
-    let mut words = persona.split_whitespace();
-    let first = words
-        .next()
-        .and_then(|w| w.chars().next())
-        .unwrap_or('?')
-        .to_uppercase()
-        .next()
-        .unwrap_or('?');
-    let second = words
-        .next()
-        .and_then(|w| w.chars().next())
-        .unwrap_or(first)
-        .to_uppercase()
-        .next()
-        .unwrap_or(first);
-
-    let initials = format!("{first}{second}");
-
-    container(
-        text(initials)
-            .size(36)
-            .color(C_APP)
-            .align_x(Alignment::Center),
-    )
-    .width(Length::Fixed(AVATAR_SIZE))
-    .height(Length::Fixed(AVATAR_SIZE))
-    .align_x(Alignment::Center)
-    .align_y(Alignment::Center)
-    .style(|_: &iced::Theme| container::Style {
-        background: Some(iced::Background::Color(C_ACCENT)),
-        border: iced::Border {
-            radius: 8.0.into(),
-            ..iced::Border::default()
-        },
-        ..container::Style::default()
-    })
-    .into()
+    crate::skeleton::skeleton_box(AVATAR_SIZE, AVATAR_SIZE, skeleton_phase)
 }
 
 fn build_rarity_bar(summary: &ProfileSummary) -> Element<'static, crate::Message> {

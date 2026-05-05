@@ -93,8 +93,13 @@ fn render_inner<'a>(
 ) -> Element<'a, crate::Message> {
     let header = build_header(state);
 
-    let profile_section =
-        build_profile_section(state, user_profile, avatar_handle, cached_entries);
+    let profile_section = build_profile_section(
+        state,
+        user_profile,
+        avatar_handle,
+        cached_entries,
+        skeleton_phase,
+    );
 
     let body: Element<'_, crate::Message> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
@@ -124,6 +129,7 @@ fn build_profile_section<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
@@ -135,6 +141,7 @@ fn build_profile_section<'a>(
         state.loader_phase(),
         state.loader_hiding_since,
         state.games.len(),
+        skeleton_phase,
     )
 }
 
