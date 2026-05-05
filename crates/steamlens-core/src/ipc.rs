@@ -20,6 +20,12 @@ pub enum FrameError {
 pub enum WorkerCommand {
     Hello,
     LoadAchievementsAndStats,
+    /// Same as `LoadAchievementsAndStats` but skips per-achievement icon
+    /// fetches.  Used by the bulk library scanner where icons are not needed
+    /// (the cache only stores icon paths, never raw RGBA, and GameView
+    /// re-fetches icons via async callbacks anyway).  Cuts the IPC payload
+    /// from tens of MB to ~50 KB per game.
+    LoadAchievementsAndStatsLite,
     SetAchievement(String),
     ClearAchievement(String),
     SetStatInt {
@@ -151,6 +157,7 @@ mod tests {
         vec![
             WorkerCommand::Hello,
             WorkerCommand::LoadAchievementsAndStats,
+            WorkerCommand::LoadAchievementsAndStatsLite,
             WorkerCommand::SetAchievement("ACH_WIN".to_owned()),
             WorkerCommand::ClearAchievement("ACH_LOSE".to_owned()),
             WorkerCommand::SetStatInt {

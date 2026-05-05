@@ -139,40 +139,120 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
             app_id,
             data: Some(data),
         },
-        Err(e) => {
-            eprintln!("[steamlens] progress_scan: app_id={app_id} failed: {e}");
+        Err((err, diag)) => {
+            if diag.is_empty() {
+                eprintln!("[steamlens] progress_scan: app_id={app_id} failed: {err}");
+            } else {
+                eprintln!(
+                    "[steamlens] progress_scan: app_id={app_id} failed: {err}\n--- worker diagnostics ---\n{}--- end diagnostics ---",
+                    diag
+                );
+            }
             ProgressResult { app_id, data: None }
         }
     }
 }
 
-async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, Box<dyn std::error::Error + Send>> {
-    let exe =
-        std::env::current_exe().map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+type ScanError = (Box<dyn std::error::Error + Send>, String);
+
+async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
+    let exe = std::env::current_exe()
+        .map_err(|e| (Box::new(e) as Box<dyn std::error::Error + Send>, String::new()))?;
 
     let mut child = Command::new(&exe)
         .arg("--worker")
         .arg(app_id.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+        .map_err(|e| (Box::new(e) as Box<dyn std::error::Error + Send>, String::new()))?;
+
+    let stderr_pipe = child.stderr.take();
+    let stderr_task = tokio::spawn(async move {
+        let Some(mut stderr) = stderr_pipe else {
+            return Vec::new();
+        };
+        let mut buf = Vec::new();
+        let _ = stderr.read_to_end(&mut buf).await;
+        buf
+    });
 
     let total_timeout = CONNECT_TIMEOUT + LOAD_TIMEOUT + PERCENTAGES_TIMEOUT;
-    let result =
-        tokio::time::timeout(total_timeout, run_full_scan_protocol(&mut child)).await;
+    let result = tokio::time::timeout(total_timeout, run_full_scan_protocol(&mut child)).await;
 
     let _ = child.start_kill();
-    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+    let exit_status = tokio::time::timeout(Duration::from_secs(2), child.wait())
+        .await
+        .ok()
+        .and_then(|r| r.ok());
+
+    let stderr_bytes = tokio::time::timeout(Duration::from_secs(1), stderr_task)
+        .await
+        .ok()
+        .and_then(|res| res.ok())
+        .unwrap_or_default();
+    let stderr_str = String::from_utf8_lossy(&stderr_bytes).into_owned();
+
+    let mut diag = format!("worker {}\n", format_exit_status(exit_status.as_ref()));
+    if !stderr_str.is_empty() {
+        diag.push_str(&stderr_str);
+    }
 
     match result {
-        Err(_) => Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "worker timed out",
-        )) as Box<dyn std::error::Error + Send>),
-        Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
+        Err(_) => Err((
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "worker timed out",
+            )) as Box<dyn std::error::Error + Send>,
+            diag,
+        )),
+        Ok(Err(e)) => Err((Box::new(e) as Box<dyn std::error::Error + Send>, diag)),
         Ok(Ok(data)) => Ok(data),
+    }
+}
+
+#[cfg(unix)]
+fn format_exit_status(status: Option<&std::process::ExitStatus>) -> String {
+    use std::os::unix::process::ExitStatusExt;
+    let Some(s) = status else {
+        return "exit status unavailable".to_owned();
+    };
+    if let Some(code) = s.code() {
+        format!("exited with code {code}")
+    } else if let Some(sig) = s.signal() {
+        format!("killed by signal {} ({})", sig, signal_name(sig))
+    } else {
+        format!("{s:?}")
+    }
+}
+
+#[cfg(not(unix))]
+fn format_exit_status(status: Option<&std::process::ExitStatus>) -> String {
+    let Some(s) = status else {
+        return "exit status unavailable".to_owned();
+    };
+    if let Some(code) = s.code() {
+        format!("exited with code {code}")
+    } else {
+        format!("{s:?}")
+    }
+}
+
+#[cfg(unix)]
+fn signal_name(sig: i32) -> &'static str {
+    match sig {
+        1 => "SIGHUP",
+        2 => "SIGINT",
+        3 => "SIGQUIT",
+        4 => "SIGILL",
+        6 => "SIGABRT",
+        8 => "SIGFPE",
+        9 => "SIGKILL",
+        11 => "SIGSEGV",
+        13 => "SIGPIPE",
+        15 => "SIGTERM",
+        _ => "unknown",
     }
 }
 
@@ -209,44 +289,13 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         }
     };
 
-    send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStats).await?;
-    let load_response = tokio::time::timeout(LOAD_TIMEOUT, read_response(&mut stdout))
-        .await
-        .map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "timed out waiting for AchievementsAndStats",
-            )
-        })?
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "worker closed before AchievementsAndStats",
-            )
-        })?;
-
-    let (achievements, stats) = match load_response {
-        WorkerResponse::AchievementsAndStats {
-            achievements,
-            stats,
-        } => (achievements, stats),
-        WorkerResponse::Error { message, .. } => {
-            return Err(std::io::Error::other(message));
-        }
-        _ => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "unexpected response to LoadAchievementsAndStats",
-            ));
-        }
-    };
+    send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsLite).await?;
+    let (achievements, stats) =
+        read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
 
     send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
     let global_percentages =
-        match tokio::time::timeout(PERCENTAGES_TIMEOUT, read_response(&mut stdout)).await {
-            Ok(Some(WorkerResponse::GlobalPercentagesReady(map))) => map,
-            _ => HashMap::new(),
-        };
+        read_percentages_skipping_async(&mut stdout, PERCENTAGES_TIMEOUT).await;
 
     let _ = send_command(&mut stdin, &WorkerCommand::Shutdown).await;
 
@@ -256,6 +305,78 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         stats,
         global_percentages,
     })
+}
+
+/// Reads `WorkerResponse` frames from `stdout` and returns the achievements/
+/// stats payload from the first `AchievementsAndStats` frame seen, discarding
+/// async noise that arrives in between (`IconUpdated` from the child's
+/// background callback poll, leftover `GlobalPercentagesReady` from previous
+/// commands, etc.). Bounded by an overall `total_timeout`.
+async fn read_achievements_skipping_async(
+    stdout: &mut ChildStdout,
+    total_timeout: Duration,
+) -> Result<(Vec<AchievementData>, Vec<StatData>), std::io::Error> {
+    let deadline = tokio::time::Instant::now() + total_timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out waiting for AchievementsAndStats",
+            ));
+        }
+        let frame = tokio::time::timeout(remaining, read_response(stdout))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out waiting for AchievementsAndStats",
+                )
+            })?
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "worker closed before AchievementsAndStats",
+                )
+            })?;
+        match frame {
+            WorkerResponse::AchievementsAndStats {
+                achievements,
+                stats,
+            } => return Ok((achievements, stats)),
+            WorkerResponse::Error { message, .. } => {
+                return Err(std::io::Error::other(message));
+            }
+            // Async noise — keep reading.
+            _ => continue,
+        }
+    }
+}
+
+/// Reads frames until a `GlobalPercentagesReady(map)` arrives. Async noise
+/// (icon callbacks, etc.) is silently discarded. On timeout, error frame, or
+/// pipe close, returns an empty map — percentages are nice-to-have during a
+/// bulk scan; missing rarity data just yields an empty `tier_breakdown`.
+async fn read_percentages_skipping_async(
+    stdout: &mut ChildStdout,
+    total_timeout: Duration,
+) -> HashMap<String, f32> {
+    let deadline = tokio::time::Instant::now() + total_timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return HashMap::new();
+        }
+        let frame = match tokio::time::timeout(remaining, read_response(stdout)).await {
+            Ok(Some(f)) => f,
+            _ => return HashMap::new(),
+        };
+        match frame {
+            WorkerResponse::GlobalPercentagesReady(map) => return map,
+            WorkerResponse::Error { .. } => return HashMap::new(),
+            _ => continue,
+        }
+    }
 }
 
 async fn read_response(stdout: &mut ChildStdout) -> Option<WorkerResponse> {

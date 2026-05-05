@@ -133,10 +133,10 @@ async fn worker_main(app_id: u32) -> i32 {
         return 1;
     }
 
-    dispatch_loop(client).await
+    dispatch_loop(client, app_id).await
 }
 
-async fn dispatch_loop(client: Client) -> i32 {
+async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
     let mut stdin = tokio::io::stdin();
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -156,7 +156,7 @@ async fn dispatch_loop(client: Client) -> i32 {
                     }
                     Ok(None) => return 0,
                     Ok(Some(command)) => {
-                        match handle_command(command, &client).await {
+                        match handle_command(command, &client, app_id).await {
                             DispatchOutcome::Continue => {}
                             DispatchOutcome::Shutdown => return 0,
                             DispatchOutcome::Fatal => return 1,
@@ -180,7 +180,7 @@ enum DispatchOutcome {
     Fatal,
 }
 
-async fn handle_command(cmd: WorkerCommand, client: &Client) -> DispatchOutcome {
+async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
     match cmd {
         WorkerCommand::Hello => {
             let resp = WorkerResponse::Hello {
@@ -193,7 +193,18 @@ async fn handle_command(cmd: WorkerCommand, client: &Client) -> DispatchOutcome 
         }
 
         WorkerCommand::LoadAchievementsAndStats => {
-            let resp = load_achievements_and_stats(client);
+            let resp = load_achievements_and_stats(client, app_id, true);
+            if write_response(&resp).await.is_err() {
+                return DispatchOutcome::Fatal;
+            }
+            let pct = fetch_global_percentages(client);
+            if write_response(&pct).await.is_err() {
+                return DispatchOutcome::Fatal;
+            }
+        }
+
+        WorkerCommand::LoadAchievementsAndStatsLite => {
+            let resp = load_achievements_and_stats(client, app_id, false);
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -293,7 +304,11 @@ async fn handle_command(cmd: WorkerCommand, client: &Client) -> DispatchOutcome 
     DispatchOutcome::Continue
 }
 
-fn load_achievements_and_stats(client: &Client) -> WorkerResponse {
+fn load_achievements_and_stats(
+    client: &Client,
+    app_id: u32,
+    with_icons: bool,
+) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
@@ -344,19 +359,23 @@ fn load_achievements_and_stats(client: &Client) -> WorkerResponse {
             Some(unlock_time)
         };
 
-        let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
-        let icon = if handle == 0 {
-            None
+        let icon = if with_icons {
+            let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
+            if handle == 0 {
+                None
+            } else {
+                client
+                    .get_image(handle)
+                    .ok()
+                    .flatten()
+                    .map(|img| AchievementIcon {
+                        width: img.width,
+                        height: img.height,
+                        rgba: img.rgba,
+                    })
+            }
         } else {
-            client
-                .get_image(handle)
-                .ok()
-                .flatten()
-                .map(|img| AchievementIcon {
-                    width: img.width,
-                    height: img.height,
-                    rgba: img.rgba,
-                })
+            None
         };
 
         achievements.push(AchievementData {
@@ -371,7 +390,6 @@ fn load_achievements_and_stats(client: &Client) -> WorkerResponse {
         });
     }
 
-    let app_id = client.app_id();
     let descriptors = client.stat_descriptors(app_id).unwrap_or_default();
     let mut stats = Vec::with_capacity(descriptors.len());
     for desc in descriptors {
@@ -681,9 +699,17 @@ async fn read_command(
 }
 
 async fn write_response(msg: &WorkerResponse) -> Result<(), WorkerError> {
-    let framed = encode_frame(msg)?;
+    let framed = match encode_frame(msg) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("[worker] write_response: encode_frame failed: {e}");
+            return Err(WorkerError::Frame(e));
+        }
+    };
     let mut stdout = tokio::io::stdout();
-    stdout.write_all(&framed).await?;
+    if let Err(e) = stdout.write_all(&framed).await {
+        return Err(WorkerError::Io(e));
+    }
     stdout.flush().await?;
     Ok(())
 }
