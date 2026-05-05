@@ -44,6 +44,7 @@ enum Message {
     PollWorker,
     KeyboardEvent(keyboard::Event),
     DrainProgressResults,
+    SplashDone,
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
@@ -83,6 +84,10 @@ struct App {
     steamid3: u64,
     /// Local Steam user profile (persona name + avatar). Loaded once at boot.
     user_profile: Option<UserProfile>,
+    /// True for ~600 ms after boot — renders the splash overlay instead of the
+    /// underlying screen so iced has time to settle and the user sees a
+    /// branded handover before the live view appears.
+    splash_visible: bool,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -115,9 +120,15 @@ fn boot() -> (App, Task<Message>) {
         steam_root,
         steamid3,
         user_profile: profile_result.ok(),
+        splash_visible: true,
     };
 
-    (app, Task::none())
+    let splash_task = Task::perform(
+        async { tokio::time::sleep(std::time::Duration::from_millis(600)).await },
+        |_| Message::SplashDone,
+    );
+
+    (app, splash_task)
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -615,6 +626,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::SplashDone => {
+            app.splash_visible = false;
+            Task::none()
+        }
+
         Message::ToastTick => {
             if let Some(toast) = &app.toast
                 && Instant::now() >= toast.expires_at
@@ -804,11 +820,41 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::GameView(state) => game_view::view(state),
     };
 
-    if let Some(toast) = &app.toast {
+    let with_toast = if let Some(toast) = &app.toast {
         toast_overlay(screen_content, &toast.message)
     } else {
         screen_content
+    };
+
+    if app.splash_visible {
+        splash_view()
+    } else {
+        with_toast
     }
+}
+
+fn splash_view<'a>() -> Element<'a, Message> {
+    let title = text("SteamLens")
+        .size(40)
+        .color(Color::from_rgb(0.741, 0.576, 0.976));
+    let subtitle = text("starting up…")
+        .size(13)
+        .color(Color::from_rgba(0.7, 0.7, 0.78, 0.85));
+
+    let content = column![title, subtitle]
+        .spacing(8)
+        .align_x(iced::Alignment::Center);
+
+    container(content)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center_x(iced::Length::Fill)
+        .center_y(iced::Length::Fill)
+        .style(|_theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(Color::from_rgb(0.10, 0.08, 0.16))),
+            ..Default::default()
+        })
+        .into()
 }
 
 fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element<'a, Message> {
@@ -998,6 +1044,7 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
+            splash_visible: false,
         }
     }
 
@@ -1536,6 +1583,7 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
+            splash_visible: false,
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));

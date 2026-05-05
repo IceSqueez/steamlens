@@ -116,7 +116,10 @@ async fn fetch_count_for_app(app_id: u32) -> ProgressResult {
             app_id,
             data: Some(data),
         },
-        Err(_) => ProgressResult { app_id, data: None },
+        Err(e) => {
+            eprintln!("[steamlens] progress_scan: app_id={app_id} failed: {e}");
+            ProgressResult { app_id, data: None }
+        }
     }
 }
 
