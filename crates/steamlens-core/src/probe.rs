@@ -10,6 +10,7 @@ use crate::ipc::{WorkerResponse, decode_frame, parse_header};
 ///
 /// Produced by `probe_steam` when the Steam client is running and the child
 /// worker exits cleanly with a `WorkerResponse::ProbeResult` frame.
+#[derive(Debug, Clone)]
 pub struct ProbedProfile {
     pub steam_id: u64,
     pub persona_name: String,

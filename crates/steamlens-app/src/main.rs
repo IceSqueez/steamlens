@@ -22,7 +22,7 @@ use game_view::{GameViewMessage, GameViewState};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
-use steamlens_core::UserProfile;
+use steamlens_core::{ProbedProfile, UserProfile};
 
 #[derive(Debug)]
 enum Screen {
@@ -47,6 +47,7 @@ enum Message {
     KeyboardEvent(keyboard::Event),
     DrainProgressResults,
     SplashMinElapsed,
+    ProbeResult(Result<ProbedProfile, String>),
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
@@ -100,12 +101,18 @@ struct App {
     /// Decoded avatar `ImageHandle`, cached at boot. Reused across renders so
     /// the avatar PNG is decoded once (not on every view() invocation).
     profile_avatar_handle: Option<iced::widget::image::Handle>,
-    /// Splash overlay stays visible until BOTH the 750 ms minimum has elapsed
-    /// AND the library scan has reported back (`ScanComplete` or `ScanFailed`).
-    /// Whichever takes longer wins — splash is a branded handover for the
-    /// actual load, not a cosmetic delay.
+    /// Splash overlay stays visible until ALL of: the 750 ms minimum has
+    /// elapsed, the library scan has reported back, and the Steam liveness
+    /// probe has resolved. Whichever takes longest wins — splash is a branded
+    /// handover for the actual load, not a cosmetic delay.
     splash_min_elapsed: bool,
     splash_scan_done: bool,
+    splash_probe_done: bool,
+    /// `None` while the probe is in flight; `Some(true)` once we confirmed
+    /// Steam is up; `Some(false)` after a probe failure (Steam off, timeout,
+    /// FFI error). UI uses this to decide whether to show the
+    /// "Steam is not running" banner.
+    steam_running: Option<bool>,
     skeleton_phase: f32,
 }
 
@@ -149,6 +156,8 @@ fn boot() -> (App, Task<Message>) {
         profile_avatar_handle,
         splash_min_elapsed: false,
         splash_scan_done: false,
+        splash_probe_done: false,
+        steam_running: None,
         skeleton_phase: 0.0,
     };
 
@@ -157,7 +166,16 @@ fn boot() -> (App, Task<Message>) {
         |_| Message::SplashMinElapsed,
     );
 
-    (app, min_splash_task)
+    let probe_task = Task::perform(
+        async {
+            steamlens_core::probe_steam(std::time::Duration::from_secs(3))
+                .await
+                .map_err(|e| e.to_string())
+        },
+        Message::ProbeResult,
+    );
+
+    (app, Task::batch([min_splash_task, probe_task]))
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -694,6 +712,36 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::ProbeResult(result) => {
+            app.splash_probe_done = true;
+            match result {
+                Ok(p) => {
+                    app.steam_running = Some(true);
+                    let account_name = app
+                        .user_profile
+                        .as_ref()
+                        .map(|u| u.account_name.clone())
+                        .unwrap_or_default();
+                    app.steamid3 = p.steam_id.saturating_sub(76_561_197_960_265_728);
+                    app.profile_avatar_handle = p
+                        .avatar_png_bytes
+                        .as_ref()
+                        .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
+                    app.user_profile = Some(UserProfile {
+                        steam_id: p.steam_id,
+                        persona_name: p.persona_name,
+                        account_name,
+                        avatar_png_bytes: p.avatar_png_bytes,
+                    });
+                }
+                Err(e) => {
+                    app.steam_running = Some(false);
+                    eprintln!("[steamlens] probe failed: {e}");
+                }
+            }
+            Task::none()
+        }
+
         Message::ToastTick => {
             if let Some(toast) = &app.toast
                 && Instant::now() >= toast.expires_at
@@ -961,7 +1009,7 @@ fn view(app: &App) -> Element<'_, Message> {
         screen_content
     };
 
-    if app.splash_min_elapsed && app.splash_scan_done {
+    if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
         with_toast
     } else {
         splash_view()
@@ -1193,6 +1241,8 @@ mod tests {
             profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
+            splash_probe_done: true,
+            steam_running: Some(true),
             skeleton_phase: 0.0,
         }
     }
@@ -1220,6 +1270,136 @@ mod tests {
             matches!(app.screen, Screen::ProfileView(_)),
             "expected ProfileView after GoBack, got {}",
             screen_name(&app)
+        );
+    }
+
+    fn make_app_probing() -> App {
+        let mut app = make_app_not_running("");
+        app.screen = Screen::ProfileView(Box::new(ProfileViewState::new()));
+        app.splash_min_elapsed = false;
+        app.splash_scan_done = false;
+        app.splash_probe_done = false;
+        app.steam_running = None;
+        app.user_profile = None;
+        app.profile_avatar_handle = None;
+        app
+    }
+
+    #[test]
+    fn probe_result_ok_overrides_profile_and_marks_steam_running() {
+        let mut app = make_app_probing();
+        let probed = ProbedProfile {
+            steam_id: 76561198000000042,
+            persona_name: "TestUser".to_owned(),
+            avatar_png_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47]),
+        };
+        let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
+
+        assert_eq!(app.steam_running, Some(true));
+        assert!(app.splash_probe_done);
+        let profile = app.user_profile.as_ref().expect("profile must be set");
+        assert_eq!(profile.persona_name, "TestUser");
+        assert_eq!(profile.steam_id, 76561198000000042);
+        assert_eq!(app.steamid3, 76561198000000042 - 76_561_197_960_265_728);
+        assert!(app.profile_avatar_handle.is_some());
+    }
+
+    #[test]
+    fn probe_result_err_preserves_existing_profile() {
+        let mut app = make_app_probing();
+        let prior = UserProfile {
+            steam_id: 1,
+            persona_name: "DiskFallback".to_owned(),
+            account_name: "fallback".to_owned(),
+            avatar_png_bytes: None,
+        };
+        app.user_profile = Some(prior.clone());
+
+        let _t = update(
+            &mut app,
+            Message::ProbeResult(Err("Steam is not running".to_owned())),
+        );
+
+        assert_eq!(app.steam_running, Some(false));
+        assert!(app.splash_probe_done);
+        let profile = app.user_profile.as_ref().expect("profile must be preserved");
+        assert_eq!(profile.persona_name, "DiskFallback");
+        assert_eq!(profile.steam_id, 1);
+    }
+
+    #[test]
+    fn probe_result_err_with_no_prior_profile_keeps_none() {
+        let mut app = make_app_probing();
+        assert!(app.user_profile.is_none(), "precondition: no prior profile");
+
+        let _t = update(
+            &mut app,
+            Message::ProbeResult(Err("timeout".to_owned())),
+        );
+
+        assert_eq!(app.steam_running, Some(false));
+        assert!(app.splash_probe_done);
+        assert!(
+            app.user_profile.is_none(),
+            "no profile should remain None on probe error without disk fallback"
+        );
+    }
+
+    fn splash_visible(app: &App) -> bool {
+        !(app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done)
+    }
+
+    #[test]
+    fn splash_stays_until_all_three_signals_arrive() {
+        let mut app = make_app_probing();
+        assert!(splash_visible(&app), "all three pending → splash visible");
+
+        app.splash_min_elapsed = true;
+        assert!(splash_visible(&app), "only min-elapsed → splash visible");
+
+        app.splash_scan_done = true;
+        assert!(splash_visible(&app), "min+scan but no probe → splash visible");
+
+        app.splash_probe_done = true;
+        assert!(!splash_visible(&app), "all three done → splash hidden");
+    }
+
+    #[test]
+    fn splash_hidden_only_after_probe_resolves() {
+        let mut app = make_app_probing();
+        app.splash_min_elapsed = true;
+        app.splash_scan_done = true;
+        assert!(splash_visible(&app), "missing probe → still visible");
+
+        let _t = update(
+            &mut app,
+            Message::ProbeResult(Err("Steam is not running".to_owned())),
+        );
+        assert!(!splash_visible(&app), "probe-Err counts as resolved");
+    }
+
+    #[test]
+    fn account_name_preserved_when_probe_succeeds() {
+        let mut app = make_app_probing();
+        app.user_profile = Some(UserProfile {
+            steam_id: 1,
+            persona_name: "OldName".to_owned(),
+            account_name: "preserved_login".to_owned(),
+            avatar_png_bytes: None,
+        });
+
+        let probed = ProbedProfile {
+            steam_id: 76561198000000042,
+            persona_name: "LiveName".to_owned(),
+            avatar_png_bytes: None,
+        };
+        let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
+
+        let p = app.user_profile.as_ref().unwrap();
+        assert_eq!(p.persona_name, "LiveName", "persona overridden by probe");
+        assert_eq!(
+            p.account_name, "preserved_login",
+            "account_name from disk preserved (probe doesn't fetch it)"
         );
     }
 
@@ -1739,6 +1919,8 @@ mod tests {
             profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
+            splash_probe_done: true,
+            steam_running: Some(true),
             skeleton_phase: 0.0,
         };
 
@@ -1783,6 +1965,8 @@ mod tests {
             profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
+            splash_probe_done: true,
+            steam_running: Some(true),
             skeleton_phase: 0.0,
         }
     }
