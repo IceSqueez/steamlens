@@ -114,6 +114,7 @@ mod tests {
             name: format!("Game {app_id}"),
             last_played,
             achievement_count: 1,
+            change_number: 0,
         }
     }
 

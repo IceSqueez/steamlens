@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use thiserror::Error;
 
@@ -33,14 +33,22 @@ pub enum PackageInfoError {
     MissingAppidsBlock,
 }
 
-/// Parse the binary `packageinfo.vdf` wrapper and return the deduplicated,
-/// sorted list of all AppIDs across all packages.
+/// Parse the binary `packageinfo.vdf` wrapper and return a sorted
+/// `(app_id → change_number)` map deduplicating apps that appear in
+/// multiple packages.
+///
+/// `change_number` is the package's PICS change number — it advances when
+/// any depot/manifest of the package is updated. When an app appears in
+/// multiple packages we keep the maximum `change_number` (most recent
+/// observed change). Callers can use this number as a coarse "has this
+/// app's package been touched since I last looked?" signal for cache
+/// invalidation; it over-invalidates by package boundary (any sibling app
+/// update bumps it) but never under-invalidates.
 ///
 /// The slice must contain the full file contents, starting with the 8-byte
-/// header. Truncated or corrupted records stop parsing early — the AppIDs
-/// collected up to the failure point are returned along with the error.
-/// Callers that need all-or-nothing semantics should check the `Result`.
-pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<u32>, PackageInfoError> {
+/// header. Truncated or corrupted records error out — partial results are
+/// not returned.
+pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<(u32, u32)>, PackageInfoError> {
     if bytes.len() < 8 {
         return Err(PackageInfoError::Truncated);
     }
@@ -51,7 +59,7 @@ pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<u32>, PackageInfoError> {
     }
 
     let mut cursor = 8usize;
-    let mut app_ids: BTreeSet<u32> = BTreeSet::new();
+    let mut app_ids: BTreeMap<u32, u32> = BTreeMap::new();
 
     loop {
         if cursor + 4 > bytes.len() {
@@ -70,10 +78,17 @@ pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<u32>, PackageInfoError> {
             break;
         }
 
-        // Skip: sha1 (20 bytes) + change_number (4 bytes) + pics_token (8 bytes) = 32 bytes
+        // sha1 (20 bytes) + change_number (4 bytes) + pics_token (8 bytes) = 32 bytes
         if cursor + 32 > bytes.len() {
             return Err(PackageInfoError::Truncated);
         }
+        // Skip sha1 (20 bytes), then read change_number (4 bytes), then skip pics_token (8 bytes)
+        let change_number = u32::from_le_bytes([
+            bytes[cursor + 20],
+            bytes[cursor + 21],
+            bytes[cursor + 22],
+            bytes[cursor + 23],
+        ]);
         cursor += 32;
 
         let blob_slice = &bytes[cursor..];
@@ -113,7 +128,14 @@ pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<u32>, PackageInfoError> {
                 Value::UInt64(v) => *v as u32,
                 _ => continue,
             };
-            app_ids.insert(id);
+            app_ids
+                .entry(id)
+                .and_modify(|cn| {
+                    if change_number > *cn {
+                        *cn = change_number;
+                    }
+                })
+                .or_insert(change_number);
         }
     }
 
@@ -188,11 +210,11 @@ mod tests {
         0xFFFF_FFFFu32.to_le_bytes().to_vec()
     }
 
-    fn package_record(package_id: u32, app_ids: &[u32]) -> Vec<u8> {
+    fn package_record(package_id: u32, change_number: u32, app_ids: &[u32]) -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(&package_id.to_le_bytes());
         v.extend_from_slice(&[0u8; 20]); // sha1
-        v.extend_from_slice(&[0u8; 4]); // change_number
+        v.extend_from_slice(&change_number.to_le_bytes());
         v.extend_from_slice(&[0u8; 8]); // pics_token
 
         let blob = build_package_blob(package_id, app_ids);
@@ -257,22 +279,23 @@ mod tests {
     #[test]
     fn single_package_two_app_ids_returned_sorted() {
         let mut bytes = magic_bytes();
-        bytes.extend_from_slice(&package_record(42, &[12345, 67890]));
+        bytes.extend_from_slice(&package_record(42, 7777, &[12345, 67890]));
         bytes.extend_from_slice(&terminator());
 
         let ids = parse_packageinfo(&bytes).unwrap();
-        assert_eq!(ids, vec![12345, 67890]);
+        assert_eq!(ids, vec![(12345, 7777), (67890, 7777)]);
     }
 
     #[test]
-    fn deduplication_across_packages() {
+    fn deduplication_across_packages_keeps_max_change_number() {
         let mut bytes = magic_bytes();
-        bytes.extend_from_slice(&package_record(1, &[100, 200]));
-        bytes.extend_from_slice(&package_record(2, &[200, 300]));
+        bytes.extend_from_slice(&package_record(1, 100, &[100, 200]));
+        bytes.extend_from_slice(&package_record(2, 200, &[200, 300]));
         bytes.extend_from_slice(&terminator());
 
         let ids = parse_packageinfo(&bytes).unwrap();
-        assert_eq!(ids, vec![100, 200, 300]);
+        // app_id 200 is in both packages; we keep max(100, 200) = 200
+        assert_eq!(ids, vec![(100, 100), (200, 200), (300, 200)]);
     }
 
     #[test]

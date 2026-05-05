@@ -73,6 +73,8 @@ enum Message {
     #[allow(dead_code)]
     FocusLibrarySearch,
     ToggleGamePin(u32),
+    NoAchCacheLoaded(cache::NoAchievementsCache),
+    NoAchCacheWritten(Result<(), String>),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -121,6 +123,12 @@ struct App {
     /// "Steam is not running" banner.
     steam_running: Option<bool>,
     skeleton_phase: f32,
+    /// Cache of app_ids that scanned as having no achievements. Each entry
+    /// records the package change_number observed at scan time; entries are
+    /// considered valid only while the change_number matches the current
+    /// packageinfo value. Loaded at boot, mutated as scans complete, written
+    /// back asynchronously.
+    no_ach_cache: cache::NoAchievementsCache,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -165,6 +173,7 @@ fn boot() -> (App, Task<Message>) {
         splash_probe_done: false,
         steam_running: None,
         skeleton_phase: 0.0,
+        no_ach_cache: cache::NoAchievementsCache::new(),
     };
 
     let min_splash_task = Task::perform(
@@ -181,7 +190,10 @@ fn boot() -> (App, Task<Message>) {
         Message::ProbeResult,
     );
 
-    (app, Task::batch([min_splash_task, probe_task]))
+    let no_ach_load_task =
+        Task::perform(cache::load_no_achievements_cache(), Message::NoAchCacheLoaded);
+
+    (app, Task::batch([min_splash_task, probe_task, no_ach_load_task]))
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -640,9 +652,29 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             // and skip cache write. The worker took the
                             // early-exit path; this app is not interesting
                             // for SteamLens (we only manage achievements).
+                            // Also record (app_id, change_number) into the
+                            // no-achievements cache so the next boot skips
+                            // this app entirely until its package changes.
                             if data.achievements.is_empty() {
+                                let change_number = pv_state
+                                    .games
+                                    .iter()
+                                    .find(|g| g.summary.app_id == scan_app_id)
+                                    .map(|g| g.summary.change_number);
                                 pv_state.games.retain(|g| g.summary.app_id != scan_app_id);
                                 app.cached_entries.remove(&scan_app_id);
+                                if let Some(cn) = change_number {
+                                    app.no_ach_cache.insert(scan_app_id, cn);
+                                    let snapshot = app.no_ach_cache.clone();
+                                    tasks.push(Task::perform(
+                                        async move {
+                                            cache::write_no_achievements_cache(&snapshot)
+                                                .await
+                                                .map_err(|e| e.to_string())
+                                        },
+                                        Message::NoAchCacheWritten,
+                                    ));
+                                }
                                 continue;
                             }
 
@@ -815,8 +847,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     if !p.games.is_empty() {
                         app.splash_scan_done = true;
+                        // Apply the no-achievements cache filter: drop apps
+                        // we previously confirmed have no achievements AND
+                        // whose package change_number has not advanced.
+                        // Mismatch / absence → keep the app for re-scan.
+                        let no_ach = &app.no_ach_cache;
+                        let filtered: Vec<_> = p
+                            .games
+                            .into_iter()
+                            .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
+                            .collect();
                         tasks.push(Task::done(Message::ProfileView(
-                            ProfileViewMessage::ScanComplete(p.games),
+                            ProfileViewMessage::ScanComplete(filtered),
                         )));
                     } else {
                         tasks.push(Task::perform(
@@ -878,6 +920,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 cached.games,
             )))
+        }
+
+        Message::NoAchCacheLoaded(loaded) => {
+            app.no_ach_cache = loaded;
+            Task::none()
+        }
+
+        Message::NoAchCacheWritten(result) => {
+            if let Err(e) = result {
+                eprintln!("[steamlens] no_achievements cache: write failed: {e}");
+            }
+            Task::none()
         }
 
         Message::PersistentCacheWritten(label, result) => {
@@ -1504,6 +1558,7 @@ mod tests {
             splash_probe_done: true,
             steam_running: Some(true),
             skeleton_phase: 0.0,
+            no_ach_cache: cache::NoAchievementsCache::new(),
         }
     }
 
@@ -1710,6 +1765,7 @@ mod tests {
                 name: "Terraria".to_owned(),
                 last_played: None,
                 achievement_count: 88,
+                change_number: 0,
             }],
             cached_at: 0,
         };
@@ -1736,6 +1792,7 @@ mod tests {
                     name: "AlreadyHere".to_owned(),
                     last_played: None,
                     achievement_count: 1,
+                    change_number: 0,
                 },
                 capsule: CapsuleAsset::Pending,
                 progress: None,
@@ -1748,6 +1805,7 @@ mod tests {
                 name: "FromCache".to_owned(),
                 last_played: None,
                 achievement_count: 1,
+                change_number: 0,
             }],
             cached_at: 0,
         };
@@ -1790,6 +1848,7 @@ mod tests {
             name: name.to_owned(),
             last_played: None,
             achievement_count: 3,
+            change_number: 0,
         }
     }
 
@@ -1956,6 +2015,7 @@ mod tests {
                     name: "Terraria".to_owned(),
                     last_played: None,
                     achievement_count: 88,
+                    change_number: 0,
                 },
                 capsule: CapsuleAsset::Pending,
                 progress: None,
@@ -1994,6 +2054,7 @@ mod tests {
                 name: format!("Game {app_id}"),
                 last_played: None,
                 achievement_count: 1,
+                change_number: 0,
             },
             capsule: CapsuleAsset::Unavailable,
             progress: if with_progress {
@@ -2574,6 +2635,7 @@ mod tests {
             name: "Team Fortress 2".to_owned(),
             last_played: None,
             achievement_count: 520,
+            change_number: 0,
         };
         let game_entry = GameEntry {
             summary,
@@ -2627,6 +2689,7 @@ mod tests {
             splash_probe_done: true,
             steam_running: Some(true),
             skeleton_phase: 0.0,
+            no_ach_cache: cache::NoAchievementsCache::new(),
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
@@ -2673,6 +2736,7 @@ mod tests {
             splash_probe_done: true,
             steam_running: Some(true),
             skeleton_phase: 0.0,
+            no_ach_cache: cache::NoAchievementsCache::new(),
         }
     }
 

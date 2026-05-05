@@ -189,6 +189,7 @@ mod tests {
                 name: "Terraria".to_owned(),
                 last_played: Some(1_777_926_953),
                 achievement_count: 88,
+                change_number: 0,
             }],
             cached_at: 1_777_926_953,
         }

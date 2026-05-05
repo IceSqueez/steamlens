@@ -405,6 +405,7 @@ mod tests {
             name: name.to_owned(),
             last_played,
             achievement_count: 1,
+            change_number: 0,
         }
     }
 

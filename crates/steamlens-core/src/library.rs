@@ -14,6 +14,11 @@ pub struct GameSummary {
     /// Number of achievements for this game.  Zero at enumeration time;
     /// populated later by the per-game subprocess worker.
     pub achievement_count: u32,
+    /// PICS change number of the package(s) this app belongs to. Used as a
+    /// coarse cache-invalidation key: a "no achievements" cache entry
+    /// stays valid only while the change number matches what was
+    /// observed when the entry was recorded.
+    pub change_number: u32,
 }
 
 pub(crate) fn enumerate_owned_games_impl(
@@ -41,7 +46,7 @@ pub(crate) fn enumerate_owned_games_impl(
 
     let mut summaries = Vec::new();
 
-    for app_id in candidate_ids {
+    for (app_id, change_number) in candidate_ids {
         // Type filter: keep only apps Steam reports as a game. ~11 µs per call
         // (verified against a 3 500-candidate library). Discards DLCs, tools,
         // Source SDK base, dedicated servers, soundtracks, demos, betas, and
@@ -79,6 +84,7 @@ pub(crate) fn enumerate_owned_games_impl(
             name: format!("App {app_id}"),
             last_played: last_played_map.get(&app_id).copied(),
             achievement_count: 0,
+            change_number,
         });
     }
 
@@ -108,6 +114,7 @@ mod tests {
             name: "Synthetic Game".to_owned(),
             last_played: Some(1_700_000_000),
             achievement_count: 0,
+            change_number: 0,
         };
 
         let json = serde_json::to_string(&summary).expect("serialize");
@@ -122,6 +129,7 @@ mod tests {
             name: "Never Played".to_owned(),
             last_played: None,
             achievement_count: 7,
+            change_number: 0,
         };
 
         let json = serde_json::to_string(&summary).expect("serialize");

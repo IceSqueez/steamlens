@@ -262,12 +262,14 @@ mod tests {
                         name: "Synthetic Game Alpha".to_owned(),
                         last_played: Some(1_700_000_000),
                         achievement_count: 0,
+                        change_number: 0,
                     },
                     crate::library::GameSummary {
                         app_id: 67890,
                         name: "Synthetic Game Beta".to_owned(),
                         last_played: None,
                         achievement_count: 0,
+                        change_number: 0,
                     },
                 ],
             },
@@ -495,6 +497,7 @@ mod tests {
                 name: "Synthetic Game".to_owned(),
                 last_played: Some(1_700_000_000),
                 achievement_count: 0,
+                change_number: 0,
             }],
         };
         let framed = encode_frame(&resp).expect("encode must succeed");
