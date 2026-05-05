@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image as img_widget, mouse_area, responsive, row, scrollable, stack,
-    text, text_input, tooltip,
+    text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -754,14 +754,6 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         .progress
         .as_ref()
         .is_some_and(|p| p.total > 0 && p.earned >= p.total);
-    let tooltip_earned = entry.progress.as_ref().map(|p| p.earned).unwrap_or(0);
-    let tooltip_total = entry.progress.as_ref().map(|p| p.total).unwrap_or(0);
-    let tooltip_pct = if tooltip_total > 0 {
-        (tooltip_earned as f32 / tooltip_total as f32 * 100.0) as u32
-    } else {
-        0
-    };
-
     let card_btn = button(card)
         .padding(0)
         .on_press(crate::Message::ProfileView(
@@ -835,30 +827,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
             }
         });
 
-    tooltip(
-        card_btn,
-        container(
-            text(format!(
-                "{tooltip_earned} / {tooltip_total} achievements ({tooltip_pct}%)"
-            ))
-            .size(11)
-            .color(C_TEXT),
-        )
-        .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color::from_rgba(
-                0.15, 0.15, 0.2, 0.95,
-            ))),
-            border: iced::Border {
-                color: Color { a: 0.5, ..C_ACCENT },
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..container::Style::default()
-        }),
-        tooltip::Position::Bottom,
-    )
-    .into()
+    card_btn.into()
 }
 
 fn build_tier_stacked_bar<'a>(
