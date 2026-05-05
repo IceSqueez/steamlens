@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, image as image_widget, row, text};
+use iced::widget::image::Handle as ImageHandle;
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
@@ -302,7 +303,7 @@ fn build_profile_header<'a>(
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
 
-    let avatar = build_avatar_initials(persona);
+    let avatar = build_avatar(user_profile, persona);
 
     let nick_label = text(format!("{{# {persona} }}"))
         .size(15)
@@ -371,6 +372,34 @@ fn build_profile_header<'a>(
     .into()
 }
 
+const AVATAR_SIZE: f32 = 112.0;
+
+fn build_avatar<'a>(
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    persona: &'a str,
+) -> Element<'a, crate::Message> {
+    if let Some(bytes) = user_profile.and_then(|p| p.avatar_png_bytes.as_ref()) {
+        let handle = ImageHandle::from_bytes(bytes.clone());
+        return container(
+            image_widget(handle)
+                .width(Length::Fixed(AVATAR_SIZE))
+                .height(Length::Fixed(AVATAR_SIZE)),
+        )
+        .width(Length::Fixed(AVATAR_SIZE))
+        .height(Length::Fixed(AVATAR_SIZE))
+        .style(|_: &iced::Theme| container::Style {
+            border: iced::Border {
+                radius: 8.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into();
+    }
+
+    build_avatar_initials(persona)
+}
+
 fn build_avatar_initials(persona: &str) -> Element<'_, crate::Message> {
     let mut words = persona.split_whitespace();
     let first = words
@@ -392,12 +421,12 @@ fn build_avatar_initials(persona: &str) -> Element<'_, crate::Message> {
 
     container(
         text(initials)
-            .size(18)
+            .size(36)
             .color(C_APP)
             .align_x(Alignment::Center),
     )
-    .width(Length::Fixed(56.0))
-    .height(Length::Fixed(56.0))
+    .width(Length::Fixed(AVATAR_SIZE))
+    .height(Length::Fixed(AVATAR_SIZE))
     .align_x(Alignment::Center)
     .align_y(Alignment::Center)
     .style(|_: &iced::Theme| container::Style {

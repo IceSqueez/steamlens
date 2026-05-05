@@ -958,32 +958,6 @@ fn build_hover_overlay<'a>(
     card_w: f32,
     capsule_h: f32,
 ) -> Element<'a, crate::Message> {
-    let open_btn = button(text("Open").size(12).color(C_TEXT_PRIMARY))
-        .on_press(crate::Message::ProfileView(
-            ProfileViewMessage::GameSelected(app_id),
-        ))
-        .padding(Padding::default().left(14).right(14).top(6).bottom(6))
-        .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: Some(iced::Background::Color(if hovered {
-                    Color { a: 0.95, ..C_HOVER }
-                } else {
-                    Color {
-                        a: 0.85,
-                        ..C_SURFACE
-                    }
-                })),
-                border: iced::Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                text_color: C_TEXT_PRIMARY,
-                ..button::Style::default()
-            }
-        });
-
     let pin_label = if is_pinned {
         "\u{2299} Unpin"
     } else {
@@ -992,19 +966,19 @@ fn build_hover_overlay<'a>(
     let pin_btn =
         button(
             text(pin_label)
-                .size(12)
+                .size(11)
                 .color(if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY }),
         )
         .on_press(crate::Message::ToggleGamePin(app_id))
-        .padding(Padding::default().left(14).right(14).top(6).bottom(6))
+        .padding(Padding::default().left(10).right(10).top(4).bottom(4))
         .style(move |_: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: Some(iced::Background::Color(if hovered {
-                    Color { a: 0.95, ..C_HOVER }
+                    Color { a: 0.90, ..C_HOVER }
                 } else {
                     Color {
-                        a: 0.85,
+                        a: 0.75,
                         ..C_SURFACE
                     }
                 })),
@@ -1022,28 +996,13 @@ fn build_hover_overlay<'a>(
             }
         });
 
-    let btn_row = row![open_btn, pin_btn]
-        .spacing(6)
-        .align_y(Alignment::Center);
-
-    let btn_container = container(btn_row)
-        .width(Length::Fixed(card_w))
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center);
-
-    let overlay_bg = container(btn_container)
+    container(pin_btn)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h))
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color::from_rgba(
-                0.06, 0.05, 0.10, 0.60,
-            ))),
-            ..container::Style::default()
-        });
-
-    overlay_bg.into()
+        .align_x(Alignment::End)
+        .align_y(Alignment::Start)
+        .padding(Padding::default().top(8).right(8))
+        .into()
 }
 
 fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::Message> {
