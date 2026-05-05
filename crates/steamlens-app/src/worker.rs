@@ -125,11 +125,11 @@ async fn worker_main(app_id: u32) -> i32 {
         }
     };
 
-    let hello = WorkerResponse::Hello {
+    let connected = WorkerResponse::SteamConnected {
         steam_id: client.steam_id(),
         app_name: client.app_name(),
     };
-    if write_response(&hello).await.is_err() {
+    if write_response(&connected).await.is_err() {
         return 1;
     }
 
@@ -182,16 +182,6 @@ enum DispatchOutcome {
 
 async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
     match cmd {
-        WorkerCommand::Hello => {
-            let resp = WorkerResponse::Hello {
-                steam_id: client.steam_id(),
-                app_name: client.app_name(),
-            };
-            if write_response(&resp).await.is_err() {
-                return DispatchOutcome::Fatal;
-            }
-        }
-
         WorkerCommand::LoadAchievementsAndStats => {
             let resp = load_achievements_and_stats(client, app_id, true);
             if write_response(&resp).await.is_err() {

@@ -18,7 +18,6 @@ pub enum FrameError {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerCommand {
-    Hello,
     LoadAchievementsAndStats,
     /// Same as `LoadAchievementsAndStats` but skips per-achievement icon
     /// fetches.  Used by the bulk library scanner where icons are not needed
@@ -50,7 +49,11 @@ pub enum WorkerCommand {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerResponse {
-    Hello {
+    /// Sent by the child immediately after `steamclient.so` is loaded, the
+    /// Steam pipe is created, and the user/app interfaces have been vended.
+    /// Acts as the "I'm alive and connected to Steam" handshake the parent
+    /// waits for before issuing any commands.
+    SteamConnected {
         steam_id: u64,
         app_name: Option<String>,
     },
@@ -155,7 +158,6 @@ mod tests {
 
     fn all_commands() -> Vec<WorkerCommand> {
         vec![
-            WorkerCommand::Hello,
             WorkerCommand::LoadAchievementsAndStats,
             WorkerCommand::LoadAchievementsAndStatsLite,
             WorkerCommand::SetAchievement("ACH_WIN".to_owned()),
@@ -184,11 +186,11 @@ mod tests {
         pct_map.insert("ACH_HARD".to_owned(), 0.3f32);
 
         vec![
-            WorkerResponse::Hello {
+            WorkerResponse::SteamConnected {
                 steam_id: 76561198000000000,
                 app_name: Some("Terraria".to_owned()),
             },
-            WorkerResponse::Hello {
+            WorkerResponse::SteamConnected {
                 steam_id: 1,
                 app_name: None,
             },

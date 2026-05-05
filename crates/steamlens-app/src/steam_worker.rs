@@ -299,7 +299,7 @@ async fn run_apply_sequence(
 /// `ChangesSaved`; `ResetDone` maps to `ResetDone`; errors are context-routed.
 fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
     match resp {
-        WorkerResponse::Hello { steam_id, app_name } => {
+        WorkerResponse::SteamConnected { steam_id, app_name } => {
             reply(rep_tx, SteamReply::Connected { steam_id, app_name });
         }
         WorkerResponse::Ack => {}
@@ -409,10 +409,10 @@ async fn bridge_loop(
         }
     };
 
-    // Phase 2: read the Hello from the child.
-    let hello_timeout = Duration::from_secs(10);
-    match tokio::time::timeout(hello_timeout, read_response(&mut stdout)).await {
-        Ok(Some(WorkerResponse::Hello { steam_id, app_name })) => {
+    // Phase 2: read the SteamConnected handshake from the child.
+    let connect_timeout = Duration::from_secs(10);
+    match tokio::time::timeout(connect_timeout, read_response(&mut stdout)).await {
+        Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
             reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
         }
         Ok(Some(WorkerResponse::Error { context, message })) => {
@@ -434,7 +434,7 @@ async fn bridge_loop(
         Err(_) => {
             reply(
                 &rep_tx,
-                SteamReply::ConnectFailed("timed out waiting for worker Hello".to_owned()),
+                SteamReply::ConnectFailed("timed out waiting for SteamConnected".to_owned()),
             );
             kill_child(&mut child).await;
             return;
@@ -469,11 +469,12 @@ async fn bridge_loop(
                         child = new_child;
                         stdin = new_stdin;
                         stdout = new_stdout;
-                        // Read Hello from fresh child.
-                        let hello_timeout = Duration::from_secs(10);
-                        match tokio::time::timeout(hello_timeout, read_response(&mut stdout)).await
+                        // Read SteamConnected handshake from fresh child.
+                        let connect_timeout = Duration::from_secs(10);
+                        match tokio::time::timeout(connect_timeout, read_response(&mut stdout))
+                            .await
                         {
-                            Ok(Some(WorkerResponse::Hello { steam_id, app_name })) => {
+                            Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
                                 reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
                             }
                             Ok(Some(WorkerResponse::Error { context, message })) => {
@@ -485,7 +486,7 @@ async fn bridge_loop(
                                 reply(
                                     &rep_tx,
                                     SteamReply::ConnectFailed(
-                                        "timed out waiting for worker Hello on reconnect"
+                                        "timed out waiting for SteamConnected on reconnect"
                                             .to_owned(),
                                     ),
                                 );

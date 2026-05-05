@@ -14,7 +14,7 @@ fn read_one_response(stdout: &mut impl Read) -> WorkerResponse {
     decode_frame::<WorkerResponse>(&payload).expect("decode response")
 }
 
-/// Spawn the worker binary, read the spontaneous Hello, send Shutdown,
+/// Spawn the worker binary, read the spontaneous SteamConnected, send Shutdown,
 /// assert clean exit.
 ///
 /// Requires a running Steam client and app_id 105600 (Terraria) to be
@@ -39,16 +39,16 @@ fn worker_handshake_terraria() {
     let mut stdin = child.stdin.take().expect("child stdin");
     let mut stdout = child.stdout.take().expect("child stdout");
 
-    let hello = read_one_response(&mut stdout);
+    let connected = read_one_response(&mut stdout);
     assert!(
-        matches!(hello, WorkerResponse::Hello { .. }),
-        "first message must be Hello, got {:?}",
-        std::mem::discriminant(&hello)
+        matches!(connected, WorkerResponse::SteamConnected { .. }),
+        "first message must be SteamConnected, got {:?}",
+        std::mem::discriminant(&connected)
     );
 
-    if let WorkerResponse::Hello { steam_id, app_name } = &hello {
+    if let WorkerResponse::SteamConnected { steam_id, app_name } = &connected {
         assert_ne!(*steam_id, 0, "steam_id must be non-zero");
-        eprintln!("worker Hello: steam_id={steam_id} app_name={app_name:?}");
+        eprintln!("worker SteamConnected: steam_id={steam_id} app_name={app_name:?}");
     }
 
     let shutdown_bytes = encode_frame(&WorkerCommand::Shutdown).expect("encode Shutdown");

@@ -26,7 +26,7 @@ pub struct ProgressData {
 ///
 /// Combines the achievement+stat list (from `LoadAchievementsAndStats`) with
 /// the global rarity percentages (from `RequestGlobalPercentages`) plus the
-/// game's display name from the worker's `Hello` frame.
+/// game's display name from the worker's `SteamConnected` frame.
 #[derive(Debug, Clone)]
 pub struct ScannedGameData {
     pub app_name: Option<String>,
@@ -264,20 +264,23 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
     })?;
 
-    let hello = tokio::time::timeout(CONNECT_TIMEOUT, read_response(&mut stdout))
+    let connected = tokio::time::timeout(CONNECT_TIMEOUT, read_response(&mut stdout))
         .await
         .map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out waiting for Hello")
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out waiting for SteamConnected",
+            )
         })?
         .ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
-                "worker closed before Hello",
+                "worker closed before SteamConnected",
             )
         })?;
 
-    let app_name = match hello {
-        WorkerResponse::Hello { app_name, .. } => app_name,
+    let app_name = match connected {
+        WorkerResponse::SteamConnected { app_name, .. } => app_name,
         WorkerResponse::Error { message, .. } => {
             return Err(std::io::Error::other(message));
         }
