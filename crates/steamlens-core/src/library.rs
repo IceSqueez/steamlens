@@ -1,12 +1,13 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use steamlens_vdf::parse_text;
 
 use crate::error::LibraryScanError;
 
 /// A summary of a single installed Steam game, as read entirely from local disk.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GameSummary {
     pub app_id: u32,
     pub name: String,

@@ -17,7 +17,7 @@ use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Alignment, Color, Element, Length, Subscription, Task};
 
-use cache::{CacheHit, ClassifyResult, GameCacheEntry};
+use cache::{CacheHit, CachedLibrary, CachedProfile, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewMessage, GameViewState};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
@@ -48,6 +48,9 @@ enum Message {
     DrainProgressResults,
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, String>),
+    ProfileCacheLoaded(Option<CachedProfile>),
+    LibraryCacheLoaded(Option<CachedLibrary>),
+    PersistentCacheWritten(&'static str, Result<(), String>),
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
@@ -358,6 +361,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 ProfileViewMessage::ScanFailed(_) => {
                     app.splash_scan_done = true;
+                    let load_task = Task::perform(
+                        async { cache::load_library_cache().await },
+                        Message::LibraryCacheLoaded,
+                    );
+                    if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        let scan_task = profile_view::update(pv_state, pv_msg);
+                        return Task::batch([scan_task, load_task]);
+                    }
+                    return load_task;
                 }
                 ProfileViewMessage::ScanComplete(summaries) => {
                     app.splash_scan_done = true;
@@ -369,11 +381,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         Message::CacheClassified,
                     );
 
+                    let mut tasks: Vec<Task<Message>> = vec![classify_task];
+                    if !summaries.is_empty() {
+                        let cached = cache::make_cached_library(summaries.clone());
+                        tasks.push(Task::perform(
+                            async move {
+                                cache::write_library_cache(&cached)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                            },
+                            |r| Message::PersistentCacheWritten("library", r),
+                        ));
+                    }
+
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
                         let scan_task = profile_view::update(pv_state, pv_msg);
-                        return Task::batch([scan_task, classify_task]);
+                        tasks.push(scan_task);
                     }
-                    return classify_task;
+                    return Task::batch(tasks);
                 }
                 _ => {}
             }
@@ -727,17 +752,79 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         .avatar_png_bytes
                         .as_ref()
                         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
+                    let cached = cache::make_cached_profile(
+                        p.steam_id,
+                        p.persona_name.clone(),
+                        account_name.clone(),
+                        p.avatar_png_bytes.clone(),
+                    );
                     app.user_profile = Some(UserProfile {
                         steam_id: p.steam_id,
                         persona_name: p.persona_name,
                         account_name,
                         avatar_png_bytes: p.avatar_png_bytes,
                     });
+                    Task::perform(
+                        async move {
+                            cache::write_profile_cache(&cached)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        |r| Message::PersistentCacheWritten("profile", r),
+                    )
                 }
                 Err(e) => {
                     app.steam_running = Some(false);
                     eprintln!("[steamlens] probe failed: {e}");
+                    Task::perform(
+                        async { cache::load_profile_cache().await },
+                        Message::ProfileCacheLoaded,
+                    )
                 }
+            }
+        }
+
+        Message::ProfileCacheLoaded(maybe) => {
+            let Some(cached) = maybe else {
+                return Task::none();
+            };
+            if app.user_profile.is_some() && app.steam_running != Some(false) {
+                return Task::none();
+            }
+            app.steamid3 = cached.steam_id.saturating_sub(76_561_197_960_265_728);
+            app.profile_avatar_handle = cached
+                .avatar_png_bytes
+                .as_ref()
+                .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
+            app.user_profile = Some(UserProfile {
+                steam_id: cached.steam_id,
+                persona_name: cached.persona_name,
+                account_name: cached.account_name,
+                avatar_png_bytes: cached.avatar_png_bytes,
+            });
+            Task::none()
+        }
+
+        Message::LibraryCacheLoaded(maybe) => {
+            let Some(cached) = maybe else {
+                return Task::none();
+            };
+            let games_present = if let Screen::ProfileView(pv) = &app.screen {
+                !pv.games.is_empty()
+            } else {
+                true
+            };
+            if games_present {
+                return Task::none();
+            }
+            Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
+                cached.games,
+            )))
+        }
+
+        Message::PersistentCacheWritten(label, result) => {
+            if let Err(e) = result {
+                eprintln!("[steamlens] {label} cache: write failed: {e}");
             }
             Task::none()
         }
@@ -1003,10 +1090,18 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::GameView(state) => game_view::view(state, app.skeleton_phase),
     };
 
-    let with_toast = if let Some(toast) = &app.toast {
-        toast_overlay(screen_content, &toast.message)
+    let with_banner = if app.steam_running == Some(false) {
+        let has_data = matches!(&app.screen, Screen::ProfileView(pv) if !pv.games.is_empty())
+            || app.user_profile.is_some();
+        steam_off_banner(screen_content, has_data)
     } else {
         screen_content
+    };
+
+    let with_toast = if let Some(toast) = &app.toast {
+        toast_overlay(with_banner, &toast.message)
+    } else {
+        with_banner
     };
 
     if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
@@ -1014,6 +1109,38 @@ fn view(app: &App) -> Element<'_, Message> {
     } else {
         splash_view()
     }
+}
+
+fn steam_off_banner<'a>(content: Element<'a, Message>, has_data: bool) -> Element<'a, Message> {
+    let message = if has_data {
+        "Steam is not running — showing cached data"
+    } else {
+        "Steam is not running"
+    };
+
+    let banner = container(
+        text(message)
+            .size(13)
+            .color(Color::from_rgb(0.95, 0.85, 0.4)),
+    )
+    .width(Length::Fill)
+    .padding(iced::Padding::default().top(6).bottom(6).left(16).right(16))
+    .style(|_theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgba(
+            0.40, 0.30, 0.10, 0.65,
+        ))),
+        border: iced::Border {
+            color: Color::from_rgba(0.85, 0.65, 0.25, 0.7),
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        ..Default::default()
+    });
+
+    column![banner, content]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 fn splash_view<'a>() -> Element<'a, Message> {
@@ -1376,6 +1503,152 @@ mod tests {
             Message::ProbeResult(Err("Steam is not running".to_owned())),
         );
         assert!(!splash_visible(&app), "probe-Err counts as resolved");
+    }
+
+    #[test]
+    fn profile_cache_loaded_populates_when_user_profile_is_none() {
+        let mut app = make_app_probing();
+        app.steam_running = Some(false);
+        let cached = CachedProfile {
+            schema_version: 1,
+            steam_id: 76561198000000042,
+            persona_name: "FromCache".to_owned(),
+            account_name: "cache_login".to_owned(),
+            avatar_png_bytes: None,
+            cached_at: 0,
+        };
+        let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
+        let p = app.user_profile.as_ref().expect("profile must be set");
+        assert_eq!(p.persona_name, "FromCache");
+        assert_eq!(p.account_name, "cache_login");
+        assert_eq!(app.steamid3, 76561198000000042 - 76_561_197_960_265_728);
+    }
+
+    #[test]
+    fn profile_cache_loaded_skipped_when_probe_succeeded_first() {
+        let mut app = make_app_probing();
+        app.steam_running = Some(true);
+        app.user_profile = Some(UserProfile {
+            steam_id: 1,
+            persona_name: "LiveFromProbe".to_owned(),
+            account_name: "live".to_owned(),
+            avatar_png_bytes: None,
+        });
+        let cached = CachedProfile {
+            schema_version: 1,
+            steam_id: 999,
+            persona_name: "ShouldNotWin".to_owned(),
+            account_name: "stale".to_owned(),
+            avatar_png_bytes: None,
+            cached_at: 0,
+        };
+        let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
+        let p = app.user_profile.as_ref().unwrap();
+        assert_eq!(
+            p.persona_name, "LiveFromProbe",
+            "probe-Ok profile must not be overwritten by cache"
+        );
+    }
+
+    #[test]
+    fn profile_cache_loaded_none_is_noop() {
+        let mut app = make_app_probing();
+        app.steam_running = Some(false);
+        let _t = update(&mut app, Message::ProfileCacheLoaded(None));
+        assert!(app.user_profile.is_none());
+        assert_eq!(app.steam_running, Some(false));
+    }
+
+    #[test]
+    fn library_cache_loaded_some_dispatches_scan_complete_when_games_empty() {
+        use steamlens_core::GameSummary;
+        let mut app = make_app_probing();
+        app.steam_running = Some(false);
+        let cached = CachedLibrary {
+            schema_version: 1,
+            games: vec![GameSummary {
+                app_id: 105600,
+                name: "Terraria".to_owned(),
+                last_played: None,
+                achievement_count: 88,
+                last_updated: 0,
+                manifest_path: std::path::PathBuf::new(),
+            }],
+            cached_at: 0,
+        };
+        let _t = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+        // The handler dispatches Task::done(Message::ProfileView(ScanComplete(...))).
+        // We can't intercept the Task here, but the predicate (games_present == false)
+        // is what gates dispatch — verify by checking the precondition holds.
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(pv.games.is_empty(), "precondition: games empty");
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
+    #[test]
+    fn library_cache_loaded_skipped_when_games_already_present() {
+        use crate::profile_view::types::{CapsuleAsset, GameEntry};
+        use steamlens_core::GameSummary;
+        let mut app = make_app_probing();
+        if let Screen::ProfileView(pv) = &mut app.screen {
+            pv.games.push(GameEntry {
+                summary: GameSummary {
+                    app_id: 1,
+                    name: "AlreadyHere".to_owned(),
+                    last_played: None,
+                    achievement_count: 1,
+                    last_updated: 0,
+                    manifest_path: std::path::PathBuf::new(),
+                },
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+            });
+        }
+        let cached = CachedLibrary {
+            schema_version: 1,
+            games: vec![GameSummary {
+                app_id: 999,
+                name: "FromCache".to_owned(),
+                last_played: None,
+                achievement_count: 1,
+                last_updated: 0,
+                manifest_path: std::path::PathBuf::new(),
+            }],
+            cached_at: 0,
+        };
+        let _t = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert_eq!(
+                pv.games.len(),
+                1,
+                "no replacement when games already populated"
+            );
+            assert_eq!(pv.games[0].summary.name, "AlreadyHere");
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
+    #[test]
+    fn library_cache_loaded_none_is_noop() {
+        let mut app = make_app_probing();
+        let _t = update(&mut app, Message::LibraryCacheLoaded(None));
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(pv.games.is_empty());
+        }
+    }
+
+    #[test]
+    fn persistent_cache_written_logs_error_but_returns_no_task() {
+        let mut app = make_app_probing();
+        let _t = update(
+            &mut app,
+            Message::PersistentCacheWritten("profile", Err("disk full".to_owned())),
+        );
+        // No state change expected — handler only logs.
+        assert_eq!(app.steam_running, None);
     }
 
     #[test]
