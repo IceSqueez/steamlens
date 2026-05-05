@@ -63,6 +63,7 @@ enum Message {
     SkeletonTick,
     #[allow(dead_code)]
     FocusLibrarySearch,
+    ToggleGamePin(u32),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -715,6 +716,22 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::none()
             }
         }
+
+        Message::ToggleGamePin(app_id) => {
+            if let Some(pos) = app
+                .settings
+                .library
+                .pinned
+                .iter()
+                .position(|&id| id == app_id)
+            {
+                app.settings.library.pinned.remove(pos);
+            } else {
+                app.settings.library.pinned.push(app_id);
+            }
+            mark_settings_dirty(app);
+            Task::none()
+        }
     }
 }
 
@@ -848,6 +865,7 @@ fn build_game_view_cache_entry(
         achievements,
         stats,
         progress: CachedProgress { earned, total },
+        tier_breakdown: state.tier_breakdown.clone(),
     }
 }
 
@@ -858,6 +876,7 @@ fn view(app: &App) -> Element<'_, Message> {
             app.user_profile.as_ref(),
             &app.cached_entries,
             app.skeleton_phase,
+            &app.settings.library.pinned,
         ),
 
         Screen::SteamNotRunning { reason } => {
@@ -1635,6 +1654,7 @@ mod tests {
                             earned: 10,
                             total: 520,
                         },
+                        tier_breakdown: Vec::new(),
                     },
                 );
                 m

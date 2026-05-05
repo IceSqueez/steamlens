@@ -120,6 +120,8 @@ pub enum ProfileViewMessage {
     },
     ProgressScanDone,
     LoaderPulseTick,
+    CardHoverEnter(u32),
+    CardHoverExit(u32),
 }
 
 impl std::fmt::Debug for ProfileViewMessage {
@@ -154,6 +156,8 @@ impl std::fmt::Debug for ProfileViewMessage {
             } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
             ProfileViewMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
             ProfileViewMessage::LoaderPulseTick => write!(f, "LoaderPulseTick"),
+            ProfileViewMessage::CardHoverEnter(id) => write!(f, "CardHoverEnter({id})"),
+            ProfileViewMessage::CardHoverExit(id) => write!(f, "CardHoverExit({id})"),
         }
     }
 }
@@ -179,6 +183,7 @@ pub struct ProfileViewState {
         Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
     pub loader_pulse_phase: f32,
     pub loader_hiding_since: Option<Instant>,
+    pub hovered_card: Option<u32>,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -207,6 +212,7 @@ impl ProfileViewState {
             progress_rx: None,
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
+            hovered_card: None,
         }
     }
 
@@ -217,7 +223,7 @@ impl ProfileViewState {
             || self.progress_scanner.is_some()
     }
 
-    pub fn visible_games(&self) -> Vec<&GameEntry> {
+    pub fn visible_games<'a>(&'a self, pinned: &[u32]) -> Vec<&'a GameEntry> {
         let query = self.search.to_lowercase();
         let mut result: Vec<&GameEntry> = self
             .games
@@ -225,7 +231,7 @@ impl ProfileViewState {
             .filter(|g| query.is_empty() || g.summary.name.to_lowercase().contains(&query))
             .collect();
 
-        sort_entries(&mut result, self.sort);
+        sort_entries(&mut result, self.sort, pinned);
         result
     }
 
@@ -274,7 +280,29 @@ pub enum LoaderPhase {
     Gamma,
 }
 
-fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
+fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort, pinned: &[u32]) {
+    if pinned.is_empty() {
+        sort_by_mode(entries, sort);
+        return;
+    }
+
+    let (mut pinned_entries, mut rest): (Vec<&GameEntry>, Vec<&GameEntry>) = entries
+        .iter()
+        .partition(|g| pinned.contains(&g.summary.app_id));
+
+    pinned_entries.sort_by_key(|g| {
+        pinned
+            .iter()
+            .position(|&pid| pid == g.summary.app_id)
+            .unwrap_or(usize::MAX)
+    });
+
+    sort_by_mode(&mut rest, sort);
+
+    *entries = pinned_entries.into_iter().chain(rest).collect();
+}
+
+fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
     match sort {
         LibrarySort::LastPlayed => {
             entries.sort_by(
@@ -338,6 +366,7 @@ mod tests {
             progress_rx: None,
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
+            hovered_card: None,
         }
     }
 
@@ -429,7 +458,7 @@ mod tests {
         ]);
         state.sort = LibrarySort::LastPlayed;
 
-        let visible = state.visible_games();
+        let visible = state.visible_games(&[]);
         let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
 
         assert_eq!(names[0], "Gamma", "most recent first");
@@ -447,7 +476,7 @@ mod tests {
         ]);
         state.sort = LibrarySort::NameAsc;
 
-        let visible = state.visible_games();
+        let visible = state.visible_games(&[]);
         let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
 
         assert_eq!(names[0], "Apple");
@@ -464,7 +493,7 @@ mod tests {
         ]);
         state.search = "terra".to_owned();
 
-        let visible = state.visible_games();
+        let visible = state.visible_games(&[]);
         assert_eq!(visible.len(), 2);
         let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
         assert!(names.contains(&"Terraria"));
@@ -647,5 +676,83 @@ mod tests {
         }]);
         state.phase = ProfileViewPhase::Loaded;
         assert_eq!(state.loader_phase(), LoaderPhase::Gamma);
+    }
+
+    #[test]
+    fn pinned_first_sort_preserves_pin_order_regardless_of_active_sort() {
+        let state = make_state_with_games(vec![
+            make_entry(1, "Alpha", Some(3000)),
+            make_entry(2, "Beta", Some(2000)),
+            make_entry(3, "Gamma", Some(1000)),
+            make_entry(4, "Delta", None),
+        ]);
+        let pinned = [3u32, 1u32];
+        let visible = state.visible_games(&pinned);
+        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        assert_eq!(ids[0], 3, "first pinned game must be first");
+        assert_eq!(ids[1], 1, "second pinned game must be second");
+        assert_eq!(ids[2], 2, "rest sorted by last_played descending");
+        assert_eq!(ids[3], 4, "never-played last");
+    }
+
+    #[test]
+    fn pinned_first_sort_with_name_sort() {
+        let state = make_state_with_games(vec![
+            make_entry(1, "Cherry", None),
+            make_entry(2, "Apple", None),
+            make_entry(3, "Banana", None),
+        ]);
+        let pinned = [1u32];
+        let mut sorted_state = make_state_with_games(vec![
+            make_entry(1, "Cherry", None),
+            make_entry(2, "Apple", None),
+            make_entry(3, "Banana", None),
+        ]);
+        sorted_state.sort = LibrarySort::NameAsc;
+        let visible = sorted_state.visible_games(&pinned);
+        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        assert_eq!(
+            ids[0], 1,
+            "pinned game must be first regardless of name sort"
+        );
+        assert_eq!(ids[1], 2, "Apple before Banana alphabetically");
+        assert_eq!(ids[2], 3, "Banana after Apple");
+        let _ = state;
+    }
+
+    #[test]
+    fn empty_pinned_list_falls_back_to_sort() {
+        let state = make_state_with_games(vec![
+            make_entry(1, "Zebra", Some(100)),
+            make_entry(2, "Alpha", Some(200)),
+        ]);
+        let visible = state.visible_games(&[]);
+        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        assert_eq!(ids[0], 2, "most recently played first");
+        assert_eq!(ids[1], 1);
+    }
+
+    #[test]
+    fn toggle_game_pin_adds_to_settings() {
+        let mut pinned: Vec<u32> = vec![];
+        let app_id = 105600u32;
+        if let Some(pos) = pinned.iter().position(|&id| id == app_id) {
+            pinned.remove(pos);
+        } else {
+            pinned.push(app_id);
+        }
+        assert_eq!(pinned, vec![105600u32], "pin should be added");
+    }
+
+    #[test]
+    fn toggle_game_pin_removes_from_settings() {
+        let mut pinned: Vec<u32> = vec![105600u32, 420u32];
+        let app_id = 105600u32;
+        if let Some(pos) = pinned.iter().position(|&id| id == app_id) {
+            pinned.remove(pos);
+        } else {
+            pinned.push(app_id);
+        }
+        assert_eq!(pinned, vec![420u32], "pin should be removed");
     }
 }

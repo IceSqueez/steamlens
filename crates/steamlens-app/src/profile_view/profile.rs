@@ -13,11 +13,11 @@ use crate::theme::{
 
 use super::types::{GameEntry, TopEntry};
 
-const C_RARITY_COMMON: Color = Color::from_rgb(0.314, 0.980, 0.482);
-const C_RARITY_UNCOMMON: Color = Color::from_rgb(0.545, 0.914, 0.992);
-const C_RARITY_RARE: Color = Color::from_rgb(0.741, 0.576, 0.976);
-const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
-const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
+pub(crate) const C_RARITY_COMMON: Color = Color::from_rgb(0.314, 0.980, 0.482);
+pub(crate) const C_RARITY_UNCOMMON: Color = Color::from_rgb(0.545, 0.914, 0.992);
+pub(crate) const C_RARITY_RARE: Color = Color::from_rgb(0.741, 0.576, 0.976);
+pub(crate) const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
+pub(crate) const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
 fn rarity_color(tier: RarityTier) -> Color {
     match tier {
@@ -745,6 +745,7 @@ mod tests {
             achievements: vec![],
             stats: vec![],
             progress: CachedProgress { earned, total },
+            tier_breakdown: Vec::new(),
         }
     }
 
@@ -764,6 +765,7 @@ mod tests {
             achievements,
             stats: vec![],
             progress: CachedProgress { earned, total },
+            tier_breakdown: Vec::new(),
         }
     }
 

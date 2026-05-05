@@ -82,6 +82,7 @@ pub struct GameViewState {
     pub achievements: Vec<AchievementRow>,
     pub stats: Vec<StatRow>,
     pub reveal_queue: VecDeque<String>,
+    pub tier_breakdown: Vec<(RarityTier, u32)>,
 
     pub active_tab: ActiveTab,
     pub search_query: String,
@@ -114,6 +115,7 @@ impl GameViewState {
             achievements: Vec::new(),
             stats: Vec::new(),
             reveal_queue: VecDeque::new(),
+            tier_breakdown: Vec::new(),
             active_tab: ActiveTab::Achievements,
             search_query: String::new(),
             filter: AchievementFilter::All,
@@ -212,6 +214,8 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 .map(|r| r.data.id.clone())
                 .collect();
 
+            state.tier_breakdown = compute_tier_breakdown(&state.achievements);
+
             Task::none()
         }
         SteamReply::LoadFailed(e) => {
@@ -293,6 +297,29 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         }
         SteamReply::GlobalPercentagesFailed(_) => Task::none(),
     }
+}
+
+pub(crate) fn compute_tier_breakdown(achievements: &[AchievementRow]) -> Vec<(RarityTier, u32)> {
+    use std::collections::HashMap;
+    let tier_map = compute_tier_map(achievements);
+    let mut counts: HashMap<RarityTier, u32> = HashMap::new();
+    for row in achievements {
+        if row.effective_achieved()
+            && let Some(&tier) = tier_map.get(&row.data.id)
+        {
+            *counts.entry(tier).or_insert(0) += 1;
+        }
+    }
+    [
+        RarityTier::Common,
+        RarityTier::Uncommon,
+        RarityTier::Rare,
+        RarityTier::Mythical,
+        RarityTier::Legendary,
+    ]
+    .iter()
+    .filter_map(|&t| counts.get(&t).map(|&c| (t, c)))
+    .collect()
 }
 
 pub fn update(

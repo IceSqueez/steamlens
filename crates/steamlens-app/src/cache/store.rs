@@ -142,6 +142,7 @@ mod tests {
                 earned: 1,
                 total: 2,
             },
+            tier_breakdown: Vec::new(),
         }
     }
 

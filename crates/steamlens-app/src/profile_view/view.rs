@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use iced::widget::Id as WidgetId;
 use iced::widget::{
-    button, column, container, image as img_widget, responsive, row, scrollable, text, text_input,
-    tooltip,
+    button, column, container, image as img_widget, mouse_area, responsive, row, scrollable, stack,
+    text, text_input, tooltip,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
+use crate::game_view::types::RarityTier;
 use crate::skeleton::skeleton_box;
 use crate::theme::{
     C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED,
@@ -16,6 +17,9 @@ use crate::theme::{
 };
 
 use super::ProfileViewState;
+use super::profile::{
+    C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
+};
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
 use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
 
@@ -43,9 +47,6 @@ const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 
 const C_GOLD: Color = Color::from_rgb(1.0, 0.85, 0.4);
-const C_PURPLE_BAR: Color = Color::from_rgb(0.741, 0.576, 0.976);
-const C_MAGENTA_BAR: Color = Color::from_rgb(1.0, 0.4, 0.85);
-const C_CYAN_BAR: Color = Color::from_rgb(0.545, 0.914, 0.992);
 
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
@@ -61,7 +62,7 @@ fn card_width(size: CapsuleSize) -> f32 {
 }
 
 fn total_card_height(capsule_h: f32) -> f32 {
-    capsule_h + 32.0 + 4.0 + 8.0 + 9.0
+    capsule_h + 32.0 + 4.0 + 8.0 + 9.0 + 24.0
 }
 
 pub fn render_with_cache_actions<'a>(
@@ -69,8 +70,9 @@ pub fn render_with_cache_actions<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
+    pinned: &'a [u32],
 ) -> Element<'a, crate::Message> {
-    render_inner(state, user_profile, cached_entries, skeleton_phase)
+    render_inner(state, user_profile, cached_entries, skeleton_phase, pinned)
 }
 
 fn render_inner<'a>(
@@ -78,6 +80,7 @@ fn render_inner<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
+    pinned: &'a [u32],
 ) -> Element<'a, crate::Message> {
     let header = build_header(state);
 
@@ -87,12 +90,12 @@ fn render_inner<'a>(
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
         ProfileViewPhase::Error(e) => error_view(e),
         ProfileViewPhase::Loaded => {
-            let visible = state.visible_games();
+            let visible = state.visible_games(pinned);
 
             if visible.is_empty() {
                 center_text("No games found.")
             } else {
-                build_grid(state, visible, skeleton_phase)
+                build_grid(state, visible, cached_entries, skeleton_phase, pinned)
             }
         }
     };
@@ -425,10 +428,13 @@ fn build_icon_button(
 fn build_grid<'a>(
     state: &'a ProfileViewState,
     visible: Vec<&'a GameEntry>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
+    pinned: &'a [u32],
 ) -> Element<'a, crate::Message> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
+    let hovered_card = state.hovered_card;
 
     let entries: Vec<&'a GameEntry> = visible;
 
@@ -443,7 +449,22 @@ fn build_grid<'a>(
             let mut r: iced::widget::Row<'_, crate::Message> =
                 row![iced::widget::Space::new().width(Length::Fixed(gap))];
             for entry in chunk {
-                r = r.push(build_card(entry, capsule_size, card_w, skeleton_phase));
+                let app_id = entry.summary.app_id;
+                let tier_breakdown = cached_entries
+                    .get(&app_id)
+                    .map(|e| e.tier_breakdown.as_slice())
+                    .unwrap_or(&[]);
+                let is_pinned = pinned.contains(&app_id);
+                let is_hovered = hovered_card == Some(app_id);
+                r = r.push(build_card(
+                    entry,
+                    capsule_size,
+                    card_w,
+                    skeleton_phase,
+                    tier_breakdown,
+                    is_pinned,
+                    is_hovered,
+                ));
                 r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
             }
             let needed = cols - chunk.len();
@@ -466,41 +487,78 @@ fn build_grid<'a>(
         .into()
 }
 
-fn progress_bar_color(ratio: f32) -> Color {
-    if ratio >= 0.9 {
-        C_CYAN_BAR
-    } else if ratio >= 0.5 {
-        Color {
-            r: C_MAGENTA_BAR.r * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.r * ((ratio - 0.5) / 0.4),
-            g: C_MAGENTA_BAR.g * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.g * ((ratio - 0.5) / 0.4),
-            b: C_MAGENTA_BAR.b * (1.0 - (ratio - 0.5) / 0.4) + C_CYAN_BAR.b * ((ratio - 0.5) / 0.4),
-            a: 1.0,
-        }
+fn completion_tier_color(pct: f32) -> Color {
+    if pct >= 100.0 {
+        C_RARITY_LEGENDARY
+    } else if pct >= 90.0 {
+        C_RARITY_MYTHICAL
+    } else if pct >= 75.0 {
+        C_RARITY_RARE
+    } else if pct >= 50.0 {
+        C_RARITY_UNCOMMON
+    } else if pct >= 25.0 {
+        C_RARITY_COMMON
     } else {
-        Color {
-            r: C_PURPLE_BAR.r * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.r * (ratio / 0.5),
-            g: C_PURPLE_BAR.g * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.g * (ratio / 0.5),
-            b: C_PURPLE_BAR.b * (1.0 - ratio / 0.5) + C_MAGENTA_BAR.b * (ratio / 0.5),
-            a: 1.0,
-        }
+        C_TEXT_MUTED
     }
 }
 
-fn build_card(
-    entry: &GameEntry,
+fn rarity_color_for_tier(tier: RarityTier) -> Color {
+    match tier {
+        RarityTier::Common => C_RARITY_COMMON,
+        RarityTier::Uncommon => C_RARITY_UNCOMMON,
+        RarityTier::Rare => C_RARITY_RARE,
+        RarityTier::Mythical => C_RARITY_MYTHICAL,
+        RarityTier::Legendary => C_RARITY_LEGENDARY,
+    }
+}
+
+fn build_card<'a>(
+    entry: &'a GameEntry,
     capsule_size: CapsuleSize,
     card_w: f32,
     skeleton_phase: f32,
-) -> Element<'_, crate::Message> {
+    tier_breakdown: &'a [(RarityTier, u32)],
+    is_pinned: bool,
+    is_hovered: bool,
+) -> Element<'a, crate::Message> {
     let app_id = entry.summary.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
     let total_h = total_card_height(capsule_h);
 
     if !entry.is_hydrated() {
-        return build_skeleton_card(entry, card_w, capsule_w, capsule_h, total_h, skeleton_phase);
+        let inner =
+            build_skeleton_card(entry, card_w, capsule_w, capsule_h, total_h, skeleton_phase);
+        return mouse_area(inner)
+            .on_enter(crate::Message::ProfileView(
+                ProfileViewMessage::CardHoverEnter(app_id),
+            ))
+            .on_exit(crate::Message::ProfileView(
+                ProfileViewMessage::CardHoverExit(app_id),
+            ))
+            .into();
     }
 
-    build_hydrated_card(entry, app_id, card_w, capsule_w, capsule_h, total_h)
+    let inner = build_hydrated_card(HydratedCardParams {
+        entry,
+        app_id,
+        card_w,
+        capsule_w,
+        capsule_h,
+        total_h,
+        tier_breakdown,
+        is_pinned,
+        is_hovered,
+    });
+
+    mouse_area(inner)
+        .on_enter(crate::Message::ProfileView(
+            ProfileViewMessage::CardHoverEnter(app_id),
+        ))
+        .on_exit(crate::Message::ProfileView(
+            ProfileViewMessage::CardHoverExit(app_id),
+        ))
+        .into()
 }
 
 fn build_skeleton_card<'a>(
@@ -520,10 +578,10 @@ fn build_skeleton_card<'a>(
     };
 
     let capsule_skel = skeleton_box(capsule_w, capsule_h, phase);
-
     let name_skel = skeleton_box(card_w * title_width_ratio, 12.0, phase);
-
-    let progress_skel = skeleton_box(card_w, 3.0, phase);
+    let progress_skel = skeleton_box(card_w, 4.0, phase);
+    let tag_skel_a = skeleton_box(card_w * 0.30, 18.0, phase);
+    let tag_skel_b = skeleton_box(card_w * 0.22, 18.0, phase);
 
     let separator_space = iced::widget::Space::new()
         .width(Length::Fixed(card_w))
@@ -536,8 +594,23 @@ fn build_skeleton_card<'a>(
         .align_y(Alignment::Center)
         .padding(Padding::default().left(6).right(6).top(8).bottom(8));
 
-    let card_inner =
-        column![capsule_skel, separator_space, name_container, progress_skel,].spacing(0);
+    let tags_row = container(
+        row![tag_skel_a, tag_skel_b]
+            .spacing(6)
+            .align_y(Alignment::Center),
+    )
+    .width(Length::Fixed(card_w))
+    .height(Length::Fixed(24.0))
+    .padding(Padding::default().left(4).right(4).top(3).bottom(3));
+
+    let card_inner = column![
+        capsule_skel,
+        separator_space,
+        name_container,
+        progress_skel,
+        tags_row,
+    ]
+    .spacing(0);
 
     container(card_inner)
         .width(Length::Fixed(card_w))
@@ -546,14 +619,30 @@ fn build_skeleton_card<'a>(
         .into()
 }
 
-fn build_hydrated_card<'a>(
+struct HydratedCardParams<'a> {
     entry: &'a GameEntry,
     app_id: u32,
     card_w: f32,
     capsule_w: f32,
     capsule_h: f32,
     total_h: f32,
-) -> Element<'a, crate::Message> {
+    tier_breakdown: &'a [(RarityTier, u32)],
+    is_pinned: bool,
+    is_hovered: bool,
+}
+
+fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Message> {
+    let HydratedCardParams {
+        entry,
+        app_id,
+        card_w,
+        capsule_w,
+        capsule_h,
+        total_h,
+        tier_breakdown,
+        is_pinned,
+        is_hovered,
+    } = p;
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
         CapsuleAsset::Loaded { handle, .. } => container(
             container(
@@ -604,9 +693,18 @@ fn build_hydrated_card<'a>(
             .into(),
     };
 
-    let progress_overlay = build_progress_overlay(entry, card_w, capsule_h);
+    let tier_bar = build_tier_stacked_bar(tier_breakdown, card_w, capsule_h);
 
-    let capsule_stack = iced::widget::stack![capsule_area, progress_overlay];
+    let hover_overlay: Element<'_, crate::Message> = if is_hovered {
+        build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .into()
+    };
+
+    let capsule_stack = stack![capsule_area, tier_bar, hover_overlay];
 
     let name_label = container(
         text(entry.summary.name.as_str())
@@ -625,11 +723,14 @@ fn build_hydrated_card<'a>(
         .padding(Padding::default().left(8).right(8).top(8).bottom(0))
         .width(Length::Fixed(card_w));
 
+    let tags_row = build_tags_row(entry, card_w);
+
     let card_inner = column![
         capsule_stack,
         separator,
         iced::widget::Space::new().height(Length::Fill),
         name_label,
+        tags_row,
     ]
     .spacing(0);
 
@@ -656,9 +757,10 @@ fn build_hydrated_card<'a>(
             ProfileViewMessage::GameSelected(app_id),
         ))
         .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let btn_hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let effectively_hovered = is_hovered || btn_hovered;
 
-            let bg = if hovered {
+            let bg = if effectively_hovered {
                 Color {
                     r: (C_SURFACE.r * 1.18).min(1.0),
                     g: (C_SURFACE.g * 1.18).min(1.0),
@@ -669,9 +771,9 @@ fn build_hydrated_card<'a>(
                 C_SURFACE
             };
 
-            let border_color = if is_gold && hovered {
+            let border_color = if is_gold && effectively_hovered {
                 C_GOLD
-            } else if hovered {
+            } else if effectively_hovered {
                 C_ACCENT
             } else if is_gold {
                 Color { a: 0.5, ..C_GOLD }
@@ -679,7 +781,11 @@ fn build_hydrated_card<'a>(
                 Color::TRANSPARENT
             };
 
-            let border_width = if hovered || is_gold { 2.0 } else { 0.0 };
+            let border_width = if effectively_hovered || is_gold {
+                2.0
+            } else {
+                0.0
+            };
 
             let shadow = if is_gold {
                 iced::Shadow {
@@ -687,12 +793,12 @@ fn build_hydrated_card<'a>(
                         C_GOLD.r,
                         C_GOLD.g,
                         C_GOLD.b,
-                        if hovered { 0.5 } else { 0.25 },
+                        if effectively_hovered { 0.5 } else { 0.25 },
                     ),
                     offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: if hovered { 14.0 } else { 6.0 },
+                    blur_radius: if effectively_hovered { 14.0 } else { 6.0 },
                 }
-            } else if hovered {
+            } else if effectively_hovered {
                 iced::Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
                     offset: iced::Vector::new(0.0, 8.0),
@@ -744,93 +850,287 @@ fn build_hydrated_card<'a>(
     .into()
 }
 
-fn build_progress_overlay<'a>(
-    entry: &'a GameEntry,
+fn build_tier_stacked_bar<'a>(
+    tier_breakdown: &'a [(RarityTier, u32)],
     card_w: f32,
     capsule_h: f32,
 ) -> Element<'a, crate::Message> {
-    const BAR_H: f32 = 3.0;
+    const BAR_H: f32 = 4.0;
+    const TIER_ORDER: [RarityTier; 5] = [
+        RarityTier::Common,
+        RarityTier::Uncommon,
+        RarityTier::Rare,
+        RarityTier::Mythical,
+        RarityTier::Legendary,
+    ];
 
-    let Some(progress) = entry.progress.as_ref() else {
-        return iced::widget::Space::new()
+    let total_unlocked: u32 = tier_breakdown.iter().map(|(_, c)| c).sum();
+
+    let bar: Element<'_, crate::Message> = if tier_breakdown.is_empty() || total_unlocked == 0 {
+        container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .into();
-    };
-
-    let bar_element: Element<'_, crate::Message> = if progress.total == 0 {
-        iced::widget::Space::new().into()
-    } else if progress.earned == 0 {
-        container(iced::widget::Space::new())
-            .width(Length::Fill)
             .height(Length::Fixed(BAR_H))
             .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color::from_rgba(
-                    0.47, 0.47, 0.51, 0.5,
-                ))),
+                background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
                 border: iced::Border {
-                    radius: 1.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into()
-    } else if progress.earned >= progress.total {
-        container(iced::widget::Space::new())
-            .width(Length::Fill)
-            .height(Length::Fixed(BAR_H))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_GOLD)),
-                border: iced::Border {
-                    radius: 1.0.into(),
+                    radius: 2.0.into(),
                     ..iced::Border::default()
                 },
                 ..container::Style::default()
             })
             .into()
     } else {
-        let ratio = progress.earned as f32 / progress.total as f32;
-        let bar_color = progress_bar_color(ratio);
-        let fill_w = (ratio * card_w).max(2.0);
+        let mut segments: iced::widget::Row<'_, crate::Message> = row![].spacing(0);
+        let mut any_segment = false;
 
-        let fill = container(iced::widget::Space::new())
-            .width(Length::Fixed(fill_w))
+        for &tier in &TIER_ORDER {
+            let count = tier_breakdown
+                .iter()
+                .find(|(t, _)| *t == tier)
+                .map(|(_, c)| *c)
+                .unwrap_or(0);
+            if count == 0 {
+                continue;
+            }
+            let seg_w = (count as f32 / total_unlocked as f32 * card_w).max(1.0);
+            let color = rarity_color_for_tier(tier);
+
+            if any_segment {
+                let gap = container(iced::widget::Space::new())
+                    .width(Length::Fixed(1.0))
+                    .height(Length::Fixed(BAR_H))
+                    .style(|_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
+                        ..container::Style::default()
+                    });
+                segments = segments.push(gap);
+            }
+
+            let seg = container(iced::widget::Space::new())
+                .width(Length::Fixed(seg_w))
+                .height(Length::Fixed(BAR_H))
+                .style(move |_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(color)),
+                    ..container::Style::default()
+                });
+            segments = segments.push(seg);
+            any_segment = true;
+        }
+
+        container(segments)
+            .width(Length::Fixed(card_w))
             .height(Length::Fixed(BAR_H))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(bar_color)),
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
                 border: iced::Border {
-                    radius: 1.0.into(),
+                    radius: 2.0.into(),
                     ..iced::Border::default()
                 },
                 ..container::Style::default()
-            });
-
-        let track = container(
-            container(fill)
-                .width(Length::Fixed(card_w))
-                .height(Length::Fixed(BAR_H))
-                .style(|_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgba(
-                        0.2, 0.2, 0.25, 0.4,
-                    ))),
-                    border: iced::Border {
-                        radius: 1.0.into(),
-                        ..iced::Border::default()
-                    },
-                    ..container::Style::default()
-                }),
-        );
-
-        track.into()
+            })
+            .into()
     };
 
     let spacer = iced::widget::Space::new()
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h - BAR_H));
 
-    container(column![spacer, bar_element].spacing(0))
+    container(column![spacer, bar].spacing(0))
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(capsule_h))
+        .into()
+}
+
+fn build_hover_overlay<'a>(
+    app_id: u32,
+    is_pinned: bool,
+    card_w: f32,
+    capsule_h: f32,
+) -> Element<'a, crate::Message> {
+    let open_btn = button(text("Open").size(12).color(C_TEXT_PRIMARY))
+        .on_press(crate::Message::ProfileView(
+            ProfileViewMessage::GameSelected(app_id),
+        ))
+        .padding(Padding::default().left(14).right(14).top(6).bottom(6))
+        .style(move |_: &iced::Theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(iced::Background::Color(if hovered {
+                    Color { a: 0.95, ..C_HOVER }
+                } else {
+                    Color {
+                        a: 0.85,
+                        ..C_SURFACE
+                    }
+                })),
+                border: iced::Border {
+                    color: C_BORDER,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: C_TEXT_PRIMARY,
+                ..button::Style::default()
+            }
+        });
+
+    let pin_label = if is_pinned {
+        "\u{2299} Unpin"
+    } else {
+        "\u{2299} Pin"
+    };
+    let pin_btn =
+        button(
+            text(pin_label)
+                .size(12)
+                .color(if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY }),
+        )
+        .on_press(crate::Message::ToggleGamePin(app_id))
+        .padding(Padding::default().left(14).right(14).top(6).bottom(6))
+        .style(move |_: &iced::Theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(iced::Background::Color(if hovered {
+                    Color { a: 0.95, ..C_HOVER }
+                } else {
+                    Color {
+                        a: 0.85,
+                        ..C_SURFACE
+                    }
+                })),
+                border: iced::Border {
+                    color: if is_pinned {
+                        Color { a: 0.6, ..C_ACCENT }
+                    } else {
+                        C_BORDER
+                    },
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY },
+                ..button::Style::default()
+            }
+        });
+
+    let btn_row = row![open_btn, pin_btn]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+    let btn_container = container(btn_row)
+        .width(Length::Fixed(card_w))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center);
+
+    let overlay_bg = container(btn_container)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(capsule_h))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(Color::from_rgba(
+                0.06, 0.05, 0.10, 0.60,
+            ))),
+            ..container::Style::default()
+        });
+
+    overlay_bg.into()
+}
+
+fn build_tags_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::Message> {
+    let progress = entry.progress.as_ref();
+
+    let completion_tag: Option<Element<'_, crate::Message>> = progress.and_then(|p| {
+        if p.total == 0 {
+            return None;
+        }
+        let pct = p.earned as f32 / p.total as f32 * 100.0;
+        let tier_color = completion_tier_color(pct);
+        let is_legendary = pct >= 100.0;
+
+        let dot = container(iced::widget::Space::new())
+            .width(Length::Fixed(6.0))
+            .height(Length::Fixed(6.0))
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(tier_color)),
+                border: iced::Border {
+                    radius: 3.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            });
+
+        let pct_text = text(format!("{pct:.0}%")).size(11).color(tier_color);
+
+        let pill_inner = row![dot, pct_text].spacing(5).align_y(Alignment::Center);
+
+        let shadow = if is_legendary {
+            iced::Shadow {
+                color: Color {
+                    a: 0.5,
+                    ..C_RARITY_LEGENDARY
+                },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 10.0,
+            }
+        } else {
+            iced::Shadow::default()
+        };
+
+        let pill = container(pill_inner)
+            .padding(Padding::default().left(10).right(10).top(3).bottom(3))
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color {
+                    a: 0.15,
+                    ..tier_color
+                })),
+                border: iced::Border {
+                    color: Color {
+                        a: 0.4,
+                        ..tier_color
+                    },
+                    width: 1.0,
+                    radius: 12.0.into(),
+                },
+                shadow,
+                ..container::Style::default()
+            });
+
+        Some(pill.into())
+    });
+
+    let genre_tag: Element<'_, crate::Message> = {
+        let label = text("Genre").size(10).color(C_TEXT_MUTED);
+        container(label)
+            .padding(Padding::default().left(8).right(8).top(2).bottom(2))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color {
+                    a: 0.10,
+                    ..C_TEXT_MUTED
+                })),
+                border: iced::Border {
+                    color: Color {
+                        a: 0.20,
+                        ..C_TEXT_MUTED
+                    },
+                    width: 1.0,
+                    radius: 10.0.into(),
+                },
+                ..container::Style::default()
+            })
+            .into()
+    };
+
+    let mut tags: iced::widget::Row<'_, crate::Message> =
+        row![].spacing(6).align_y(Alignment::Center);
+
+    if let Some(ctag) = completion_tag {
+        tags = tags.push(ctag);
+    }
+    tags = tags.push(genre_tag);
+
+    container(tags)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(24.0))
+        .padding(Padding::default().left(4).right(4).top(3).bottom(3))
         .into()
 }
 

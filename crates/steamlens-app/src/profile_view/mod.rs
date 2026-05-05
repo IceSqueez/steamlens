@@ -172,6 +172,18 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             }
             Task::none()
         }
+
+        ProfileViewMessage::CardHoverEnter(app_id) => {
+            state.hovered_card = Some(app_id);
+            Task::none()
+        }
+
+        ProfileViewMessage::CardHoverExit(app_id) => {
+            if state.hovered_card == Some(app_id) {
+                state.hovered_card = None;
+            }
+            Task::none()
+        }
     }
 }
 
@@ -230,6 +242,7 @@ pub fn view_with_cache_actions<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
     skeleton_phase: f32,
+    pinned: &'a [u32],
 ) -> iced::Element<'a, crate::Message> {
-    view::render_with_cache_actions(state, user_profile, cached_entries, skeleton_phase)
+    view::render_with_cache_actions(state, user_profile, cached_entries, skeleton_phase, pinned)
 }

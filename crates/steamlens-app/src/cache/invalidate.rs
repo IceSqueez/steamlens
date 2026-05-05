@@ -142,6 +142,7 @@ pub fn make_progress_cache_entry(
         achievements: Vec::new(),
         stats: Vec::new(),
         progress: CachedProgress { earned, total },
+        tier_breakdown: Vec::new(),
     }
 }
 
@@ -196,6 +197,7 @@ mod tests {
                 earned: 1,
                 total: 10,
             },
+            tier_breakdown: Vec::new(),
         }
     }
 

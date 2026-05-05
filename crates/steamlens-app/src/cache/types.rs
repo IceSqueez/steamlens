@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::game_view::types::RarityTier;
+
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +15,8 @@ pub struct GameCacheEntry {
     pub achievements: Vec<CachedAchievement>,
     pub stats: Vec<CachedStat>,
     pub progress: CachedProgress,
+    #[serde(default)]
+    pub tier_breakdown: Vec<(RarityTier, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
