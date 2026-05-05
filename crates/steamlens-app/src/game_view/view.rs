@@ -447,7 +447,7 @@ fn filter_row(state: &GameViewState) -> Element<'_, Message> {
     .padding(Padding::default().left(10).right(10).top(6).bottom(6))
     .size(13)
     .style(|_theme, _status| iced::widget::text_input::Style {
-        background: iced::Background::Color(C_SURFACE),
+        background: iced::Background::Color(Color::TRANSPARENT),
         border: iced::Border {
             color: Color::TRANSPARENT,
             width: 0.0,

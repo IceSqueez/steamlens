@@ -242,10 +242,12 @@ pub fn profile_widget<'a>(
     let left_col = build_left_column(user_profile, summary, games_count);
     let right_col = build_right_column(top5);
 
+    const PROFILE_ROW_HEIGHT: f32 = 290.0;
+
     let two_col_row = row![
         container(left_col)
             .width(Length::FillPortion(3))
-            .height(Length::Fill)
+            .height(Length::Fixed(PROFILE_ROW_HEIGHT))
             .padding(18)
             .style(|_: &iced::Theme| container::Style {
                 background: Some(iced::Background::Color(C_SURFACE)),
@@ -257,7 +259,7 @@ pub fn profile_widget<'a>(
             }),
         container(right_col)
             .width(Length::FillPortion(1))
-            .height(Length::Fill)
+            .height(Length::Fixed(PROFILE_ROW_HEIGHT))
             .padding(16)
             .style(|_: &iced::Theme| container::Style {
                 background: Some(iced::Background::Color(C_SURFACE)),

@@ -185,7 +185,7 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
         .size(13)
         .style(
             |_theme: &iced::Theme, _status| iced::widget::text_input::Style {
-                background: iced::Background::Color(C_SURFACE),
+                background: iced::Background::Color(Color::TRANSPARENT),
                 border: iced::Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,
