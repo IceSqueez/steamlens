@@ -616,8 +616,19 @@ fn build_skeleton_card<'a>(
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(total_h))
         .padding(Padding::default().top(8))
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_SKELETON_BG)),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        })
         .into()
 }
+
+const C_SKELETON_BG: Color = Color::from_rgb(0.267, 0.278, 0.353);
 
 struct HydratedCardParams<'a> {
     entry: &'a GameEntry,
