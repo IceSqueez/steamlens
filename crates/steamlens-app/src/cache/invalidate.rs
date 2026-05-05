@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use steamlens_core::{GameSummary, read_last_played, read_manifest_state};
+use steamlens_core::{GameSummary, read_all_last_played, read_last_played, read_manifest_state};
 
 use crate::cache::{
     CURRENT_SCHEMA_VERSION, CacheHit, GameCacheEntry, store::load_game_cache_from_path,
@@ -59,8 +59,7 @@ pub(crate) async fn classify_games_with_root(
 ) -> ClassifyResult {
     let mut result = ClassifyResult::default();
 
-    // TODO(perf): parse localconfig once per boot and look up per game instead
-    // of re-parsing the ~500 KB file for every game.
+    let last_played_map = read_all_last_played(steam_root, steamid3);
 
     for game in games {
         let app_id = game.app_id;
@@ -95,8 +94,7 @@ pub(crate) async fn classify_games_with_root(
             }
         }
 
-        let last_played = read_last_played(steam_root, steamid3, app_id);
-        if let Some(lp) = last_played
+        if let Some(&lp) = last_played_map.get(&app_id)
             && lp > entry.cached_at
         {
             result.dirty.push(app_id);

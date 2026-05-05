@@ -233,13 +233,14 @@ pub fn top5_closest_to_complete(
 /// plus an optional bottom loader strip.
 pub fn profile_widget<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     top5: Vec<TopEntry>,
     loader_phase: LoaderPhase,
     loader_hiding_since: Option<Instant>,
     games_count: usize,
 ) -> Element<'a, crate::Message> {
-    let left_col = build_left_column(user_profile, summary, games_count);
+    let left_col = build_left_column(user_profile, avatar_handle, summary, games_count);
     let right_col = build_right_column(top5);
 
     const PROFILE_ROW_HEIGHT: f32 = 290.0;
@@ -286,10 +287,11 @@ pub fn profile_widget<'a>(
 
 fn build_left_column<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     games_count: usize,
 ) -> Element<'a, crate::Message> {
-    let header_row = build_profile_header(user_profile, summary, games_count);
+    let header_row = build_profile_header(user_profile, avatar_handle, summary, games_count);
     let rarity_bar = build_rarity_bar(summary);
     let rarity_cards = build_rarity_cards(summary);
 
@@ -300,6 +302,7 @@ fn build_left_column<'a>(
 
 fn build_profile_header<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     games_count: usize,
 ) -> Element<'a, crate::Message> {
@@ -307,7 +310,7 @@ fn build_profile_header<'a>(
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
 
-    let avatar = build_avatar(user_profile, persona);
+    let avatar = build_avatar(avatar_handle, persona);
 
     let nick_label = text(format!("{{# {persona} }}"))
         .size(15)
@@ -379,13 +382,12 @@ fn build_profile_header<'a>(
 const AVATAR_SIZE: f32 = 112.0;
 
 fn build_avatar<'a>(
-    user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a ImageHandle>,
     persona: &'a str,
 ) -> Element<'a, crate::Message> {
-    if let Some(bytes) = user_profile.and_then(|p| p.avatar_png_bytes.as_ref()) {
-        let handle = ImageHandle::from_bytes(bytes.clone());
+    if let Some(handle) = avatar_handle {
         return container(
-            image_widget(handle)
+            image_widget(handle.clone())
                 .width(Length::Fixed(AVATAR_SIZE))
                 .height(Length::Fixed(AVATAR_SIZE)),
         )

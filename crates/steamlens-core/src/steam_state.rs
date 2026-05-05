@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use steamlens_vdf::parse_text;
@@ -73,6 +74,54 @@ pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option
         .as_str()?;
 
     last_played_str.parse::<u64>().ok()
+}
+
+/// Parse `localconfig.vdf` once and return all `LastPlayed` timestamps keyed by
+/// app_id. Returns an empty `HashMap` on missing file or parse failure (callers
+/// must treat absent entries as `None`-equivalent — never as a dirty signal).
+///
+/// Prefer this over calling [`read_last_played`] in a loop: the localconfig
+/// file is typically ~500 KB and re-parsing it per app multiplies wall-clock
+/// time linearly with library size.
+pub fn read_all_last_played(steam_root: &Path, steamid3: u64) -> HashMap<u32, u64> {
+    let vdf_path = steam_root
+        .join("userdata")
+        .join(steamid3.to_string())
+        .join("config/localconfig.vdf");
+
+    let Ok(content) = std::fs::read_to_string(&vdf_path) else {
+        return HashMap::new();
+    };
+    let Ok(root) = parse_text(&content) else {
+        return HashMap::new();
+    };
+
+    let Some(apps) = root
+        .get("UserLocalConfigStore")
+        .and_then(|v| v.get("Software"))
+        .and_then(|v| v.get("Valve"))
+        .and_then(|v| v.get("Steam"))
+        .and_then(|v| v.get("apps"))
+    else {
+        return HashMap::new();
+    };
+
+    let mut map = HashMap::new();
+    if let Some(pairs) = apps.as_block() {
+        for (app_id_str, app_node) in pairs {
+            let Ok(app_id) = app_id_str.parse::<u32>() else {
+                continue;
+            };
+            let Some(lp_str) = app_node.get("LastPlayed").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Ok(lp) = lp_str.parse::<u64>() else {
+                continue;
+            };
+            map.insert(app_id, lp);
+        }
+    }
+    map
 }
 
 #[cfg(test)]
@@ -215,5 +264,59 @@ mod tests {
     fn read_last_played_missing_file_returns_none() {
         let dir = tempdir();
         assert!(read_last_played(&dir, 111721205, 105600).is_none());
+    }
+
+    fn write_localconfig_multi(steam_root: &std::path::Path, steamid3: u64, apps: &[(u32, u64)]) {
+        let config_dir = steam_root
+            .join("userdata")
+            .join(steamid3.to_string())
+            .join("config");
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        let mut apps_block = String::new();
+        for (app_id, lp) in apps {
+            apps_block.push_str(&format!(
+                "                    \"{app_id}\"\n                    {{\n                        \"LastPlayed\"  \"{lp}\"\n                    }}\n"
+            ));
+        }
+        let content = format!(
+            "\"UserLocalConfigStore\"\n{{\n    \"Software\"\n    {{\n        \"Valve\"\n        {{\n            \"Steam\"\n            {{\n                \"apps\"\n                {{\n{apps_block}                }}\n            }}\n        }}\n    }}\n}}\n"
+        );
+        std::fs::write(config_dir.join("localconfig.vdf"), content).unwrap();
+    }
+
+    #[test]
+    fn read_all_last_played_happy_path_three_apps() {
+        let dir = tempdir();
+        write_localconfig_multi(
+            &dir,
+            111721205,
+            &[(105600, 1777926953), (570, 1700000000), (440, 1650000000)],
+        );
+        let map = read_all_last_played(&dir, 111721205);
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get(&105600), Some(&1777926953));
+        assert_eq!(map.get(&570), Some(&1700000000));
+        assert_eq!(map.get(&440), Some(&1650000000));
+    }
+
+    #[test]
+    fn read_all_last_played_missing_file_returns_empty_map() {
+        let dir = tempdir();
+        let map = read_all_last_played(&dir, 111721205);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn read_all_last_played_skips_apps_without_lastplayed_key() {
+        let dir = tempdir();
+        let config_dir = dir.join("userdata").join("111721205").join("config");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let content = "\"UserLocalConfigStore\"\n{\n    \"Software\"\n    {\n        \"Valve\"\n        {\n            \"Steam\"\n            {\n                \"apps\"\n                {\n                    \"105600\"\n                    {\n                        \"LastPlayed\"  \"1777926953\"\n                    }\n                    \"570\"\n                    {\n                        \"SomeOther\"  \"value\"\n                    }\n                }\n            }\n        }\n    }\n}\n";
+        std::fs::write(config_dir.join("localconfig.vdf"), content).unwrap();
+        let map = read_all_last_played(&dir, 111721205);
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key(&105600));
+        assert!(!map.contains_key(&570));
     }
 }

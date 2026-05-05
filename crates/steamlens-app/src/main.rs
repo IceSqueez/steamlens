@@ -92,6 +92,9 @@ struct App {
     steamid3: u64,
     /// Local Steam user profile (persona name + avatar). Loaded once at boot.
     user_profile: Option<UserProfile>,
+    /// Decoded avatar `ImageHandle`, cached at boot. Reused across renders so
+    /// the avatar PNG is decoded once (not on every view() invocation).
+    profile_avatar_handle: Option<iced::widget::image::Handle>,
     /// Splash overlay stays visible until BOTH the 750 ms minimum has elapsed
     /// AND the library scan has reported back (`ScanComplete` or `ScanFailed`).
     /// Whichever takes longer wins — splash is a branded handover for the
@@ -119,6 +122,12 @@ fn boot() -> (App, Task<Message>) {
     let (worker, rx) = SteamWorker::spawn();
     profile_view::trigger_scan(&worker);
 
+    let user_profile = profile_result.ok();
+    let profile_avatar_handle = user_profile
+        .as_ref()
+        .and_then(|p| p.avatar_png_bytes.as_ref())
+        .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
+
     let app = App {
         screen: Screen::ProfileView(Box::new(pv_state)),
         worker: Some(worker),
@@ -130,7 +139,8 @@ fn boot() -> (App, Task<Message>) {
         cached_entries: HashMap::new(),
         steam_root,
         steamid3,
-        user_profile: profile_result.ok(),
+        user_profile,
+        profile_avatar_handle,
         splash_min_elapsed: false,
         splash_scan_done: false,
         skeleton_phase: 0.0,
@@ -910,6 +920,7 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::ProfileView(pv_state) => profile_view::view_with_cache_actions(
             pv_state,
             app.user_profile.as_ref(),
+            app.profile_avatar_handle.as_ref(),
             &app.cached_entries,
             app.skeleton_phase,
             &app.settings.library.pinned,
@@ -1158,6 +1169,7 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
+            profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
             skeleton_phase: 0.0,
@@ -1702,6 +1714,7 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
+            profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
             skeleton_phase: 0.0,
@@ -1744,6 +1757,7 @@ mod tests {
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
+            profile_avatar_handle: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
             skeleton_phase: 0.0,

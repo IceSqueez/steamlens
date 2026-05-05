@@ -68,23 +68,33 @@ fn total_card_height(capsule_h: f32) -> f32 {
 pub fn render_with_cache_actions<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
 ) -> Element<'a, crate::Message> {
-    render_inner(state, user_profile, cached_entries, skeleton_phase, pinned)
+    render_inner(
+        state,
+        user_profile,
+        avatar_handle,
+        cached_entries,
+        skeleton_phase,
+        pinned,
+    )
 }
 
 fn render_inner<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
 ) -> Element<'a, crate::Message> {
     let header = build_header(state);
 
-    let profile_section = build_profile_section(state, user_profile, cached_entries);
+    let profile_section =
+        build_profile_section(state, user_profile, avatar_handle, cached_entries);
 
     let body: Element<'_, crate::Message> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
@@ -112,12 +122,14 @@ fn render_inner<'a>(
 fn build_profile_section<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
 ) -> Element<'a, crate::Message> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
     profile_widget(
         user_profile,
+        avatar_handle,
         &summary,
         top5,
         state.loader_phase(),

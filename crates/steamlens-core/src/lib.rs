@@ -27,5 +27,5 @@ pub use profile::{ProfileError, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
 pub use steam_callback::{SteamCallback, SteamResult};
-pub use steam_state::{ManifestState, read_last_played, read_manifest_state};
+pub use steam_state::{ManifestState, read_all_last_played, read_last_played, read_manifest_state};
 pub use user_stats::UserStats;

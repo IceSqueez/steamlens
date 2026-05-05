@@ -240,9 +240,17 @@ pub fn trigger_scan(worker: &SteamWorker) {
 pub fn view_with_cache_actions<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
 ) -> iced::Element<'a, crate::Message> {
-    view::render_with_cache_actions(state, user_profile, cached_entries, skeleton_phase, pinned)
+    view::render_with_cache_actions(
+        state,
+        user_profile,
+        avatar_handle,
+        cached_entries,
+        skeleton_phase,
+        pinned,
+    )
 }
