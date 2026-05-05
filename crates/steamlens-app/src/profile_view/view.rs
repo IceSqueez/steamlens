@@ -178,12 +178,10 @@ pub fn library_search_id() -> WidgetId {
 }
 
 fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
-    let magnifier = text("\u{1F50D}").size(13).color(C_TEXT_MUTED);
-
     let input = text_input("Search games\u{2026}", &state.search)
         .id(library_search_id())
         .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
-        .padding(Padding::default().left(4).right(4).top(6).bottom(6))
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .size(13)
         .style(
             |_theme: &iced::Theme, _status| iced::widget::text_input::Style {
@@ -213,9 +211,10 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
             ..container::Style::default()
         });
 
-    let inner_row = row![magnifier, input, kbd_badge]
+    let inner_row = row![input, kbd_badge]
         .spacing(6)
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(0).right(8));
 
     container(inner_row)
         .width(Length::Fill)

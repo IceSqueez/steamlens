@@ -171,6 +171,24 @@ impl AchievementSort {
         }
     }
 
+    pub fn short_label(self) -> &'static str {
+        match self {
+            AchievementSort::UnlockChance => "UC",
+            AchievementSort::RarityAndName => "R&N",
+            AchievementSort::Name => "A\u{2013}Z",
+            AchievementSort::Rarity => "R",
+        }
+    }
+
+    pub fn tooltip(self) -> &'static str {
+        match self {
+            AchievementSort::UnlockChance => "Sort by unlock chance (rarest first)",
+            AchievementSort::RarityAndName => "Sort by rarity tier, then name",
+            AchievementSort::Name => "Sort by name (A to Z)",
+            AchievementSort::Rarity => "Sort by rarity tier",
+        }
+    }
+
     pub const ALL: &'static [AchievementSort] = &[
         AchievementSort::UnlockChance,
         AchievementSort::RarityAndName,

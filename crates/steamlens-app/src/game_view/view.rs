@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, column, container, image, mouse_area, opaque, pick_list, responsive, rich_text, row,
-    scrollable, space, span, stack, text, text_input,
+    button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
+    space, span, stack, text, text_input, tooltip,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -14,7 +14,6 @@ use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::Message;
 use crate::theme::{
     C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
-    C_TEXT_SECONDARY,
 };
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
@@ -443,10 +442,7 @@ const ACH_CARD_ICON: f32 = 64.0;
 const ACH_CARD_HEIGHT: f32 = 140.0;
 
 fn filter_row(state: &GameViewState) -> Element<'_, Message> {
-    let search_input = text_input(
-        "\u{1F50D}  Search achievements\u{2026}",
-        &state.search_query,
-    )
+    let search_input = text_input("Search achievements\u{2026}", &state.search_query)
     .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
     .padding(Padding::default().left(10).right(10).top(6).bottom(6))
     .size(13)
@@ -481,24 +477,8 @@ fn filter_row(state: &GameViewState) -> Element<'_, Message> {
     let status_seg = status_segment(state.filter);
 
     let sort_label = text("SORT").size(11).color(C_TEXT_MUTED);
-    let sort_pick = pick_list(AchievementSort::ALL, Some(state.achievement_sort), |s| {
-        msg(GameViewMessage::AchievementSortChanged(s))
-    })
-    .text_size(12)
-    .padding(Padding::default().left(8).right(8).top(5).bottom(5))
-    .style(|_theme, _status| pick_list::Style {
-        text_color: C_TEXT_SECONDARY,
-        placeholder_color: C_TEXT_MUTED,
-        handle_color: C_TEXT_MUTED,
-        background: iced::Background::Color(C_SURFACE),
-        border: iced::Border {
-            color: C_BORDER,
-            width: 1.0,
-            radius: 6.0.into(),
-        },
-    });
-
-    let sort_row = row![sort_label, sort_pick]
+    let sort_seg = sort_segment(state.achievement_sort);
+    let sort_row = row![sort_label, sort_seg]
         .spacing(6)
         .align_y(Alignment::Center);
 
@@ -563,6 +543,79 @@ fn status_segment(current: AchievementFilter) -> Element<'static, Message> {
             });
         items.push(btn.into());
         if i < filters.len() - 1 {
+            items.push(divider_el().into());
+        }
+    }
+
+    container(row(items).align_y(Alignment::Center))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
+    let divider_el = || {
+        container(space())
+            .width(Length::Fixed(1.0))
+            .height(Length::Fixed(20.0))
+            .style(|_theme| container::Style {
+                background: Some(iced::Background::Color(C_BORDER)),
+                ..container::Style::default()
+            })
+    };
+
+    let mut items: Vec<Element<'static, Message>> = Vec::new();
+    let last_idx = AchievementSort::ALL.len() - 1;
+    for (i, &s) in AchievementSort::ALL.iter().enumerate() {
+        let active = current == s;
+        let btn = button(
+            text(s.short_label())
+                .size(12)
+                .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
+        )
+        .on_press(msg(GameViewMessage::AchievementSortChanged(s)))
+        .padding(Padding::default().left(10).right(10).top(5).bottom(5))
+        .style(move |_theme, _status| button::Style {
+            background: Some(iced::Background::Color(if active {
+                Color {
+                    a: 0.15,
+                    ..C_ACCENT
+                }
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: iced::Border::default(),
+            ..button::Style::default()
+        });
+
+        let with_tooltip: Element<'static, Message> = tooltip(
+            btn,
+            container(text(s.tooltip()).size(11).color(C_TEXT_PRIMARY))
+                .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+                .style(|_theme| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba(
+                        0.10, 0.09, 0.14, 0.95,
+                    ))),
+                    border: iced::Border {
+                        color: Color { a: 0.5, ..C_ACCENT },
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..container::Style::default()
+                }),
+            tooltip::Position::Bottom,
+        )
+        .into();
+
+        items.push(with_tooltip);
+        if i < last_idx {
             items.push(divider_el().into());
         }
     }
