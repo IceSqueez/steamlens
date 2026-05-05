@@ -5,6 +5,7 @@ use iced::widget::image::Handle as ImageHandle;
 use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
+use crate::game_view::types::RarityTier;
 use crate::progress_scan::ProgressData;
 
 #[derive(Clone)]
@@ -64,6 +65,13 @@ impl std::fmt::Debug for GameEntry {
             .field("progress", &self.progress)
             .finish_non_exhaustive()
     }
+}
+
+pub struct TopEntry {
+    pub app_id: u32,
+    pub game_name: String,
+    pub completion_pct: f64,
+    pub rarity_tier: Option<RarityTier>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

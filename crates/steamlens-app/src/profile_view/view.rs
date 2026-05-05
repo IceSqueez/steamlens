@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image as img_widget, responsive, row, scrollable, text, text_input,
     tooltip,
 };
-use iced::widget::Id as WidgetId;
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::GameCacheEntry;
@@ -17,9 +17,7 @@ use crate::theme::{
 
 use super::ProfileViewState;
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
-use super::types::{
-    CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase,
-};
+use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
 
 const CARD_GAP: f32 = 12.0;
 
