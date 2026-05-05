@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::game_view::types::{AchievementFilter, AchievementSort, RarityFilter};
+use crate::game_view::types::{AchievementFilter, AchievementSort, RarityTier};
 use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
@@ -111,6 +111,8 @@ pub struct LibrarySettings {
     pub sort: LibrarySort,
     #[serde(default)]
     pub view: LibraryView,
+    #[serde(default)]
+    pub pinned: Vec<u32>,
 }
 
 fn default_library_sort() -> LibrarySort {
@@ -123,6 +125,7 @@ impl Default for LibrarySettings {
             search: String::new(),
             sort: default_library_sort(),
             view: LibraryView::default(),
+            pinned: Vec::new(),
         }
     }
 }
@@ -135,8 +138,10 @@ pub struct ManagerSettings {
     pub filter: AchievementFilter,
     #[serde(default = "default_achievement_sort")]
     pub sort: AchievementSort,
-    #[serde(default = "default_rarity_filter")]
-    pub rarity_filter: RarityFilter,
+    #[serde(default)]
+    pub rarity_tiers: Vec<RarityTier>,
+    #[serde(default)]
+    pub include_hidden: bool,
 }
 
 fn default_achievement_filter() -> AchievementFilter {
@@ -147,17 +152,14 @@ fn default_achievement_sort() -> AchievementSort {
     AchievementSort::UnlockChance
 }
 
-fn default_rarity_filter() -> RarityFilter {
-    RarityFilter::All
-}
-
 impl Default for ManagerSettings {
     fn default() -> Self {
         Self {
             search: String::new(),
             filter: default_achievement_filter(),
             sort: default_achievement_sort(),
-            rarity_filter: default_rarity_filter(),
+            rarity_tiers: Vec::new(),
+            include_hidden: false,
         }
     }
 }
@@ -307,16 +309,60 @@ mod tests {
                 search: "terra".to_owned(),
                 sort: LibrarySort::NameAsc,
                 view: LibraryView::Grid,
+                pinned: vec![570, 730],
             },
             manager: ManagerSettings {
                 search: String::new(),
                 filter: AchievementFilter::Locked,
                 sort: AchievementSort::Name,
-                rarity_filter: RarityFilter::Legendary,
+                rarity_tiers: vec![RarityTier::Legendary, RarityTier::Mythical],
+                include_hidden: true,
             },
         };
         let restored = round_trip(&original);
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn library_settings_persist_pinned_round_trip() {
+        let original = LibrarySettings {
+            pinned: vec![105600, 570, 730],
+            ..LibrarySettings::default()
+        };
+        let toml_str = toml::to_string(&original).expect("serialize");
+        let parsed: LibrarySettings = toml::from_str(&toml_str).expect("deserialize");
+        assert_eq!(parsed.pinned, vec![105600, 570, 730]);
+    }
+
+    #[test]
+    fn manager_settings_rarity_tiers_round_trip() {
+        let original = ManagerSettings {
+            rarity_tiers: vec![RarityTier::Common, RarityTier::Rare],
+            include_hidden: true,
+            ..ManagerSettings::default()
+        };
+        let toml_str = toml::to_string(&original).expect("serialize");
+        let parsed: ManagerSettings = toml::from_str(&toml_str).expect("deserialize");
+        assert_eq!(
+            parsed.rarity_tiers,
+            vec![RarityTier::Common, RarityTier::Rare]
+        );
+        assert!(parsed.include_hidden);
+    }
+
+    #[test]
+    fn old_toml_missing_rarity_tiers_gets_empty_default() {
+        let tmp = std::env::temp_dir().join("steamlens_test_old_rarity_999999.toml");
+        let toml_without_rarity = "schema_version = 1\n[manager]\nfilter = \"all\"\n";
+        std::fs::write(&tmp, toml_without_rarity).expect("write");
+        let result = load_from_path(&tmp);
+        assert!(
+            result.manager.rarity_tiers.is_empty(),
+            "missing rarity_tiers must default to empty"
+        );
+        assert!(!result.manager.include_hidden);
+        assert!(result.library.pinned.is_empty());
+        let _ = std::fs::remove_file(&tmp);
     }
 
     #[test]

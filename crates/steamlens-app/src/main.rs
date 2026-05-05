@@ -491,7 +491,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             state.steam_last_updated = steam_last_updated;
             state.filter = app.settings.manager.filter;
             state.achievement_sort = app.settings.manager.sort;
-            state.rarity_filter = app.settings.manager.rarity_filter;
+            state.rarity_tier_set = app.settings.manager.rarity_tiers.iter().copied().collect();
+            state.include_hidden = app.settings.manager.include_hidden;
             state.search_query = app.settings.manager.search.clone();
 
             if let Some(cached) = app.cached_entries.get(&app_id) {
@@ -506,6 +507,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::GameView(m) => {
+            let sync_after = matches!(
+                &m,
+                GameViewMessage::RarityTierToggled(_)
+                    | GameViewMessage::RarityFilterCleared
+                    | GameViewMessage::HiddenPillToggled
+            );
+
             match &m {
                 GameViewMessage::FilterChanged(f) => {
                     app.settings.manager.filter = *f;
@@ -515,10 +523,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.settings.manager.sort = *s;
                     mark_settings_dirty(app);
                 }
-                GameViewMessage::RarityFilterChanged(r) => {
-                    app.settings.manager.rarity_filter = *r;
-                    mark_settings_dirty(app);
-                }
                 GameViewMessage::SearchChanged(q) => {
                     app.settings.manager.search = q.clone();
                     mark_settings_dirty(app);
@@ -526,12 +530,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 _ => {}
             }
 
-            if let Screen::GameView(state) = &mut app.screen
+            let task = if let Screen::GameView(state) = &mut app.screen
                 && let Some(worker) = &app.worker
             {
-                return game_view::update(state, m, worker);
+                game_view::update(state, m, worker)
+            } else {
+                Task::none()
+            };
+
+            if sync_after {
+                if let Screen::GameView(state) = &app.screen {
+                    app.settings.manager.rarity_tiers =
+                        state.rarity_tier_set.iter().copied().collect();
+                    app.settings.manager.include_hidden = state.include_hidden;
+                }
+                mark_settings_dirty(app);
             }
-            Task::none()
+
+            task
         }
 
         Message::PollWorker => drain_worker_replies(app),

@@ -185,46 +185,6 @@ impl std::fmt::Display for AchievementSort {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RarityFilter {
-    All,
-    Common,
-    Uncommon,
-    Rare,
-    Mythical,
-    Legendary,
-}
-
-impl RarityFilter {
-    pub fn label(self) -> &'static str {
-        match self {
-            RarityFilter::All => "All Tiers",
-            RarityFilter::Common => "Common",
-            RarityFilter::Uncommon => "Uncommon",
-            RarityFilter::Rare => "Rare",
-            RarityFilter::Mythical => "Mythical",
-            RarityFilter::Legendary => "Legendary",
-        }
-    }
-
-    #[allow(dead_code)]
-    pub const ALL: &'static [RarityFilter] = &[
-        RarityFilter::All,
-        RarityFilter::Common,
-        RarityFilter::Uncommon,
-        RarityFilter::Rare,
-        RarityFilter::Mythical,
-        RarityFilter::Legendary,
-    ];
-}
-
-impl std::fmt::Display for RarityFilter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.label())
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActiveTab {
     Achievements,
@@ -406,7 +366,8 @@ fn sort_for_display<'a>(
 
 const LEGENDARY_TOP_N: usize = 3;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RarityTier {
     Common,
     Uncommon,
@@ -542,17 +503,6 @@ pub fn visible_achievement_ids<'a>(
         .into_iter()
         .map(|row| row.data.id.as_str())
         .collect()
-}
-
-pub fn rarity_filter_to_tier_set(f: RarityFilter) -> std::collections::HashSet<RarityTier> {
-    match f {
-        RarityFilter::All => std::collections::HashSet::new(),
-        RarityFilter::Common => [RarityTier::Common].into(),
-        RarityFilter::Uncommon => [RarityTier::Uncommon].into(),
-        RarityFilter::Rare => [RarityTier::Rare].into(),
-        RarityFilter::Mythical => [RarityTier::Mythical].into(),
-        RarityFilter::Legendary => [RarityTier::Legendary].into(),
-    }
 }
 
 #[cfg(test)]

@@ -9,8 +9,8 @@ use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
 
 use types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, Banner, BannerKind, BulkOp,
-    RarityFilter, RarityTier, ResetScope, StatRow, build_apply_payload, compute_tier_map,
-    dirty_count, has_stat_errors, rarity_filter_to_tier_set, visible_achievement_ids,
+    RarityTier, ResetScope, StatRow, build_apply_payload, compute_tier_map, dirty_count,
+    has_stat_errors, visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -29,7 +29,6 @@ pub enum GameViewMessage {
     StatEdited(String, String),
     StatEditCommitted(String),
     FilterChanged(AchievementFilter),
-    RarityFilterChanged(RarityFilter),
     RarityTierToggled(RarityTier),
     RarityFilterCleared,
     HiddenPillToggled,
@@ -88,7 +87,6 @@ pub struct GameViewState {
     pub search_query: String,
     pub filter: AchievementFilter,
     pub achievement_sort: AchievementSort,
-    pub rarity_filter: RarityFilter,
     pub rarity_tier_set: HashSet<RarityTier>,
     pub include_hidden: bool,
     pub stats_edit_consent: bool,
@@ -120,7 +118,6 @@ impl GameViewState {
             search_query: String::new(),
             filter: AchievementFilter::All,
             achievement_sort: AchievementSort::UnlockChance,
-            rarity_filter: RarityFilter::All,
             rarity_tier_set: HashSet::new(),
             include_hidden: false,
             stats_edit_consent: false,
@@ -376,11 +373,6 @@ pub fn update(
         }
         GameViewMessage::FilterChanged(f) => {
             state.filter = f;
-            Task::none()
-        }
-        GameViewMessage::RarityFilterChanged(f) => {
-            state.rarity_filter = f;
-            state.rarity_tier_set = rarity_filter_to_tier_set(f);
             Task::none()
         }
         GameViewMessage::RarityTierToggled(tier) => {
