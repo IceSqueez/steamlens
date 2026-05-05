@@ -56,7 +56,9 @@ enum Message {
         app_id: u32,
         result: Result<(), String>,
     },
+    #[allow(dead_code)]
     ClearAllCache,
+    #[allow(dead_code)]
     ClearGameCache(u32),
     SkeletonTick,
 }
@@ -1000,8 +1002,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let skeleton_sub = if has_active_skeletons(app) {
-        iced::time::every(std::time::Duration::from_millis(33))
-            .map(|_| Message::SkeletonTick)
+        iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::SkeletonTick)
     } else {
         Subscription::none()
     };

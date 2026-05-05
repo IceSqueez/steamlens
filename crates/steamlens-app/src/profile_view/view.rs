@@ -315,7 +315,9 @@ fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
 
 fn build_title_block(game_count: usize) -> Element<'static, crate::Message> {
     let title = text("Library").size(22).color(C_ACCENT);
-    let count = text(format!("{game_count} games")).size(12).color(C_TEXT_DIM);
+    let count = text(format!("{game_count} games"))
+        .size(12)
+        .color(C_TEXT_DIM);
     row![title, count]
         .spacing(8)
         .align_y(Alignment::Center)
@@ -329,35 +331,33 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
         .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
         .padding(Padding::default().left(4).right(4).top(6).bottom(6))
         .size(13)
-        .style(|_theme: &iced::Theme, _status| iced::widget::text_input::Style {
-            background: iced::Background::Color(C_SURFACE),
-            border: iced::Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 0.0.into(),
+        .style(
+            |_theme: &iced::Theme, _status| iced::widget::text_input::Style {
+                background: iced::Background::Color(C_SURFACE),
+                border: iced::Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                icon: C_TEXT_MUTED,
+                placeholder: C_TEXT_MUTED,
+                value: C_TEXT_PRIMARY,
+                selection: Color { a: 0.3, ..C_ACCENT },
             },
-            icon: C_TEXT_MUTED,
-            placeholder: C_TEXT_MUTED,
-            value: C_TEXT_PRIMARY,
-            selection: Color { a: 0.3, ..C_ACCENT },
-        })
+        )
         .width(Length::Fill);
 
-    let kbd_badge = container(
-        text("Ctrl K")
-            .size(10)
-            .color(C_TEXT_DIM),
-    )
-    .padding(Padding::default().left(6).right(6).top(2).bottom(2))
-    .style(|_: &iced::Theme| container::Style {
-        background: Some(iced::Background::Color(C_BORDER)),
-        border: iced::Border {
-            color: C_BORDER,
-            width: 1.0,
-            radius: 3.0.into(),
-        },
-        ..container::Style::default()
-    });
+    let kbd_badge = container(text("Ctrl K").size(10).color(C_TEXT_DIM))
+        .padding(Padding::default().left(6).right(6).top(2).bottom(2))
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_BORDER)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
+            ..container::Style::default()
+        });
 
     let inner_row = row![magnifier, input, kbd_badge]
         .spacing(6)
@@ -531,7 +531,10 @@ fn build_rescan_button() -> Element<'static, crate::Message> {
     .into()
 }
 
-fn build_icon_button(glyph: &'static str, toast_msg: &'static str) -> Element<'static, crate::Message> {
+fn build_icon_button(
+    glyph: &'static str,
+    toast_msg: &'static str,
+) -> Element<'static, crate::Message> {
     button(
         container(text(glyph).size(14).color(C_TEXT_MUTED))
             .width(Length::Fixed(32.0))
@@ -557,7 +560,11 @@ fn build_icon_button(glyph: &'static str, toast_msg: &'static str) -> Element<'s
                 width: 1.0,
                 radius: 6.0.into(),
             },
-            text_color: if hovered { C_TEXT_PRIMARY } else { C_TEXT_MUTED },
+            text_color: if hovered {
+                C_TEXT_PRIMARY
+            } else {
+                C_TEXT_MUTED
+            },
             ..iced::widget::button::Style::default()
         }
     })
