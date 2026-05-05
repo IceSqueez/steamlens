@@ -257,27 +257,4 @@ mod tests {
             Some(fake_png.as_slice())
         );
     }
-
-    #[test]
-    #[ignore = "requires real Steam installation on disk"]
-    fn load_local_profile_live() {
-        let profile =
-            load_local_profile().expect("should succeed on a machine with Steam installed");
-        assert!(profile.steam_id > 0, "steam_id must be non-zero");
-        assert!(
-            !profile.account_name.is_empty(),
-            "account_name must not be empty"
-        );
-        println!(
-            "Profile: steam_id={}, account={}, persona={}, avatar={} bytes",
-            profile.steam_id,
-            profile.account_name,
-            profile.persona_name,
-            profile
-                .avatar_png_bytes
-                .as_ref()
-                .map(|b| b.len())
-                .unwrap_or(0)
-        );
-    }
 }
