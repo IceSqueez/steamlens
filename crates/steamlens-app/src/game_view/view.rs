@@ -9,6 +9,7 @@ use super::types::{
     RarityFilter, RarityTier, ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::Message;
 
 const C_BG: Color = Color::from_rgb(0.157, 0.165, 0.212);
@@ -129,60 +130,73 @@ fn loaded_view(state: &GameViewState) -> Element<'_, Message> {
 }
 
 fn header_bar(state: &GameViewState) -> Element<'_, Message> {
-    let back_btn = button(text("\u{2190} Back").size(13).color(C_PURPLE))
+    let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
         .on_press(Message::GoBack)
-        .padding(Padding::from([8u16, 8]))
-        .style(|_theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: if hovered {
-                    Some(iced::Background::Color(Color {
-                        a: 0.15,
-                        ..C_PURPLE
-                    }))
-                } else {
-                    None
-                },
-                border: dracula_border_radius(4.0),
-                ..button::Style::default()
-            }
+        .padding(Padding::from([0u16, 0]))
+        .style(|_theme, _status| button::Style {
+            background: None,
+            border: iced::Border::default(),
+            ..button::Style::default()
         });
 
-    let title = text(&state.game_name).size(20).color(C_FG);
+    let divider = container(space())
+        .width(Length::Fixed(1.0))
+        .height(Length::Fixed(16.0))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_BORDER)),
+            ..container::Style::default()
+        });
 
-    let reload_btn = button(text("\u{27F3} Reload").size(13))
+    let earned = state
+        .achievements
+        .iter()
+        .filter(|r| r.effective_achieved())
+        .count();
+    let total = state.achievements.len();
+
+    let title_text = text(&state.game_name).size(16).color(C_TEXT_PRIMARY);
+
+    let unlocked_subtitle = text(format!("{earned} / {total} unlocked"))
+        .size(12)
+        .color(C_TEXT_MUTED);
+
+    let reload_btn = button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
         .on_press(msg(GameViewMessage::ReloadRequested))
-        .padding(Padding::from([6u16, 12]));
-
-    let clear_cache_btn = button(text("Clear cache").size(11).color(C_MUTED))
-        .on_press(Message::ClearGameCache(state.app_id))
-        .padding(Padding::from([4u16, 8]))
+        .padding(Padding::default().left(12).right(12).top(6).bottom(6))
         .style(|_theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: if hovered {
-                    Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED }))
+                    Some(iced::Background::Color(C_HOVER))
                 } else {
                     None
                 },
-                border: dracula_border_radius(4.0),
+                border: iced::Border {
+                    color: C_BORDER,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: if hovered { C_TEXT_PRIMARY } else { C_TEXT_MUTED },
                 ..button::Style::default()
             }
         });
 
-    let right_group = row![title, reload_btn, clear_cache_btn]
-        .spacing(12)
-        .align_y(Alignment::Center);
-
-    let header_row = row![back_btn, space().width(Length::Fill), right_group]
-        .spacing(16)
-        .align_y(Alignment::Center)
-        .padding(Padding::from([16u16, 16]));
+    let header_row = row![
+        back_btn,
+        divider,
+        title_text,
+        unlocked_subtitle,
+        space().width(Length::Fill),
+        reload_btn,
+    ]
+    .spacing(14)
+    .align_y(Alignment::Center);
 
     container(header_row)
+        .padding(Padding::default().left(20).right(20).top(14).bottom(14))
         .width(Length::Fill)
         .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
+            background: Some(iced::Background::Color(C_SURFACE)),
             ..container::Style::default()
         })
         .into()

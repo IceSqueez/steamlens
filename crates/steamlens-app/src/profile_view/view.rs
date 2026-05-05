@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 
 use iced::widget::{
-    button, column, container, image as img_widget, pick_list, responsive, row, scrollable, text,
-    text_input, tooltip,
+    button, column, container, image as img_widget, responsive, row, scrollable, text, text_input,
+    tooltip,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
+use crate::theme::{
+    C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED,
+    C_TEXT_PRIMARY,
+};
 
 use super::ProfileViewState;
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
@@ -17,11 +21,9 @@ use super::types::{
 
 const CARD_GAP: f32 = 12.0;
 
-const C_SURFACE: Color = Color::from_rgb(0.267, 0.278, 0.353);
 const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
-const C_ACCENT: Color = Color::from_rgb(0.741, 0.576, 0.976);
 
 const C_GOLD: Color = Color::from_rgb(1.0, 0.85, 0.4);
 const C_PURPLE_BAR: Color = Color::from_rgb(0.741, 0.576, 0.976);
@@ -46,20 +48,15 @@ pub fn render_with_cache_actions<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
 ) -> Element<'a, crate::Message> {
-    render_inner(state, true, user_profile, cached_entries)
+    render_inner(state, user_profile, cached_entries)
 }
 
 fn render_inner<'a>(
     state: &'a ProfileViewState,
-    show_cache_actions: bool,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
 ) -> Element<'a, crate::Message> {
-    let header = if show_cache_actions {
-        build_header_with_cache(state)
-    } else {
-        build_header(state)
-    };
+    let header = build_header(state);
 
     let profile_section = build_profile_section(state, user_profile, cached_entries);
 
@@ -281,81 +278,22 @@ fn build_determinate_bar<'a>(
 }
 
 fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
-    build_header_inner(state, false)
-}
-
-fn build_header_with_cache(state: &ProfileViewState) -> Element<'_, crate::Message> {
-    build_header_inner(state, true)
-}
-
-fn build_header_inner(
-    state: &ProfileViewState,
-    show_cache_actions: bool,
-) -> Element<'_, crate::Message> {
-    let title = text("Library").size(22).color(C_ACCENT);
-
-    let search = text_input("Search games…", &state.search)
-        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
-        .padding(8)
-        .size(13)
-        .width(Length::Fixed(260.0));
-
-    let sort_label = text("Sort:").size(13).color(C_MUTED);
-    let sort_pick = pick_list(
-        &[LibrarySort::LastPlayed, LibrarySort::NameAsc][..],
-        Some(state.sort),
-        |s| crate::Message::ProfileView(ProfileViewMessage::SortChanged(s)),
-    )
-    .text_size(13);
-
-    let size_label = text("Size:").size(13).color(C_MUTED);
-    let size_pick = pick_list(
-        &[CapsuleSize::Small, CapsuleSize::Medium, CapsuleSize::Large][..],
-        Some(state.capsule_size),
-        |s| crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(s)),
-    )
-    .text_size(13);
-
-    let rescan_btn = button(text("Rescan").size(12))
-        .on_press(crate::Message::ProfileView(
-            ProfileViewMessage::RescanRequested,
-        ))
-        .padding(Padding::default().left(10).right(10).top(6).bottom(6));
-
-    let mut right_controls = row![sort_label, sort_pick, size_label, size_pick, rescan_btn]
-        .spacing(8)
-        .align_y(Alignment::Center);
-
-    if show_cache_actions {
-        let clear_btn = button(text("Clear cache").size(11).color(C_MUTED))
-            .on_press(crate::Message::ClearAllCache)
-            .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-            .style(|_theme, status| {
-                let hovered = matches!(
-                    status,
-                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-                );
-                iced::widget::button::Style {
-                    background: if hovered {
-                        Some(iced::Background::Color(Color { a: 0.12, ..C_MUTED }))
-                    } else {
-                        None
-                    },
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..iced::Border::default()
-                    },
-                    ..iced::widget::button::Style::default()
-                }
-            });
-        right_controls = right_controls.push(clear_btn);
-    }
+    let title_block = build_title_block(state.games.len());
+    let search_block = build_search_block(state);
+    let sort_block = build_sort_segment(state.sort);
+    let size_block = build_size_segment(state.capsule_size);
+    let rescan_btn = build_rescan_button();
+    let settings_btn = build_icon_button("\u{2699}", "Settings \u{2014} coming soon");
+    let about_btn = build_icon_button("\u{24D8}", "About \u{2014} coming soon");
 
     let header_row = row![
-        title,
-        iced::widget::Space::new().width(Length::Fill),
-        search,
-        right_controls,
+        title_block,
+        search_block,
+        sort_block,
+        size_block,
+        rescan_btn,
+        settings_btn,
+        about_btn,
     ]
     .spacing(12)
     .padding(Padding::default().left(16).right(16).top(12).bottom(12))
@@ -363,19 +301,267 @@ fn build_header_inner(
 
     container(header_row)
         .width(Length::Fill)
-        .style(|theme: &iced::Theme| {
-            let palette = theme.palette();
-            container::Style {
-                background: Some(iced::Background::Color(Color {
-                    r: palette.background.r * 0.85,
-                    g: palette.background.g * 0.85,
-                    b: palette.background.b * 0.85,
-                    a: 1.0,
-                })),
-                ..container::Style::default()
-            }
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..container::Style::default()
         })
         .into()
+}
+
+fn build_title_block(game_count: usize) -> Element<'static, crate::Message> {
+    let title = text("Library").size(22).color(C_ACCENT);
+    let count = text(format!("{game_count} games")).size(12).color(C_TEXT_DIM);
+    row![title, count]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
+    let magnifier = text("\u{1F50D}").size(13).color(C_TEXT_MUTED);
+
+    let input = text_input("Search games\u{2026}", &state.search)
+        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
+        .padding(Padding::default().left(4).right(4).top(6).bottom(6))
+        .size(13)
+        .style(|_theme: &iced::Theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(C_SURFACE),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            icon: C_TEXT_MUTED,
+            placeholder: C_TEXT_MUTED,
+            value: C_TEXT_PRIMARY,
+            selection: Color { a: 0.3, ..C_ACCENT },
+        })
+        .width(Length::Fill);
+
+    let kbd_badge = container(
+        text("Ctrl K")
+            .size(10)
+            .color(C_TEXT_DIM),
+    )
+    .padding(Padding::default().left(6).right(6).top(2).bottom(2))
+    .style(|_: &iced::Theme| container::Style {
+        background: Some(iced::Background::Color(C_BORDER)),
+        border: iced::Border {
+            color: C_BORDER,
+            width: 1.0,
+            radius: 3.0.into(),
+        },
+        ..container::Style::default()
+    });
+
+    let inner_row = row![magnifier, input, kbd_badge]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+    container(inner_row)
+        .width(Length::Fill)
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .padding(Padding::default().left(8).right(8).top(0).bottom(0))
+        .into()
+}
+
+fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {
+    let label = text("SORT").size(11).color(C_TEXT_MUTED);
+    let segment = segment_row(&[
+        (
+            "Last played",
+            current == LibrarySort::LastPlayed,
+            crate::Message::ProfileView(ProfileViewMessage::SortChanged(LibrarySort::LastPlayed)),
+        ),
+        (
+            "A\u{2013}Z",
+            current == LibrarySort::NameAsc,
+            crate::Message::ProfileView(ProfileViewMessage::SortChanged(LibrarySort::NameAsc)),
+        ),
+    ]);
+    row![label, segment]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> {
+    let label = text("SIZE").size(11).color(C_TEXT_MUTED);
+    let segment = segment_row(&[
+        (
+            "S",
+            current == CapsuleSize::Small,
+            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Small)),
+        ),
+        (
+            "M",
+            current == CapsuleSize::Medium,
+            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(
+                CapsuleSize::Medium,
+            )),
+        ),
+        (
+            "L",
+            current == CapsuleSize::Large,
+            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Large)),
+        ),
+    ]);
+    row![label, segment]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+fn segment_row(items: &[(&'static str, bool, crate::Message)]) -> Element<'static, crate::Message> {
+    let mut r = row![].spacing(0).align_y(Alignment::Center);
+    let last_idx = items.len().saturating_sub(1);
+
+    for (idx, (label, active, msg)) in items.iter().enumerate() {
+        let active = *active;
+        let msg = msg.clone();
+
+        let btn = button(
+            text(*label)
+                .size(12)
+                .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
+        )
+        .on_press(msg)
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
+        .style(move |_: &iced::Theme, status| {
+            let hovered = matches!(
+                status,
+                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+            );
+            let bg = if active {
+                Some(iced::Background::Color(Color {
+                    r: C_ACCENT.r,
+                    g: C_ACCENT.g,
+                    b: C_ACCENT.b,
+                    a: 0.15,
+                }))
+            } else if hovered {
+                Some(iced::Background::Color(C_HOVER))
+            } else {
+                Some(iced::Background::Color(Color::TRANSPARENT))
+            };
+            iced::widget::button::Style {
+                background: bg,
+                border: iced::Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                text_color: if active { C_ACCENT } else { C_TEXT_MUTED },
+                ..iced::widget::button::Style::default()
+            }
+        });
+
+        r = r.push(btn);
+
+        if idx < last_idx {
+            let divider = container(iced::widget::Space::new().width(1.0).height(20.0))
+                .width(Length::Fixed(1.0))
+                .height(Length::Fixed(20.0))
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(C_BORDER)),
+                    ..container::Style::default()
+                });
+            r = r.push(divider);
+        }
+    }
+
+    container(r)
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+fn build_rescan_button() -> Element<'static, crate::Message> {
+    button(
+        row![
+            text("\u{21BB}").size(12).color(C_APP),
+            text("Rescan").size(12).color(C_APP),
+        ]
+        .spacing(5)
+        .align_y(Alignment::Center),
+    )
+    .on_press(crate::Message::ProfileView(
+        ProfileViewMessage::RescanRequested,
+    ))
+    .padding(Padding::default().left(14).right(14).top(7).bottom(7))
+    .style(|_: &iced::Theme, status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        iced::widget::button::Style {
+            background: Some(iced::Background::Color(if hovered {
+                C_ACCENT_DARK
+            } else {
+                C_ACCENT
+            })),
+            border: iced::Border {
+                radius: 6.0.into(),
+                ..iced::Border::default()
+            },
+            text_color: C_APP,
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
+}
+
+fn build_icon_button(glyph: &'static str, toast_msg: &'static str) -> Element<'static, crate::Message> {
+    button(
+        container(text(glyph).size(14).color(C_TEXT_MUTED))
+            .width(Length::Fixed(32.0))
+            .height(Length::Fixed(32.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .on_press(crate::Message::ToastRequest(toast_msg.to_owned()))
+    .padding(0)
+    .style(|_: &iced::Theme, status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        iced::widget::button::Style {
+            background: Some(iced::Background::Color(if hovered {
+                C_HOVER
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            text_color: if hovered { C_TEXT_PRIMARY } else { C_TEXT_MUTED },
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
 }
 
 fn build_grid<'a>(

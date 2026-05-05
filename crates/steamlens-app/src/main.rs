@@ -4,6 +4,7 @@ mod game_view;
 mod profile_view;
 mod progress_scan;
 mod settings;
+mod skeleton;
 mod steam_worker;
 mod theme;
 mod worker;
@@ -57,6 +58,7 @@ enum Message {
     },
     ClearAllCache,
     ClearGameCache(u32),
+    SkeletonTick,
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -91,6 +93,7 @@ struct App {
     /// actual load, not a cosmetic delay.
     splash_min_elapsed: bool,
     splash_scan_done: bool,
+    skeleton_phase: f32,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -125,6 +128,7 @@ fn boot() -> (App, Task<Message>) {
         user_profile: profile_result.ok(),
         splash_min_elapsed: false,
         splash_scan_done: false,
+        skeleton_phase: 0.0,
     };
 
     let min_splash_task = Task::perform(
@@ -653,6 +657,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::SkeletonTick => {
+            app.skeleton_phase = (app.skeleton_phase + 0.02) % 1.0;
+            Task::none()
+        }
+
         Message::KeyboardEvent(event) => {
             if let keyboard::Event::KeyPressed {
                 modifiers,
@@ -910,6 +919,10 @@ fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element
     stack![content, overlay_col].into()
 }
 
+fn has_active_skeletons(_app: &App) -> bool {
+    false
+}
+
 fn subscription(app: &App) -> Subscription<Message> {
     let keyboard_sub = iced::event::listen_with(|event, _status, _id| {
         if let iced::Event::Keyboard(k) = event {
@@ -986,6 +999,13 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let skeleton_sub = if has_active_skeletons(app) {
+        iced::time::every(std::time::Duration::from_millis(33))
+            .map(|_| Message::SkeletonTick)
+    } else {
+        Subscription::none()
+    };
+
     let settings_flush_sub =
         iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick);
 
@@ -1004,6 +1024,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         profile_view_spinner_sub,
         progress_sub,
         loader_pulse_sub,
+        skeleton_sub,
         settings_flush_sub,
         toast_sub,
     ])
@@ -1059,6 +1080,7 @@ mod tests {
             user_profile: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
+            skeleton_phase: 0.0,
         }
     }
 
@@ -1599,6 +1621,7 @@ mod tests {
             user_profile: None,
             splash_min_elapsed: true,
             splash_scan_done: true,
+            skeleton_phase: 0.0,
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
