@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use iced::widget::{button, column, container, image as image_widget, row, text};
 use iced::widget::image::Handle as ImageHandle;
+use iced::widget::{button, column, container, image as image_widget, row, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
@@ -312,9 +312,7 @@ fn build_profile_header<'a>(
 
     let avatar = build_avatar(avatar_handle, persona);
 
-    let nick_label = text(format!("{{# {persona} }}"))
-        .size(15)
-        .color(C_TEXT_PRIMARY);
+    let nick_label = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
 
     let level_chip = container(text("Lvl \u{2014}").size(11).color(C_ACCENT))
         .padding(Padding::default().left(6).right(6).top(2).bottom(2))
@@ -612,13 +610,9 @@ fn build_closest_row(entry: TopEntry) -> Element<'static, crate::Message> {
         .size(12)
         .color(C_ACCENT);
 
-    let info_col = column![
-        container(game_name_label)
-            .width(Length::Fill)
-            .clip(true),
-    ]
-    .spacing(2)
-    .width(Length::Fill);
+    let info_col = column![container(game_name_label).width(Length::Fill).clip(true),]
+        .spacing(2)
+        .width(Length::Fill);
 
     let stripe = container(iced::widget::Space::new())
         .width(Length::Fixed(3.0))
