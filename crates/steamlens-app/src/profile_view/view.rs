@@ -4,6 +4,7 @@ use iced::widget::{
     button, column, container, image as img_widget, responsive, row, scrollable, text, text_input,
     tooltip,
 };
+use iced::widget::Id as WidgetId;
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::GameCacheEntry;
@@ -17,7 +18,7 @@ use crate::theme::{
 use super::ProfileViewState;
 use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
 use super::types::{
-    CapsuleAsset, GameEntry, LibrarySort, LoaderPhase, ProfileViewMessage, ProfileViewPhase,
+    CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase,
 };
 
 const CARD_GAP: f32 = 12.0;
@@ -81,14 +82,10 @@ fn render_inner<'a>(
         }
     };
 
-    let loader = build_unified_loader(state);
     let footer = build_footer(state);
 
     let mut col = column![header];
     col = col.push(profile_section);
-    if let Some(loader_el) = loader {
-        col = col.push(loader_el);
-    }
     col = col.push(body).push(footer);
 
     col.spacing(0).into()
@@ -101,183 +98,14 @@ fn build_profile_section<'a>(
 ) -> Element<'a, crate::Message> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
-    profile_widget(user_profile, &summary, top5, &state.capsule_handles)
-}
-
-/// Unified 3-phase loader strip shown below the profile widget and above the
-/// games grid.  Returns `None` only when the loader has finished its γ fade-out
-/// (elapsed >= 300 ms), causing it to be fully unmounted from the layout.
-///
-/// - Phase α (Alpha): no games discovered yet — indeterminate 3-dot pulse.
-/// - Phase β (Beta): games loading — determinate fill bar with game count.
-/// - Phase γ (Gamma): all games have progress — fades out over 300 ms.
-fn build_unified_loader<'a>(state: &'a ProfileViewState) -> Option<Element<'a, crate::Message>> {
-    let phase = state.loader_phase();
-
-    let alpha_opacity = match phase {
-        LoaderPhase::Gamma => {
-            let elapsed = state
-                .loader_hiding_since
-                .map(|t| t.elapsed().as_millis())
-                .unwrap_or(0);
-            if elapsed >= 300 {
-                return None;
-            }
-            let progress = elapsed as f32 / 300.0;
-            1.0 - progress
-        }
-        _ => 1.0,
-    };
-
-    let loader_content: Element<'_, crate::Message> = match phase {
-        LoaderPhase::Alpha => {
-            let pulse = state.loader_pulse_phase;
-            let pulse_dots = build_pulse_dots(pulse);
-            row![
-                pulse_dots,
-                text("Discovering your library\u{2026}")
-                    .size(12)
-                    .color(Color {
-                        a: alpha_opacity,
-                        ..C_MUTED
-                    }),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
-        }
-
-        LoaderPhase::Beta { loaded, total } => {
-            let frac = if total > 0 {
-                loaded as f32 / total as f32
-            } else {
-                0.0
-            };
-            let bar = build_determinate_bar(frac, 200.0, alpha_opacity);
-            row![
-                bar,
-                text(format!("{loaded} / {total} games loaded"))
-                    .size(12)
-                    .color(Color {
-                        a: alpha_opacity,
-                        ..C_MUTED
-                    }),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
-        }
-
-        LoaderPhase::Gamma => {
-            let bar = build_determinate_bar(1.0, 200.0, alpha_opacity);
-            row![
-                bar,
-                text("Library ready").size(12).color(Color {
-                    a: alpha_opacity,
-                    ..C_MUTED
-                }),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
-        }
-    };
-
-    let banner = container(loader_content)
-        .width(Length::Fill)
-        .padding(Padding::default().left(16).right(16).top(6).bottom(6))
-        .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color::from_rgba(
-                0.18,
-                0.14,
-                0.28,
-                0.6 * alpha_opacity,
-            ))),
-            border: iced::Border {
-                color: Color::from_rgba(0.741, 0.576, 0.976, 0.3 * alpha_opacity),
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    Some(banner.into())
-}
-
-fn build_pulse_dots<'a>(pulse: f32) -> Element<'a, crate::Message> {
-    let dot_count = 3usize;
-    let mut dots_row = row![].spacing(4).align_y(Alignment::Center);
-
-    for i in 0..dot_count {
-        let offset = i as f32 / dot_count as f32;
-        let phase = (pulse + offset) % 1.0;
-        let brightness = if phase < 0.5 {
-            0.4 + phase * 1.2
-        } else {
-            1.0 - (phase - 0.5) * 1.2
-        };
-        let brightness = brightness.clamp(0.4, 1.0);
-        let dot_color = Color {
-            r: C_ACCENT.r * brightness,
-            g: C_ACCENT.g * brightness,
-            b: C_ACCENT.b * brightness,
-            a: 1.0,
-        };
-        let dot = container(iced::widget::Space::new())
-            .width(Length::Fixed(6.0))
-            .height(Length::Fixed(6.0))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(dot_color)),
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            });
-        dots_row = dots_row.push(dot);
-    }
-
-    dots_row.into()
-}
-
-fn build_determinate_bar<'a>(
-    fraction: f32,
-    width: f32,
-    opacity: f32,
-) -> Element<'a, crate::Message> {
-    let fill_w = (fraction.clamp(0.0, 1.0) * width).max(0.0);
-    let bar_color = Color {
-        a: opacity,
-        ..C_ACCENT
-    };
-
-    let fill = container(iced::widget::Space::new())
-        .width(Length::Fixed(fill_w))
-        .height(Length::Fixed(4.0))
-        .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(bar_color)),
-            border: iced::Border {
-                radius: 2.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    let track_color = Color::from_rgba(0.3, 0.3, 0.35, 0.5 * opacity);
-
-    let track = container(fill)
-        .width(Length::Fixed(width))
-        .height(Length::Fixed(4.0))
-        .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(track_color)),
-            border: iced::Border {
-                radius: 2.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    track.into()
+    profile_widget(
+        user_profile,
+        &summary,
+        top5,
+        state.loader_phase(),
+        state.loader_hiding_since,
+        state.games.len(),
+    )
 }
 
 fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
@@ -327,10 +155,15 @@ fn build_title_block(game_count: usize) -> Element<'static, crate::Message> {
         .into()
 }
 
+pub fn library_search_id() -> WidgetId {
+    WidgetId::new("library-search")
+}
+
 fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
     let magnifier = text("\u{1F50D}").size(13).color(C_TEXT_MUTED);
 
     let input = text_input("Search games\u{2026}", &state.search)
+        .id(library_search_id())
         .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
         .padding(Padding::default().left(4).right(4).top(6).bottom(6))
         .size(13)

@@ -2,6 +2,8 @@ pub mod profile;
 pub mod types;
 mod view;
 
+pub use view::library_search_id;
+
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
 

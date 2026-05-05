@@ -61,6 +61,7 @@ enum Message {
     #[allow(dead_code)]
     ClearGameCache(u32),
     SkeletonTick,
+    FocusLibrarySearch,
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -670,16 +671,33 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 key: keyboard::Key::Character(ref c),
                 ..
             } = event
-                && modifiers.control()
-                && c.as_str() == "s"
-                && let Screen::GameView(state) = &mut app.screen
-                && state.dirty_count() > 0
-                && !state.has_stat_errors()
-                && let Some(w) = &app.worker
             {
-                return game_view::update(state, GameViewMessage::ApplyChanges, w);
+                if modifiers.control() && c.as_str() == "s" {
+                    if let Screen::GameView(state) = &mut app.screen
+                        && state.dirty_count() > 0
+                        && !state.has_stat_errors()
+                        && let Some(w) = &app.worker
+                    {
+                        return game_view::update(state, GameViewMessage::ApplyChanges, w);
+                    }
+                }
+                if modifiers.command() && c.as_str() == "k" {
+                    if matches!(app.screen, Screen::ProfileView(_)) {
+                        return iced::widget::operation::focus(
+                            profile_view::library_search_id(),
+                        );
+                    }
+                }
             }
             Task::none()
+        }
+
+        Message::FocusLibrarySearch => {
+            if matches!(app.screen, Screen::ProfileView(_)) {
+                iced::widget::operation::focus(profile_view::library_search_id())
+            } else {
+                Task::none()
+            }
         }
     }
 }
