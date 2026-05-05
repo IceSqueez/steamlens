@@ -780,15 +780,18 @@ fn loader_error_row<'a>(
         .on_press(retry_msg)
         .padding(Padding::default().left(12).right(12).top(5).bottom(5))
         .style(|_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                button::Status::Hovered | button::Status::Pressed
-            );
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: Some(iced::Background::Color(if hovered {
-                    Color { a: 0.25, ..C_ACCENT }
+                    Color {
+                        a: 0.25,
+                        ..C_ACCENT
+                    }
                 } else {
-                    Color { a: 0.15, ..C_ACCENT }
+                    Color {
+                        a: 0.15,
+                        ..C_ACCENT
+                    }
                 })),
                 border: iced::Border {
                     color: Color { a: 0.5, ..C_ACCENT },

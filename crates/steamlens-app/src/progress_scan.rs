@@ -156,8 +156,12 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
-    let exe = std::env::current_exe()
-        .map_err(|e| (Box::new(e) as Box<dyn std::error::Error + Send>, String::new()))?;
+    let exe = std::env::current_exe().map_err(|e| {
+        (
+            Box::new(e) as Box<dyn std::error::Error + Send>,
+            String::new(),
+        )
+    })?;
 
     let mut child = Command::new(&exe)
         .arg("--worker")
@@ -166,7 +170,12 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| (Box::new(e) as Box<dyn std::error::Error + Send>, String::new()))?;
+        .map_err(|e| {
+            (
+                Box::new(e) as Box<dyn std::error::Error + Send>,
+                String::new(),
+            )
+        })?;
 
     let stderr_pipe = child.stderr.take();
     let stderr_task = tokio::spawn(async move {
@@ -293,8 +302,7 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
     };
 
     send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsLite).await?;
-    let (achievements, stats) =
-        read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
+    let (achievements, stats) = read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
 
     send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
     let global_percentages =

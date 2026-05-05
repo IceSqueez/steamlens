@@ -294,11 +294,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
     DispatchOutcome::Continue
 }
 
-fn load_achievements_and_stats(
-    client: &Client,
-    app_id: u32,
-    with_icons: bool,
-) -> WorkerResponse {
+fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 

@@ -376,13 +376,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return load_task;
                 }
                 ProfileViewMessage::RetryFailedScans => {
-                    let failed_ids: Vec<u32> = if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let ids: Vec<u32> = pv_state.failed_app_ids.iter().copied().collect();
-                        pv_state.failed_app_ids.clear();
-                        ids
-                    } else {
-                        Vec::new()
-                    };
+                    let failed_ids: Vec<u32> =
+                        if let Screen::ProfileView(pv_state) = &mut app.screen {
+                            let ids: Vec<u32> = pv_state.failed_app_ids.iter().copied().collect();
+                            pv_state.failed_app_ids.clear();
+                            ids
+                        } else {
+                            Vec::new()
+                        };
                     if failed_ids.is_empty() {
                         return Task::none();
                     }
@@ -1578,7 +1579,10 @@ mod tests {
 
         assert_eq!(app.steam_running, Some(false));
         assert!(app.splash_probe_done);
-        let profile = app.user_profile.as_ref().expect("profile must be preserved");
+        let profile = app
+            .user_profile
+            .as_ref()
+            .expect("profile must be preserved");
         assert_eq!(profile.persona_name, "DiskFallback");
         assert_eq!(profile.steam_id, 1);
     }
@@ -1588,10 +1592,7 @@ mod tests {
         let mut app = make_app_probing();
         assert!(app.user_profile.is_none(), "precondition: no prior profile");
 
-        let _t = update(
-            &mut app,
-            Message::ProbeResult(Err("timeout".to_owned())),
-        );
+        let _t = update(&mut app, Message::ProbeResult(Err("timeout".to_owned())));
 
         assert_eq!(app.steam_running, Some(false));
         assert!(app.splash_probe_done);
@@ -1614,7 +1615,10 @@ mod tests {
         assert!(splash_visible(&app), "only min-elapsed → splash visible");
 
         app.splash_scan_done = true;
-        assert!(splash_visible(&app), "min+scan but no probe → splash visible");
+        assert!(
+            splash_visible(&app),
+            "min+scan but no probe → splash visible"
+        );
 
         app.splash_probe_done = true;
         assert!(!splash_visible(&app), "all three done → splash hidden");
@@ -1925,10 +1929,7 @@ mod tests {
     fn build_cache_entry_from_scan_empty_tier_breakdown_without_pct() {
         let scanned = make_scanned_data(
             None,
-            vec![
-                ("A".to_owned(), true, None),
-                ("B".to_owned(), false, None),
-            ],
+            vec![("A".to_owned(), true, None), ("B".to_owned(), false, None)],
         );
         let summary = make_summary_for_scan(99, "Game");
         let entry = build_cache_entry_from_scan(
@@ -2065,10 +2066,7 @@ mod tests {
                 pv.failed_app_ids.is_empty(),
                 "failed set must be cleared after retry"
             );
-            assert!(
-                pv.progress_scanner.is_some(),
-                "new scanner must be spawned"
-            );
+            assert!(pv.progress_scanner.is_some(), "new scanner must be spawned");
             assert!(
                 pv.progress_rx.is_some(),
                 "progress_rx must be wired to new scanner"

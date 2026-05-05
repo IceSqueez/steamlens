@@ -62,7 +62,7 @@ pub async fn write_profile_cache(profile: &CachedProfile) -> Result<(), CacheIoE
 }
 
 /// Read the profile snapshot from disk. Returns `None` when the file is
-/// missing, unparseable, or has a stale `schema_version`.
+/// missing, unparsable, or has a stale `schema_version`.
 pub async fn load_profile_cache() -> Option<CachedProfile> {
     load_profile_cache_from_path(&profile_path()).await
 }
@@ -95,7 +95,7 @@ pub async fn write_library_cache(library: &CachedLibrary) -> Result<(), CacheIoE
 }
 
 /// Read the library snapshot from disk. Returns `None` when the file is
-/// missing, unparseable, or has a stale `schema_version`.
+/// missing, unparsable, or has a stale `schema_version`.
 pub async fn load_library_cache() -> Option<CachedLibrary> {
     load_library_cache_from_path(&library_path()).await
 }
