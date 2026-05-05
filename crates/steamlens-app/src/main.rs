@@ -5,6 +5,7 @@ mod profile_view;
 mod progress_scan;
 mod settings;
 mod steam_worker;
+mod theme;
 mod worker;
 
 use std::collections::HashMap;
@@ -1009,7 +1010,7 @@ fn subscription(app: &App) -> Subscription<Message> {
 }
 
 fn theme(_app: &App) -> iced::Theme {
-    iced::Theme::Dracula
+    crate::theme::theme()
 }
 
 fn main() -> iced::Result {
