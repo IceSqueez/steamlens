@@ -686,18 +686,47 @@ fn build_loader_strip<'a>(
         }
     }
 
-    let (loaded, total, status_text) = match phase {
-        LoaderPhase::Alpha => (0usize, 1usize, Some("Scanning library\u{2026}")),
-        LoaderPhase::Beta { loaded, total } => (loaded, total, Some("Loading\u{2026}")),
-        LoaderPhase::Gamma => (1, 1, None),
+    let strip_row: iced::widget::Row<'a, crate::Message> = match phase {
+        LoaderPhase::Alpha => loader_progress_row(0, 1, Some("Scanning library\u{2026}")),
+        LoaderPhase::Beta { loaded, total } => {
+            loader_progress_row(loaded, total, Some("Loading\u{2026}"))
+        }
+        LoaderPhase::Gamma => loader_progress_row(1, 1, None),
+        LoaderPhase::Failed { failed, total } => loader_error_row(
+            format!("{failed} / {total} games failed to load"),
+            crate::Message::ProfileView(super::types::ProfileViewMessage::RetryFailedScans),
+        ),
+        LoaderPhase::SteamOff => loader_error_row(
+            "Steam is not running".to_owned(),
+            crate::Message::RetrySteamConnect,
+        ),
     };
 
+    let strip = container(strip_row)
+        .width(Length::Fill)
+        .padding(Padding::default().left(16).right(16).top(10).bottom(10))
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                radius: 8.0.into(),
+                ..iced::Border::default()
+            },
+            ..container::Style::default()
+        });
+
+    Some(container(strip).padding(Padding::default().top(14)).into())
+}
+
+fn loader_progress_row<'a>(
+    loaded: usize,
+    total: usize,
+    status_text: Option<&'a str>,
+) -> iced::widget::Row<'a, crate::Message> {
     let frac = if total > 0 {
         loaded as f32 / total as f32
     } else {
         0.0
     };
-
     let fill_w = (frac.clamp(0.0, 1.0) * 140.0).max(0.0);
 
     let bar_fill = container(iced::widget::Space::new())
@@ -728,28 +757,57 @@ fn build_loader_strip<'a>(
         .size(12)
         .color(C_TEXT_MUTED);
 
-    let mut strip_row = row![bar_track, count_label]
+    let mut strip_row: iced::widget::Row<'a, crate::Message> = row![bar_track, count_label]
         .spacing(10)
         .align_y(Alignment::Center);
 
     if let Some(status) = status_text {
         strip_row = strip_row.push(iced::widget::Space::new().width(Length::Fill));
-        strip_row = strip_row.push(text(status).size(11).color(C_TEXT_DIM));
+        strip_row = strip_row.push(text(status.to_owned()).size(11).color(C_TEXT_DIM));
     }
+    strip_row
+}
 
-    let strip = container(strip_row)
-        .width(Length::Fill)
-        .padding(Padding::default().left(16).right(16).top(10).bottom(10))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                radius: 8.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
+fn loader_error_row<'a>(
+    message: String,
+    retry_msg: crate::Message,
+) -> iced::widget::Row<'a, crate::Message> {
+    const C_ERROR: Color = Color::from_rgb(0.95, 0.55, 0.45);
+
+    let icon = text("\u{26A0}").size(13).color(C_ERROR);
+    let label = text(message).size(12).color(C_ERROR);
+    let retry = button(text("Retry").size(12).color(C_TEXT_PRIMARY))
+        .on_press(retry_msg)
+        .padding(Padding::default().left(12).right(12).top(5).bottom(5))
+        .style(|_: &iced::Theme, status| {
+            let hovered = matches!(
+                status,
+                button::Status::Hovered | button::Status::Pressed
+            );
+            button::Style {
+                background: Some(iced::Background::Color(if hovered {
+                    Color { a: 0.25, ..C_ACCENT }
+                } else {
+                    Color { a: 0.15, ..C_ACCENT }
+                })),
+                border: iced::Border {
+                    color: Color { a: 0.5, ..C_ACCENT },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: C_TEXT_PRIMARY,
+                ..button::Style::default()
+            }
         });
 
-    Some(container(strip).padding(Padding::default().top(14)).into())
+    row![
+        icon,
+        label,
+        iced::widget::Space::new().width(Length::Fill),
+        retry,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
 }
 
 #[cfg(test)]

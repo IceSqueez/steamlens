@@ -48,6 +48,10 @@ enum Message {
     DrainProgressResults,
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, String>),
+    /// Re-run the Steam liveness probe and library scan from scratch — emitted
+    /// by the loader-strip Retry button when Steam was off and we had no cache
+    /// fallback. Doesn't show splash again (user is already past it).
+    RetrySteamConnect,
     ProfileCacheLoaded(Option<CachedProfile>),
     LibraryCacheLoaded(Option<CachedLibrary>),
     PersistentCacheWritten(&'static str, Result<(), String>),
@@ -371,6 +375,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     return load_task;
                 }
+                ProfileViewMessage::RetryFailedScans => {
+                    let failed_ids: Vec<u32> = if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        let ids: Vec<u32> = pv_state.failed_app_ids.iter().copied().collect();
+                        pv_state.failed_app_ids.clear();
+                        ids
+                    } else {
+                        Vec::new()
+                    };
+                    if failed_ids.is_empty() {
+                        return Task::none();
+                    }
+                    if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        let mut scanner = crate::progress_scan::ProgressScanner::new(failed_ids);
+                        pv_state.progress_rx = scanner.take_receiver();
+                        pv_state.progress_scanner = Some(scanner);
+                    }
+                    return Task::none();
+                }
                 ProfileViewMessage::ScanComplete(summaries) => {
                     app.splash_scan_done = true;
                     let games = summaries.clone();
@@ -633,8 +655,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 loop {
                     match rx.try_recv() {
                         Ok(result) => {
-                            if let Some(data) = result.data {
-                                let scan_app_id = result.app_id;
+                            let scan_app_id = result.app_id;
+                            let Some(data) = result.data else {
+                                pv_state.failed_app_ids.insert(scan_app_id);
+                                continue;
+                            };
+                            // unbox so we don't change the indentation below
+                            {
                                 let earned = data.earned_count();
                                 let total = data.total_count();
 
@@ -739,11 +766,33 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::RetrySteamConnect => {
+            app.steam_running = None;
+            if let Screen::ProfileView(pv_state) = &mut app.screen {
+                pv_state.steam_running = None;
+            }
+            let probe_task = Task::perform(
+                async {
+                    steamlens_core::probe_steam(std::time::Duration::from_secs(3))
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::ProbeResult,
+            );
+            if let Some(w) = &app.worker {
+                profile_view::trigger_scan(w);
+            }
+            probe_task
+        }
+
         Message::ProbeResult(result) => {
             app.splash_probe_done = true;
             match result {
                 Ok(p) => {
                     app.steam_running = Some(true);
+                    if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        pv_state.steam_running = Some(true);
+                    }
                     let account_name = app
                         .user_profile
                         .as_ref()
@@ -777,6 +826,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Err(e) => {
                     app.steam_running = Some(false);
+                    if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        pv_state.steam_running = Some(false);
+                    }
                     eprintln!("[steamlens] probe failed: {e}");
                     Task::perform(
                         async { cache::load_profile_cache().await },
@@ -1170,7 +1222,13 @@ fn view(app: &App) -> Element<'_, Message> {
     let with_banner = if app.steam_running == Some(false) {
         let has_data = matches!(&app.screen, Screen::ProfileView(pv) if !pv.games.is_empty())
             || app.user_profile.is_some();
-        steam_off_banner(screen_content, has_data)
+        if has_data {
+            steam_off_banner(screen_content)
+        } else {
+            // Loader strip already surfaces "Steam is not running" + Retry —
+            // no banner, would just duplicate the message.
+            screen_content
+        }
     } else {
         screen_content
     };
@@ -1188,15 +1246,9 @@ fn view(app: &App) -> Element<'_, Message> {
     }
 }
 
-fn steam_off_banner<'a>(content: Element<'a, Message>, has_data: bool) -> Element<'a, Message> {
-    let message = if has_data {
-        "Steam is not running — showing cached data"
-    } else {
-        "Steam is not running"
-    };
-
+fn steam_off_banner(content: Element<'_, Message>) -> Element<'_, Message> {
     let banner = container(
-        text(message)
+        text("Steam is not running — showing cached data")
             .size(13)
             .color(Color::from_rgb(0.95, 0.85, 0.4)),
     )
@@ -1889,6 +1941,172 @@ mod tests {
             entry.tier_breakdown.is_empty(),
             "no global_percent → no tier classification"
         );
+    }
+
+    #[test]
+    fn drain_progress_results_failure_records_failed_app_id() {
+        use crate::profile_view::types::{CapsuleAsset, GameEntry};
+        use crate::progress_scan::ProgressResult;
+        use steamlens_core::GameSummary;
+
+        let mut app = make_app_probing();
+        if let Screen::ProfileView(pv) = &mut app.screen {
+            pv.games.push(GameEntry {
+                summary: GameSummary {
+                    app_id: 105600,
+                    name: "Terraria".to_owned(),
+                    last_played: None,
+                    achievement_count: 88,
+                    last_updated: 0,
+                    manifest_path: std::path::PathBuf::new(),
+                },
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+            });
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            tx.send(ProgressResult {
+                app_id: 105600,
+                data: None,
+            })
+            .unwrap();
+            drop(tx);
+            pv.progress_rx = Some(rx);
+        }
+
+        let _t = update(&mut app, Message::DrainProgressResults);
+
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(
+                pv.failed_app_ids.contains(&105600),
+                "failed app_id must be recorded after None scan result"
+            );
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
+    #[test]
+    fn loader_phase_failed_when_some_games_have_no_progress_and_failed() {
+        use crate::profile_view::types::{CapsuleAsset, GameEntry, LoaderPhase, ProfileViewState};
+        use crate::progress_scan::ProgressData;
+        use steamlens_core::GameSummary;
+
+        let mk_entry = |app_id: u32, with_progress: bool| GameEntry {
+            summary: GameSummary {
+                app_id,
+                name: format!("Game {app_id}"),
+                last_played: None,
+                achievement_count: 1,
+                last_updated: 0,
+                manifest_path: std::path::PathBuf::new(),
+            },
+            capsule: CapsuleAsset::Unavailable,
+            progress: if with_progress {
+                Some(ProgressData {
+                    earned: 1,
+                    total: 1,
+                })
+            } else {
+                None
+            },
+        };
+
+        let mut state = ProfileViewState::new();
+        state.steam_running = Some(true);
+        state.games.push(mk_entry(1, true));
+        state.games.push(mk_entry(2, true));
+        state.games.push(mk_entry(3, false));
+        state.failed_app_ids.insert(3);
+
+        assert_eq!(
+            state.loader_phase(),
+            LoaderPhase::Failed {
+                failed: 1,
+                total: 3
+            },
+            "all games accounted for (2 progress + 1 failed) → Failed phase"
+        );
+    }
+
+    #[test]
+    fn loader_phase_steam_off_when_no_games_and_steam_off() {
+        use crate::profile_view::types::{LoaderPhase, ProfileViewState};
+        let mut state = ProfileViewState::new();
+        state.steam_running = Some(false);
+        assert_eq!(state.loader_phase(), LoaderPhase::SteamOff);
+    }
+
+    #[test]
+    fn loader_phase_alpha_when_no_games_and_steam_unknown() {
+        use crate::profile_view::types::{LoaderPhase, ProfileViewState};
+        let state = ProfileViewState::new();
+        assert_eq!(
+            state.loader_phase(),
+            LoaderPhase::Alpha,
+            "steam_running=None during boot probe → Alpha not SteamOff"
+        );
+    }
+
+    #[test]
+    fn retry_failed_scans_clears_set_and_spawns_scanner() {
+        let mut app = make_app_probing();
+        if let Screen::ProfileView(pv) = &mut app.screen {
+            pv.failed_app_ids.insert(105600);
+            pv.failed_app_ids.insert(570);
+        }
+
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::RetryFailedScans),
+        );
+
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(
+                pv.failed_app_ids.is_empty(),
+                "failed set must be cleared after retry"
+            );
+            assert!(
+                pv.progress_scanner.is_some(),
+                "new scanner must be spawned"
+            );
+            assert!(
+                pv.progress_rx.is_some(),
+                "progress_rx must be wired to new scanner"
+            );
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
+    #[test]
+    fn retry_failed_scans_noop_when_no_failures() {
+        let mut app = make_app_probing();
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::RetryFailedScans),
+        );
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(pv.progress_scanner.is_none(), "no scanner spawned");
+        }
+    }
+
+    #[test]
+    fn retry_steam_connect_resets_steam_running_and_pv_mirror() {
+        let mut app = make_app_probing();
+        app.steam_running = Some(false);
+        if let Screen::ProfileView(pv) = &mut app.screen {
+            pv.steam_running = Some(false);
+        }
+
+        let _t = update(&mut app, Message::RetrySteamConnect);
+
+        assert_eq!(
+            app.steam_running, None,
+            "App.steam_running reset to None during re-probe"
+        );
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert_eq!(pv.steam_running, None, "pv mirror also reset");
+        }
     }
 
     #[test]
