@@ -66,6 +66,17 @@ pub enum WorkerResponse {
         earned: u32,
         total: u32,
     },
+    /// Result of a `--probe` run: live Steam profile data fetched without an
+    /// app context.  Sent as the single response frame by the probe child and
+    /// then the child exits.
+    ///
+    /// `avatar_png` is `None` only when `GetMediumFriendAvatar` returned handle
+    /// 0 (Steam has not loaded the image yet, or the user has no avatar set).
+    ProbeResult {
+        steam_id: u64,
+        persona_name: String,
+        avatar_png: Option<Vec<u8>>,
+    },
     Error {
         context: String,
         message: String,
@@ -220,6 +231,16 @@ mod tests {
             WorkerResponse::AchievementCount {
                 earned: 0,
                 total: 0,
+            },
+            WorkerResponse::ProbeResult {
+                steam_id: 76561198000000042,
+                persona_name: "TestUser".to_owned(),
+                avatar_png: Some(vec![137, 80, 78, 71, 13, 10, 26, 10]),
+            },
+            WorkerResponse::ProbeResult {
+                steam_id: 1,
+                persona_name: "anonymous".to_owned(),
+                avatar_png: None,
             },
             WorkerResponse::Error {
                 context: "StoreStats".to_owned(),
@@ -425,5 +446,54 @@ mod tests {
         assert!(
             matches!(decoded, StatValue::Float(f) if (f - std::f32::consts::PI).abs() < f32::EPSILON)
         );
+    }
+
+    #[test]
+    fn probe_result_with_avatar_roundtrip() {
+        let avatar_bytes = vec![137u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
+        let resp = WorkerResponse::ProbeResult {
+            steam_id: 76561198000000042,
+            persona_name: "TestUser".to_owned(),
+            avatar_png: Some(avatar_bytes.clone()),
+        };
+        let framed = encode_frame(&resp).expect("encode must succeed");
+        assert!(framed.len() >= 4);
+        let payload = &framed[4..];
+        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+        match decoded {
+            WorkerResponse::ProbeResult {
+                steam_id,
+                persona_name,
+                avatar_png: Some(png),
+            } => {
+                assert_eq!(steam_id, 76561198000000042);
+                assert_eq!(persona_name, "TestUser");
+                assert_eq!(png, avatar_bytes);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn probe_result_no_avatar_roundtrip() {
+        let resp = WorkerResponse::ProbeResult {
+            steam_id: 1,
+            persona_name: "Ghost".to_owned(),
+            avatar_png: None,
+        };
+        let framed = encode_frame(&resp).expect("encode must succeed");
+        let payload = &framed[4..];
+        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+        match decoded {
+            WorkerResponse::ProbeResult {
+                steam_id,
+                persona_name,
+                avatar_png: None,
+            } => {
+                assert_eq!(steam_id, 1);
+                assert_eq!(persona_name, "Ghost");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
     }
 }

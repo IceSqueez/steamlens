@@ -42,7 +42,12 @@ pub struct ISteamClient018 {
     ) -> *mut c_void,
     _reserved_06_get_isteam_game_server: usize,
     _reserved_07_set_local_ip_binding: usize,
-    _reserved_08_get_isteam_friends: usize,
+    pub get_isteam_friends: unsafe extern "C" fn(
+        this: *mut c_void,
+        user: HSteamUser,
+        pipe: HSteamPipe,
+        version: *const c_char,
+    ) -> *mut c_void,
     pub get_isteam_utils: unsafe extern "C" fn(
         this: *mut c_void,
         pipe: HSteamPipe,
@@ -195,6 +200,48 @@ pub struct ISteamUserStats013 {
     _reserved_41_get_global_stat_history_integer: usize,
     _reserved_42_get_achievement_progress_limits_float: usize,
     _reserved_43_get_achievement_progress_limits_integer: usize,
+}
+
+/// Vtable layout for `ISteamFriends009` as vended by
+/// `GetISteamFriends("SteamFriends009")`.
+///
+/// Field order must match the canonical interface definition exactly.
+/// Steam dispatches by vtable index — reordering fields silently calls
+/// the wrong method.
+///
+/// Only the methods required for the probe are typed; all others are
+/// reserved as `usize` placeholders so the positional dispatch is correct
+/// even though we never call those slots.
+#[repr(C)]
+pub struct ISteamFriends009 {
+    pub get_persona_name: unsafe extern "C" fn(this: *mut c_void) -> *const c_char,
+    _reserved_01_set_persona_name: usize,
+    _reserved_02_get_persona_state: usize,
+    _reserved_03_get_friend_count: usize,
+    _reserved_04_get_friend_by_index: usize,
+    _reserved_05_get_friend_relationship: usize,
+    _reserved_06_get_friend_persona_state: usize,
+    _reserved_07_get_friend_persona_name: usize,
+    _reserved_08_get_friend_game_played: usize,
+    _reserved_09_get_friend_persona_name_history: usize,
+    _reserved_10_has_friend: usize,
+    _reserved_11_get_clan_count: usize,
+    _reserved_12_get_clan_by_index: usize,
+    _reserved_13_get_clan_name: usize,
+    _reserved_14_get_clan_tag: usize,
+    _reserved_15_get_friend_count_from_source: usize,
+    _reserved_16_get_friend_from_source_by_index: usize,
+    _reserved_17_is_user_in_source: usize,
+    _reserved_18_set_in_game_voice_speaking: usize,
+    _reserved_19_activate_game_overlay: usize,
+    _reserved_20_activate_game_overlay_to_user: usize,
+    _reserved_21_activate_game_overlay_to_web_page: usize,
+    _reserved_22_activate_game_overlay_to_store: usize,
+    _reserved_23_set_played_with: usize,
+    _reserved_24_activate_game_overlay_invite_dialog: usize,
+    _reserved_25_get_small_friend_avatar: usize,
+    pub get_medium_friend_avatar: unsafe extern "C" fn(this: *mut c_void, steam_id: u64) -> i32,
+    _reserved_27_get_large_friend_avatar: usize,
 }
 
 #[repr(C)]

@@ -5,8 +5,8 @@ use std::ffi::CString;
 
 use crate::error::SteamError;
 use crate::ffi::interfaces::{
-    CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamClient018, ISteamUser012,
-    ISteamUtils005,
+    CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamClient018, ISteamFriends009,
+    ISteamUser012, ISteamUtils005,
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
@@ -19,6 +19,7 @@ const STEAM_USER_VERSION: &str = "SteamUser012";
 const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
 const STEAM_UTILS_VERSION: &str = "SteamUtils005";
+const STEAM_FRIENDS_VERSION: &str = "SteamFriends009";
 
 /// RGBA8888 pixel data for a Steam image handle.
 ///
@@ -37,6 +38,7 @@ pub struct Client {
     steam_user_stats: RawInterface,
     steam_apps: RawInterface,
     steam_utils: RawInterface,
+    steam_friends: RawInterface,
     pipe: HSteamPipe,
     user: HSteamUser,
     steam_id: u64,
@@ -51,6 +53,69 @@ impl Client {
 
     pub fn app_id(&self) -> u32 {
         self.app_id
+    }
+
+    /// Returns the logged-in user's current persona name (display name on Steam).
+    ///
+    /// Copies the NUL-terminated string Steam writes into its own memory into an
+    /// owned `String` before returning. The raw pointer from Steam is valid only
+    /// until the next Steam call on this pipe — it is never stored.
+    ///
+    /// Returns `None` when the `ISteamFriends009` interface pointer is null or
+    /// Steam returns an empty name.
+    pub fn persona_name(&self) -> Option<String> {
+        if self.steam_friends.is_null() {
+            return None;
+        }
+        // SAFETY: `self.steam_friends` was vended as "SteamFriends009" so its
+        // vtable layout matches `ISteamFriends009`. `GetPersonaName` (slot 0)
+        // returns a pointer to Steam-owned memory that is valid until the next
+        // Steam call on this pipe. We copy it into an owned `String` immediately
+        // before any further Steam call can occur, so the pointer is never
+        // dangling when used. No pointer into Steam-owned memory is stored.
+        let raw_ptr = unsafe {
+            let vtbl = opaque::vtable::<ISteamFriends009>(self.steam_friends);
+            ((*vtbl).get_persona_name)(self.steam_friends)
+        };
+        if raw_ptr.is_null() {
+            return None;
+        }
+        // SAFETY: Steam guarantees `GetPersonaName` returns a NUL-terminated
+        // UTF-8 string (documented in the SDK as "stored in UTF-8 format").
+        // The pointer is valid until the next Steam call — we copy it here
+        // before any other call takes place.
+        let name = unsafe { std::ffi::CStr::from_ptr(raw_ptr) }
+            .to_str()
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)?;
+        Some(name)
+    }
+
+    /// Returns the medium (64×64) avatar image for the logged-in user.
+    ///
+    /// Calls `GetMediumFriendAvatar(steam_id)` to get an image handle, then
+    /// resolves the RGBA8888 pixel data via `get_image`. Returns `None` when
+    /// the handle is 0 (avatar not yet loaded by Steam) or the interface is
+    /// unavailable.
+    pub fn user_avatar(&self) -> Option<Image> {
+        if self.steam_friends.is_null() {
+            return None;
+        }
+        // SAFETY: `self.steam_friends` was vended as "SteamFriends009" so its
+        // vtable layout matches `ISteamFriends009`. `GetMediumFriendAvatar`
+        // (slot 26) takes a `CSteamID` passed as a u64 on SysV-x64 (the
+        // 8-byte aggregate is passed in a register, same as `GetSteamID`
+        // returns in RAX). Returns an image handle i32; handle 0 = not loaded.
+        // No pointer is retained after this call.
+        let handle = unsafe {
+            let vtbl = opaque::vtable::<ISteamFriends009>(self.steam_friends);
+            ((*vtbl).get_medium_friend_avatar)(self.steam_friends, self.steam_id)
+        };
+        if handle == 0 {
+            return None;
+        }
+        self.get_image(handle).ok().flatten()
     }
 
     /// Returns the human-readable display name for the connected app, or `None`
@@ -554,12 +619,30 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
     };
 
+    let friends_version =
+        CString::new(STEAM_FRIENDS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
+            version: STEAM_FRIENDS_VERSION.to_owned(),
+        })?;
+
+    // SAFETY: `user` and `pipe` are live handles from this `steam_client`.
+    // `friends_version.as_ptr()` is a NUL-terminated C string outliving the call.
+    // `GetISteamFriends` (slot 8 of ISteamClient018) takes `(this, user, pipe, version)`.
+    // The returned pointer is to a Steam-owned `ISteamFriends009` object whose
+    // vtable layout matches the struct declared for that version string.
+    // A null return is non-fatal: `persona_name()` and `user_avatar()` guard
+    // on `steam_friends.is_null()`.
+    let steam_friends = unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        ((*vtbl).get_isteam_friends)(steam_client, user, pipe, friends_version.as_ptr())
+    };
+
     Ok(Client {
         steam_client,
         _steam_user: steam_user,
         steam_user_stats,
         steam_apps,
         steam_utils,
+        steam_friends,
         pipe,
         user,
         steam_id,

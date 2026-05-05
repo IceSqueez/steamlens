@@ -443,24 +443,24 @@ const ACH_CARD_HEIGHT: f32 = 140.0;
 
 fn filter_row(state: &GameViewState) -> Element<'_, Message> {
     let search_input = text_input("Search achievements\u{2026}", &state.search_query)
-    .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
-    .padding(Padding::default().left(10).right(10).top(6).bottom(6))
-    .size(13)
-    .style(|_theme, _status| iced::widget::text_input::Style {
-        background: iced::Background::Color(Color::TRANSPARENT),
-        border: iced::Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        icon: C_TEXT_MUTED,
-        placeholder: C_TEXT_MUTED,
-        value: C_TEXT_PRIMARY,
-        selection: Color {
-            a: 0.35,
-            ..C_ACCENT
-        },
-    });
+        .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
+        .size(13)
+        .style(|_theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(Color::TRANSPARENT),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            icon: C_TEXT_MUTED,
+            placeholder: C_TEXT_MUTED,
+            value: C_TEXT_PRIMARY,
+            selection: Color {
+                a: 0.35,
+                ..C_ACCENT
+            },
+        });
 
     let search_block = container(search_input)
         .width(Length::Fixed(300.0))
@@ -575,11 +575,11 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
     let last_idx = AchievementSort::ALL.len() - 1;
     for (i, &s) in AchievementSort::ALL.iter().enumerate() {
         let active = current == s;
-        let btn = button(
-            text(s.short_label())
-                .size(12)
-                .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
-        )
+        let btn = button(text(s.short_label()).size(12).color(if active {
+            C_ACCENT
+        } else {
+            C_TEXT_MUTED
+        }))
         .on_press(msg(GameViewMessage::AchievementSortChanged(s)))
         .padding(Padding::default().left(10).right(10).top(5).bottom(5))
         .style(move |_theme, _status| button::Style {

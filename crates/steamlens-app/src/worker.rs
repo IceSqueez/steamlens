@@ -38,6 +38,17 @@ impl From<FrameError> for WorkerError {
     }
 }
 
+pub fn run_probe() -> ! {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .expect("probe tokio runtime");
+
+    let exit_code = rt.block_on(probe_main());
+    std::process::exit(exit_code);
+}
+
 pub fn run(app_id: u32) -> ! {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
@@ -47,6 +58,58 @@ pub fn run(app_id: u32) -> ! {
 
     let exit_code = rt.block_on(worker_main(app_id));
     std::process::exit(exit_code);
+}
+
+async fn probe_main() -> i32 {
+    let client = match steamlens_core::connect(0) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = write_response(&WorkerResponse::Error {
+                context: "probe".into(),
+                message: e.to_string(),
+            })
+            .await;
+            return 1;
+        }
+    };
+
+    let steam_id = client.steam_id();
+
+    let persona_name = match client.persona_name() {
+        Some(n) => n,
+        None => {
+            let _ = write_response(&WorkerResponse::Error {
+                context: "probe".into(),
+                message: "GetPersonaName returned null or empty".into(),
+            })
+            .await;
+            return 1;
+        }
+    };
+
+    let avatar_png = encode_avatar_png(&client);
+
+    let resp = WorkerResponse::ProbeResult {
+        steam_id,
+        persona_name,
+        avatar_png,
+    };
+    if write_response(&resp).await.is_err() {
+        return 1;
+    }
+
+    0
+}
+
+fn encode_avatar_png(client: &steamlens_core::Client) -> Option<Vec<u8>> {
+    use image::{ImageFormat, RgbaImage};
+    use std::io::Cursor;
+
+    let img = client.user_avatar()?;
+    let rgba_image = RgbaImage::from_raw(img.width, img.height, img.rgba)?;
+    let mut buf = Cursor::new(Vec::new());
+    rgba_image.write_to(&mut buf, ImageFormat::Png).ok()?;
+    Some(buf.into_inner())
 }
 
 async fn worker_main(app_id: u32) -> i32 {

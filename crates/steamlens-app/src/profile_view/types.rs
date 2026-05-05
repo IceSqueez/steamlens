@@ -526,12 +526,7 @@ mod tests {
         assert_eq!(names[2], "cherry");
     }
 
-    fn make_entry_with_progress(
-        app_id: u32,
-        name: &str,
-        earned: u32,
-        total: u32,
-    ) -> GameEntry {
+    fn make_entry_with_progress(app_id: u32, name: &str, earned: u32, total: u32) -> GameEntry {
         GameEntry {
             summary: make_summary(app_id, name, None),
             capsule: CapsuleAsset::Pending,
@@ -542,10 +537,10 @@ mod tests {
     #[test]
     fn sort_completion_descending_highest_pct_first() {
         let mut state = make_state_with_games(vec![
-            make_entry_with_progress(1, "Half", 50, 100),  // 50%
-            make_entry_with_progress(2, "Done", 99, 100),  // 99%
-            make_entry_with_progress(3, "Tiny", 1, 100),   //  1%
-            make_entry_with_progress(4, "Mid", 75, 100),   // 75%
+            make_entry_with_progress(1, "Half", 50, 100), // 50%
+            make_entry_with_progress(2, "Done", 99, 100), // 99%
+            make_entry_with_progress(3, "Tiny", 1, 100),  //  1%
+            make_entry_with_progress(4, "Mid", 75, 100),  // 75%
         ]);
         state.sort = LibrarySort::Completion;
 

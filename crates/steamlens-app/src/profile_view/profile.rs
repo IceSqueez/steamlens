@@ -60,6 +60,9 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
     let mut common_count: u32 = 0;
 
     for entry in cached_entries.values() {
+        achievement_total += entry.progress.total;
+        earned_total += entry.progress.earned;
+
         if entry.achievements.is_empty() {
             continue;
         }
@@ -68,13 +71,10 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
             continue;
         }
 
-        achievement_total += entry.achievements.len() as u32;
-
         for ach in &entry.achievements {
             if !ach.earned {
                 continue;
             }
-            earned_total += 1;
             match tier_map.get(&ach.api_name).copied() {
                 Some(RarityTier::Legendary) => legendary_count += 1,
                 Some(RarityTier::Mythical) => mythical_count += 1,
@@ -440,7 +440,8 @@ fn build_rarity_bar(summary: &ProfileSummary) -> Element<'static, crate::Message
 
     let total_unlocked: u32 = tiers.iter().map(|(_, c)| c).sum();
     let total = summary.achievement_total;
-    let locked = total.saturating_sub(total_unlocked);
+    let unrated_earned = summary.earned_total.saturating_sub(total_unlocked);
+    let locked = total.saturating_sub(summary.earned_total);
 
     if total == 0 {
         return container(iced::widget::Space::new())
@@ -473,6 +474,19 @@ fn build_rarity_bar(summary: &ProfileSummary) -> Element<'static, crate::Message
                 ..container::Style::default()
             });
         bar_row = bar_row.push(segment);
+    }
+
+    if unrated_earned > 0 {
+        let unrated_segment = container(iced::widget::Space::new())
+            .width(Length::FillPortion(
+                unrated_earned.min(u16::MAX as u32) as u16
+            ))
+            .height(Length::Fixed(8.0))
+            .style(|_: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(C_ACCENT)),
+                ..container::Style::default()
+            });
+        bar_row = bar_row.push(unrated_segment);
     }
 
     if locked > 0 {
@@ -509,13 +523,18 @@ fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, crate::Messa
         (RarityTier::Legendary, summary.legendary_count),
     ];
 
-    let total_unlocked: u32 = tiers.iter().map(|(_, c)| c).sum();
-    let locked = summary.achievement_total.saturating_sub(total_unlocked);
+    let locked = summary
+        .achievement_total
+        .saturating_sub(summary.earned_total);
 
     let mut cards = row![].spacing(6);
 
     for (tier, count) in tiers {
-        cards = cards.push(build_count_card(rarity_color(tier), rarity_label(tier), count));
+        cards = cards.push(build_count_card(
+            rarity_color(tier),
+            rarity_label(tier),
+            count,
+        ));
     }
 
     cards = cards.push(build_count_card(C_TEXT_DIM, "LOCKED", locked));

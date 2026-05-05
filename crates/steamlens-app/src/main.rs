@@ -1140,6 +1140,9 @@ fn theme(_app: &App) -> iced::Theme {
 
 fn main() -> iced::Result {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 && args[1] == "--probe" {
+        worker::run_probe();
+    }
     if args.len() == 3 && args[1] == "--worker" {
         let app_id: u32 = args[2].parse().unwrap_or_else(|_| {
             eprintln!("steamlens-app: invalid app_id: {}", args[2]);
@@ -1183,7 +1186,7 @@ mod tests {
             settings_dirty_since: None,
             toast: None,
             cached_entries: HashMap::new(),
-        pending_hit_queue: VecDeque::new(),
+            pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
@@ -1773,7 +1776,7 @@ mod tests {
             settings_dirty_since: None,
             toast: None,
             cached_entries: HashMap::new(),
-        pending_hit_queue: VecDeque::new(),
+            pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,

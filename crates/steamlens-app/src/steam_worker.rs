@@ -331,6 +331,10 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
             // QuickAchievementCount is only used by ProgressScanner workers which
             // never route through the bridge — silently ignore if one arrives here.
         }
+        WorkerResponse::ProbeResult { .. } => {
+            // ProbeResult is only produced by the probe child — it is consumed
+            // by probe_steam() and never routed through the per-app bridge.
+        }
         WorkerResponse::Error { context, message } => {
             reply(rep_tx, error_reply(&context, message));
         }
