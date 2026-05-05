@@ -20,6 +20,25 @@ use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_co
 use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
 
 const CARD_GAP: f32 = 12.0;
+const MIN_GAP: f32 = 12.0;
+
+fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
+    let cols_max = ((viewport + min_gap) / (card_w + min_gap))
+        .floor()
+        .max(1.0) as usize;
+
+    let mut cols = cols_max;
+    loop {
+        let total_card_width = cols as f32 * card_w;
+        let remainder = (viewport - total_card_width).max(0.0);
+        let gap = remainder / (cols as f32 + 1.0);
+        if gap >= min_gap || cols == 1 {
+            let clamped_gap = gap.max(0.0);
+            return (cols, clamped_gap);
+        }
+        cols -= 1;
+    }
+}
 
 const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
@@ -416,29 +435,23 @@ fn build_grid<'a>(
     let entries: Vec<&'a GameEntry> = visible;
 
     let grid = responsive(move |size| {
-        const SIDE_PADDING: f32 = 16.0;
-        let inner = (size.width - SIDE_PADDING * 2.0).max(card_w);
-        let cols = ((inner + CARD_GAP) / (card_w + CARD_GAP)).floor().max(1.0) as usize;
-        let actual_card_w =
-            ((inner - CARD_GAP * (cols.saturating_sub(1)) as f32) / cols as f32).max(card_w);
+        let (cols, gap) = compute_grid(size.width, card_w, MIN_GAP);
 
         let mut rows_col: iced::widget::Column<'_, crate::Message> = column![]
             .spacing(CARD_GAP as u32)
-            .padding(Padding::default().left(16).right(16).top(8).bottom(8));
+            .padding(Padding::default().top(8).bottom(8));
 
         for chunk in entries.chunks(cols) {
-            let mut r: iced::widget::Row<'_, crate::Message> = row![].spacing(CARD_GAP as u32);
+            let mut r: iced::widget::Row<'_, crate::Message> =
+                row![iced::widget::Space::new().width(Length::Fixed(gap))];
             for entry in chunk {
-                r = r.push(build_card(
-                    entry,
-                    capsule_size,
-                    actual_card_w,
-                    skeleton_phase,
-                ));
+                r = r.push(build_card(entry, capsule_size, card_w, skeleton_phase));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(actual_card_w)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
             }
             rows_col = rows_col.push(r);
         }
@@ -902,4 +915,52 @@ fn error_view(msg: &str) -> Element<'_, crate::Message> {
         .align_x(Alignment::Center)
         .align_y(Alignment::Center)
         .into()
+}
+
+#[cfg(test)]
+mod grid_tests {
+    use super::compute_grid;
+
+    #[test]
+    fn fixed_card_width_with_uniform_gaps() {
+        let (cols, gap) = compute_grid(1000.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 40.0).abs() < 0.01, "expected gap=40, got {gap}");
+    }
+
+    #[test]
+    fn min_gap_floor_kicks_in() {
+        let (cols, gap) = compute_grid(1010.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 42.0).abs() < 0.01, "expected gap=42, got {gap}");
+    }
+
+    #[test]
+    fn single_column_below_card_width() {
+        let (cols, gap) = compute_grid(150.0, 200.0, 12.0);
+        assert_eq!(cols, 1);
+        assert_eq!(gap, 0.0);
+    }
+
+    #[test]
+    fn exact_fit_no_remainder_falls_back_to_fewer_cols() {
+        let (cols, gap) = compute_grid(1000.0, 250.0, 12.0);
+        assert_eq!(cols, 3);
+        let expected_gap = (1000.0 - 3.0 * 250.0) / 4.0;
+        assert!((gap - expected_gap).abs() < 0.01, "expected gap={expected_gap}, got {gap}");
+    }
+
+    #[test]
+    fn single_column_gap_is_centered() {
+        let (cols, gap) = compute_grid(300.0, 200.0, 12.0);
+        assert_eq!(cols, 1);
+        let expected_gap = (300.0 - 200.0) / 2.0;
+        assert!((gap - expected_gap).abs() < 0.01, "expected gap={expected_gap}, got {gap}");
+    }
+
+    #[test]
+    fn gap_never_negative() {
+        let (_cols, gap) = compute_grid(50.0, 200.0, 12.0);
+        assert!(gap >= 0.0);
+    }
 }

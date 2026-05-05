@@ -402,8 +402,26 @@ fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, Message>>
     Some(container(indicator_row).width(Length::Fill).into())
 }
 
-const ACH_CARD_GAP: f32 = 10.0;
+const ACH_CARD_GAP: f32 = 12.0;
+const ACH_MIN_GAP: f32 = 12.0;
 const ACH_CARD_WIDTH: f32 = 260.0;
+
+fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
+    let cols_max = ((viewport + min_gap) / (card_w + min_gap))
+        .floor()
+        .max(1.0) as usize;
+
+    let mut cols = cols_max;
+    loop {
+        let total_card_width = cols as f32 * card_w;
+        let remainder = (viewport - total_card_width).max(0.0);
+        let gap = remainder / (cols as f32 + 1.0);
+        if gap >= min_gap || cols == 1 {
+            return (cols, gap.max(0.0));
+        }
+        cols -= 1;
+    }
+}
 const ACH_CARD_ICON: f32 = 64.0;
 const ACH_CARD_HEIGHT: f32 = 140.0;
 
@@ -930,36 +948,30 @@ fn achievement_list(state: &GameViewState) -> Element<'_, Message> {
     let tier_map = compute_tier_map(&state.achievements);
 
     let grid = responsive(move |size| {
-        const SIDE_PADDING: f32 = 16.0;
-        let inner = (size.width - SIDE_PADDING * 2.0).max(ACH_CARD_WIDTH);
-        let cols = ((inner + ACH_CARD_GAP) / (ACH_CARD_WIDTH + ACH_CARD_GAP))
-            .floor()
-            .max(1.0) as usize;
-        let actual_card_w = ((inner - ACH_CARD_GAP * (cols.saturating_sub(1)) as f32)
-            / cols as f32)
-            .max(ACH_CARD_WIDTH);
+        let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
 
         let mut rows_col: iced::widget::Column<'_, Message> = column![]
             .spacing(ACH_CARD_GAP as u32)
-            .padding(Padding::default().left(16).right(16).top(8).bottom(4));
+            .padding(Padding::default().top(8).bottom(4));
 
         for chunk in cards.chunks(cols) {
-            let mut r: iced::widget::Row<'_, Message> = row![]
-                .spacing(ACH_CARD_GAP as u32)
+            let mut r: iced::widget::Row<'_, Message> = row![space().width(Length::Fixed(gap))]
                 .align_y(Alignment::Start);
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
                 r = r.push(achievement_card_widget(
                     entry,
-                    actual_card_w,
+                    ACH_CARD_WIDTH,
                     query_owned.clone(),
                     glow_pulse,
                     tier,
                 ));
+                r = r.push(space().width(Length::Fixed(gap)));
             }
             let needed = cols - chunk.len();
             for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(actual_card_w)));
+                r = r.push(space().width(Length::Fixed(ACH_CARD_WIDTH)));
+                r = r.push(space().width(Length::Fixed(gap)));
             }
             rows_col = rows_col.push(r);
         }
@@ -1872,4 +1884,36 @@ fn highlight_split<'a>(source: &'a str, query: &str) -> Option<(&'a str, &'a str
     let matched = &source[byte_offset..match_end];
     let after = &source[match_end..];
     Some((before, matched, after))
+}
+
+#[cfg(test)]
+mod ach_grid_tests {
+    use super::compute_ach_grid;
+
+    #[test]
+    fn fixed_card_width_with_uniform_gaps() {
+        let (cols, gap) = compute_ach_grid(1000.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 40.0).abs() < 0.01, "expected gap=40, got {gap}");
+    }
+
+    #[test]
+    fn min_gap_floor_kicks_in() {
+        let (cols, gap) = compute_ach_grid(1010.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 42.0).abs() < 0.01, "expected gap=42, got {gap}");
+    }
+
+    #[test]
+    fn single_column_below_card_width() {
+        let (cols, gap) = compute_ach_grid(150.0, 200.0, 12.0);
+        assert_eq!(cols, 1);
+        assert_eq!(gap, 0.0);
+    }
+
+    #[test]
+    fn gap_never_negative() {
+        let (_cols, gap) = compute_ach_grid(50.0, 260.0, 12.0);
+        assert!(gap >= 0.0);
+    }
 }
