@@ -369,7 +369,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             total: hit.entry.progress.total,
                         });
                     }
-                    app.cached_entries.insert(hit.app_id, hit.entry.clone());
+                    let mut entry = hit.entry.clone();
+                    recompute_tier_breakdown_if_missing(&mut entry);
+                    app.cached_entries.insert(hit.app_id, entry);
                 }
 
                 if !dirty.is_empty() {
@@ -379,7 +381,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
             } else {
                 for hit in &hits {
-                    app.cached_entries.insert(hit.app_id, hit.entry.clone());
+                    let mut entry = hit.entry.clone();
+                    recompute_tier_breakdown_if_missing(&mut entry);
+                    app.cached_entries.insert(hit.app_id, entry);
                 }
             }
 
@@ -733,6 +737,37 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
     }
+}
+
+fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
+    use game_view::compute_tier_breakdown;
+    use game_view::types::{AchievementData, AchievementRow};
+
+    if !entry.tier_breakdown.is_empty() || entry.achievements.is_empty() {
+        return;
+    }
+
+    let rows: Vec<AchievementRow> = entry
+        .achievements
+        .iter()
+        .map(|a| {
+            let data = AchievementData {
+                id: a.api_name.clone(),
+                display_name: a.display_name.clone(),
+                description: a.description.clone(),
+                is_hidden: a.hidden,
+                is_achieved: a.earned,
+                unlock_time: a.earned_at.map(|t| t as u32),
+                permission: 0,
+                icon: None,
+            };
+            let mut row = AchievementRow::from_data(data);
+            row.rarity_percent = a.global_percent.map(|p| p as f32);
+            row
+        })
+        .collect();
+
+    entry.tier_breakdown = compute_tier_breakdown(&rows);
 }
 
 fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry) {
