@@ -244,7 +244,8 @@ pub fn profile_widget<'a>(
 
     let two_col_row = row![
         container(left_col)
-            .width(Length::Fill)
+            .width(Length::FillPortion(3))
+            .height(Length::Fill)
             .padding(18)
             .style(|_: &iced::Theme| container::Style {
                 background: Some(iced::Background::Color(C_SURFACE)),
@@ -255,7 +256,8 @@ pub fn profile_widget<'a>(
                 ..container::Style::default()
             }),
         container(right_col)
-            .width(Length::Fixed(300.0))
+            .width(Length::FillPortion(1))
+            .height(Length::Fill)
             .padding(16)
             .style(|_: &iced::Theme| container::Style {
                 background: Some(iced::Background::Color(C_SURFACE)),
@@ -598,12 +600,21 @@ fn build_closest_row(entry: TopEntry) -> Element<'static, crate::Message> {
             ..container::Style::default()
         });
 
-    let game_name_label = text(entry.game_name.clone()).size(13).color(C_TEXT_PRIMARY);
+    let game_name_label = text(entry.game_name.clone())
+        .size(13)
+        .color(C_TEXT_PRIMARY)
+        .wrapping(text::Wrapping::None);
     let pct_label = text(format!("{:.0}%", entry.completion_pct))
         .size(12)
         .color(C_ACCENT);
 
-    let info_col = column![game_name_label].spacing(2);
+    let info_col = column![
+        container(game_name_label)
+            .width(Length::Fill)
+            .clip(true),
+    ]
+    .spacing(2)
+    .width(Length::Fill);
 
     let stripe = container(iced::widget::Space::new())
         .width(Length::Fixed(3.0))
@@ -613,15 +624,10 @@ fn build_closest_row(entry: TopEntry) -> Element<'static, crate::Message> {
             ..container::Style::default()
         });
 
-    let row_content = row![
-        letter_avatar,
-        info_col,
-        iced::widget::Space::new().width(Length::Fill),
-        pct_label,
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .padding(Padding::default().left(6).right(6).top(4).bottom(4));
+    let row_content = row![letter_avatar, info_col, pct_label,]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(6).right(6).top(4).bottom(4));
 
     let inner = row![stripe, row_content];
 

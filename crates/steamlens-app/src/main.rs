@@ -1095,7 +1095,11 @@ fn main() -> iced::Result {
         .title("SteamLens")
         .theme(theme)
         .subscription(subscription)
-        .window_size(iced::Size::new(window_w, window_h))
+        .window(iced::window::Settings {
+            size: iced::Size::new(window_w.max(896.0), window_h.max(504.0)),
+            min_size: Some(iced::Size::new(896.0, 504.0)),
+            ..iced::window::Settings::default()
+        })
         .run()
 }
 
