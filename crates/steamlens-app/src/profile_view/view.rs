@@ -931,21 +931,34 @@ fn build_tier_stacked_bar<'a>(
     } else {
         let total_f = total_achievements as f32;
         let mut segments: iced::widget::Row<'_, crate::Message> = row![].spacing(0);
-        let mut any_segment = false;
 
-        for &tier in &TIER_ORDER {
-            let count = tier_breakdown
-                .iter()
-                .find(|(t, _)| *t == tier)
-                .map(|(_, c)| *c)
-                .unwrap_or(0);
-            if count == 0 {
-                continue;
-            }
-            let seg_w = (count as f32 / total_f * inner_w).max(1.0);
-            let color = rarity_color_for_tier(tier);
+        let active_tiers: Vec<(RarityTier, u32)> = TIER_ORDER
+            .iter()
+            .filter_map(|t| {
+                let c = tier_breakdown
+                    .iter()
+                    .find(|(tt, _)| tt == t)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(0);
+                if c > 0 { Some((*t, c)) } else { None }
+            })
+            .collect();
+        let has_locked = locked_count > 0;
+        let earned_segs = active_tiers.len();
 
-            if any_segment {
+        for (i, (tier, count)) in active_tiers.iter().enumerate() {
+            let seg_w = (*count as f32 / total_f * inner_w).max(1.0);
+            let color = rarity_color_for_tier(*tier);
+            let is_first = i == 0;
+            let is_last_earned = i + 1 == earned_segs && !has_locked;
+            let radius = iced::border::Radius {
+                top_left: if is_first { BAR_RADIUS } else { 0.0 },
+                bottom_left: if is_first { BAR_RADIUS } else { 0.0 },
+                top_right: if is_last_earned { BAR_RADIUS } else { 0.0 },
+                bottom_right: if is_last_earned { BAR_RADIUS } else { 0.0 },
+            };
+
+            if i > 0 {
                 let gap = container(iced::widget::Space::new())
                     .width(Length::Fixed(1.0))
                     .height(Length::Fixed(BAR_H))
@@ -961,14 +974,17 @@ fn build_tier_stacked_bar<'a>(
                 .height(Length::Fixed(BAR_H))
                 .style(move |_: &iced::Theme| container::Style {
                     background: Some(iced::Background::Color(color)),
+                    border: iced::Border {
+                        radius,
+                        ..iced::Border::default()
+                    },
                     ..container::Style::default()
                 });
             segments = segments.push(seg);
-            any_segment = true;
         }
 
-        if locked_count > 0 {
-            if any_segment {
+        if has_locked {
+            if earned_segs > 0 {
                 let gap = container(iced::widget::Space::new())
                     .width(Length::Fixed(1.0))
                     .height(Length::Fixed(BAR_H))
@@ -979,11 +995,21 @@ fn build_tier_stacked_bar<'a>(
                 segments = segments.push(gap);
             }
             let locked_w = (locked_count as f32 / total_f * inner_w).max(1.0);
+            let radius = iced::border::Radius {
+                top_left: if earned_segs == 0 { BAR_RADIUS } else { 0.0 },
+                bottom_left: if earned_segs == 0 { BAR_RADIUS } else { 0.0 },
+                top_right: BAR_RADIUS,
+                bottom_right: BAR_RADIUS,
+            };
             let locked_seg = container(iced::widget::Space::new())
                 .width(Length::Fixed(locked_w))
                 .height(Length::Fixed(BAR_H))
-                .style(|_: &iced::Theme| container::Style {
+                .style(move |_: &iced::Theme| container::Style {
                     background: Some(iced::Background::Color(C_TRACK)),
+                    border: iced::Border {
+                        radius,
+                        ..iced::Border::default()
+                    },
                     ..container::Style::default()
                 });
             segments = segments.push(locked_seg);
