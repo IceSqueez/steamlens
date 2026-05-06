@@ -215,7 +215,7 @@ pub fn top5_closest_to_complete(
     games: &[GameEntry],
     cached_entries: &HashMap<u32, GameCacheEntry>,
 ) -> Vec<TopEntry> {
-    let mut candidates: Vec<(u32, String, f64, u32, u64)> = games
+    let mut candidates: Vec<(u32, String, f64, u32, u32, u64)> = games
         .iter()
         .filter_map(|g| {
             let prog = g.progress.as_ref()?;
@@ -223,7 +223,6 @@ pub fn top5_closest_to_complete(
                 return None;
             }
             let ratio = prog.earned as f64 / prog.total as f64;
-            let left = prog.total.saturating_sub(prog.earned);
             let last_played = cached_entries
                 .get(&g.app_id)
                 .map(|e| e.steam_last_played)
@@ -233,7 +232,8 @@ pub fn top5_closest_to_complete(
                 g.app_id,
                 g.name.clone().unwrap_or_default(),
                 ratio,
-                left,
+                prog.earned,
+                prog.total,
                 last_played,
             ))
         })
@@ -242,17 +242,18 @@ pub fn top5_closest_to_complete(
     candidates.sort_by(|a, b| {
         b.2.partial_cmp(&a.2)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| b.4.cmp(&a.4))
+            .then_with(|| b.5.cmp(&a.5))
     });
 
     candidates
         .into_iter()
         .take(5)
-        .map(|(app_id, game_name, ratio, left_count, _)| TopEntry {
+        .map(|(app_id, game_name, ratio, earned, total, _)| TopEntry {
             app_id,
             game_name,
             completion_pct: ratio * 100.0,
-            left_count,
+            earned,
+            total,
         })
         .collect()
 }
@@ -907,7 +908,7 @@ fn build_closest_row<'a>(
         .color(C_TEXT_PRIMARY)
         .wrapping(text::Wrapping::None);
 
-    let left_label = text(format!("{} left", entry.left_count))
+    let left_label = text(format!("{} of {}", entry.earned, entry.total))
         .size(11)
         .color(C_TEXT_MUTED);
 
@@ -924,7 +925,7 @@ fn build_closest_row<'a>(
 
     let row_content = row![capsule_el, info_col, pct_label,]
         .spacing(8)
-        .align_y(Alignment::Start)
+        .align_y(Alignment::Center)
         .padding(Padding::default().left(6).right(6).top(5).bottom(5));
 
     let app_id = entry.app_id;
@@ -1215,7 +1216,8 @@ mod tests {
         assert_eq!(top5.len(), 1);
         assert!((top5[0].completion_pct - 75.0).abs() < 0.01);
         assert_eq!(top5[0].game_name, "Game 1");
-        assert_eq!(top5[0].left_count, 25);
+        assert_eq!(top5[0].earned, 75);
+        assert_eq!(top5[0].total, 100);
     }
 
     #[test]

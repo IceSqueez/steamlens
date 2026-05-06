@@ -73,7 +73,8 @@ pub struct TopEntry {
     pub app_id: u32,
     pub game_name: String,
     pub completion_pct: f64,
-    pub left_count: u32,
+    pub earned: u32,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
