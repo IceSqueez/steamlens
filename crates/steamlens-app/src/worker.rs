@@ -758,6 +758,50 @@ fn collect_global_percentages(client: &Client) -> WorkerResponse {
     WorkerResponse::GlobalPercentagesReady(map)
 }
 
+fn build_icon_response(name: String, img: steamlens_core::Image) -> WorkerResponse {
+    if img.rgba.len() < steamlens_core::INLINE_THRESHOLD_BYTES {
+        return WorkerResponse::IconUpdated {
+            name,
+            icon: AchievementIcon {
+                width: img.width,
+                height: img.height,
+                rgba: img.rgba,
+            },
+        };
+    }
+    let mut writer = match steamlens_core::ShmWriter::create(img.rgba.len()) {
+        Ok(w) => w,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "IconUpdatedShm/shm_create".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+    if let Err(e) = writer.write(&img.rgba) {
+        return WorkerResponse::Error {
+            context: "IconUpdatedShm/shm_write".into(),
+            message: e.to_string(),
+        };
+    }
+    let path = match writer.into_path() {
+        Ok(p) => p,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "IconUpdatedShm/persist".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+    WorkerResponse::IconUpdatedShm {
+        name,
+        shm_path: path.to_string_lossy().into_owned(),
+        region_bytes: img.rgba.len() as u64,
+        width: img.width,
+        height: img.height,
+    }
+}
+
 async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client: &Client) {
     for cb in callbacks {
         if let SteamCallback::UserAchievementIconFetched {
@@ -770,15 +814,7 @@ async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client: &Client) 
                 continue;
             }
             if let Ok(Some(img)) = client.get_image(icon_handle) {
-                let icon = AchievementIcon {
-                    width: img.width,
-                    height: img.height,
-                    rgba: img.rgba,
-                };
-                let resp = WorkerResponse::IconUpdated {
-                    name: achievement_name,
-                    icon,
-                };
+                let resp = build_icon_response(achievement_name, img);
                 let _ = write_response(&resp).await;
             }
         }

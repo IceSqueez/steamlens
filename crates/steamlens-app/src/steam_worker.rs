@@ -277,6 +277,24 @@ async fn run_apply_sequence(
     }
 }
 
+fn read_shm_icon(shm_path: &str, region_bytes: u64) -> Result<Vec<u8>, String> {
+    let path = std::path::PathBuf::from(shm_path);
+    let reader = steamlens_core::ShmReader::open(&path)
+        .map_err(|e| format!("shm open {}: {e}", path.display()))?;
+    let actual_bytes = reader.as_bytes().len();
+    if actual_bytes != region_bytes as usize {
+        let _ = reader.unlink();
+        return Err(format!(
+            "shm size mismatch: expected {region_bytes} bytes, got {actual_bytes}"
+        ));
+    }
+    let rgba = reader.as_bytes().to_vec();
+    if let Err(unlink_err) = reader.unlink() {
+        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
+    }
+    Ok(rgba)
+}
+
 fn read_shm_achievements(
     shm_path: &str,
     region_bytes: u64,
@@ -338,6 +356,28 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         WorkerResponse::IconUpdated { name, icon } => {
             reply(rep_tx, SteamReply::IconUpdated { name, icon });
         }
+        WorkerResponse::IconUpdatedShm {
+            name,
+            shm_path,
+            region_bytes,
+            width,
+            height,
+        } => match read_shm_icon(&shm_path, region_bytes) {
+            Ok(rgba) => reply(
+                rep_tx,
+                SteamReply::IconUpdated {
+                    name,
+                    icon: AchievementIcon {
+                        width,
+                        height,
+                        rgba,
+                    },
+                },
+            ),
+            Err(msg) => {
+                eprintln!("[steamlens] icon shm read failed for {name}: {msg}");
+            }
+        },
         WorkerResponse::GlobalPercentagesReady(map) => {
             reply(rep_tx, SteamReply::GlobalPercentagesReady(map));
         }
