@@ -1,12 +1,51 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.5] - 2026-05-06
+### ⚙️ Miscellaneous Tasks
+- *(app)* Remove Open by App ID footer and related code paths
+
+### 🐛 Bug Fixes
+- *(profile)* Changes color for label to muted
+- *(app)* Add tick marks, brighten dim ticks, raise tick row height
+- *(app)* Rename UNLOCKED BREAKDOWN to ACHIEVEMENTS BREAKDOWN
+- *(app)* Shrink rarity card width to free horizontal space
+- *(app)* Use rule::horizontal for rarity-cards separator to match game cards
+- *(app)* Pin profile-header info to top and earnings to bottom
+- *(app)* Reorder rarity card content and widen card gap
+- *(app)* Unify tick lit color via overall_tier_color advancing through rarity ladder
+- *(app)* Use current capsule_size when looking up closest-to-100% thumbnails
+- *(app)* Show earned-of-total and vertically center closest-row content
+- *(app)* Round outer corners of game-card progress bar segments
+- *(game-tags)* Bottom-align tags row in game card
+- *(app)* Match achievement card background with game card (C_SURFACE)
+- *(app)* Wrap achievement card separator with same padding as game card
+- *(app)* Boost achievement card glow blur and saturation
+- *(app)* Grow tags row height and card total to fit padded pills
+- *(app)* Tighten pin button top and right padding
+
+### 🚀 Features
+- *(app)* Introduce MessagingCenter with Banner/Footer/Toast surfaces
+- *(messaging)* Autoclosable toasts
+- *(profile)* Redesign profile widget with rarity-segmented progress bar
+- *(app)* Redesign closest to complete widget
+- *(app)* Redesign game card with rarity-segmented bar and inline counter
+- *(app)* Add rarity glow to unlocked achievement cards and brighten locked text
+- *(app)* Keep pin button visible on pinned game cards
+- *(profile)* Wire ISteamUser023::GetPlayerSteamLevel into Profile lvl widget
+
 ## [1.0.0-alpha.4] - 2026-05-06
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### 🎨 Styling
 - *(fmt)* Fixes formatting issues
 
 ### 🐛 Bug Fixes
 - *(core)* Cfg-gate Path import + impl Send/Sync for windows ChildLifetimeGuard
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-alpha.4
 
 ### 🚀 Features
 - *(core)* Add cross-platform path discovery + lift linux-only gate
