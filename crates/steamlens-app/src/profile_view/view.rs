@@ -1226,6 +1226,7 @@ fn build_tags_row<'a>(
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(24.0))
         .padding(Padding::default().left(4).right(4).top(3).bottom(3))
+        .align_y(Alignment::End)
         .into()
 }
 
