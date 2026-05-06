@@ -47,6 +47,35 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  cross-compile:
+    name: Cross-compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [check]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-26-intel
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.os }}-stable
+
+      - name: Check
+        run: cargo check --workspace --locked --target ${{ matrix.target }}
+
   build:
     name: Build (Linux)
     runs-on: ubuntu-latest
