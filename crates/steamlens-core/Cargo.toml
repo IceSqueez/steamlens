@@ -21,6 +21,7 @@ thiserror = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = { workspace = true }
+windows-sys = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

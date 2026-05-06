@@ -4,6 +4,7 @@ mod ffi;
 pub mod ipc;
 pub mod library;
 pub mod probe;
+mod process;
 pub mod profile;
 mod raw_callback;
 mod stat_schema;
@@ -22,6 +23,7 @@ pub use ipc::{
 };
 pub use library::{GameSummary, enumerate_owned_games};
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
+pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit};
 pub use profile::{ProfileError, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
