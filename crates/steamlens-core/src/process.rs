@@ -50,8 +50,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
 
         // SAFETY: pid is a valid u32; OpenProcess returns null on failure
         // which we explicitly check.
-        let proc_handle =
-            unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, FALSE, pid) };
+        let proc_handle = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, FALSE, pid) };
         if proc_handle.is_null() {
             return Err(std::io::Error::last_os_error());
         }
