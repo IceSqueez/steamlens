@@ -222,18 +222,7 @@ enum DispatchOutcome {
 async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
     match cmd {
         WorkerCommand::LoadAchievementsAndStats => {
-            let resp = load_achievements_and_stats(client, app_id, true);
-            if write_response(&resp).await.is_err() {
-                return DispatchOutcome::Fatal;
-            }
-            let pct = fetch_global_percentages(client);
-            if write_response(&pct).await.is_err() {
-                return DispatchOutcome::Fatal;
-            }
-        }
-
-        WorkerCommand::LoadAchievementsAndStatsWithoutIcons => {
-            let resp = load_achievements_and_stats(client, app_id, false);
+            let resp = load_achievements_and_stats(client, app_id);
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -325,6 +314,13 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             }
         }
 
+        WorkerCommand::LoadAchievementsAndStatsCardOnly => {
+            let resp = load_achievements_card_only(client);
+            if write_response(&resp).await.is_err() {
+                return DispatchOutcome::Fatal;
+            }
+        }
+
         WorkerCommand::Shutdown => {
             let _ = write_response(&WorkerResponse::Disconnected).await;
             return DispatchOutcome::Shutdown;
@@ -333,7 +329,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
     DispatchOutcome::Continue
 }
 
-fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -> WorkerResponse {
+fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
@@ -392,7 +388,7 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
             Some(unlock_time)
         };
 
-        let icon = if with_icons {
+        let icon = {
             let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
             if handle == 0 {
                 None
@@ -407,8 +403,6 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
                         rgba: img.rgba,
                     })
             }
-        } else {
-            None
         };
 
         achievements.push(AchievementData {
@@ -520,6 +514,65 @@ fn shm_response_for_probe(payload: steamlens_core::ProbeResultPayload) -> Worker
     }
 }
 
+fn shm_response_for_card_only(payload: steamlens_core::CardOnlyPayload) -> WorkerResponse {
+    match steamlens_core::write_payload(&payload) {
+        Ok((path, region_bytes)) => WorkerResponse::CardOnlyAchievements {
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "CardOnlyAchievements/shm".into(),
+            message: e.to_string(),
+        },
+    }
+}
+
+fn load_achievements_card_only(client: &Client) -> WorkerResponse {
+    let stats_iface = client.user_stats();
+    let steam_id = client.steam_id();
+
+    if let Err(e) = stats_iface.request_user_stats(steam_id) {
+        return WorkerResponse::Error {
+            context: "RequestUserStats".into(),
+            message: e.to_string(),
+        };
+    }
+
+    if let Some(early) = wait_for_stats_received_card_only(client, steam_id) {
+        return early;
+    }
+
+    let num = match stats_iface.num_achievements() {
+        Ok(n) => n,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "num_achievements".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+
+    if num == 0 {
+        return shm_response_for_card_only(steamlens_core::CardOnlyPayload {
+            achievements: Vec::new(),
+        });
+    }
+
+    let mut achievements = Vec::with_capacity(num as usize);
+    for i in 0..num {
+        let id = match stats_iface.achievement_name(i) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let (is_achieved, _) = stats_iface
+            .achievement_and_unlock_time(&id)
+            .unwrap_or((false, 0));
+        achievements.push(steamlens_core::CardOnlyAchievement { id, is_achieved });
+    }
+
+    shm_response_for_card_only(steamlens_core::CardOnlyPayload { achievements })
+}
+
 fn quick_achievement_count(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
@@ -593,6 +646,64 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                                     achievements: Vec::new(),
                                     stats: Vec::new(),
                                     genre: None,
+                                },
+                            ));
+                        }
+                        return Some(WorkerResponse::Error {
+                            context: "UserStatsReceived".into(),
+                            message: format!("result code {}", result.raw()),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                return Some(WorkerResponse::Error {
+                    context: "poll_callbacks".into(),
+                    message: e.to_string(),
+                });
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return Some(WorkerResponse::Error {
+                context: "UserStatsReceived".into(),
+                message: "timed out waiting for UserStatsReceived".into(),
+            });
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_for_stats_received_card_only(
+    client: &Client,
+    expected_user: u64,
+) -> Option<WorkerResponse> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        match client.poll_callbacks() {
+            Ok(callbacks) => {
+                for cb in callbacks {
+                    if let SteamCallback::UserStatsReceived {
+                        result,
+                        user_steam_id,
+                        game_id,
+                        ..
+                    } = cb
+                    {
+                        if user_steam_id != expected_user {
+                            continue;
+                        }
+                        eprintln!(
+                            "[worker] UserStatsReceived (card-only): result={} game={}",
+                            result.raw(),
+                            game_id,
+                        );
+                        if result.is_ok() {
+                            return None;
+                        }
+                        if result.raw() == 2 {
+                            return Some(shm_response_for_card_only(
+                                steamlens_core::CardOnlyPayload {
+                                    achievements: Vec::new(),
                                 },
                             ));
                         }

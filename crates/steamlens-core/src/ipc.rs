@@ -5,7 +5,7 @@ use thiserror::Error;
 
 pub use types::{
     AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
-    ProbeResultPayload, StatData, StatValue,
+    CardOnlyAchievement, CardOnlyPayload, ProbeResultPayload, StatData, StatValue,
 };
 
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
@@ -23,7 +23,6 @@ pub enum FrameError {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerCommand {
     LoadAchievementsAndStats,
-    LoadAchievementsAndStatsWithoutIcons,
     SetAchievement(String),
     ClearAchievement(String),
     SetStatInt { name: String, value: i32 },
@@ -33,6 +32,7 @@ pub enum WorkerCommand {
     RequestGlobalPercentages,
     QuickAchievementCount,
     Shutdown,
+    LoadAchievementsAndStatsCardOnly,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -70,6 +70,10 @@ pub enum WorkerResponse {
         message: String,
     },
     Disconnected,
+    CardOnlyAchievements {
+        shm_path: String,
+        region_bytes: u64,
+    },
 }
 
 pub fn frame_header(payload_len: usize) -> Result<[u8; 4], FrameError> {
@@ -121,7 +125,6 @@ mod tests {
     fn all_commands() -> Vec<WorkerCommand> {
         vec![
             WorkerCommand::LoadAchievementsAndStats,
-            WorkerCommand::LoadAchievementsAndStatsWithoutIcons,
             WorkerCommand::SetAchievement("ACH_WIN".to_owned()),
             WorkerCommand::ClearAchievement("ACH_LOSE".to_owned()),
             WorkerCommand::SetStatInt {
@@ -139,6 +142,7 @@ mod tests {
             WorkerCommand::RequestGlobalPercentages,
             WorkerCommand::QuickAchievementCount,
             WorkerCommand::Shutdown,
+            WorkerCommand::LoadAchievementsAndStatsCardOnly,
         ]
     }
 
@@ -181,6 +185,10 @@ mod tests {
                 message: "pipe closed".to_owned(),
             },
             WorkerResponse::Disconnected,
+            WorkerResponse::CardOnlyAchievements {
+                shm_path: "/dev/shm/steamlens-test-card-XYZ".to_owned(),
+                region_bytes: 512,
+            },
         ]
     }
 
@@ -340,6 +348,101 @@ mod tests {
         assert!(
             matches!(decoded, StatValue::Float(f) if (f - std::f32::consts::PI).abs() < f32::EPSILON)
         );
+    }
+
+    #[test]
+    fn card_only_command_roundtrip() {
+        let cmd = WorkerCommand::LoadAchievementsAndStatsCardOnly;
+        let framed = encode_frame(&cmd).expect("encode must succeed");
+        let payload = &framed[4..];
+        let decoded: WorkerCommand = decode_frame(payload).expect("decode must succeed");
+        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
+        assert_eq!(
+            framed, re_framed,
+            "LoadAchievementsAndStatsCardOnly must round-trip byte-stable"
+        );
+    }
+
+    #[test]
+    fn card_only_response_roundtrip() {
+        let resp = WorkerResponse::CardOnlyAchievements {
+            shm_path: "/dev/shm/steamlens-card-abc123".to_owned(),
+            region_bytes: 1024,
+        };
+        let framed = encode_frame(&resp).expect("encode must succeed");
+        let payload = &framed[4..];
+        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
+        assert_eq!(
+            framed, re_framed,
+            "CardOnlyAchievements response must round-trip byte-stable"
+        );
+        match decoded {
+            WorkerResponse::CardOnlyAchievements {
+                shm_path,
+                region_bytes,
+            } => {
+                assert_eq!(shm_path, "/dev/shm/steamlens-card-abc123");
+                assert_eq!(region_bytes, 1024);
+            }
+            _ => panic!("decoded variant must be CardOnlyAchievements"),
+        }
+    }
+
+    #[test]
+    fn card_only_payload_roundtrip_with_achievements() {
+        use types::CardOnlyAchievement;
+
+        let payload = types::CardOnlyPayload {
+            achievements: vec![
+                CardOnlyAchievement {
+                    id: "ACH_FIRST_KILL".to_owned(),
+                    is_achieved: true,
+                },
+                CardOnlyAchievement {
+                    id: "ACH_HUNDRED".to_owned(),
+                    is_achieved: false,
+                },
+            ],
+        };
+
+        let bytes = postcard::to_allocvec(&payload).expect("serialize");
+        let restored: types::CardOnlyPayload = postcard::from_bytes(&bytes).expect("decode");
+
+        assert_eq!(restored.achievements.len(), 2);
+        assert_eq!(restored.achievements[0].id, "ACH_FIRST_KILL");
+        assert!(restored.achievements[0].is_achieved);
+        assert_eq!(restored.achievements[1].id, "ACH_HUNDRED");
+        assert!(!restored.achievements[1].is_achieved);
+    }
+
+    #[test]
+    fn card_only_payload_roundtrip_empty() {
+        let payload = types::CardOnlyPayload {
+            achievements: Vec::new(),
+        };
+        let bytes = postcard::to_allocvec(&payload).expect("serialize");
+        let restored: types::CardOnlyPayload = postcard::from_bytes(&bytes).expect("decode");
+        assert!(restored.achievements.is_empty());
+    }
+
+    #[test]
+    fn card_only_achievement_field_equality() {
+        use types::CardOnlyAchievement;
+        let a = CardOnlyAchievement {
+            id: "X".to_owned(),
+            is_achieved: true,
+        };
+        let b = CardOnlyAchievement {
+            id: "X".to_owned(),
+            is_achieved: true,
+        };
+        let c = CardOnlyAchievement {
+            id: "X".to_owned(),
+            is_achieved: false,
+        };
+        assert_eq!(a, b);
+        assert_ne!(a, c);
     }
 
     #[test]

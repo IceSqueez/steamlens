@@ -7,9 +7,9 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use steamlens_core::ipc::{
     WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
 };
-use steamlens_core::{AchievementData, StatData};
+use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
-const MAX_CONCURRENT: usize = 3;
+const MAX_CONCURRENT: usize = 1;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const PERCENTAGES_TIMEOUT: Duration = Duration::from_secs(15);
@@ -23,7 +23,7 @@ pub struct ProgressData {
 #[derive(Debug, Clone)]
 pub struct ScannedGameData {
     pub app_name: Option<String>,
-    pub achievements: Vec<AchievementData>,
+    pub achievements: Vec<CardOnlyAchievement>,
     pub stats: Vec<StatData>,
     pub global_percentages: HashMap<String, f32>,
     #[allow(dead_code)]
@@ -43,7 +43,6 @@ impl ScannedGameData {
 #[derive(Debug, Clone)]
 pub struct ProgressResult {
     pub app_id: u32,
-    /// `None` on worker crash, timeout, or error frame.
     pub data: Option<ScannedGameData>,
 }
 
@@ -296,13 +295,9 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         }
     };
 
-    send_command(
-        &mut stdin,
-        &WorkerCommand::LoadAchievementsAndStatsWithoutIcons,
-    )
-    .await?;
+    send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly).await?;
     let (achievements, stats, genre) =
-        read_achievements_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
+        read_card_only_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
@@ -322,17 +317,17 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
     })
 }
 
-async fn read_achievements_skipping_async(
+async fn read_card_only_skipping_async(
     stdout: &mut ChildStdout,
     total_timeout: Duration,
-) -> Result<(Vec<AchievementData>, Vec<StatData>, Option<String>), std::io::Error> {
+) -> Result<(Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>), std::io::Error> {
     let deadline = tokio::time::Instant::now() + total_timeout;
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
-                "timed out waiting for AchievementsAndStats",
+                "timed out waiting for CardOnlyAchievements",
             ));
         }
         let frame = tokio::time::timeout(remaining, read_response(stdout))
@@ -340,35 +335,36 @@ async fn read_achievements_skipping_async(
             .map_err(|_| {
                 std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
-                    "timed out waiting for AchievementsAndStats",
+                    "timed out waiting for CardOnlyAchievements",
                 )
             })?
             .ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::UnexpectedEof,
-                    "worker closed before AchievementsAndStats",
+                    "worker closed before CardOnlyAchievements",
                 )
             })?;
         match frame {
-            WorkerResponse::AchievementsAndStats {
+            WorkerResponse::CardOnlyAchievements {
                 shm_path,
                 region_bytes,
             } => {
                 let path = std::path::PathBuf::from(&shm_path);
-                let payload: steamlens_core::AchievementsAndStatsPayload =
-                    steamlens_core::read_payload(&path, region_bytes).map_err(|e| {
+                let payload: CardOnlyPayload = steamlens_core::read_payload(&path, region_bytes)
+                    .map_err(|e| {
                         std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
-                            format!("AchievementsAndStats shm read: {e}"),
+                            format!("CardOnlyAchievements shm read: {e}"),
                         )
                     })?;
-                return Ok((payload.achievements, payload.stats, payload.genre));
+                return Ok((payload.achievements, Vec::new(), None));
             }
             WorkerResponse::IconUpdated { shm_path, .. } => {
                 steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
                 continue;
             }
-            WorkerResponse::AchievementCount { shm_path, .. }
+            WorkerResponse::AchievementsAndStats { shm_path, .. }
+            | WorkerResponse::AchievementCount { shm_path, .. }
             | WorkerResponse::ProbeResult { shm_path, .. }
             | WorkerResponse::GlobalPercentagesReady { shm_path, .. } => {
                 steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
@@ -438,16 +434,10 @@ async fn send_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> Result<(),
 mod tests {
     use super::*;
 
-    fn make_ach(id: &str, achieved: bool) -> AchievementData {
-        AchievementData {
+    fn make_ach(id: &str, achieved: bool) -> CardOnlyAchievement {
+        CardOnlyAchievement {
             id: id.to_owned(),
-            display_name: id.to_owned(),
-            description: String::new(),
-            is_hidden: false,
             is_achieved: achieved,
-            unlock_time: None,
-            permission: 0,
-            icon: None,
         }
     }
 
@@ -488,8 +478,8 @@ mod tests {
     #[test]
     fn scanner_max_concurrent_cap() {
         assert_eq!(
-            MAX_CONCURRENT, 3,
-            "scanner cap must be 3 to avoid overloading Steam IPC during cold start"
+            MAX_CONCURRENT, 1,
+            "scanner cap must be 1; sequential scan avoids Steam IPC contention on cold start"
         );
     }
 

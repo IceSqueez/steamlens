@@ -350,6 +350,12 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         } => {
             steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
         }
+        WorkerResponse::CardOnlyAchievements {
+            shm_path,
+            region_bytes: _,
+        } => {
+            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+        }
         WorkerResponse::Error { context, message } => {
             reply(rep_tx, error_reply(&context, message));
         }

@@ -1182,27 +1182,10 @@ fn build_cache_entry_from_scan(
     steam_root: &std::path::Path,
     steamid3: u64,
 ) -> GameCacheEntry {
-    use cache::types::{CachedAchievement, CachedProgress, CachedStat};
+    use cache::types::{CachedProgress, CachedStat};
+    use game_view::compute_tier_breakdown;
+    use game_view::types::{AchievementData, AchievementRow};
     use steamlens_core::{StatValue, read_last_played};
-
-    let achievements: Vec<CachedAchievement> = scanned
-        .achievements
-        .iter()
-        .map(|a| {
-            let global_percent = scanned.global_percentages.get(&a.id).copied();
-            CachedAchievement {
-                api_name: a.id.clone(),
-                display_name: a.display_name.clone(),
-                description: a.description.clone(),
-                hidden: a.is_hidden,
-                icon_path: None,
-                icon_locked_path: None,
-                earned: a.is_achieved,
-                earned_at: a.unlock_time.map(|t| t as u64),
-                global_percent: global_percent.map(|p| p as f64),
-            }
-        })
-        .collect();
 
     let stats: Vec<CachedStat> = scanned
         .stats
@@ -1222,8 +1205,33 @@ fn build_cache_entry_from_scan(
         })
         .collect();
 
-    let earned = achievements.iter().filter(|a| a.earned).count() as u32;
-    let total = achievements.len() as u32;
+    let earned = scanned
+        .achievements
+        .iter()
+        .filter(|a| a.is_achieved)
+        .count() as u32;
+    let total = scanned.achievements.len() as u32;
+
+    let tier_rows: Vec<AchievementRow> = scanned
+        .achievements
+        .iter()
+        .map(|a| {
+            let data = AchievementData {
+                id: a.id.clone(),
+                display_name: String::new(),
+                description: String::new(),
+                is_hidden: false,
+                is_achieved: a.is_achieved,
+                unlock_time: None,
+                permission: 0,
+                icon: None,
+            };
+            let mut row = AchievementRow::from_data(data);
+            row.rarity_percent = scanned.global_percentages.get(&a.id).copied();
+            row
+        })
+        .collect();
+    let tier_breakdown = compute_tier_breakdown(&tier_rows);
 
     let steam_last_played = read_last_played(steam_root, steamid3, app_id).unwrap_or(0);
     let cached_at = std::time::SystemTime::now()
@@ -1237,22 +1245,19 @@ fn build_cache_entry_from_scan(
         .or_else(|| entry_name.map(|s| s.to_owned()))
         .unwrap_or_else(|| format!("App {app_id}"));
 
-    let mut entry = GameCacheEntry {
+    GameCacheEntry {
         schema_version: cache::CURRENT_SCHEMA_VERSION,
         app_id,
         name,
         steam_last_updated: 0,
         steam_last_played,
         cached_at,
-        achievements,
+        achievements: Vec::new(),
         stats,
         progress: CachedProgress { earned, total },
-        tier_breakdown: Vec::new(),
+        tier_breakdown,
         genre: scanned.genre.clone(),
-    };
-
-    recompute_tier_breakdown_if_missing(&mut entry);
-    entry
+    }
 }
 
 fn build_game_view_cache_entry(
@@ -1857,7 +1862,7 @@ mod tests {
         achievements: Vec<(String, bool, Option<f32>)>,
     ) -> progress_scan::ScannedGameData {
         use std::collections::HashMap;
-        use steamlens_core::AchievementData;
+        use steamlens_core::CardOnlyAchievement;
 
         let mut percentages = HashMap::new();
         for (id, _, pct) in &achievements {
@@ -1866,17 +1871,11 @@ mod tests {
             }
         }
 
-        let achievement_data: Vec<AchievementData> = achievements
+        let achievement_data: Vec<CardOnlyAchievement> = achievements
             .into_iter()
-            .map(|(id, achieved, _)| AchievementData {
-                id: id.clone(),
-                display_name: id,
-                description: String::new(),
-                is_hidden: false,
+            .map(|(id, achieved, _)| CardOnlyAchievement {
+                id,
                 is_achieved: achieved,
-                unlock_time: None,
-                permission: 0,
-                icon: None,
             })
             .collect();
 
@@ -1928,37 +1927,6 @@ mod tests {
             0,
         );
         assert_eq!(entry.name, "FallbackName");
-    }
-
-    #[test]
-    fn build_cache_entry_from_scan_attaches_global_percent_to_achievements() {
-        let scanned = make_scanned_data(
-            None,
-            vec![
-                ("RARE".to_owned(), true, Some(2.5)),
-                ("MID".to_owned(), true, Some(40.0)),
-                ("MISSING_PCT".to_owned(), true, None),
-            ],
-        );
-        let game = make_game_entry_for_scan(99, "Game");
-        let entry = build_cache_entry_from_scan(
-            &scanned,
-            game.app_id,
-            game.name.as_deref(),
-            std::path::Path::new("/tmp/nonexistent"),
-            0,
-        );
-        let by_id: std::collections::HashMap<&str, &cache::types::CachedAchievement> = entry
-            .achievements
-            .iter()
-            .map(|a| (a.api_name.as_str(), a))
-            .collect();
-        assert_eq!(by_id["RARE"].global_percent, Some(2.5));
-        assert_eq!(by_id["MID"].global_percent, Some(40.0));
-        assert_eq!(
-            by_id["MISSING_PCT"].global_percent, None,
-            "achievements absent from percentages map must keep None"
-        );
     }
 
     #[test]
