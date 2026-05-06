@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use memmap2::{Mmap, MmapMut};
 use tempfile::{Builder, NamedTempFile};
@@ -34,6 +35,45 @@ pub fn write_payload<T: serde::Serialize>(value: &T) -> Result<(PathBuf, u64), S
     writer.write(&payload)?;
     let path = writer.into_path()?;
     Ok((path, payload.len() as u64))
+}
+
+/// Removes `/dev/shm/steamlens-*` (or fallback `temp_dir`) files older than
+/// 60 seconds, picking up orphans from crashed sessions. Files newer than
+/// the cutoff are left alone in case another concurrent SteamLens instance
+/// is mid-flight. Call once at app startup before any worker spawns.
+pub fn sweep_orphans() -> usize {
+    sweep_orphans_in(&shm_dir(), Duration::from_secs(60))
+}
+
+fn sweep_orphans_in(dir: &Path, min_age: Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now();
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if !name_str.starts_with("steamlens-") {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        let Ok(mtime) = meta.modified() else {
+            continue;
+        };
+        let Ok(age) = now.duration_since(mtime) else {
+            continue;
+        };
+        if age < min_age {
+            continue;
+        }
+        if std::fs::remove_file(entry.path()).is_ok() {
+            count += 1;
+        }
+    }
+    count
 }
 
 pub fn read_payload<T: serde::de::DeserializeOwned>(
@@ -250,6 +290,55 @@ mod tests {
             !path.exists(),
             "writer drop without into_path must auto-delete"
         );
+    }
+
+    #[test]
+    fn sweep_orphans_removes_matching_prefix_only() {
+        let dir = std::env::temp_dir().join(format!(
+            "steamlens-sweep-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("steamlens-orphan-1"), b"x").unwrap();
+        std::fs::write(dir.join("steamlens-orphan-2"), b"y").unwrap();
+        std::fs::write(dir.join("not-ours-tmpfile"), b"z").unwrap();
+
+        let removed = sweep_orphans_in(&dir, Duration::ZERO);
+        assert_eq!(removed, 2, "must sweep only steamlens-prefixed files");
+        assert!(!dir.join("steamlens-orphan-1").exists());
+        assert!(!dir.join("steamlens-orphan-2").exists());
+        assert!(
+            dir.join("not-ours-tmpfile").exists(),
+            "non-prefixed files must remain"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sweep_orphans_respects_min_age() {
+        let dir = std::env::temp_dir().join(format!(
+            "steamlens-sweep-age-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("steamlens-fresh"), b"x").unwrap();
+
+        let removed = sweep_orphans_in(&dir, Duration::from_secs(3600));
+        assert_eq!(removed, 0, "fresh file must not be swept");
+        assert!(dir.join("steamlens-fresh").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

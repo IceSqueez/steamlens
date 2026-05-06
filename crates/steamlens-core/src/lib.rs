@@ -19,7 +19,9 @@ mod user_stats;
 
 pub use client::{Client, Image, connect};
 pub use error::{LibraryError, SteamError};
-pub use ipc::shm::{ShmError, ShmReader, ShmWriter, read_payload, unlink_at, write_payload};
+pub use ipc::shm::{
+    ShmError, ShmReader, ShmWriter, read_payload, sweep_orphans, unlink_at, write_payload,
+};
 pub use ipc::{
     AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
     FrameError, ProbeResultPayload, StatData, StatValue, WorkerCommand, WorkerResponse,

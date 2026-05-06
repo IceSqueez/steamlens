@@ -1528,6 +1528,12 @@ fn main() -> iced::Result {
         eprintln!("usage: steamlens-app --worker <app_id>");
         std::process::exit(2);
     }
+
+    let swept = steamlens_core::sweep_orphans();
+    if swept > 0 {
+        eprintln!("[steamlens] swept {swept} orphan shm region(s) at startup");
+    }
+
     let loaded = settings::load_settings();
     let window_w = loaded.ui.window_width;
     let window_h = loaded.ui.window_height;
