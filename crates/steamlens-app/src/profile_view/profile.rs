@@ -10,7 +10,6 @@ use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::game_view::types::RarityTier;
 use crate::theme::{
     C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
-    C_TEXT_SECONDARY,
 };
 
 use super::types::{GameEntry, ProfileViewMessage, TopEntry};
@@ -345,10 +344,10 @@ fn build_left_column<'a>(
 
     column![
         header_row,
-        rarity_cards,
-        separator_row,
         breakdown_label,
         rarity_bar,
+        rarity_cards,
+        separator_row,
     ]
     .spacing(10)
     .into()
@@ -570,7 +569,7 @@ fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, crate::Me
 fn build_breakdown_label() -> Element<'static, crate::Message> {
     text("UNLOCKED BREAKDOWN")
         .size(10)
-        .color(C_TEXT_SECONDARY)
+        .color(C_TEXT_MUTED)
         .into()
 }
 
