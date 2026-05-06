@@ -568,7 +568,7 @@ fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, crate::Me
 }
 
 fn build_breakdown_label() -> Element<'static, crate::Message> {
-    text("UNLOCKED BREAKDOWN")
+    text("ACHIEVEMENTS BREAKDOWN")
         .size(10)
         .color(C_TEXT_MUTED)
         .into()
@@ -819,7 +819,7 @@ fn build_tick_marks(
                 ..container::Style::default()
             });
 
-        let label = text(format!("{threshold}%")).size(20).color(tick_color);
+        let label = text(format!("{threshold}%")).size(14).color(tick_color);
 
         let tick_unit = row![dot, label].spacing(3).align_y(Alignment::Center);
 
@@ -835,7 +835,7 @@ fn build_tick_marks(
             ticks_row = ticks_row.push(
                 iced::widget::Space::new()
                     .width(Length::FillPortion(fill_before))
-                    .height(Length::Fixed(28.0)),
+                    .height(Length::Fixed(20.0)),
             );
         }
 
@@ -844,7 +844,7 @@ fn build_tick_marks(
 
     ticks_row
         .width(Length::Fill)
-        .height(Length::Fixed(28.0))
+        .height(Length::Fixed(20.0))
         .into()
 }
 
