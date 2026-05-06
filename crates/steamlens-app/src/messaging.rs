@@ -61,6 +61,7 @@ pub struct Banner {
 pub enum ToastKind {
     Success,
     Info,
+    Error,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,9 @@ pub struct Toast {
 impl Toast {
     fn is_expired(&self) -> bool {
         if self.hovered {
+            return false;
+        }
+        if matches!(self.kind, ToastKind::Error) {
             return false;
         }
         self.created_at.elapsed() >= TOAST_LIFETIME
@@ -436,7 +440,10 @@ fn toast_card<'a>(toast: &'a Toast) -> Element<'a, crate::Message> {
     let (accent_color, kind_glyph) = match toast.kind {
         ToastKind::Success => (C_SUCCESS, "\u{2713}"),
         ToastKind::Info => (C_ACCENT, "\u{2139}"),
+        ToastKind::Error => (C_ERROR, "\u{26D4}"),
     };
+
+    let auto_dismiss = !matches!(toast.kind, ToastKind::Error);
 
     let elapsed_ratio =
         (toast.created_at.elapsed().as_secs_f32() / TOAST_LIFETIME.as_secs_f32()).clamp(0.0, 1.0);
@@ -510,7 +517,9 @@ fn toast_card<'a>(toast: &'a Toast) -> Element<'a, crate::Message> {
         card_col = card_col.push(text(body.as_str()).size(12).color(C_TEXT_MUTED));
     }
 
-    card_col = card_col.push(progress_bar);
+    if auto_dismiss {
+        card_col = card_col.push(progress_bar);
+    }
 
     let toast_id_enter = toast.id;
     let toast_id_exit = toast.id;
@@ -650,6 +659,21 @@ mod tests {
         });
         mc.tick_toasts();
         assert!(mc.toasts.is_empty());
+    }
+
+    #[test]
+    fn error_toast_never_expires_by_lifetime() {
+        let mut mc = MessagingCenter::new();
+        mc.toasts.push(Toast {
+            id: 200,
+            kind: ToastKind::Error,
+            title: "boom".to_owned(),
+            body: None,
+            created_at: Instant::now() - Duration::from_secs(60),
+            hovered: false,
+        });
+        mc.tick_toasts();
+        assert_eq!(mc.toasts.len(), 1);
     }
 
     #[test]
