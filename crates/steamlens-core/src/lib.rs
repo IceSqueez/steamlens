@@ -19,10 +19,10 @@ mod user_stats;
 
 pub use client::{Client, Image, connect};
 pub use error::{LibraryError, SteamError};
-pub use ipc::shm::{INLINE_THRESHOLD_BYTES, ShmError, ShmReader, ShmWriter};
+pub use ipc::shm::{ShmError, ShmReader, ShmWriter, read_payload, unlink_at, write_payload};
 pub use ipc::{
-    AchievementData, AchievementIcon, FrameError, StatData, StatValue, WorkerCommand,
-    WorkerResponse,
+    AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
+    FrameError, ProbeResultPayload, StatData, StatValue, WorkerCommand, WorkerResponse,
 };
 pub use library::{GameSummary, enumerate_owned_games};
 pub use probe::{ProbeError, ProbedProfile, probe_steam};

@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use memmap2::{Mmap, MmapMut};
 use tempfile::{Builder, NamedTempFile};
 
-pub const INLINE_THRESHOLD_BYTES: usize = 64 * 1024;
-
 #[derive(Debug, thiserror::Error)]
 pub enum ShmError {
     #[error("io error: {0}")]
@@ -13,6 +11,50 @@ pub enum ShmError {
 
     #[error("write of {wanted} bytes exceeds region capacity {capacity}")]
     Overflow { wanted: usize, capacity: usize },
+
+    #[error("postcard serialize: {0}")]
+    Serialize(String),
+
+    #[error("postcard deserialize: {0}")]
+    Deserialize(String),
+
+    #[error("shm size mismatch: expected {expected} bytes, got {actual}")]
+    SizeMismatch { expected: u64, actual: usize },
+}
+
+pub fn unlink_at(path: &Path) {
+    if let Ok(reader) = ShmReader::open(path) {
+        let _ = reader.unlink();
+    }
+}
+
+pub fn write_payload<T: serde::Serialize>(value: &T) -> Result<(PathBuf, u64), ShmError> {
+    let payload = postcard::to_allocvec(value).map_err(|e| ShmError::Serialize(e.to_string()))?;
+    let mut writer = ShmWriter::create(payload.len())?;
+    writer.write(&payload)?;
+    let path = writer.into_path()?;
+    Ok((path, payload.len() as u64))
+}
+
+pub fn read_payload<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    expected_bytes: u64,
+) -> Result<T, ShmError> {
+    let reader = ShmReader::open(path)?;
+    let actual = reader.as_bytes().len();
+    if actual != expected_bytes as usize {
+        let _ = reader.unlink();
+        return Err(ShmError::SizeMismatch {
+            expected: expected_bytes,
+            actual,
+        });
+    }
+    let result =
+        postcard::from_bytes(reader.as_bytes()).map_err(|e| ShmError::Deserialize(e.to_string()));
+    if let Err(unlink_err) = reader.unlink() {
+        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
+    }
+    result
 }
 
 pub struct ShmWriter {

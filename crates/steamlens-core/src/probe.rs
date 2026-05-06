@@ -67,16 +67,20 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
 
     match response {
         WorkerResponse::ProbeResult {
-            steam_id,
-            persona_name,
-            avatar_png,
-            game_summaries: games,
-        } => Ok(ProbedProfile {
-            steam_id,
-            persona_name,
-            avatar_image: avatar_png,
-            game_summaries: games,
-        }),
+            shm_path,
+            region_bytes,
+        } => {
+            let path = std::path::PathBuf::from(&shm_path);
+            let payload: crate::ipc::ProbeResultPayload =
+                crate::ipc::shm::read_payload(&path, region_bytes)
+                    .map_err(|e| ProbeError::Worker(format!("ProbeResult shm: {e}")))?;
+            Ok(ProbedProfile {
+                steam_id: payload.steam_id,
+                persona_name: payload.persona_name,
+                avatar_image: payload.avatar_png,
+                game_summaries: payload.game_summaries,
+            })
+        }
         WorkerResponse::Error { message, .. } => {
             if is_not_running_message(&message) {
                 Err(ProbeError::SteamNotRunning)

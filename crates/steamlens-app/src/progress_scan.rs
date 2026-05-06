@@ -333,19 +333,27 @@ async fn read_achievements_skipping_async(
             })?;
         match frame {
             WorkerResponse::AchievementsAndStats {
-                achievements,
-                stats,
-                genre,
-            } => return Ok((achievements, stats, genre)),
-            WorkerResponse::AchievementsAndStatsShm { shm_path, .. } => {
-                try_unlink_stray_shm(&shm_path);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "progress_scan does not support AchievementsAndStatsShm; LoadAchievementsAndStatsWithoutIcons should not exceed inline threshold",
-                ));
+                shm_path,
+                region_bytes,
+            } => {
+                let path = std::path::PathBuf::from(&shm_path);
+                let payload: steamlens_core::AchievementsAndStatsPayload =
+                    steamlens_core::read_payload(&path, region_bytes).map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("AchievementsAndStats shm read: {e}"),
+                        )
+                    })?;
+                return Ok((payload.achievements, payload.stats, payload.genre));
             }
-            WorkerResponse::IconUpdatedShm { shm_path, .. } => {
-                try_unlink_stray_shm(&shm_path);
+            WorkerResponse::IconUpdated { shm_path, .. } => {
+                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+                continue;
+            }
+            WorkerResponse::AchievementCount { shm_path, .. }
+            | WorkerResponse::ProbeResult { shm_path, .. }
+            | WorkerResponse::GlobalPercentagesReady { shm_path, .. } => {
+                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
                 continue;
             }
             WorkerResponse::Error { message, .. } => {
@@ -371,22 +379,24 @@ async fn read_percentages_skipping_async(
             _ => return HashMap::new(),
         };
         match frame {
-            WorkerResponse::GlobalPercentagesReady(map) => return map,
-            WorkerResponse::AchievementsAndStatsShm { shm_path, .. }
-            | WorkerResponse::IconUpdatedShm { shm_path, .. } => {
-                try_unlink_stray_shm(&shm_path);
+            WorkerResponse::GlobalPercentagesReady {
+                shm_path,
+                region_bytes,
+            } => {
+                let path = std::path::PathBuf::from(&shm_path);
+                return steamlens_core::read_payload::<HashMap<String, f32>>(&path, region_bytes)
+                    .unwrap_or_default();
+            }
+            WorkerResponse::AchievementsAndStats { shm_path, .. }
+            | WorkerResponse::IconUpdated { shm_path, .. }
+            | WorkerResponse::AchievementCount { shm_path, .. }
+            | WorkerResponse::ProbeResult { shm_path, .. } => {
+                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
                 continue;
             }
             WorkerResponse::Error { .. } => return HashMap::new(),
             _ => continue,
         }
-    }
-}
-
-fn try_unlink_stray_shm(shm_path: &str) {
-    let path = std::path::PathBuf::from(shm_path);
-    if let Ok(reader) = steamlens_core::ShmReader::open(&path) {
-        let _ = reader.unlink();
     }
 }
 

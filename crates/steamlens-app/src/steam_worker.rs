@@ -277,44 +277,14 @@ async fn run_apply_sequence(
     }
 }
 
-fn read_shm_icon(shm_path: &str, region_bytes: u64) -> Result<Vec<u8>, String> {
-    let path = std::path::PathBuf::from(shm_path);
-    let reader = steamlens_core::ShmReader::open(&path)
-        .map_err(|e| format!("shm open {}: {e}", path.display()))?;
-    let actual_bytes = reader.as_bytes().len();
-    if actual_bytes != region_bytes as usize {
-        let _ = reader.unlink();
-        return Err(format!(
-            "shm size mismatch: expected {region_bytes} bytes, got {actual_bytes}"
-        ));
-    }
-    let rgba = reader.as_bytes().to_vec();
-    if let Err(unlink_err) = reader.unlink() {
-        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
-    }
-    Ok(rgba)
-}
-
-fn read_shm_achievements(
+fn read_shm<T: serde::de::DeserializeOwned>(
+    label: &str,
     shm_path: &str,
     region_bytes: u64,
-) -> Result<Vec<steamlens_core::AchievementData>, String> {
+) -> Result<T, String> {
     let path = std::path::PathBuf::from(shm_path);
-    let reader = steamlens_core::ShmReader::open(&path)
-        .map_err(|e| format!("shm open {}: {e}", path.display()))?;
-    let actual_bytes = reader.as_bytes().len();
-    if actual_bytes != region_bytes as usize {
-        let _ = reader.unlink();
-        return Err(format!(
-            "shm size mismatch: expected {region_bytes} bytes, got {actual_bytes}"
-        ));
-    }
-    let result = postcard::from_bytes::<Vec<steamlens_core::AchievementData>>(reader.as_bytes())
-        .map_err(|e| format!("shm postcard deserialize: {e}"));
-    if let Err(unlink_err) = reader.unlink() {
-        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
-    }
-    result
+    steamlens_core::read_payload::<T>(&path, region_bytes)
+        .map_err(|e| format!("{label} shm read at {}: {e}", path.display()))
 }
 
 fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
@@ -324,71 +294,62 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         }
         WorkerResponse::Ack => {}
         WorkerResponse::AchievementsAndStats {
-            achievements,
-            stats,
-            genre,
-        } => {
-            reply(
-                rep_tx,
-                SteamReply::AchievementsAndStats {
-                    achievements,
-                    stats,
-                    genre,
-                },
-            );
-        }
-        WorkerResponse::AchievementsAndStatsShm {
             shm_path,
             region_bytes,
-            stats,
-            genre,
-        } => match read_shm_achievements(&shm_path, region_bytes) {
-            Ok(achievements) => reply(
+        } => match read_shm::<steamlens_core::AchievementsAndStatsPayload>(
+            "AchievementsAndStats",
+            &shm_path,
+            region_bytes,
+        ) {
+            Ok(p) => reply(
                 rep_tx,
                 SteamReply::AchievementsAndStats {
-                    achievements,
-                    stats,
-                    genre,
+                    achievements: p.achievements,
+                    stats: p.stats,
+                    genre: p.genre,
                 },
             ),
             Err(msg) => reply(rep_tx, SteamReply::LoadFailed(msg)),
         },
-        WorkerResponse::IconUpdated { name, icon } => {
-            reply(rep_tx, SteamReply::IconUpdated { name, icon });
-        }
-        WorkerResponse::IconUpdatedShm {
+        WorkerResponse::IconUpdated {
             name,
             shm_path,
             region_bytes,
-            width,
-            height,
-        } => match read_shm_icon(&shm_path, region_bytes) {
-            Ok(rgba) => reply(
-                rep_tx,
-                SteamReply::IconUpdated {
-                    name,
-                    icon: AchievementIcon {
-                        width,
-                        height,
-                        rgba,
-                    },
-                },
-            ),
+        } => match read_shm::<AchievementIcon>("IconUpdated", &shm_path, region_bytes) {
+            Ok(icon) => reply(rep_tx, SteamReply::IconUpdated { name, icon }),
             Err(msg) => {
                 eprintln!("[steamlens] icon shm read failed for {name}: {msg}");
             }
         },
-        WorkerResponse::GlobalPercentagesReady(map) => {
-            reply(rep_tx, SteamReply::GlobalPercentagesReady(map));
-        }
+        WorkerResponse::GlobalPercentagesReady {
+            shm_path,
+            region_bytes,
+        } => match read_shm::<std::collections::HashMap<String, f32>>(
+            "GlobalPercentagesReady",
+            &shm_path,
+            region_bytes,
+        ) {
+            Ok(map) => reply(rep_tx, SteamReply::GlobalPercentagesReady(map)),
+            Err(msg) => reply(rep_tx, SteamReply::GlobalPercentagesFailed(msg)),
+        },
         WorkerResponse::Stored => {
             reply(rep_tx, SteamReply::ChangesSaved);
         }
         WorkerResponse::ResetDone => {
             reply(rep_tx, SteamReply::ResetDone);
         }
-        WorkerResponse::AchievementCount { .. } => {}
-        WorkerResponse::ProbeResult { .. } => {}
+        WorkerResponse::AchievementCount {
+            shm_path,
+            region_bytes: _,
+        } => {
+            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+        }
+        WorkerResponse::ProbeResult {
+            shm_path,
+            region_bytes: _,
+        } => {
+            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+        }
         WorkerResponse::Error { context, message } => {
             reply(rep_tx, error_reply(&context, message));
         }

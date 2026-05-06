@@ -3,9 +3,10 @@ pub mod types;
 
 use thiserror::Error;
 
-pub use types::{AchievementData, AchievementIcon, StatData, StatValue};
-
-use crate::library::GameSummary;
+pub use types::{
+    AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
+    ProbeResultPayload, StatData, StatValue,
+};
 
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
@@ -42,39 +43,27 @@ pub enum WorkerResponse {
     },
     Ack,
     AchievementsAndStats {
-        achievements: Vec<AchievementData>,
-        stats: Vec<StatData>,
-        genre: Option<String>,
-    },
-    AchievementsAndStatsShm {
         shm_path: String,
         region_bytes: u64,
-        stats: Vec<StatData>,
-        genre: Option<String>,
     },
     IconUpdated {
         name: String,
-        icon: AchievementIcon,
-    },
-    IconUpdatedShm {
-        name: String,
         shm_path: String,
         region_bytes: u64,
-        width: u32,
-        height: u32,
     },
-    GlobalPercentagesReady(std::collections::HashMap<String, f32>),
+    GlobalPercentagesReady {
+        shm_path: String,
+        region_bytes: u64,
+    },
     Stored,
     ResetDone,
     AchievementCount {
-        earned: u32,
-        total: u32,
+        shm_path: String,
+        region_bytes: u64,
     },
     ProbeResult {
-        steam_id: u64,
-        persona_name: String,
-        avatar_png: Option<Vec<u8>>,
-        game_summaries: Vec<GameSummary>,
+        shm_path: String,
+        region_bytes: u64,
     },
     Error {
         context: String,
@@ -126,10 +115,8 @@ pub fn decode_frame<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, F
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
-    use types::{AchievementData, AchievementIcon, StatData, StatValue};
+    use types::{AchievementData, StatValue};
 
     fn all_commands() -> Vec<WorkerCommand> {
         vec![
@@ -156,10 +143,6 @@ mod tests {
     }
 
     fn all_responses() -> Vec<WorkerResponse> {
-        let mut pct_map = HashMap::new();
-        pct_map.insert("ACH_EASY".to_owned(), 95.5f32);
-        pct_map.insert("ACH_HARD".to_owned(), 0.3f32);
-
         vec![
             WorkerResponse::SteamConnected {
                 steam_id: 76561198000000000,
@@ -171,97 +154,27 @@ mod tests {
             },
             WorkerResponse::Ack,
             WorkerResponse::AchievementsAndStats {
-                achievements: vec![AchievementData {
-                    id: "ACH_1".to_owned(),
-                    display_name: "First!".to_owned(),
-                    description: "Do the thing.".to_owned(),
-                    is_hidden: false,
-                    is_achieved: true,
-                    unlock_time: Some(1_700_000_000),
-                    permission: 0,
-                    icon: Some(AchievementIcon {
-                        width: 2,
-                        height: 2,
-                        rgba: vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 255],
-                    }),
-                }],
-                stats: vec![StatData {
-                    id: "kills".to_owned(),
-                    display_name: "Kills".to_owned(),
-                    value: StatValue::Int(99),
-                    original_value: StatValue::Int(99),
-                    max_value: Some(1000),
-                    min_value: Some(0),
-                    default_value: Some(0),
-                    is_increment_only: true,
-                    permission: 0,
-                }],
-                genre: Some("Action".to_owned()),
-            },
-            WorkerResponse::AchievementsAndStatsShm {
-                shm_path: "/dev/shm/steamlens-test-XYZ".to_owned(),
+                shm_path: "/dev/shm/steamlens-test-aas-XYZ".to_owned(),
                 region_bytes: 8192,
-                stats: vec![StatData {
-                    id: "deaths".to_owned(),
-                    display_name: "Deaths".to_owned(),
-                    value: StatValue::Int(7),
-                    original_value: StatValue::Int(7),
-                    max_value: None,
-                    min_value: None,
-                    default_value: None,
-                    is_increment_only: false,
-                    permission: 0,
-                }],
-                genre: Some("Action".to_owned()),
             },
             WorkerResponse::IconUpdated {
                 name: "ACH_FOO".to_owned(),
-                icon: AchievementIcon {
-                    width: 1,
-                    height: 1,
-                    rgba: vec![128, 128, 128, 255],
-                },
-            },
-            WorkerResponse::IconUpdatedShm {
-                name: "ACH_BAZ".to_owned(),
                 shm_path: "/dev/shm/steamlens-test-icon-XYZ".to_owned(),
                 region_bytes: 262_144,
-                width: 256,
-                height: 256,
             },
-            WorkerResponse::GlobalPercentagesReady(pct_map),
+            WorkerResponse::GlobalPercentagesReady {
+                shm_path: "/dev/shm/steamlens-test-pct-XYZ".to_owned(),
+                region_bytes: 1024,
+            },
             WorkerResponse::Stored,
             WorkerResponse::ResetDone,
             WorkerResponse::AchievementCount {
-                earned: 12,
-                total: 30,
-            },
-            WorkerResponse::AchievementCount {
-                earned: 0,
-                total: 0,
+                shm_path: "/dev/shm/steamlens-test-count-XYZ".to_owned(),
+                region_bytes: 16,
             },
             WorkerResponse::ProbeResult {
-                steam_id: 76561198000000042,
-                persona_name: "TestUser".to_owned(),
-                avatar_png: Some(vec![137, 80, 78, 71, 13, 10, 26, 10]),
-                game_summaries: vec![
-                    crate::library::GameSummary {
-                        app_id: 12345,
-                        change_number: 0,
-                        last_played: Some(1_700_000_000),
-                    },
-                    crate::library::GameSummary {
-                        app_id: 67890,
-                        change_number: 0,
-                        last_played: None,
-                    },
-                ],
-            },
-            WorkerResponse::ProbeResult {
-                steam_id: 1,
-                persona_name: "anonymous".to_owned(),
-                avatar_png: None,
-                game_summaries: vec![],
+                shm_path: "/dev/shm/steamlens-test-probe-XYZ".to_owned(),
+                region_bytes: 4096,
             },
             WorkerResponse::Error {
                 context: "StoreStats".to_owned(),
@@ -295,33 +208,13 @@ mod tests {
             assert!(framed.len() >= 4);
             let payload = &framed[4..];
             let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
-
-            match (&resp, &decoded) {
-                (
-                    WorkerResponse::GlobalPercentagesReady(orig_map),
-                    WorkerResponse::GlobalPercentagesReady(dec_map),
-                ) => {
-                    assert_eq!(orig_map.len(), dec_map.len(), "map sizes must match");
-                    for (k, v) in orig_map {
-                        let got = dec_map
-                            .get(k)
-                            .unwrap_or_else(|| panic!("key {k} missing after roundtrip"));
-                        assert!(
-                            (got - v).abs() < f32::EPSILON,
-                            "value mismatch for key {k}: {v} != {got}"
-                        );
-                    }
-                }
-                _ => {
-                    let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
-                    assert_eq!(
-                        framed,
-                        re_framed,
-                        "round-trip must be stable: {:?}",
-                        std::mem::discriminant(&resp)
-                    );
-                }
-            }
+            let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
+            assert_eq!(
+                framed,
+                re_framed,
+                "round-trip must be stable: {:?}",
+                std::mem::discriminant(&resp)
+            );
         }
     }
 
@@ -440,26 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn achievement_count_response_roundtrip() {
-        for (earned, total) in [(0u32, 0u32), (12, 30), (u32::MAX, u32::MAX)] {
-            let resp = WorkerResponse::AchievementCount { earned, total };
-            let framed = encode_frame(&resp).expect("encode must succeed");
-            let payload = &framed[4..];
-            let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
-            assert!(
-                matches!(
-                    decoded,
-                    WorkerResponse::AchievementCount {
-                        earned: e,
-                        total: t,
-                    } if e == earned && t == total
-                ),
-                "AchievementCount({earned},{total}) must round-trip"
-            );
-        }
-    }
-
-    #[test]
     fn stat_value_float_roundtrip() {
         let v = StatValue::Float(std::f32::consts::PI);
         let framed = encode_frame(&v).unwrap();
@@ -470,9 +343,20 @@ mod tests {
     }
 
     #[test]
-    fn probe_result_with_avatar_roundtrip() {
+    fn achievement_count_payload_roundtrip() {
+        for (earned, total) in [(0u32, 0u32), (12, 30), (u32::MAX, u32::MAX)] {
+            let p = AchievementCountPayload { earned, total };
+            let bytes = postcard::to_allocvec(&p).expect("serialize");
+            let restored: AchievementCountPayload = postcard::from_bytes(&bytes).expect("decode");
+            assert_eq!(restored.earned, earned);
+            assert_eq!(restored.total, total);
+        }
+    }
+
+    #[test]
+    fn probe_result_payload_roundtrip_with_avatar() {
         let avatar_bytes = vec![137u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
-        let resp = WorkerResponse::ProbeResult {
+        let p = ProbeResultPayload {
             steam_id: 76561198000000042,
             persona_name: "TestUser".to_owned(),
             avatar_png: Some(avatar_bytes.clone()),
@@ -482,50 +366,28 @@ mod tests {
                 last_played: Some(1_700_000_000),
             }],
         };
-        let framed = encode_frame(&resp).expect("encode must succeed");
-        assert!(framed.len() >= 4);
-        let payload = &framed[4..];
-        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
-        match decoded {
-            WorkerResponse::ProbeResult {
-                steam_id,
-                persona_name,
-                avatar_png: Some(png),
-                game_summaries: games,
-            } => {
-                assert_eq!(steam_id, 76561198000000042);
-                assert_eq!(persona_name, "TestUser");
-                assert_eq!(png, avatar_bytes);
-                assert_eq!(games.len(), 1);
-                assert_eq!(games[0].app_id, 12345);
-            }
-            other => panic!("unexpected variant: {other:?}"),
-        }
+        let bytes = postcard::to_allocvec(&p).expect("serialize");
+        let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
+        assert_eq!(restored.steam_id, 76561198000000042);
+        assert_eq!(restored.persona_name, "TestUser");
+        assert_eq!(restored.avatar_png.as_deref(), Some(avatar_bytes.as_slice()));
+        assert_eq!(restored.game_summaries.len(), 1);
+        assert_eq!(restored.game_summaries[0].app_id, 12345);
     }
 
     #[test]
-    fn probe_result_no_avatar_roundtrip() {
-        let resp = WorkerResponse::ProbeResult {
+    fn probe_result_payload_roundtrip_no_avatar() {
+        let p = ProbeResultPayload {
             steam_id: 1,
             persona_name: "Ghost".to_owned(),
             avatar_png: None,
             game_summaries: vec![],
         };
-        let framed = encode_frame(&resp).expect("encode must succeed");
-        let payload = &framed[4..];
-        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
-        match decoded {
-            WorkerResponse::ProbeResult {
-                steam_id,
-                persona_name,
-                avatar_png: None,
-                game_summaries: games,
-            } => {
-                assert_eq!(steam_id, 1);
-                assert_eq!(persona_name, "Ghost");
-                assert!(games.is_empty());
-            }
-            other => panic!("unexpected variant: {other:?}"),
-        }
+        let bytes = postcard::to_allocvec(&p).expect("serialize");
+        let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
+        assert_eq!(restored.steam_id, 1);
+        assert_eq!(restored.persona_name, "Ghost");
+        assert!(restored.avatar_png.is_none());
+        assert!(restored.game_summaries.is_empty());
     }
 }

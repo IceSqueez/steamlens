@@ -44,3 +44,24 @@ pub struct StatData {
     pub is_increment_only: bool,
     pub permission: u32,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AchievementsAndStatsPayload {
+    pub achievements: Vec<AchievementData>,
+    pub stats: Vec<StatData>,
+    pub genre: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct AchievementCountPayload {
+    pub earned: u32,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProbeResultPayload {
+    pub steam_id: u64,
+    pub persona_name: String,
+    pub avatar_png: Option<Vec<u8>>,
+    pub game_summaries: Vec<crate::library::GameSummary>,
+}

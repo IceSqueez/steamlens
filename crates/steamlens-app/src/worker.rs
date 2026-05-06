@@ -115,12 +115,12 @@ async fn probe_main() -> i32 {
         t0.elapsed()
     );
 
-    let resp = WorkerResponse::ProbeResult {
+    let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
         persona_name,
         avatar_png,
         game_summaries: games,
-    };
+    });
     if write_response(&resp).await.is_err() {
         return 1;
     }
@@ -356,11 +356,11 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
     };
 
     if num == 0 {
-        return WorkerResponse::AchievementsAndStats {
+        return shm_response_for_aas(steamlens_core::AchievementsAndStatsPayload {
             achievements: Vec::new(),
             stats: Vec::new(),
             genre: None,
-        };
+        });
     }
 
     let mut achievements = Vec::with_capacity(num as usize);
@@ -443,66 +443,76 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
 
     let genre = client.get_app_data(app_id, c"common/primary_genre");
 
-    let total_icon_bytes: usize = achievements
-        .iter()
-        .filter_map(|a| a.icon.as_ref())
-        .map(|i| i.rgba.len())
-        .sum();
-
-    if total_icon_bytes >= steamlens_core::INLINE_THRESHOLD_BYTES {
-        return route_achievements_through_shm(achievements, stats, genre);
-    }
-
-    WorkerResponse::AchievementsAndStats {
+    shm_response_for_aas(steamlens_core::AchievementsAndStatsPayload {
         achievements,
         stats,
         genre,
+    })
+}
+
+fn shm_response_for_aas(payload: steamlens_core::AchievementsAndStatsPayload) -> WorkerResponse {
+    match steamlens_core::write_payload(&payload) {
+        Ok((path, region_bytes)) => WorkerResponse::AchievementsAndStats {
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "AchievementsAndStats/shm".into(),
+            message: e.to_string(),
+        },
     }
 }
 
-fn route_achievements_through_shm(
-    achievements: Vec<AchievementData>,
-    stats: Vec<steamlens_core::StatData>,
-    genre: Option<String>,
-) -> WorkerResponse {
-    let payload = match postcard::to_allocvec(&achievements) {
-        Ok(p) => p,
-        Err(e) => {
-            return WorkerResponse::Error {
-                context: "AchievementsAndStatsShm/serialize".into(),
-                message: e.to_string(),
-            };
-        }
-    };
-    let mut writer = match steamlens_core::ShmWriter::create(payload.len()) {
-        Ok(w) => w,
-        Err(e) => {
-            return WorkerResponse::Error {
-                context: "AchievementsAndStatsShm/shm_create".into(),
-                message: e.to_string(),
-            };
-        }
-    };
-    if let Err(e) = writer.write(&payload) {
-        return WorkerResponse::Error {
-            context: "AchievementsAndStatsShm/shm_write".into(),
+fn shm_response_for_count(payload: steamlens_core::AchievementCountPayload) -> WorkerResponse {
+    match steamlens_core::write_payload(&payload) {
+        Ok((path, region_bytes)) => WorkerResponse::AchievementCount {
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "AchievementCount/shm".into(),
             message: e.to_string(),
-        };
+        },
     }
-    let path = match writer.into_path() {
-        Ok(p) => p,
-        Err(e) => {
-            return WorkerResponse::Error {
-                context: "AchievementsAndStatsShm/persist".into(),
-                message: e.to_string(),
-            };
-        }
-    };
-    WorkerResponse::AchievementsAndStatsShm {
-        shm_path: path.to_string_lossy().into_owned(),
-        region_bytes: payload.len() as u64,
-        stats,
-        genre,
+}
+
+fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerResponse {
+    match steamlens_core::write_payload(&payload) {
+        Ok((path, region_bytes)) => WorkerResponse::GlobalPercentagesReady {
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "GlobalPercentagesReady/shm".into(),
+            message: e.to_string(),
+        },
+    }
+}
+
+fn shm_response_for_icon(name: String, icon: AchievementIcon) -> WorkerResponse {
+    match steamlens_core::write_payload(&icon) {
+        Ok((path, region_bytes)) => WorkerResponse::IconUpdated {
+            name,
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "IconUpdated/shm".into(),
+            message: e.to_string(),
+        },
+    }
+}
+
+fn shm_response_for_probe(payload: steamlens_core::ProbeResultPayload) -> WorkerResponse {
+    match steamlens_core::write_payload(&payload) {
+        Ok((path, region_bytes)) => WorkerResponse::ProbeResult {
+            shm_path: path.to_string_lossy().into_owned(),
+            region_bytes,
+        },
+        Err(e) => WorkerResponse::Error {
+            context: "ProbeResult/shm".into(),
+            message: e.to_string(),
+        },
     }
 }
 
@@ -544,7 +554,7 @@ fn quick_achievement_count(client: &Client) -> WorkerResponse {
         }
     }
 
-    WorkerResponse::AchievementCount { earned, total }
+    shm_response_for_count(steamlens_core::AchievementCountPayload { earned, total })
 }
 
 fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {
@@ -574,11 +584,13 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                         // EResult 2 here means "no stats schema for this
                         // app" — surface as empty achievements, not error.
                         if result.raw() == 2 {
-                            return Some(WorkerResponse::AchievementsAndStats {
-                                achievements: Vec::new(),
-                                stats: Vec::new(),
-                                genre: None,
-                            });
+                            return Some(shm_response_for_aas(
+                                steamlens_core::AchievementsAndStatsPayload {
+                                    achievements: Vec::new(),
+                                    stats: Vec::new(),
+                                    genre: None,
+                                },
+                            ));
                         }
                         return Some(WorkerResponse::Error {
                             context: "UserStatsReceived".into(),
@@ -755,51 +767,18 @@ fn collect_global_percentages(client: &Client) -> WorkerResponse {
             map.insert(name, pct);
         }
     }
-    WorkerResponse::GlobalPercentagesReady(map)
+    shm_response_for_pct(map)
 }
 
 fn build_icon_response(name: String, img: steamlens_core::Image) -> WorkerResponse {
-    if img.rgba.len() < steamlens_core::INLINE_THRESHOLD_BYTES {
-        return WorkerResponse::IconUpdated {
-            name,
-            icon: AchievementIcon {
-                width: img.width,
-                height: img.height,
-                rgba: img.rgba,
-            },
-        };
-    }
-    let mut writer = match steamlens_core::ShmWriter::create(img.rgba.len()) {
-        Ok(w) => w,
-        Err(e) => {
-            return WorkerResponse::Error {
-                context: "IconUpdatedShm/shm_create".into(),
-                message: e.to_string(),
-            };
-        }
-    };
-    if let Err(e) = writer.write(&img.rgba) {
-        return WorkerResponse::Error {
-            context: "IconUpdatedShm/shm_write".into(),
-            message: e.to_string(),
-        };
-    }
-    let path = match writer.into_path() {
-        Ok(p) => p,
-        Err(e) => {
-            return WorkerResponse::Error {
-                context: "IconUpdatedShm/persist".into(),
-                message: e.to_string(),
-            };
-        }
-    };
-    WorkerResponse::IconUpdatedShm {
+    shm_response_for_icon(
         name,
-        shm_path: path.to_string_lossy().into_owned(),
-        region_bytes: img.rgba.len() as u64,
-        width: img.width,
-        height: img.height,
-    }
+        AchievementIcon {
+            width: img.width,
+            height: img.height,
+            rgba: img.rgba,
+        },
+    )
 }
 
 async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client: &Client) {
