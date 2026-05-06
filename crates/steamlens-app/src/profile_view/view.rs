@@ -138,8 +138,6 @@ fn build_profile_section<'a>(
         avatar_handle,
         &summary,
         top5,
-        state.loader_phase(),
-        state.loader_hiding_since,
         state.games.len(),
         skeleton_phase,
     )

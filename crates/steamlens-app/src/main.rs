@@ -1,6 +1,7 @@
 mod cache;
 mod capsule_cache;
 mod game_view;
+mod messaging;
 mod profile_view;
 mod progress_scan;
 mod settings;
@@ -15,12 +16,13 @@ use std::time::{Duration, Instant};
 
 use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
-use iced::{Alignment, Color, Element, Length, Subscription, Task};
+use iced::{Color, Element, Subscription, Task};
 
 use cache::{
     CacheHit, CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry,
 };
 use game_view::{GameViewMessage, GameViewState};
+use messaging::{BannerSeverity, FooterStatus, MessagingCenter, ToastKind};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
@@ -31,11 +33,6 @@ enum Screen {
     ProfileView(Box<ProfileViewState>),
     SteamNotRunning { reason: String },
     GameView(Box<GameViewState>),
-}
-
-struct ToastState {
-    message: String,
-    expires_at: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +55,9 @@ enum Message {
     SettingsWritten(Result<(), String>),
     ToastRequest(String),
     ToastTick,
+    ToastHovered(u32, bool),
+    DismissToast(u32),
+    DismissBanner(u32),
     CacheClassified(ClassifyResult),
     DrainHitQueue,
     CacheWritten {
@@ -92,7 +92,7 @@ struct App {
     profile_view_state: Option<Box<ProfileViewState>>,
     settings: Settings,
     settings_dirty_since: Option<Instant>,
-    toast: Option<ToastState>,
+    messaging: MessagingCenter,
     cached_entries: HashMap<u32, GameCacheEntry>,
     pending_hit_queue: VecDeque<CacheHit>,
     steam_root: std::path::PathBuf,
@@ -138,7 +138,7 @@ fn boot() -> (App, Task<Message>) {
         profile_view_state: None,
         settings: loaded_settings,
         settings_dirty_since: None,
-        toast: None,
+        messaging: MessagingCenter::new(),
         cached_entries: HashMap::new(),
         pending_hit_queue: VecDeque::new(),
         steam_root,
@@ -344,6 +344,30 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.settings.library.search = new_search.clone();
                     mark_settings_dirty(app);
                 }
+                ProfileViewMessage::ProgressFetched { .. } => {
+                    let (current, total) = if let Screen::ProfileView(pv) = &app.screen {
+                        let with_prog = pv.games.iter().filter(|g| g.progress.is_some()).count();
+                        (with_prog, pv.games.len())
+                    } else {
+                        (0, 0)
+                    };
+                    app.messaging.footer = FooterStatus::Scanning {
+                        current,
+                        total,
+                        label: "Loading achievements\u{2026}".to_owned(),
+                    };
+                }
+                ProfileViewMessage::ProgressScanDone => {
+                    let games = if let Screen::ProfileView(pv) = &app.screen {
+                        pv.games.len()
+                    } else {
+                        0
+                    };
+                    app.messaging.footer = FooterStatus::Connected {
+                        games,
+                        last_sync: Some(std::time::Instant::now()),
+                    };
+                }
                 ProfileViewMessage::ScanFailed(_) => {
                     app.splash_scan_done = true;
                     let load_task = Task::perform(
@@ -445,16 +469,23 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Screen::ProfileView(pv_state) = &mut app.screen
                 && !dirty.is_empty()
             {
+                let total = pv_state.games.len();
+                app.messaging.footer = FooterStatus::Scanning {
+                    current: 0,
+                    total,
+                    label: "Loading achievements\u{2026}".to_owned(),
+                };
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
                 pv_state.progress_scanner = Some(scanner);
             }
 
             if schema_bumped > 0 {
-                return Task::done(Message::ToastRequest(format!(
-                    "Cache rebuilt: {} entries updated",
-                    schema_bumped
-                )));
+                app.messaging.push_toast(
+                    ToastKind::Info,
+                    format!("Cache rebuilt: {} entries updated", schema_bumped),
+                    None,
+                );
             }
             Task::none()
         }
@@ -768,10 +799,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ToastRequest(msg) => {
-            app.toast = Some(ToastState {
-                message: msg,
-                expires_at: Instant::now() + Duration::from_secs(4),
-            });
+            app.messaging.push_toast(ToastKind::Info, msg, None);
             Task::none()
         }
 
@@ -783,6 +811,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RetrySteamConnect => {
             app.steam_running = None;
             app.splash_scan_done = false;
+            app.messaging
+                .dismiss_all_banners_by_severity(BannerSeverity::Warning);
+            app.messaging.footer = FooterStatus::Scanning {
+                current: 0,
+                total: 0,
+                label: "Connecting to Steam\u{2026}".to_owned(),
+            };
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 pv_state.steam_running = None;
             }
@@ -801,6 +836,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             match result {
                 Ok(p) => {
                     app.steam_running = Some(true);
+                    app.messaging
+                        .dismiss_all_banners_by_severity(BannerSeverity::Warning);
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
                         pv_state.steam_running = Some(true);
                     }
@@ -849,6 +886,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             .into_iter()
                             .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
                             .collect();
+                        let total = filtered.len();
+                        app.messaging.footer = FooterStatus::Scanning {
+                            current: 0,
+                            total,
+                            label: "Discovering library\u{2026}".to_owned(),
+                        };
                         tasks.push(Task::done(Message::ProfileView(
                             ProfileViewMessage::ScanComplete(filtered),
                         )));
@@ -868,6 +911,25 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         pv_state.steam_running = Some(false);
                     }
                     eprintln!("[steamlens] probe failed: {e}");
+
+                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
+                        pv.games.len()
+                    } else {
+                        0
+                    };
+                    app.messaging.footer = FooterStatus::Offline {
+                        cached_games: cached_count,
+                    };
+                    app.messaging.push_banner(
+                        BannerSeverity::Warning,
+                        "Steam is not running \u{2014} showing cached data",
+                        Some(messaging::BannerAction {
+                            label: "Retry",
+                            message: Message::RetrySteamConnect,
+                        }),
+                        false,
+                    );
+
                     Task::perform(
                         async { cache::load_profile_cache().await },
                         Message::ProfileCacheLoaded,
@@ -950,11 +1012,22 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ToastTick => {
-            if let Some(toast) = &app.toast
-                && Instant::now() >= toast.expires_at
-            {
-                app.toast = None;
-            }
+            app.messaging.tick_toasts();
+            Task::none()
+        }
+
+        Message::ToastHovered(id, hovered) => {
+            app.messaging.set_toast_hovered(id, hovered);
+            Task::none()
+        }
+
+        Message::DismissToast(id) => {
+            app.messaging.dismiss_toast(id);
+            Task::none()
+        }
+
+        Message::DismissBanner(id) => {
+            app.messaging.dismiss_banner(id);
             Task::none()
         }
 
@@ -1291,55 +1364,13 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::GameView(state) => game_view::view(state, app.skeleton_phase),
     };
 
-    let with_banner = if app.steam_running == Some(false) {
-        let has_data = matches!(&app.screen, Screen::ProfileView(pv) if !pv.games.is_empty())
-            || app.user_profile.is_some();
-        if has_data {
-            steam_off_banner(screen_content)
-        } else {
-            screen_content
-        }
-    } else {
-        screen_content
-    };
-
-    let with_toast = if let Some(toast) = &app.toast {
-        toast_overlay(with_banner, &toast.message)
-    } else {
-        with_banner
-    };
+    let with_messaging = messaging::wrap_with_messaging(screen_content, &app.messaging);
 
     if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
-        with_toast
+        with_messaging
     } else {
         splash_view()
     }
-}
-
-fn steam_off_banner(content: Element<'_, Message>) -> Element<'_, Message> {
-    let banner = container(
-        text("Steam is not running — showing cached data")
-            .size(13)
-            .color(Color::from_rgb(0.95, 0.85, 0.4)),
-    )
-    .width(Length::Fill)
-    .padding(iced::Padding::default().top(6).bottom(6).left(16).right(16))
-    .style(|_theme: &iced::Theme| iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba(
-            0.40, 0.30, 0.10, 0.65,
-        ))),
-        border: iced::Border {
-            color: Color::from_rgba(0.85, 0.65, 0.25, 0.7),
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
-    });
-
-    column![banner, content]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
 }
 
 fn splash_view<'a>() -> Element<'a, Message> {
@@ -1364,46 +1395,6 @@ fn splash_view<'a>() -> Element<'a, Message> {
             ..Default::default()
         })
         .into()
-}
-
-fn toast_overlay<'a>(content: Element<'a, Message>, message: &'a str) -> Element<'a, Message> {
-    use iced::widget::{Space, stack};
-
-    let toast_widget = container(
-        text(message)
-            .size(14)
-            .color(Color::from_rgb(0.95, 0.95, 0.95)),
-    )
-    .padding(iced::Padding::default().top(8).bottom(8).left(16).right(16))
-    .style(|_theme: &iced::Theme| iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba(
-            0.18, 0.18, 0.22, 0.92,
-        ))),
-        border: iced::Border {
-            color: Color::from_rgba(0.6, 0.4, 0.9, 0.7),
-            width: 1.0,
-            radius: 6.0.into(),
-        },
-        ..Default::default()
-    });
-
-    let toast_row = row![
-        Space::new().width(Length::Fill),
-        toast_widget,
-        Space::new().width(Length::Fill),
-    ]
-    .align_y(Alignment::Center);
-
-    let overlay_col = column![
-        Space::new().height(Length::Fill),
-        container(toast_row)
-            .width(Length::Fill)
-            .padding(iced::Padding::default().bottom(24)),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill);
-
-    stack![content, overlay_col].into()
 }
 
 fn has_active_skeletons(app: &App) -> bool {
@@ -1482,7 +1473,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     let settings_flush_sub =
         iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick);
 
-    let toast_sub = if app.toast.is_some() {
+    let toast_sub = if app.messaging.has_active_toasts() {
         iced::time::every(Duration::from_millis(500)).map(|_| Message::ToastTick)
     } else {
         Subscription::none()
@@ -1564,7 +1555,7 @@ mod tests {
             profile_view_state: None,
             settings: Settings::default(),
             settings_dirty_since: None,
-            toast: None,
+            messaging: MessagingCenter::new(),
             cached_entries: HashMap::new(),
             pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),
@@ -2660,7 +2651,7 @@ mod tests {
             profile_view_state: None,
             settings: Settings::default(),
             settings_dirty_since: None,
-            toast: None,
+            messaging: MessagingCenter::new(),
             cached_entries: {
                 let mut m = HashMap::new();
                 m.insert(
@@ -2730,7 +2721,7 @@ mod tests {
             profile_view_state: None,
             settings: Settings::default(),
             settings_dirty_since: None,
-            toast: None,
+            messaging: MessagingCenter::new(),
             cached_entries: HashMap::new(),
             pending_hit_queue: VecDeque::new(),
             steam_root: std::path::PathBuf::from("/tmp"),

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::Instant;
 
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{button, column, container, image as image_widget, row, text};
@@ -7,7 +6,6 @@ use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::game_view::types::RarityTier;
-use crate::profile_view::types::LoaderPhase;
 use crate::theme::{
     C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
 };
@@ -232,14 +230,11 @@ pub fn top5_closest_to_complete(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn profile_widget<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
     summary: &ProfileSummary,
     top5: Vec<TopEntry>,
-    loader_phase: LoaderPhase,
-    loader_hiding_since: Option<Instant>,
     games_count: usize,
     skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
@@ -282,13 +277,7 @@ pub fn profile_widget<'a>(
     ]
     .spacing(16);
 
-    let mut outer = column![two_col_row].spacing(0);
-
-    if let Some(strip) = build_loader_strip(loader_phase, loader_hiding_since) {
-        outer = outer.push(strip);
-    }
-
-    container(outer)
+    container(two_col_row)
         .width(Length::Fill)
         .padding(Padding::default().left(16).right(16).top(12).bottom(12))
         .into()
@@ -669,146 +658,6 @@ fn build_closest_row(entry: TopEntry) -> Element<'static, crate::Message> {
             ..button::Style::default()
         })
         .into()
-}
-
-fn build_loader_strip<'a>(
-    phase: LoaderPhase,
-    loader_hiding_since: Option<Instant>,
-) -> Option<Element<'a, crate::Message>> {
-    if phase == LoaderPhase::Gamma {
-        let elapsed = loader_hiding_since
-            .map(|t| t.elapsed().as_millis())
-            .unwrap_or(0);
-        if elapsed >= 300 {
-            return None;
-        }
-    }
-
-    let strip_row: iced::widget::Row<'a, crate::Message> = match phase {
-        LoaderPhase::Alpha => loader_progress_row(0, 1, Some("Scanning library\u{2026}")),
-        LoaderPhase::Beta { loaded, total } => {
-            loader_progress_row(loaded, total, Some("Loading\u{2026}"))
-        }
-        LoaderPhase::Gamma => loader_progress_row(1, 1, None),
-        LoaderPhase::Failed { failed, total } => loader_error_row(
-            format!("{failed} / {total} games failed to load"),
-            crate::Message::ProfileView(super::types::ProfileViewMessage::RetryFailedScans),
-        ),
-        LoaderPhase::SteamOff => loader_error_row(
-            "Steam is not running".to_owned(),
-            crate::Message::RetrySteamConnect,
-        ),
-    };
-
-    let strip = container(strip_row)
-        .width(Length::Fill)
-        .padding(Padding::default().left(16).right(16).top(10).bottom(10))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                radius: 8.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    Some(container(strip).padding(Padding::default().top(14)).into())
-}
-
-fn loader_progress_row<'a>(
-    loaded: usize,
-    total: usize,
-    status_text: Option<&'a str>,
-) -> iced::widget::Row<'a, crate::Message> {
-    let frac = if total > 0 {
-        loaded as f32 / total as f32
-    } else {
-        0.0
-    };
-    let fill_w = (frac.clamp(0.0, 1.0) * 140.0).max(0.0);
-
-    let bar_fill = container(iced::widget::Space::new())
-        .width(Length::Fixed(fill_w))
-        .height(Length::Fixed(4.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_ACCENT)),
-            border: iced::Border {
-                radius: 2.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    let bar_track = container(bar_fill)
-        .width(Length::Fixed(140.0))
-        .height(Length::Fixed(4.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_HOVER)),
-            border: iced::Border {
-                radius: 2.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    let count_label = text(format!("{loaded} / {total} games loaded"))
-        .size(12)
-        .color(C_TEXT_MUTED);
-
-    let mut strip_row: iced::widget::Row<'a, crate::Message> = row![bar_track, count_label]
-        .spacing(10)
-        .align_y(Alignment::Center);
-
-    if let Some(status) = status_text {
-        strip_row = strip_row.push(iced::widget::Space::new().width(Length::Fill));
-        strip_row = strip_row.push(text(status.to_owned()).size(11).color(C_TEXT_DIM));
-    }
-    strip_row
-}
-
-fn loader_error_row<'a>(
-    message: String,
-    retry_msg: crate::Message,
-) -> iced::widget::Row<'a, crate::Message> {
-    const C_ERROR: Color = Color::from_rgb(0.95, 0.55, 0.45);
-
-    let icon = text("\u{26A0}").size(13).color(C_ERROR);
-    let label = text(message).size(12).color(C_ERROR);
-    let retry = button(text("Retry").size(12).color(C_TEXT_PRIMARY))
-        .on_press(retry_msg)
-        .padding(Padding::default().left(12).right(12).top(5).bottom(5))
-        .style(|_: &iced::Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: Some(iced::Background::Color(if hovered {
-                    Color {
-                        a: 0.25,
-                        ..C_ACCENT
-                    }
-                } else {
-                    Color {
-                        a: 0.15,
-                        ..C_ACCENT
-                    }
-                })),
-                border: iced::Border {
-                    color: Color { a: 0.5, ..C_ACCENT },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                text_color: C_TEXT_PRIMARY,
-                ..button::Style::default()
-            }
-        });
-
-    row![
-        icon,
-        label,
-        iced::widget::Space::new().width(Length::Fill),
-        retry,
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
 }
 
 #[cfg(test)]
