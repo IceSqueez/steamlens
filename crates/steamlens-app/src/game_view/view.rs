@@ -14,6 +14,7 @@ use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::Message;
 use crate::theme::{
     C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
+    C_TEXT_SECONDARY,
 };
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
@@ -1289,7 +1290,7 @@ fn achievement_card_widget<'a>(
     } else if !effective {
         C_LOCKED_DESC
     } else {
-        C_MUTED
+        C_TEXT_SECONDARY
     };
 
     let desc_label: Element<'_, Message> = if !spoiler_hidden && !search_query.is_empty() {
@@ -1299,11 +1300,11 @@ fn achievement_card_widget<'a>(
             let after = after.to_owned();
             container(
                 rich_text![
-                    span(before).color(C_MUTED),
+                    span(before).color(desc_color),
                     span(matched)
                         .color(C_YELLOW)
                         .background(Color { a: 0.2, ..C_YELLOW }),
-                    span(after).color(C_MUTED),
+                    span(after).color(desc_color),
                 ]
                 .on_link_click(iced::never)
                 .size(11)
@@ -1352,7 +1353,7 @@ fn achievement_card_widget<'a>(
     };
 
     let badge = container(text(badge_text).size(10).color(if is_locked_badge {
-        C_TEXT_MUTED
+        C_LOCKED_DESC
     } else {
         Color {
             a: 0.9,
@@ -1478,6 +1479,11 @@ fn achievement_card_widget<'a>(
 
     let toggle_id = row.data.id.clone();
     let is_hidden_card = spoiler_hidden;
+    let glow_color: Option<Color> = if effective && !spoiler_hidden {
+        tier.map(tier_color)
+    } else {
+        None
+    };
     button(card_container)
         .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)))
         .padding(0)
@@ -1502,6 +1508,15 @@ fn achievement_card_widget<'a>(
                     width: 1.0,
                     radius: 10.0.into(),
                 }
+            } else if let Some(gc) = glow_color {
+                Border {
+                    color: Color {
+                        a: if hovered { 0.85 } else { 0.45 },
+                        ..gc
+                    },
+                    width: if hovered { 2.0 } else { 1.0 },
+                    radius: 8.0.into(),
+                }
             } else {
                 Border {
                     color: if hovered {
@@ -1513,7 +1528,13 @@ fn achievement_card_widget<'a>(
                     radius: 8.0.into(),
                 }
             };
-            let shadow = if hovered {
+            let shadow = if let Some(gc) = glow_color {
+                iced::Shadow {
+                    color: Color::from_rgba(gc.r, gc.g, gc.b, if hovered { 0.45 } else { 0.20 }),
+                    offset: iced::Vector::new(0.0, 0.0),
+                    blur_radius: if hovered { 14.0 } else { 8.0 },
+                }
+            } else if hovered {
                 iced::Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
                     offset: iced::Vector::new(0.0, 8.0),
