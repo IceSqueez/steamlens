@@ -370,7 +370,10 @@ mod tests {
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
         assert_eq!(restored.steam_id, 76561198000000042);
         assert_eq!(restored.persona_name, "TestUser");
-        assert_eq!(restored.avatar_png.as_deref(), Some(avatar_bytes.as_slice()));
+        assert_eq!(
+            restored.avatar_png.as_deref(),
+            Some(avatar_bytes.as_slice())
+        );
         assert_eq!(restored.game_summaries.len(), 1);
         assert_eq!(restored.game_summaries[0].app_id, 12345);
     }

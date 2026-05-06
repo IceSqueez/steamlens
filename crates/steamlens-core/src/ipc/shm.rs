@@ -105,9 +105,7 @@ pub struct ShmWriter {
 
 impl ShmWriter {
     pub fn create(size: usize) -> Result<Self, ShmError> {
-        let file = Builder::new()
-            .prefix("steamlens-")
-            .tempfile_in(shm_dir())?;
+        let file = Builder::new().prefix("steamlens-").tempfile_in(shm_dir())?;
         file.as_file().set_len(size as u64)?;
         // SAFETY: see RFC-004 §Phase A. NamedTempFile is owned exclusively by
         // this ShmWriter; the path has not been exposed to any other process,

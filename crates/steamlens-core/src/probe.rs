@@ -43,8 +43,8 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         .stderr(Stdio::inherit())
         .spawn()?;
 
-    let _job_guard = crate::process::associate_kill_on_parent_exit(child.id())
-        .map_err(ProbeError::Io)?;
+    let _job_guard =
+        crate::process::associate_kill_on_parent_exit(child.id()).map_err(ProbeError::Io)?;
 
     let stdout = child
         .stdout

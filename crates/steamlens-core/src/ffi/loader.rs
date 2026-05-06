@@ -311,7 +311,9 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert_eq!(
             paths[0],
-            PathBuf::from("/Users/alice/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib")
+            PathBuf::from(
+                "/Users/alice/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
+            )
         );
     }
 
