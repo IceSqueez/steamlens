@@ -6,26 +6,11 @@ on:
       - "v*"
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install system dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config
-
-      - name: Run tests
-        run: cargo test --workspace --locked
-
+  # No `test` job here: tags are cut from `main`, where CI has already
+  # validated `cargo test --workspace --locked`. Re-running the test suite
+  # would burn ~5 min/release for zero added signal.
   build:
     name: Build
-    needs: [test]
     uses: ./.github/workflows/_build-matrix.yml
     with:
       bin_name: steamlens-app
