@@ -421,14 +421,23 @@ fn build_profile_header<'a>(
         .spacing(4)
         .align_x(Alignment::End);
 
+    let info_block = container(info)
+        .height(Length::Fill)
+        .align_y(Alignment::Start);
+
+    let earnings_block = container(earnings)
+        .height(Length::Fill)
+        .align_y(Alignment::End);
+
     row![
         avatar,
-        info,
+        info_block,
         iced::widget::Space::new().width(Length::Fill),
-        earnings,
+        earnings_block,
     ]
     .spacing(14)
-    .align_y(Alignment::Center)
+    .width(Length::Fill)
+    .height(Length::Fixed(AVATAR_SIZE))
     .into()
 }
 
