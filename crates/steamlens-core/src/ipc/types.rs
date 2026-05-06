@@ -52,6 +52,17 @@ pub struct AchievementsAndStatsPayload {
     pub genre: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct CardOnlyAchievement {
+    pub id: String,
+    pub is_achieved: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CardOnlyPayload {
+    pub achievements: Vec<CardOnlyAchievement>,
+}
+
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct AchievementCountPayload {
     pub earned: u32,

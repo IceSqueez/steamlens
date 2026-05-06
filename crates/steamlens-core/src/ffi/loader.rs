@@ -15,6 +15,8 @@ use crate::ffi::opaque::RawInterface;
 
 pub struct SteamLibrary {
     handle: Library,
+    b_get_callback_fn: BGetCallbackFn,
+    free_last_callback_fn: FreeLastCallbackFn,
 }
 
 static STEAM_LIBRARY: OnceLock<SteamLibrary> = OnceLock::new();
@@ -37,7 +39,46 @@ impl SteamLibrary {
         // text segment and crash those threads.
         let handle = unsafe { Library::new(&path) }
             .map_err(|source| SteamError::LibraryLoadFailed { path, source })?;
-        Ok(Self { handle })
+
+        // SAFETY: Both symbols are NUL-terminated byte-string literals.
+        // `BGetCallbackFn` and `FreeLastCallbackFn` match the exported C
+        // signatures exactly. The function pointers are transmuted out of
+        // the `Symbol` wrapper (which borrows `handle`); this is safe
+        // because `handle` is stored in the same `SteamLibrary` struct,
+        // so the text-segment backing the pointers lives at least as long
+        // as the pointers themselves.  `SteamLibrary` is parked in a
+        // process-lifetime `OnceLock`, so the pointers are effectively
+        // `'static`.  They may be called from any thread that holds a
+        // valid `HSteamPipe` — dlopen'd ELF code-pointers are
+        // thread-safe to call concurrently (they do not require
+        // synchronisation on their own code-path; Steam's internal locks
+        // protect shared state inside the library).
+        let b_get_callback_fn: BGetCallbackFn = unsafe {
+            let sym: Symbol<BGetCallbackFn> =
+                handle.get(b"Steam_BGetCallback\0").map_err(|source| {
+                    SteamError::SymbolNotFound {
+                        symbol: "Steam_BGetCallback",
+                        source,
+                    }
+                })?;
+            *sym
+        };
+        let free_last_callback_fn: FreeLastCallbackFn = unsafe {
+            let sym: Symbol<FreeLastCallbackFn> =
+                handle.get(b"Steam_FreeLastCallback\0").map_err(|source| {
+                    SteamError::SymbolNotFound {
+                        symbol: "Steam_FreeLastCallback",
+                        source,
+                    }
+                })?;
+            *sym
+        };
+
+        Ok(Self {
+            handle,
+            b_get_callback_fn,
+            free_last_callback_fn,
+        })
     }
 
     pub fn b_get_callback(
@@ -46,37 +87,20 @@ impl SteamLibrary {
         msg: *mut CallbackMessage,
         call_handle: *mut i32,
     ) -> Result<bool, SteamError> {
-        let symbol_name = b"Steam_BGetCallback\0";
-        // SAFETY: NUL-terminated symbol; `BGetCallbackFn` matches the
-        // exported `bool Steam_BGetCallback(HSteamPipe, CallbackMessage*, int*)`.
-        let func: Symbol<BGetCallbackFn> = unsafe {
-            self.handle
-                .get(symbol_name)
-                .map_err(|source| SteamError::SymbolNotFound {
-                    symbol: "Steam_BGetCallback",
-                    source,
-                })?
-        };
-        // SAFETY: live pipe; Steam writes through `msg` only on `true`
-        // return; `call_handle` may be null.
-        Ok(unsafe { func(pipe, msg, call_handle) })
+        // SAFETY: `b_get_callback_fn` was resolved from the same
+        // `handle` that this `SteamLibrary` owns; the handle lives for
+        // process lifetime (stored in `STEAM_LIBRARY`).  `pipe` is a
+        // live Steam pipe handle; Steam writes through `msg` only when
+        // the return value is `true`; `call_handle` may be null.
+        Ok(unsafe { (self.b_get_callback_fn)(pipe, msg, call_handle) })
     }
 
     pub fn free_last_callback(&self, pipe: HSteamPipe) -> Result<(), SteamError> {
-        let symbol_name = b"Steam_FreeLastCallback\0";
-        // SAFETY: NUL-terminated symbol; `FreeLastCallbackFn` matches
-        // `bool Steam_FreeLastCallback(HSteamPipe)`.
-        let func: Symbol<FreeLastCallbackFn> = unsafe {
-            self.handle
-                .get(symbol_name)
-                .map_err(|source| SteamError::SymbolNotFound {
-                    symbol: "Steam_FreeLastCallback",
-                    source,
-                })?
-        };
-        // SAFETY: called exactly once per successful `b_get_callback`,
-        // before any further pipe use.
-        unsafe { func(pipe) };
+        // SAFETY: `free_last_callback_fn` was resolved from the same
+        // `handle` that this `SteamLibrary` owns; the handle lives for
+        // process lifetime.  This is called exactly once per successful
+        // `b_get_callback` return, before any further pipe use.
+        unsafe { (self.free_last_callback_fn)(pipe) };
         Ok(())
     }
 

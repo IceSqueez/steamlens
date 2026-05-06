@@ -83,6 +83,19 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
         achievement_total += entry.progress.total;
         earned_total += entry.progress.earned;
 
+        if !entry.tier_breakdown.is_empty() {
+            for (tier, count) in &entry.tier_breakdown {
+                match tier {
+                    RarityTier::Legendary => legendary_count += count,
+                    RarityTier::Mythical => mythical_count += count,
+                    RarityTier::Rare => rare_count += count,
+                    RarityTier::Uncommon => uncommon_count += count,
+                    RarityTier::Common => common_count += count,
+                }
+            }
+            continue;
+        }
+
         if entry.achievements.is_empty() {
             continue;
         }
@@ -90,7 +103,6 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
         if tier_map.is_empty() {
             continue;
         }
-
         for ach in &entry.achievements {
             if !ach.earned {
                 continue;
