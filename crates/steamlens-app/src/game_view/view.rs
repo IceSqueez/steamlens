@@ -1491,13 +1491,13 @@ fn achievement_card_widget<'a>(
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             let bg = if hovered {
                 Color {
-                    r: (C_CURRENT_LINE.r * 1.18).min(1.0),
-                    g: (C_CURRENT_LINE.g * 1.18).min(1.0),
-                    b: (C_CURRENT_LINE.b * 1.18).min(1.0),
+                    r: (C_SURFACE.r * 1.18).min(1.0),
+                    g: (C_SURFACE.g * 1.18).min(1.0),
+                    b: (C_SURFACE.b * 1.18).min(1.0),
                     a: 1.0,
                 }
             } else {
-                C_CURRENT_LINE
+                C_SURFACE
             };
             let border = if is_hidden_card {
                 Border {
