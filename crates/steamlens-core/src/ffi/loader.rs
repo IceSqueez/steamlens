@@ -1,6 +1,8 @@
 use std::env;
 use std::ffi::CString;
-use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use libloading::{Library, Symbol};
