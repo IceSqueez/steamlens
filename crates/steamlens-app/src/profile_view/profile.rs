@@ -47,6 +47,7 @@ fn rarity_label(tier: RarityTier) -> &'static str {
 
 fn tick_threshold_color(threshold_pct: u8) -> Color {
     match threshold_pct {
+        0 => C_TEXT_MUTED,
         25 => C_RARITY_COMMON,
         50 => C_RARITY_UNCOMMON,
         75 => C_RARITY_MYTHICAL,
@@ -203,7 +204,7 @@ fn format_thousands_u64(n: u64) -> String {
 }
 
 pub fn tick_lit_at(unlocked_pct: f32, threshold: u8) -> bool {
-    unlocked_pct > 0.0 && unlocked_pct >= threshold as f32
+    unlocked_pct >= threshold as f32
 }
 
 pub fn top5_closest_to_complete(
@@ -613,7 +614,8 @@ fn build_rarity_bar<'a>(
 
     let unlocked_pct = total_unlocked as f32 / total as f32 * 100.0;
 
-    let tick_thresholds: [(u8, Color); 4] = [
+    let tick_thresholds: [(u8, Color); 5] = [
+        (0, tick_threshold_color(0)),
         (25, tick_threshold_color(25)),
         (50, tick_threshold_color(50)),
         (75, tick_threshold_color(75)),
@@ -796,18 +798,14 @@ fn summary_unrated_earned(
 }
 
 fn build_tick_marks(
-    tick_thresholds: [(u8, Color); 4],
+    tick_thresholds: [(u8, Color); 5],
     unlocked_pct: f32,
 ) -> Element<'static, crate::Message> {
     let mut ticks_row: iced::widget::Row<'static, crate::Message> = row![].spacing(0);
 
     for (i, (threshold, color)) in tick_thresholds.iter().enumerate() {
         let lit = tick_lit_at(unlocked_pct, *threshold);
-        let tick_color = if lit {
-            *color
-        } else {
-            Color { a: 0.25, ..*color }
-        };
+        let tick_color = if lit { *color } else { C_TEXT_MUTED };
 
         let dot = container(iced::widget::Space::new())
             .width(Length::Fixed(6.0))
@@ -821,6 +819,10 @@ fn build_tick_marks(
                 ..container::Style::default()
             });
 
+        let label = text(format!("{threshold}%")).size(20).color(tick_color);
+
+        let tick_unit = row![dot, label].spacing(3).align_y(Alignment::Center);
+
         let tick_pct = *threshold as f32;
         let fill_before = if i == 0 {
             tick_pct - 0.5
@@ -830,18 +832,19 @@ fn build_tick_marks(
         let fill_before = fill_before.max(0.0) as u16;
 
         if fill_before > 0 {
-            let spacer = iced::widget::Space::new()
-                .width(Length::FillPortion(fill_before))
-                .height(Length::Fixed(6.0));
-            ticks_row = ticks_row.push(spacer);
+            ticks_row = ticks_row.push(
+                iced::widget::Space::new()
+                    .width(Length::FillPortion(fill_before))
+                    .height(Length::Fixed(28.0)),
+            );
         }
 
-        ticks_row = ticks_row.push(dot);
+        ticks_row = ticks_row.push(tick_unit);
     }
 
     ticks_row
         .width(Length::Fill)
-        .height(Length::Fixed(6.0))
+        .height(Length::Fixed(28.0))
         .into()
 }
 
