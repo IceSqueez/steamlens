@@ -1093,7 +1093,7 @@ fn build_hover_overlay<'a>(
         .height(Length::Fixed(capsule_h))
         .align_x(Alignment::End)
         .align_y(Alignment::Start)
-        .padding(Padding::default().top(8).right(8))
+        .padding(Padding::default().top(4).right(12))
         .into()
 }
 
