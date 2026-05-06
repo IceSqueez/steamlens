@@ -6,10 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc as async_mpsc;
 
+use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{
     WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
 };
-use steamlens_core::AchievementIcon;
 
 use crate::game_view::types::ResetScope;
 
@@ -352,15 +352,13 @@ async fn bridge_loop(
             return;
         };
         match req {
-            SteamRequest::ConnectWithApp(app_id) => {
-                match spawn_worker_child(app_id).await {
-                    Ok(tuple) => break tuple,
-                    Err(e) => {
-                        reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
-                        continue;
-                    }
+            SteamRequest::ConnectWithApp(app_id) => match spawn_worker_child(app_id).await {
+                Ok(tuple) => break tuple,
+                Err(e) => {
+                    reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
+                    continue;
                 }
-            }
+            },
             SteamRequest::Disconnect => {
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
@@ -678,5 +676,4 @@ mod tests {
         let cmds = translate_request(&SteamRequest::Disconnect);
         assert!(cmds.is_empty());
     }
-
 }

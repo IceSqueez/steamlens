@@ -183,7 +183,7 @@ pub fn top5_closest_to_complete(
                 return None;
             }
             let ratio = prog.earned as f64 / prog.total as f64;
-            let cache = cached_entries.get(&g.summary.app_id);
+            let cache = cached_entries.get(&g.app_id);
             let last_played = cache.map(|e| e.steam_last_played).unwrap_or(0);
 
             let rarity_tier = cache.and_then(|e| {
@@ -205,8 +205,8 @@ pub fn top5_closest_to_complete(
             });
 
             Some((
-                g.summary.app_id,
-                g.summary.name.clone(),
+                g.app_id,
+                g.name.clone().unwrap_or_default(),
                 ratio,
                 last_played,
                 rarity_tier,
@@ -817,8 +817,6 @@ mod tests {
     use crate::cache::types::{CachedAchievement, CachedProgress, GameCacheEntry};
     use crate::profile_view::types::{CapsuleAsset, GameEntry};
     use crate::progress_scan::ProgressData;
-    use steamlens_core::GameSummary;
-
     fn format_short(n: u32) -> String {
         if n >= 1000 {
             format!("{:.1}k", n as f32 / 1000.0)
@@ -831,19 +829,12 @@ mod tests {
         ((earned as u64 + 5 * legendary as u64 + 2 * mythical as u64) / 100) as u32
     }
 
-    fn make_summary_gs(app_id: u32) -> GameSummary {
-        GameSummary {
-            app_id,
-            name: format!("Game {app_id}"),
-            last_played: None,
-            achievement_count: 10,
-            change_number: 0,
-        }
-    }
-
     fn make_entry_with_progress(app_id: u32, earned: u32, total: u32) -> GameEntry {
         GameEntry {
-            summary: make_summary_gs(app_id),
+            app_id,
+            change_number: 0,
+            last_played: None,
+            name: Some(format!("Game {app_id}")),
             capsule: CapsuleAsset::Unavailable,
             progress: Some(ProgressData { earned, total }),
         }
@@ -1017,7 +1008,10 @@ mod tests {
     fn card_visibility_filter_none_progress_excluded() {
         let games: Vec<GameEntry> = vec![
             GameEntry {
-                summary: make_summary_gs(1),
+                app_id: 1,
+                change_number: 0,
+                last_played: None,
+                name: None,
                 capsule: CapsuleAsset::Unavailable,
                 progress: None,
             },
@@ -1025,7 +1019,7 @@ mod tests {
         ];
         let visible: Vec<&GameEntry> = games.iter().filter(|g| g.progress.is_some()).collect();
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].summary.app_id, 2);
+        assert_eq!(visible[0].app_id, 2);
     }
 
     #[test]

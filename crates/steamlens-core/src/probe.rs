@@ -11,10 +11,8 @@ use crate::library::GameSummary;
 pub struct ProbedProfile {
     pub steam_id: u64,
     pub persona_name: String,
-    /// `None` when Steam reported handle 0 (no avatar set or not yet loaded).
-    pub avatar_png_bytes: Option<Vec<u8>>,
-    /// Empty when enumeration failed — caller falls back to cache.
-    pub games: Vec<GameSummary>,
+    pub avatar_image: Option<Vec<u8>>,
+    pub game_summaries: Vec<GameSummary>,
 }
 
 #[derive(Debug, Error)]
@@ -72,12 +70,12 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
             steam_id,
             persona_name,
             avatar_png,
-            games,
+            game_summaries: games,
         } => Ok(ProbedProfile {
             steam_id,
             persona_name,
-            avatar_png_bytes: avatar_png,
-            games,
+            avatar_image: avatar_png,
+            game_summaries: games,
         }),
         WorkerResponse::Error { message, .. } => {
             if is_not_running_message(&message) {

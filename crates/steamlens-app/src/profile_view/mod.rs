@@ -17,11 +17,14 @@ const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
 pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task<crate::Message> {
     match message {
-        ProfileViewMessage::ScanComplete(summaries) => {
-            state.games = summaries
+        ProfileViewMessage::ScanComplete(enumerated) => {
+            state.games = enumerated
                 .iter()
-                .map(|s| GameEntry {
-                    summary: s.clone(),
+                .map(|g| GameEntry {
+                    app_id: g.app_id,
+                    change_number: g.change_number,
+                    last_played: g.last_played,
+                    name: None,
                     capsule: CapsuleAsset::Pending,
                     progress: None,
                 })
@@ -31,7 +34,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             state.progress_rx = None;
             state.phase = ProfileViewPhase::Loaded;
 
-            let app_ids: Vec<u32> = summaries.iter().map(|s| s.app_id).collect();
+            let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
             spawn_capsule_queue(app_ids, state.capsule_size)
         }
 
@@ -55,7 +58,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
 
             let mut miss_ids: Vec<u32> = Vec::new();
             for entry in &mut state.games {
-                let key = (entry.summary.app_id, new_size);
+                let key = (entry.app_id, new_size);
                 if let Some(cached) = state.capsule_handles.get(&key) {
                     entry.capsule = CapsuleAsset::Loaded {
                         handle: cached.handle.clone(),
@@ -64,7 +67,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
                     };
                 } else {
                     entry.capsule = CapsuleAsset::Pending;
-                    miss_ids.push(entry.summary.app_id);
+                    miss_ids.push(entry.app_id);
                 }
             }
 
@@ -94,7 +97,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             if size != state.capsule_size {
                 return Task::none();
             }
-            if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
+            if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.capsule = CapsuleAsset::Loaded {
                     handle,
                     width,
@@ -108,7 +111,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             if size != state.capsule_size {
                 return Task::none();
             }
-            if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
+            if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.capsule = CapsuleAsset::Unavailable;
             }
             Task::none()
@@ -119,7 +122,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             earned,
             total,
         } => {
-            if let Some(entry) = state.games.iter_mut().find(|g| g.summary.app_id == app_id) {
+            if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
             }
             Task::none()

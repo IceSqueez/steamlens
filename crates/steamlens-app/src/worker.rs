@@ -119,7 +119,7 @@ async fn probe_main() -> i32 {
         steam_id,
         persona_name,
         avatar_png,
-        games,
+        game_summaries: games,
     };
     if write_response(&resp).await.is_err() {
         return 1;
@@ -145,7 +145,10 @@ async fn worker_main(app_id: u32) -> i32 {
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[worker app_id={app_id}] connect failed in {:?}: {e}", t0.elapsed());
+            eprintln!(
+                "[worker app_id={app_id}] connect failed in {:?}: {e}",
+                t0.elapsed()
+            );
             let _ = write_response(&WorkerResponse::Error {
                 context: "connect".into(),
                 message: e.to_string(),

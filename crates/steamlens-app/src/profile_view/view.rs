@@ -498,11 +498,9 @@ fn build_grid<'a>(
             let mut r: iced::widget::Row<'_, crate::Message> =
                 row![iced::widget::Space::new().width(Length::Fixed(gap))];
             for entry in chunk {
-                let app_id = entry.summary.app_id;
+                let app_id = entry.app_id;
                 let cached = cached_entries.get(&app_id);
-                let tier_breakdown = cached
-                    .map(|e| e.tier_breakdown.as_slice())
-                    .unwrap_or(&[]);
+                let tier_breakdown = cached.map(|e| e.tier_breakdown.as_slice()).unwrap_or(&[]);
                 let genre = cached.and_then(|e| e.genre.as_deref());
                 let is_pinned = pinned.contains(&app_id);
                 let is_hovered = hovered_card == Some(app_id);
@@ -575,7 +573,7 @@ fn build_card<'a>(
     is_pinned: bool,
     is_hovered: bool,
 ) -> Element<'a, crate::Message> {
-    let app_id = entry.summary.app_id;
+    let app_id = entry.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
     let total_h = total_card_height(capsule_h);
 
@@ -623,7 +621,7 @@ fn build_skeleton_card<'a>(
     total_h: f32,
     phase: f32,
 ) -> Element<'a, crate::Message> {
-    let title_width_ratio = match entry.summary.app_id % 5 {
+    let title_width_ratio = match entry.app_id % 5 {
         0 => 0.75,
         1 => 0.60,
         2 => 0.85,
@@ -774,7 +772,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
     let capsule_stack = stack![capsule_area, tier_bar, hover_overlay];
 
     let name_label = container(
-        text(entry.summary.name.as_str())
+        text(entry.name.as_deref().unwrap_or(""))
             .size(12)
             .color(C_TEXT)
             .wrapping(text::Wrapping::Word)

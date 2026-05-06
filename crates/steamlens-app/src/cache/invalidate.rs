@@ -9,8 +9,6 @@ use crate::settings::steamlens_root;
 pub struct ClassifyResult {
     pub hits: Vec<CacheHit>,
     pub dirty: Vec<u32>,
-    /// Count of cache files discarded because their `schema_version`
-    /// did not match `CURRENT_SCHEMA_VERSION`; drives the upgrade toast.
     pub schema_bumped: u32,
 }
 
@@ -19,20 +17,20 @@ fn cache_root() -> PathBuf {
 }
 
 pub async fn classify_games(
-    games: &[GameSummary],
+    game_summaries: &[GameSummary],
     _steam_root: &Path,
     _steamid3: u64,
 ) -> ClassifyResult {
-    classify_games_with_root(games, &cache_root()).await
+    classify_games_with_root(game_summaries, &cache_root()).await
 }
 
 pub(crate) async fn classify_games_with_root(
-    games: &[GameSummary],
+    game_summaries: &[GameSummary],
     cache_root: &Path,
 ) -> ClassifyResult {
     let mut result = ClassifyResult::default();
 
-    for game in games {
+    for game in game_summaries {
         let app_id = game.app_id;
         let cache_path = cache_root.join(format!("{app_id}.json"));
 
@@ -93,10 +91,8 @@ mod tests {
     fn make_summary(app_id: u32, last_played: Option<u32>) -> GameSummary {
         GameSummary {
             app_id,
-            name: format!("Game {app_id}"),
-            last_played,
-            achievement_count: 1,
             change_number: 0,
+            last_played,
         }
     }
 

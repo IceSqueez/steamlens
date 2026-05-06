@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use iced::widget::image::Handle as ImageHandle;
-use steamlens_core::GameSummary;
 
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
@@ -46,7 +45,10 @@ impl std::fmt::Debug for CapsuleAsset {
 
 #[derive(Clone)]
 pub struct GameEntry {
-    pub summary: GameSummary,
+    pub app_id: u32,
+    pub change_number: u32,
+    pub last_played: Option<u32>,
+    pub name: Option<String>,
     pub capsule: CapsuleAsset,
     pub progress: Option<ProgressData>,
 }
@@ -60,8 +62,8 @@ impl GameEntry {
 impl std::fmt::Debug for GameEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GameEntry")
-            .field("app_id", &self.summary.app_id)
-            .field("name", &self.summary.name)
+            .field("app_id", &self.app_id)
+            .field("name", &self.name)
             .field("progress", &self.progress)
             .finish_non_exhaustive()
     }
@@ -113,7 +115,7 @@ impl std::fmt::Display for LibrarySort {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub enum ProfileViewMessage {
-    ScanComplete(Vec<GameSummary>),
+    ScanComplete(Vec<steamlens_core::GameSummary>),
     ScanFailed(String),
     SearchChanged(String),
     SortChanged(LibrarySort),
@@ -150,7 +152,7 @@ impl std::fmt::Debug for ProfileViewMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProfileViewMessage::ScanComplete(v) => {
-                write!(f, "ScanComplete({} games)", v.len())
+                write!(f, "ScanComplete({} enumerated)", v.len())
             }
             ProfileViewMessage::ScanFailed(e) => write!(f, "ScanFailed({e})"),
             ProfileViewMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
@@ -255,7 +257,13 @@ impl ProfileViewState {
         let mut result: Vec<&GameEntry> = self
             .games
             .iter()
-            .filter(|g| query.is_empty() || g.summary.name.to_lowercase().contains(&query))
+            .filter(|g| {
+                query.is_empty()
+                    || g.name
+                        .as_deref()
+                        .map(|n| n.to_lowercase().contains(&query))
+                        .unwrap_or(false)
+            })
             .collect();
 
         sort_entries(&mut result, self.sort, pinned);
@@ -312,14 +320,13 @@ fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort, pinned: &[u32]
         return;
     }
 
-    let (mut pinned_entries, mut rest): (Vec<&GameEntry>, Vec<&GameEntry>) = entries
-        .iter()
-        .partition(|g| pinned.contains(&g.summary.app_id));
+    let (mut pinned_entries, mut rest): (Vec<&GameEntry>, Vec<&GameEntry>) =
+        entries.iter().partition(|g| pinned.contains(&g.app_id));
 
     pinned_entries.sort_by_key(|g| {
         pinned
             .iter()
-            .position(|&pid| pid == g.summary.app_id)
+            .position(|&pid| pid == g.app_id)
             .unwrap_or(usize::MAX)
     });
 
@@ -328,28 +335,27 @@ fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort, pinned: &[u32]
     *entries = pinned_entries.into_iter().chain(rest).collect();
 }
 
+fn entry_name(entry: &GameEntry) -> &str {
+    entry.name.as_deref().unwrap_or("")
+}
+
 fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
     match sort {
         LibrarySort::LastPlayed => {
-            entries.sort_by(
-                |a, b| match (a.summary.last_played, b.summary.last_played) {
-                    (Some(ta), Some(tb)) => tb.cmp(&ta),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => a
-                        .summary
-                        .name
-                        .to_lowercase()
-                        .cmp(&b.summary.name.to_lowercase()),
-                },
-            );
+            entries.sort_by(|a, b| match (a.last_played, b.last_played) {
+                (Some(ta), Some(tb)) => tb.cmp(&ta),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => entry_name(a)
+                    .to_lowercase()
+                    .cmp(&entry_name(b).to_lowercase()),
+            });
         }
         LibrarySort::NameAsc => {
             entries.sort_by(|a, b| {
-                a.summary
-                    .name
+                entry_name(a)
                     .to_lowercase()
-                    .cmp(&b.summary.name.to_lowercase())
+                    .cmp(&entry_name(b).to_lowercase())
             });
         }
         LibrarySort::Completion => {
@@ -360,10 +366,9 @@ fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
                     .partial_cmp(&pct_a)
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| {
-                        a.summary
-                            .name
+                        entry_name(a)
                             .to_lowercase()
-                            .cmp(&b.summary.name.to_lowercase())
+                            .cmp(&entry_name(b).to_lowercase())
                     })
             });
         }
@@ -381,19 +386,12 @@ fn completion_pct(entry: &GameEntry) -> f32 {
 mod tests {
     use super::*;
 
-    fn make_summary(app_id: u32, name: &str, last_played: Option<u32>) -> GameSummary {
-        GameSummary {
-            app_id,
-            name: name.to_owned(),
-            last_played,
-            achievement_count: 1,
-            change_number: 0,
-        }
-    }
-
     fn make_entry(app_id: u32, name: &str, last_played: Option<u32>) -> GameEntry {
         GameEntry {
-            summary: make_summary(app_id, name, last_played),
+            app_id,
+            change_number: 0,
+            last_played,
+            name: Some(name.to_owned()),
             capsule: CapsuleAsset::Pending,
             progress: None,
         }
@@ -419,80 +417,64 @@ mod tests {
         }
     }
 
+    fn make_entry_with_capsule(capsule: CapsuleAsset, progress: Option<ProgressData>) -> GameEntry {
+        GameEntry {
+            app_id: 1,
+            change_number: 0,
+            last_played: None,
+            name: Some("TestGame".to_owned()),
+            capsule,
+            progress,
+        }
+    }
+
     #[test]
     fn is_hydrated_requires_progress_and_terminal_capsule() {
-        let summary = make_summary(1, "TestGame", None);
         let progress = Some(ProgressData {
             earned: 5,
             total: 10,
         });
 
-        let pending_no_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Pending,
-            progress: None,
-        };
         assert!(
-            !pending_no_progress.is_hydrated(),
+            !make_entry_with_capsule(CapsuleAsset::Pending, None).is_hydrated(),
             "Pending + None -> not hydrated"
         );
-
-        let pending_with_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Pending,
-            progress,
-        };
         assert!(
-            !pending_with_progress.is_hydrated(),
+            !make_entry_with_capsule(CapsuleAsset::Pending, progress).is_hydrated(),
             "Pending + Some(progress) -> not hydrated"
         );
-
-        let unavailable_no_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Unavailable,
-            progress: None,
-        };
         assert!(
-            !unavailable_no_progress.is_hydrated(),
+            !make_entry_with_capsule(CapsuleAsset::Unavailable, None).is_hydrated(),
             "Unavailable + None -> not hydrated"
         );
-
-        let unavailable_with_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Unavailable,
-            progress,
-        };
         assert!(
-            unavailable_with_progress.is_hydrated(),
+            make_entry_with_capsule(CapsuleAsset::Unavailable, progress).is_hydrated(),
             "Unavailable + Some(progress) -> hydrated"
         );
 
         let dummy_handle = iced::widget::image::Handle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
-        let loaded_no_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Loaded {
-                handle: dummy_handle.clone(),
-                width: 1,
-                height: 1,
-            },
-            progress: None,
-        };
         assert!(
-            !loaded_no_progress.is_hydrated(),
+            !make_entry_with_capsule(
+                CapsuleAsset::Loaded {
+                    handle: dummy_handle.clone(),
+                    width: 1,
+                    height: 1,
+                },
+                None
+            )
+            .is_hydrated(),
             "Loaded + None -> not hydrated"
         );
-
-        let loaded_with_progress = GameEntry {
-            summary: summary.clone(),
-            capsule: CapsuleAsset::Loaded {
-                handle: dummy_handle,
-                width: 1,
-                height: 1,
-            },
-            progress,
-        };
         assert!(
-            loaded_with_progress.is_hydrated(),
+            make_entry_with_capsule(
+                CapsuleAsset::Loaded {
+                    handle: dummy_handle,
+                    width: 1,
+                    height: 1,
+                },
+                progress
+            )
+            .is_hydrated(),
             "Loaded + Some(progress) -> hydrated"
         );
     }
@@ -508,7 +490,10 @@ mod tests {
         state.sort = LibrarySort::LastPlayed;
 
         let visible = state.visible_games(&[]);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
 
         assert_eq!(names[0], "Gamma", "most recent first");
         assert_eq!(names[1], "Beta");
@@ -526,7 +511,10 @@ mod tests {
         state.sort = LibrarySort::NameAsc;
 
         let visible = state.visible_games(&[]);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
 
         assert_eq!(names[0], "Apple");
         assert_eq!(names[1], "banana");
@@ -535,7 +523,10 @@ mod tests {
 
     fn make_entry_with_progress(app_id: u32, name: &str, earned: u32, total: u32) -> GameEntry {
         GameEntry {
-            summary: make_summary(app_id, name, None),
+            app_id,
+            change_number: 0,
+            last_played: None,
+            name: Some(name.to_owned()),
             capsule: CapsuleAsset::Pending,
             progress: Some(ProgressData { earned, total }),
         }
@@ -544,15 +535,18 @@ mod tests {
     #[test]
     fn sort_completion_descending_highest_pct_first() {
         let mut state = make_state_with_games(vec![
-            make_entry_with_progress(1, "Half", 50, 100), // 50%
-            make_entry_with_progress(2, "Done", 99, 100), // 99%
-            make_entry_with_progress(3, "Tiny", 1, 100),  //  1%
-            make_entry_with_progress(4, "Mid", 75, 100),  // 75%
+            make_entry_with_progress(1, "Half", 50, 100),
+            make_entry_with_progress(2, "Done", 99, 100),
+            make_entry_with_progress(3, "Tiny", 1, 100),
+            make_entry_with_progress(4, "Mid", 75, 100),
         ]);
         state.sort = LibrarySort::Completion;
 
         let visible = state.visible_games(&[]);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
 
         assert_eq!(names, vec!["Done", "Mid", "Half", "Tiny"]);
     }
@@ -567,7 +561,10 @@ mod tests {
         state.sort = LibrarySort::Completion;
 
         let visible = state.visible_games(&[]);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
 
         assert_eq!(names, vec!["Hot", "Real", "NoData"]);
     }
@@ -582,7 +579,10 @@ mod tests {
         state.sort = LibrarySort::Completion;
 
         let visible = state.visible_games(&[]);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
 
         assert_eq!(names, vec!["Alpha", "Bravo", "charlie"]);
     }
@@ -606,7 +606,10 @@ mod tests {
 
         let visible = state.visible_games(&[]);
         assert_eq!(visible.len(), 2);
-        let names: Vec<&str> = visible.iter().map(|g| g.summary.name.as_str()).collect();
+        let names: Vec<&str> = visible
+            .iter()
+            .map(|g| g.name.as_deref().unwrap_or(""))
+            .collect();
         assert!(names.contains(&"Terraria"));
         assert!(names.contains(&"terra Battle"));
     }
@@ -680,11 +683,7 @@ mod tests {
             height: 45,
         };
 
-        let entry = GameEntry {
-            summary: make_summary(app_id, "Terraria", None),
-            capsule: CapsuleAsset::Pending,
-            progress: None,
-        };
+        let entry = make_entry(app_id, "Terraria", None);
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;
         state
@@ -692,7 +691,7 @@ mod tests {
             .insert((app_id, CapsuleSize::Small), stored);
 
         for entry in &mut state.games {
-            let key = (entry.summary.app_id, state.capsule_size);
+            let key = (entry.app_id, state.capsule_size);
             if let Some(cached) = state.capsule_handles.get(&key) {
                 entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
@@ -714,16 +713,12 @@ mod tests {
     #[test]
     fn cache_miss_falls_through_to_pending() {
         let app_id = 105600u32;
-        let entry = GameEntry {
-            summary: make_summary(app_id, "Terraria", None),
-            capsule: CapsuleAsset::Pending,
-            progress: None,
-        };
+        let entry = make_entry(app_id, "Terraria", None);
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;
 
         for entry in &mut state.games {
-            let key = (entry.summary.app_id, state.capsule_size);
+            let key = (entry.app_id, state.capsule_size);
             if let Some(cached) = state.capsule_handles.get(&key) {
                 entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
@@ -752,7 +747,10 @@ mod tests {
     fn loader_phase_beta_when_partial_progress() {
         let mut state = make_state_with_games(vec![
             GameEntry {
-                summary: make_summary(1, "A", None),
+                app_id: 1,
+                change_number: 0,
+                last_played: None,
+                name: Some("A".to_owned()),
                 capsule: CapsuleAsset::Unavailable,
                 progress: Some(crate::progress_scan::ProgressData {
                     earned: 5,
@@ -760,7 +758,10 @@ mod tests {
                 }),
             },
             GameEntry {
-                summary: make_summary(2, "B", None),
+                app_id: 2,
+                change_number: 0,
+                last_played: None,
+                name: Some("B".to_owned()),
                 capsule: CapsuleAsset::Unavailable,
                 progress: None,
             },
@@ -778,7 +779,10 @@ mod tests {
     #[test]
     fn loader_phase_gamma_when_all_have_progress() {
         let mut state = make_state_with_games(vec![GameEntry {
-            summary: make_summary(1, "A", None),
+            app_id: 1,
+            change_number: 0,
+            last_played: None,
+            name: Some("A".to_owned()),
             capsule: CapsuleAsset::Unavailable,
             progress: Some(crate::progress_scan::ProgressData {
                 earned: 5,
@@ -799,7 +803,7 @@ mod tests {
         ]);
         let pinned = [3u32, 1u32];
         let visible = state.visible_games(&pinned);
-        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
         assert_eq!(ids[0], 3, "first pinned game must be first");
         assert_eq!(ids[1], 1, "second pinned game must be second");
         assert_eq!(ids[2], 2, "rest sorted by last_played descending");
@@ -821,7 +825,7 @@ mod tests {
         ]);
         sorted_state.sort = LibrarySort::NameAsc;
         let visible = sorted_state.visible_games(&pinned);
-        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
         assert_eq!(
             ids[0], 1,
             "pinned game must be first regardless of name sort"
@@ -838,7 +842,7 @@ mod tests {
             make_entry(2, "Alpha", Some(200)),
         ]);
         let visible = state.visible_games(&[]);
-        let ids: Vec<u32> = visible.iter().map(|g| g.summary.app_id).collect();
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
         assert_eq!(ids[0], 2, "most recently played first");
         assert_eq!(ids[1], 1);
     }

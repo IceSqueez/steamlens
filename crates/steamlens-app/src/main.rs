@@ -17,7 +17,9 @@ use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Alignment, Color, Element, Length, Subscription, Task};
 
-use cache::{CacheHit, CachedLibrary, CachedProfile, ClassifyResult, GameCacheEntry};
+use cache::{
+    CacheHit, CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry,
+};
 use game_view::{GameViewMessage, GameViewState};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
@@ -103,6 +105,7 @@ struct App {
     steam_running: Option<bool>,
     skeleton_phase: f32,
     no_ach_cache: cache::NoAchievementsCache,
+    library_name_map: HashMap<u32, String>,
 }
 
 fn boot() -> (App, Task<Message>) {
@@ -148,6 +151,7 @@ fn boot() -> (App, Task<Message>) {
         steam_running: None,
         skeleton_phase: 0.0,
         no_ach_cache: cache::NoAchievementsCache::new(),
+        library_name_map: HashMap::new(),
     };
 
     let min_splash_task = Task::perform(
@@ -164,10 +168,15 @@ fn boot() -> (App, Task<Message>) {
         Message::ProbeResult,
     );
 
-    let no_ach_load_task =
-        Task::perform(cache::load_no_achievements_cache(), Message::NoAchCacheLoaded);
+    let no_ach_load_task = Task::perform(
+        cache::load_no_achievements_cache(),
+        Message::NoAchCacheLoaded,
+    );
 
-    (app, Task::batch([min_splash_task, probe_task, no_ach_load_task]))
+    (
+        app,
+        Task::batch([min_splash_task, probe_task, no_ach_load_task]),
+    )
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
@@ -366,9 +375,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     return Task::none();
                 }
-                ProfileViewMessage::ScanComplete(summaries) => {
+                ProfileViewMessage::ScanComplete(enumerated) => {
                     app.splash_scan_done = true;
-                    let games = summaries.clone();
+                    let games = enumerated.clone();
                     let steam_root = app.steam_root.clone();
                     let steamid3 = app.steamid3;
                     let classify_task = Task::perform(
@@ -377,8 +386,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     );
 
                     let mut tasks: Vec<Task<Message>> = vec![classify_task];
-                    if !summaries.is_empty() {
-                        let cached = cache::make_cached_library(summaries.clone());
+                    if !enumerated.is_empty() {
+                        let cached = cache::make_cached_library(
+                            enumerated
+                                .iter()
+                                .map(|g| CachedLibraryEntry {
+                                    app_id: g.app_id,
+                                    change_number: g.change_number,
+                                    last_played: g.last_played,
+                                    name: String::new(),
+                                    achievement_count: 0,
+                                })
+                                .collect(),
+                        );
                         tasks.push(Task::perform(
                             async move {
                                 cache::write_library_cache(&cached)
@@ -392,6 +412,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
                         let scan_task = profile_view::update(pv_state, pv_msg);
                         tasks.push(scan_task);
+
+                        if !app.library_name_map.is_empty() {
+                            for game in &mut pv_state.games {
+                                if let Some(name) = app.library_name_map.get(&game.app_id) {
+                                    game.name = Some(name.clone());
+                                }
+                            }
+                            app.library_name_map.clear();
+                        }
                     }
                     return Task::batch(tasks);
                 }
@@ -439,12 +468,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 let mut entry = hit.entry;
                 recompute_tier_breakdown_if_missing(&mut entry);
                 if let Screen::ProfileView(pv_state) = &mut app.screen
-                    && let Some(game) = pv_state
-                        .games
-                        .iter_mut()
-                        .find(|g| g.summary.app_id == hit.app_id)
+                    && let Some(game) = pv_state.games.iter_mut().find(|g| g.app_id == hit.app_id)
                 {
                     use crate::progress_scan::ProgressData;
+                    game.name = Some(entry.name.clone());
                     game.progress = Some(ProgressData {
                         earned: entry.progress.earned,
                         total: entry.progress.total,
@@ -470,7 +497,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 for entry in &mut pv_state.games {
                     entry.progress = None;
                 }
-                let all_ids: Vec<u32> = pv_state.games.iter().map(|g| g.summary.app_id).collect();
+                let all_ids: Vec<u32> = pv_state.games.iter().map(|g| g.app_id).collect();
                 if !all_ids.is_empty() {
                     let mut scanner = crate::progress_scan::ProgressScanner::new(all_ids);
                     pv_state.progress_rx = scanner.take_receiver();
@@ -490,18 +517,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.cached_entries.remove(&app_id);
 
             if let Screen::ProfileView(pv_state) = &mut app.screen
-                && let Some(entry) = pv_state
-                    .games
-                    .iter_mut()
-                    .find(|e| e.summary.app_id == app_id)
+                && let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id)
             {
                 entry.progress = None;
             }
             if let Some(pv_state) = &mut app.profile_view_state
-                && let Some(entry) = pv_state
-                    .games
-                    .iter_mut()
-                    .find(|e| e.summary.app_id == app_id)
+                && let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id)
             {
                 entry.progress = None;
             }
@@ -629,9 +650,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 let change_number = pv_state
                                     .games
                                     .iter()
-                                    .find(|g| g.summary.app_id == scan_app_id)
-                                    .map(|g| g.summary.change_number);
-                                pv_state.games.retain(|g| g.summary.app_id != scan_app_id);
+                                    .find(|g| g.app_id == scan_app_id)
+                                    .map(|g| g.change_number);
+                                pv_state.games.retain(|g| g.app_id != scan_app_id);
                                 app.cached_entries.remove(&scan_app_id);
                                 if let Some(cn) = change_number {
                                     app.no_ach_cache.insert(scan_app_id, cn);
@@ -660,14 +681,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                     },
                                 )));
 
-                                if let Some(game) = pv_state
-                                    .games
-                                    .iter()
-                                    .find(|g| g.summary.app_id == scan_app_id)
+                                if let Some(scanned_name) = &data.app_name
+                                    && let Some(game) =
+                                        pv_state.games.iter_mut().find(|g| g.app_id == scan_app_id)
+                                {
+                                    game.name = Some(scanned_name.clone());
+                                }
+
+                                if let Some(game) =
+                                    pv_state.games.iter().find(|g| g.app_id == scan_app_id)
                                 {
                                     let entry = build_cache_entry_from_scan(
                                         &data,
-                                        &game.summary,
+                                        scan_app_id,
+                                        game.name.as_deref(),
                                         &app.steam_root,
                                         app.steamid3,
                                     );
@@ -784,7 +811,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         .unwrap_or_default();
                     app.steamid3 = p.steam_id.saturating_sub(76_561_197_960_265_728);
                     app.profile_avatar_handle = p
-                        .avatar_png_bytes
+                        .avatar_image
                         .as_ref()
                         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
@@ -793,14 +820,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         p.steam_id,
                         p.persona_name.clone(),
                         account_name.clone(),
-                        p.avatar_png_bytes.clone(),
+                        p.avatar_image.clone(),
                         steam_root_opt,
                     );
                     app.user_profile = Some(UserProfile {
                         steam_id: p.steam_id,
                         persona_name: p.persona_name,
                         account_name,
-                        avatar_png_bytes: p.avatar_png_bytes,
+                        avatar_png_bytes: p.avatar_image,
                     });
 
                     let mut tasks: Vec<Task<Message>> = Vec::new();
@@ -814,11 +841,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         |r| Message::PersistentCacheWritten("profile", r),
                     ));
 
-                    if !p.games.is_empty() {
+                    if !p.game_summaries.is_empty() {
                         app.splash_scan_done = true;
                         let no_ach = &app.no_ach_cache;
                         let filtered: Vec<_> = p
-                            .games
+                            .game_summaries
                             .into_iter()
                             .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
                             .collect();
@@ -882,8 +909,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if games_present {
                 return Task::none();
             }
+            let summary: Vec<steamlens_core::GameSummary> = cached
+                .games
+                .iter()
+                .map(|e| steamlens_core::GameSummary {
+                    app_id: e.app_id,
+                    change_number: e.change_number,
+                    last_played: e.last_played,
+                })
+                .collect();
+            let name_map: std::collections::HashMap<u32, String> = cached
+                .games
+                .into_iter()
+                .filter(|e| !e.name.is_empty())
+                .map(|e| (e.app_id, e.name))
+                .collect();
+            app.library_name_map = name_map;
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
-                cached.games,
+                summary,
             )))
         }
 
@@ -1067,7 +1110,8 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
 
 fn build_cache_entry_from_scan(
     scanned: &progress_scan::ScannedGameData,
-    summary: &steamlens_core::GameSummary,
+    app_id: u32,
+    entry_name: Option<&str>,
     steam_root: &std::path::Path,
     steamid3: u64,
 ) -> GameCacheEntry {
@@ -1114,19 +1158,22 @@ fn build_cache_entry_from_scan(
     let earned = achievements.iter().filter(|a| a.earned).count() as u32;
     let total = achievements.len() as u32;
 
-    let steam_last_played = read_last_played(steam_root, steamid3, summary.app_id).unwrap_or(0);
+    let steam_last_played = read_last_played(steam_root, steamid3, app_id).unwrap_or(0);
     let cached_at = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
+    let name = scanned
+        .app_name
+        .clone()
+        .or_else(|| entry_name.map(|s| s.to_owned()))
+        .unwrap_or_else(|| format!("App {app_id}"));
+
     let mut entry = GameCacheEntry {
         schema_version: cache::CURRENT_SCHEMA_VERSION,
-        app_id: summary.app_id,
-        name: scanned
-            .app_name
-            .clone()
-            .unwrap_or_else(|| summary.name.clone()),
+        app_id,
+        name,
         steam_last_updated: 0,
         steam_last_played,
         cached_at,
@@ -1524,6 +1571,7 @@ mod tests {
             steam_running: Some(true),
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
+            library_name_map: HashMap::new(),
         }
     }
 
@@ -1571,8 +1619,8 @@ mod tests {
         let probed = ProbedProfile {
             steam_id: 76561198000000042,
             persona_name: "TestUser".to_owned(),
-            avatar_png_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47]),
-            games: vec![],
+            avatar_image: Some(vec![0x89, 0x50, 0x4E, 0x47]),
+            game_summaries: vec![],
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
@@ -1720,17 +1768,16 @@ mod tests {
 
     #[test]
     fn library_cache_loaded_some_dispatches_scan_complete_when_games_empty() {
-        use steamlens_core::GameSummary;
         let mut app = make_app_probing();
         app.steam_running = Some(false);
         let cached = CachedLibrary {
-            schema_version: 2,
-            games: vec![GameSummary {
+            schema_version: 3,
+            games: vec![CachedLibraryEntry {
                 app_id: 105600,
-                name: "Terraria".to_owned(),
-                last_played: None,
-                achievement_count: 88,
                 change_number: 0,
+                last_played: None,
+                name: "Terraria".to_owned(),
+                achievement_count: 88,
             }],
             cached_at: 0,
         };
@@ -1745,29 +1792,25 @@ mod tests {
     #[test]
     fn library_cache_loaded_skipped_when_games_already_present() {
         use crate::profile_view::types::{CapsuleAsset, GameEntry};
-        use steamlens_core::GameSummary;
         let mut app = make_app_probing();
         if let Screen::ProfileView(pv) = &mut app.screen {
             pv.games.push(GameEntry {
-                summary: GameSummary {
-                    app_id: 1,
-                    name: "AlreadyHere".to_owned(),
-                    last_played: None,
-                    achievement_count: 1,
-                    change_number: 0,
-                },
+                app_id: 1,
+                change_number: 0,
+                last_played: None,
+                name: Some("AlreadyHere".to_owned()),
                 capsule: CapsuleAsset::Pending,
                 progress: None,
             });
         }
         let cached = CachedLibrary {
-            schema_version: 2,
-            games: vec![GameSummary {
+            schema_version: 3,
+            games: vec![CachedLibraryEntry {
                 app_id: 999,
-                name: "FromCache".to_owned(),
-                last_played: None,
-                achievement_count: 1,
                 change_number: 0,
+                last_played: None,
+                name: "FromCache".to_owned(),
+                achievement_count: 1,
             }],
             cached_at: 0,
         };
@@ -1778,7 +1821,7 @@ mod tests {
                 1,
                 "no replacement when games already populated"
             );
-            assert_eq!(pv.games[0].summary.name, "AlreadyHere");
+            assert_eq!(pv.games[0].name.as_deref(), Some("AlreadyHere"));
         } else {
             panic!("expected ProfileView screen");
         }
@@ -1803,13 +1846,15 @@ mod tests {
         assert_eq!(app.steam_running, None);
     }
 
-    fn make_summary_for_scan(app_id: u32, name: &str) -> steamlens_core::GameSummary {
-        steamlens_core::GameSummary {
+    fn make_game_entry_for_scan(app_id: u32, name: &str) -> crate::profile_view::types::GameEntry {
+        use crate::profile_view::types::{CapsuleAsset, GameEntry};
+        GameEntry {
             app_id,
-            name: name.to_owned(),
-            last_played: None,
-            achievement_count: 3,
             change_number: 0,
+            last_played: None,
+            name: Some(name.to_owned()),
+            capsule: CapsuleAsset::Pending,
+            progress: None,
         }
     }
 
@@ -1860,10 +1905,11 @@ mod tests {
                 ("ACH_C".to_owned(), true, Some(5.0)),
             ],
         );
-        let summary = make_summary_for_scan(105600, "TerrariaFallback");
+        let game = make_game_entry_for_scan(105600, "TerrariaFallback");
         let entry = build_cache_entry_from_scan(
             &scanned,
-            &summary,
+            game.app_id,
+            game.name.as_deref(),
             std::path::Path::new("/tmp/nonexistent"),
             0,
         );
@@ -1872,17 +1918,18 @@ mod tests {
         assert_eq!(entry.app_id, 105600);
         assert_eq!(
             entry.name, "Terraria",
-            "scanner-supplied name takes priority over GameSummary name"
+            "scanner-supplied name takes priority over entry name"
         );
     }
 
     #[test]
-    fn build_cache_entry_from_scan_falls_back_to_summary_name() {
+    fn build_cache_entry_from_scan_falls_back_to_entry_name() {
         let scanned = make_scanned_data(None, vec![("X".to_owned(), false, None)]);
-        let summary = make_summary_for_scan(1, "FallbackName");
+        let game = make_game_entry_for_scan(1, "FallbackName");
         let entry = build_cache_entry_from_scan(
             &scanned,
-            &summary,
+            game.app_id,
+            game.name.as_deref(),
             std::path::Path::new("/tmp/nonexistent"),
             0,
         );
@@ -1899,10 +1946,11 @@ mod tests {
                 ("MISSING_PCT".to_owned(), true, None),
             ],
         );
-        let summary = make_summary_for_scan(99, "Game");
+        let game = make_game_entry_for_scan(99, "Game");
         let entry = build_cache_entry_from_scan(
             &scanned,
-            &summary,
+            game.app_id,
+            game.name.as_deref(),
             std::path::Path::new("/tmp/nonexistent"),
             0,
         );
@@ -1930,10 +1978,11 @@ mod tests {
                 ("D".to_owned(), true, Some(20.0)),
             ],
         );
-        let summary = make_summary_for_scan(99, "Game");
+        let game = make_game_entry_for_scan(99, "Game");
         let entry = build_cache_entry_from_scan(
             &scanned,
-            &summary,
+            game.app_id,
+            game.name.as_deref(),
             std::path::Path::new("/tmp/nonexistent"),
             0,
         );
@@ -1949,10 +1998,11 @@ mod tests {
             None,
             vec![("A".to_owned(), true, None), ("B".to_owned(), false, None)],
         );
-        let summary = make_summary_for_scan(99, "Game");
+        let game = make_game_entry_for_scan(99, "Game");
         let entry = build_cache_entry_from_scan(
             &scanned,
-            &summary,
+            game.app_id,
+            game.name.as_deref(),
             std::path::Path::new("/tmp/nonexistent"),
             0,
         );
@@ -1966,18 +2016,14 @@ mod tests {
     fn drain_progress_results_failure_records_failed_app_id() {
         use crate::profile_view::types::{CapsuleAsset, GameEntry};
         use crate::progress_scan::ProgressResult;
-        use steamlens_core::GameSummary;
 
         let mut app = make_app_probing();
         if let Screen::ProfileView(pv) = &mut app.screen {
             pv.games.push(GameEntry {
-                summary: GameSummary {
-                    app_id: 105600,
-                    name: "Terraria".to_owned(),
-                    last_played: None,
-                    achievement_count: 88,
-                    change_number: 0,
-                },
+                app_id: 105600,
+                change_number: 0,
+                last_played: None,
+                name: Some("Terraria".to_owned()),
                 capsule: CapsuleAsset::Pending,
                 progress: None,
             });
@@ -2007,16 +2053,12 @@ mod tests {
     fn loader_phase_failed_when_some_games_have_no_progress_and_failed() {
         use crate::profile_view::types::{CapsuleAsset, GameEntry, LoaderPhase, ProfileViewState};
         use crate::progress_scan::ProgressData;
-        use steamlens_core::GameSummary;
 
         let mk_entry = |app_id: u32, with_progress: bool| GameEntry {
-            summary: GameSummary {
-                app_id,
-                name: format!("Game {app_id}"),
-                last_played: None,
-                achievement_count: 1,
-                change_number: 0,
-            },
+            app_id,
+            change_number: 0,
+            last_played: None,
+            name: Some(format!("Game {app_id}")),
             capsule: CapsuleAsset::Unavailable,
             progress: if with_progress {
                 Some(ProgressData {
@@ -2136,8 +2178,8 @@ mod tests {
         let probed = ProbedProfile {
             steam_id: 76561198000000042,
             persona_name: "LiveName".to_owned(),
-            avatar_png_bytes: None,
-            games: vec![],
+            avatar_image: None,
+            game_summaries: vec![],
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
@@ -2587,19 +2629,14 @@ mod tests {
     #[tokio::test]
     async fn clear_game_cache_removes_cached_entry_and_clears_progress() {
         use profile_view::types::{CapsuleAsset, GameEntry};
-        use steamlens_core::GameSummary;
 
         let app_id: u32 = 440;
 
-        let summary = GameSummary {
-            app_id,
-            name: "Team Fortress 2".to_owned(),
-            last_played: None,
-            achievement_count: 520,
-            change_number: 0,
-        };
         let game_entry = GameEntry {
-            summary,
+            app_id,
+            change_number: 0,
+            last_played: None,
+            name: Some("Team Fortress 2".to_owned()),
             capsule: CapsuleAsset::Unavailable,
             progress: Some(crate::progress_scan::ProgressData {
                 earned: 10,
@@ -2652,6 +2689,7 @@ mod tests {
             steam_running: Some(true),
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
+            library_name_map: HashMap::new(),
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
@@ -2662,7 +2700,7 @@ mod tests {
         );
 
         if let Screen::ProfileView(pv_state) = &app.screen {
-            let entry = pv_state.games.iter().find(|e| e.summary.app_id == app_id);
+            let entry = pv_state.games.iter().find(|e| e.app_id == app_id);
             assert!(
                 entry.is_some(),
                 "GameEntry must still exist in profile view"
@@ -2699,6 +2737,7 @@ mod tests {
             steam_running: Some(true),
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
+            library_name_map: HashMap::new(),
         }
     }
 

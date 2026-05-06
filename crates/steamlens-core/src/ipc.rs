@@ -24,18 +24,10 @@ pub enum WorkerCommand {
     LoadAchievementsAndStatsWithoutIcons,
     SetAchievement(String),
     ClearAchievement(String),
-    SetStatInt {
-        name: String,
-        value: i32,
-    },
-    SetStatFloat {
-        name: String,
-        value: f32,
-    },
+    SetStatInt { name: String, value: i32 },
+    SetStatFloat { name: String, value: f32 },
     StoreStats,
-    ResetAllStats {
-        include_achievements: bool,
-    },
+    ResetAllStats { include_achievements: bool },
     RequestGlobalPercentages,
     QuickAchievementCount,
     Shutdown,
@@ -68,7 +60,7 @@ pub enum WorkerResponse {
         steam_id: u64,
         persona_name: String,
         avatar_png: Option<Vec<u8>>,
-        games: Vec<GameSummary>,
+        game_summaries: Vec<GameSummary>,
     },
     Error {
         context: String,
@@ -215,20 +207,16 @@ mod tests {
                 steam_id: 76561198000000042,
                 persona_name: "TestUser".to_owned(),
                 avatar_png: Some(vec![137, 80, 78, 71, 13, 10, 26, 10]),
-                games: vec![
+                game_summaries: vec![
                     crate::library::GameSummary {
                         app_id: 12345,
-                        name: "Synthetic Game Alpha".to_owned(),
-                        last_played: Some(1_700_000_000),
-                        achievement_count: 0,
                         change_number: 0,
+                        last_played: Some(1_700_000_000),
                     },
                     crate::library::GameSummary {
                         app_id: 67890,
-                        name: "Synthetic Game Beta".to_owned(),
-                        last_played: None,
-                        achievement_count: 0,
                         change_number: 0,
+                        last_played: None,
                     },
                 ],
             },
@@ -236,7 +224,7 @@ mod tests {
                 steam_id: 1,
                 persona_name: "anonymous".to_owned(),
                 avatar_png: None,
-                games: vec![],
+                game_summaries: vec![],
             },
             WorkerResponse::Error {
                 context: "StoreStats".to_owned(),
@@ -451,12 +439,10 @@ mod tests {
             steam_id: 76561198000000042,
             persona_name: "TestUser".to_owned(),
             avatar_png: Some(avatar_bytes.clone()),
-            games: vec![crate::library::GameSummary {
+            game_summaries: vec![crate::library::GameSummary {
                 app_id: 12345,
-                name: "Synthetic Game".to_owned(),
-                last_played: Some(1_700_000_000),
-                achievement_count: 0,
                 change_number: 0,
+                last_played: Some(1_700_000_000),
             }],
         };
         let framed = encode_frame(&resp).expect("encode must succeed");
@@ -468,7 +454,7 @@ mod tests {
                 steam_id,
                 persona_name,
                 avatar_png: Some(png),
-                games,
+                game_summaries: games,
             } => {
                 assert_eq!(steam_id, 76561198000000042);
                 assert_eq!(persona_name, "TestUser");
@@ -486,7 +472,7 @@ mod tests {
             steam_id: 1,
             persona_name: "Ghost".to_owned(),
             avatar_png: None,
-            games: vec![],
+            game_summaries: vec![],
         };
         let framed = encode_frame(&resp).expect("encode must succeed");
         let payload = &framed[4..];
@@ -496,7 +482,7 @@ mod tests {
                 steam_id,
                 persona_name,
                 avatar_png: None,
-                games,
+                game_summaries: games,
             } => {
                 assert_eq!(steam_id, 1);
                 assert_eq!(persona_name, "Ghost");

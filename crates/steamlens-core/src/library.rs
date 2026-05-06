@@ -6,13 +6,8 @@ use crate::error::LibraryError;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GameSummary {
     pub app_id: u32,
-    pub name: String,
-    /// `None` when never played (`LastPlayed` absent or `"0"`).
-    pub last_played: Option<u32>,
-    pub achievement_count: u32,
-    /// Cache-invalidation key — a "no achievements" entry is valid only
-    /// while this matches the value observed when the entry was recorded.
     pub change_number: u32,
+    pub last_played: Option<u32>,
 }
 
 pub(crate) fn enumerate_owned_games_impl(
@@ -38,7 +33,7 @@ pub(crate) fn enumerate_owned_games_impl(
         .map(|content| steamlens_vdf::parse_localconfig_last_played(&content))
         .unwrap_or_default();
 
-    let mut summaries = Vec::new();
+    let mut game_summaries = Vec::new();
 
     for (app_id, change_number) in candidate_ids {
         if !is_released_game(client, app_id) {
@@ -49,20 +44,15 @@ pub(crate) fn enumerate_owned_games_impl(
             continue;
         }
 
-        // `app_name_for(id)` would trigger a synchronous server-side
-        // fetch for owned-but-never-launched games and block the pipe for
-        // tens of seconds. The per-game worker resolves real names later.
-        summaries.push(GameSummary {
+        game_summaries.push(GameSummary {
             app_id,
-            name: format!("App {app_id}"),
-            last_played: last_played_map.get(&app_id).copied(),
-            achievement_count: 0,
             change_number,
+            last_played: last_played_map.get(&app_id).copied(),
         });
     }
 
-    summaries.sort_by_key(|g| g.app_id);
-    Ok(summaries)
+    game_summaries.sort_by_key(|g| g.app_id);
+    Ok(game_summaries)
 }
 
 fn is_released_game(client: &Client, app_id: u32) -> bool {
@@ -71,9 +61,6 @@ fn is_released_game(client: &Client, app_id: u32) -> bool {
         _ => return false,
     }
 
-    // Pre-orders and preload-only entries make `connect(app_id)` fail
-    // with a misleading "Steam client is not running" in the per-game
-    // worker. Pre-`ReleaseState` games (no key set) are kept.
     if let Some(state) = client.get_app_data(app_id, c"ReleaseState")
         && !state.eq_ignore_ascii_case("released")
     {
@@ -95,32 +82,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn game_summary_serde_roundtrip() {
-        let summary = GameSummary {
+    fn enumerated_game_serde_roundtrip() {
+        let game_summary = GameSummary {
             app_id: 12345,
-            name: "Synthetic Game".to_owned(),
+            change_number: 42,
             last_played: Some(1_700_000_000),
-            achievement_count: 0,
-            change_number: 0,
         };
 
-        let json = serde_json::to_string(&summary).expect("serialize");
+        let json = serde_json::to_string(&game_summary).expect("serialize");
         let restored: GameSummary = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(restored, summary);
+        assert_eq!(restored, game_summary);
     }
 
     #[test]
-    fn game_summary_serde_no_last_played() {
-        let summary = GameSummary {
+    fn enumerated_game_serde_no_last_played() {
+        let game_summary = GameSummary {
             app_id: 99999,
-            name: "Never Played".to_owned(),
-            last_played: None,
-            achievement_count: 7,
             change_number: 0,
+            last_played: None,
         };
 
-        let json = serde_json::to_string(&summary).expect("serialize");
+        let json = serde_json::to_string(&game_summary).expect("serialize");
         let restored: GameSummary = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(restored, summary);
+        assert_eq!(restored, game_summary);
     }
 }

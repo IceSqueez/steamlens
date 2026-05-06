@@ -66,8 +66,8 @@ pub async fn load() -> NoAchievementsCache {
 
 pub async fn write(cache: &NoAchievementsCache) -> Result<(), CacheIoError> {
     let path = cache_path();
-    let bytes = serde_json::to_vec_pretty(cache)
-        .map_err(|e| CacheIoError::Serialize(e.to_string()))?;
+    let bytes =
+        serde_json::to_vec_pretty(cache).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     atomic_write(&path, &bytes).await
 }
 

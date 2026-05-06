@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use steamlens_core::GameSummary;
 
 use crate::cache::store::{CacheIoError, atomic_write};
 
 const CURRENT_PROFILE_SCHEMA: u32 = 2;
-const CURRENT_LIBRARY_SCHEMA: u32 = 2;
+const CURRENT_LIBRARY_SCHEMA: u32 = 3;
 
 /// Fallback snapshot for Steam-not-running boots. Avatar PNG is
 /// embedded so a single-file restore is sufficient.
@@ -22,9 +21,18 @@ pub struct CachedProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedLibraryEntry {
+    pub app_id: u32,
+    pub change_number: u32,
+    pub last_played: Option<u32>,
+    pub name: String,
+    pub achievement_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedLibrary {
     pub schema_version: u32,
-    pub games: Vec<GameSummary>,
+    pub games: Vec<CachedLibraryEntry>,
     pub cached_at: u64,
 }
 
@@ -125,7 +133,7 @@ pub fn make_cached_profile(
     }
 }
 
-pub fn make_cached_library(games: Vec<GameSummary>) -> CachedLibrary {
+pub fn make_cached_library(games: Vec<CachedLibraryEntry>) -> CachedLibrary {
     CachedLibrary {
         schema_version: CURRENT_LIBRARY_SCHEMA,
         games,
@@ -166,12 +174,12 @@ mod tests {
     fn make_library() -> CachedLibrary {
         CachedLibrary {
             schema_version: CURRENT_LIBRARY_SCHEMA,
-            games: vec![GameSummary {
+            games: vec![CachedLibraryEntry {
                 app_id: 105600,
-                name: "Terraria".to_owned(),
-                last_played: Some(1_777_926_953),
-                achievement_count: 88,
                 change_number: 0,
+                last_played: Some(1_777_926_953),
+                name: "Terraria".to_owned(),
+                achievement_count: 88,
             }],
             cached_at: 1_777_926_953,
         }
@@ -236,6 +244,7 @@ mod tests {
         assert_eq!(restored.games.len(), 1);
         assert_eq!(restored.games[0].app_id, 105600);
         assert_eq!(restored.games[0].name, "Terraria");
+        assert_eq!(restored.games[0].achievement_count, 88);
         assert_eq!(restored.cached_at, original.cached_at);
     }
 
@@ -259,7 +268,7 @@ mod tests {
     async fn library_cache_schema_mismatch_returns_none() {
         let dir = tempdir();
         let path = dir.join("library.json");
-        let bad = r#"{"schema_version":1,"games":[],"cached_at":0}"#;
+        let bad = r#"{"schema_version":2,"games":[],"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_library_cache_from_path(&path).await;
         assert!(result.is_none());
