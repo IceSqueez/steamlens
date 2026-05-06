@@ -136,13 +136,6 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
 
         ProfileViewMessage::GameSelected(_) => Task::none(),
 
-        ProfileViewMessage::ManualAppIdChanged(s) => {
-            state.manual_app_id_input = s.chars().filter(|c| c.is_ascii_digit()).collect();
-            Task::none()
-        }
-
-        ProfileViewMessage::ManualAppIdSubmitted => Task::none(),
-
         ProfileViewMessage::RescanRequested => {
             state.phase = ProfileViewPhase::Scanning;
             state.games.clear();
