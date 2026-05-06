@@ -1,7 +1,98 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.3] - 2026-05-06
+### Deps
+- *(libs)* Bump postcard 1 -> 1.1 version
+- *(libs)* Bump libaries version and moved to workspace
+
+### ⚙️ Miscellaneous Tasks
+- *(core)* Drop all live-Steam integration tests
+- *(workspace)* Comment cleanup and simplification pass
+
+### ⚡ Performance
+- *(app)* Replace progress-gated card visibility with skeleton-hydrated model
+- *(app)* Cache profile avatar handle and parse localconfig once
+- *(app)* Stream cache hits into state via 16ms tick instead of bulk dispatch
+
+### 🎨 Styling
+- *(profile)* Small changes to profile alignmnent
+- *(app)* Cleanup code and fixes styling warnings
+
+### 🐛 Bug Fixes
+- *(app)* Sort by rarity tier within group → name
+- *(app)* Show Pending badge on hidden card when toggled
+- *(app)* Keep dirty toggles in their persisted filter group until Apply
+- *(app)* Seal hidden achievement leak via rarity/locked filters
+- *(app)* Cache entry steam_last_updated propagation; remove scanner race
+- *(app)* Clear-cache UI sync, schema=0 bump, library view setting
+- *(app)* Remove dead bottom loader; decouple card visibility from capsule reveal
+- *(app)* Restore splash overlay; log worker failures for diagnosis
+- *(app)* Splash overlay enforces 750ms minimum then waits for scan
+- *(app)* Align game card skeleton with achievement skeleton style
+- *(app)* Remove redundant hover tooltip from game card
+- *(app)* Remove duplicate Reset button from GameView footer bar
+- *(app)* Render Steam profile avatar at 2x size with PNG image fallback to initials
+- *(app)* Profile widget 3:1 width ratio + responsive height + min window 896x504
+- *(app)* Unify search style across views, replace GameView sort dropdown with segment toggle
+- *(app)* Lock profile widget columns to fixed 290px height
+- *(app)* Auto-recompute tier_breakdown for cache entries that lack it
+- *(app)* Auto-dispatch RequestGlobalPercentages so achievement rarity tags populate
+- *(profile)* Removed wrong name wrapping symbols
+- *(app)* Scanner uses lite IPC variant to skip oversized icons
+
+### 🚀 Features
+- *(app)* Subprocess worker entrypoint (--worker <app_id>)
+- *(app)* 5-tier achievement rarity system (Common → Legendary) with percent badge
+- *(app)* Per-game percentile tier distribution + UnlockChance default sort + visible Common/Uncommon glow
+- *(app)* Subprocess-per-game cutover
+- *(app)* Extend Legendary tier through ties at 3rd position
+- *(core)* User profile loader + per-game achievement progress backend
+- *(core)* Manifest_path + last_updated on GameSummary; steam_state readers
+- *(app)* Persistent settings + atomic write + toast infrastructure
+- *(app)* Per-game cache types + JSON load/write helpers
+- *(app)* Cache invalidation + boot rewire
+- *(app)* Profile widget + per-card progress overlay
+- *(app)* Introduce SteamLens custom theme; drop Dracula default
+- *(app)* Add skeleton-box primitive with shimmer gradient
+- *(app)* Redesign Library top bar with segments, primary rescan, settings/about
+- *(app)* Redesign GameView header with Back/title/unlocked/Reload
+- *(app)* Add shortcut to focus library search
+- *(app)* Redesign profile widget with rarity-stacked bar, rarity cards, closest-to-complete sifeat(app): redesign profile widget with rarity-stacked bar, rarity cards, closest-to-complete sidebar
+- *(app)* Redesign GameView filter row with tabs, segments, tier chips, and action footer
+- *(app)* Switch game and achievement grids to fixed-size cards with gap-responsive spacing
+- *(app)* Achievement card skeleton + visual polish
+- *(app)* Redesign game card with hover overlay, tier-stacked progress bar, and tags row
+- *(app)* Add Completion sort + replace verbose sort labels with A–Z / LP / C + tooltips
+- *(core)* Add Steam probe FFI for live profile fetch
+- *(app)* Probe Steam liveness at splash, override profile with live data
+- *(app)* Persistent cache fallback + Steam-off banner
+- *(app)* Full per-game IPC scan replaces count-only progress fetch
+- *(app)* Failed-games tracking + Retry buttons in loader strip
+- *(library)* Pipe-first enumeration via packageinfo.vdf
+- *(library)* Cache no-achievements app_ids by package change_number
+- *(app)* Show real game genre as a card tag
+- *(core)* Add shared-memory IPC primitive
+- *(app)* Route large achievement payloads through shared memory
+- *(app)* Route large icon updates through shared memory
+- *(core)* Sweep orphan shm steamlens-* regions at startup
+
+### 🚜 Refactor
+- *(core)* IPC foundation — types, framing codec, deps for subprocess refactor
+- *(app)* Replace SteamWorker thread-actor with subprocess bridge
+- *(app)* Rename ProfileView, GameView; drop Splash
+- *(app)* Drop RarityFilter enum; persist more details settings
+- *(ipc)* Rename WorkerResponse::Hello → SteamConnected, drop dead command
+- *(app)* Simplified access to game summary data
+- *(ipc)* Unify data plane through shm; pipe carries only signals
+
+### 🛠️ Build
+- *(build)* Migrate ipc framing from bincode to postcard; bump reqwest+bytes for advisories
+
 ## [1.0.0-alpha.2] - 2026-05-04
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### 🎨 Styling
 - *(app)* Add subtle card shadow for 3D depth
 - *(app)* Card image shadows + Library card separator
@@ -19,6 +110,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(readme)* Updates with disclaimer, badges, features, and known limitations
+- *(release)* Release v1.0.0-alpha.2
 
 ### 🚀 Features
 - *(app)* Achievement view as responsive card grid with width slider
