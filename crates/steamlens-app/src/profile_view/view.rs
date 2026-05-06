@@ -64,7 +64,7 @@ fn card_width(size: CapsuleSize) -> f32 {
 }
 
 fn total_card_height(capsule_h: f32) -> f32 {
-    capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 24.0 + 8.0
+    capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 32.0 + 8.0
 }
 
 pub fn render_with_cache_actions<'a>(
@@ -807,7 +807,15 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
 
     let tags_row = build_tags_row(entry, card_w, genre);
 
-    let card_inner = column![capsule_stack, separator, name_row, tier_bar, tags_row,].spacing(0);
+    let card_inner = column![
+        capsule_stack,
+        separator,
+        name_row,
+        tier_bar,
+        iced::widget::Space::new().height(Length::Fill),
+        tags_row,
+    ]
+    .spacing(0);
 
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
@@ -1224,8 +1232,8 @@ fn build_tags_row<'a>(
 
     container(tags)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(24.0))
-        .padding(Padding::default().left(4).right(4).top(3).bottom(3))
+        .height(Length::Fixed(32.0))
+        .padding(Padding::default().left(8).right(8).top(3).bottom(8))
         .align_y(Alignment::End)
         .into()
 }
