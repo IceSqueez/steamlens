@@ -277,6 +277,28 @@ async fn run_apply_sequence(
     }
 }
 
+fn read_shm_achievements(
+    shm_path: &str,
+    region_bytes: u64,
+) -> Result<Vec<steamlens_core::AchievementData>, String> {
+    let path = std::path::PathBuf::from(shm_path);
+    let reader = steamlens_core::ShmReader::open(&path)
+        .map_err(|e| format!("shm open {}: {e}", path.display()))?;
+    let actual_bytes = reader.as_bytes().len();
+    if actual_bytes != region_bytes as usize {
+        let _ = reader.unlink();
+        return Err(format!(
+            "shm size mismatch: expected {region_bytes} bytes, got {actual_bytes}"
+        ));
+    }
+    let result = postcard::from_bytes::<Vec<steamlens_core::AchievementData>>(reader.as_bytes())
+        .map_err(|e| format!("shm postcard deserialize: {e}"));
+    if let Err(unlink_err) = reader.unlink() {
+        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
+    }
+    result
+}
+
 fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
     match resp {
         WorkerResponse::SteamConnected { steam_id, app_name } => {
@@ -297,6 +319,22 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
                 },
             );
         }
+        WorkerResponse::AchievementsAndStatsShm {
+            shm_path,
+            region_bytes,
+            stats,
+            genre,
+        } => match read_shm_achievements(&shm_path, region_bytes) {
+            Ok(achievements) => reply(
+                rep_tx,
+                SteamReply::AchievementsAndStats {
+                    achievements,
+                    stats,
+                    genre,
+                },
+            ),
+            Err(msg) => reply(rep_tx, SteamReply::LoadFailed(msg)),
+        },
         WorkerResponse::IconUpdated { name, icon } => {
             reply(rep_tx, SteamReply::IconUpdated { name, icon });
         }

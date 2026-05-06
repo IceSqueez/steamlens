@@ -443,8 +443,64 @@ fn load_achievements_and_stats(client: &Client, app_id: u32, with_icons: bool) -
 
     let genre = client.get_app_data(app_id, c"common/primary_genre");
 
+    let total_icon_bytes: usize = achievements
+        .iter()
+        .filter_map(|a| a.icon.as_ref())
+        .map(|i| i.rgba.len())
+        .sum();
+
+    if total_icon_bytes >= steamlens_core::INLINE_THRESHOLD_BYTES {
+        return route_achievements_through_shm(achievements, stats, genre);
+    }
+
     WorkerResponse::AchievementsAndStats {
         achievements,
+        stats,
+        genre,
+    }
+}
+
+fn route_achievements_through_shm(
+    achievements: Vec<AchievementData>,
+    stats: Vec<steamlens_core::StatData>,
+    genre: Option<String>,
+) -> WorkerResponse {
+    let payload = match postcard::to_allocvec(&achievements) {
+        Ok(p) => p,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "AchievementsAndStatsShm/serialize".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+    let mut writer = match steamlens_core::ShmWriter::create(payload.len()) {
+        Ok(w) => w,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "AchievementsAndStatsShm/shm_create".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+    if let Err(e) = writer.write(&payload) {
+        return WorkerResponse::Error {
+            context: "AchievementsAndStatsShm/shm_write".into(),
+            message: e.to_string(),
+        };
+    }
+    let path = match writer.into_path() {
+        Ok(p) => p,
+        Err(e) => {
+            return WorkerResponse::Error {
+                context: "AchievementsAndStatsShm/persist".into(),
+                message: e.to_string(),
+            };
+        }
+    };
+    WorkerResponse::AchievementsAndStatsShm {
+        shm_path: path.to_string_lossy().into_owned(),
+        region_bytes: payload.len() as u64,
         stats,
         genre,
     }

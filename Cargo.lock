@@ -3989,6 +3989,7 @@ version = "1.0.0-alpha.2+build.1"
 dependencies = [
  "iced",
  "image",
+ "postcard",
  "reqwest",
  "serde",
  "serde_json",

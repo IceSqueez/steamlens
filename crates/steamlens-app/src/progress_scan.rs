@@ -337,6 +337,12 @@ async fn read_achievements_skipping_async(
                 stats,
                 genre,
             } => return Ok((achievements, stats, genre)),
+            WorkerResponse::AchievementsAndStatsShm { .. } => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "progress_scan does not support AchievementsAndStatsShm; LoadAchievementsAndStatsWithoutIcons should not exceed inline threshold",
+                ));
+            }
             WorkerResponse::Error { message, .. } => {
                 return Err(std::io::Error::other(message));
             }

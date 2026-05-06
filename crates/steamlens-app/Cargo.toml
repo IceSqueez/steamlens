@@ -24,6 +24,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 serde_json = { workspace = true }
+postcard = { workspace = true }
 
 [[bin]]
 name = "steamlens-app"
