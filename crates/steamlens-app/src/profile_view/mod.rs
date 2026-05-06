@@ -187,6 +187,16 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
         }
 
         ProfileViewMessage::RetryFailedScans => Task::none(),
+
+        ProfileViewMessage::BarSliceHoverEnter(tier) => {
+            state.hovered_bar_slice = Some(tier);
+            Task::none()
+        }
+
+        ProfileViewMessage::BarSliceHoverExit => {
+            state.hovered_bar_slice = None;
+            Task::none()
+        }
     }
 }
 

@@ -140,6 +140,7 @@ fn build_profile_section<'a>(
         top5,
         state.games.len(),
         skeleton_phase,
+        state.hovered_bar_slice,
     )
 }
 

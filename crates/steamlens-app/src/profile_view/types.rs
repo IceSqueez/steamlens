@@ -146,6 +146,8 @@ pub enum ProfileViewMessage {
     CardHoverEnter(u32),
     CardHoverExit(u32),
     RetryFailedScans,
+    BarSliceHoverEnter(RarityTier),
+    BarSliceHoverExit,
 }
 
 impl std::fmt::Debug for ProfileViewMessage {
@@ -183,6 +185,8 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::CardHoverEnter(id) => write!(f, "CardHoverEnter({id})"),
             ProfileViewMessage::CardHoverExit(id) => write!(f, "CardHoverExit({id})"),
             ProfileViewMessage::RetryFailedScans => write!(f, "RetryFailedScans"),
+            ProfileViewMessage::BarSliceHoverEnter(t) => write!(f, "BarSliceHoverEnter({t:?})"),
+            ProfileViewMessage::BarSliceHoverExit => write!(f, "BarSliceHoverExit"),
         }
     }
 }
@@ -211,6 +215,7 @@ pub struct ProfileViewState {
     pub loader_pulse_phase: f32,
     pub loader_hiding_since: Option<Instant>,
     pub hovered_card: Option<u32>,
+    pub hovered_bar_slice: Option<RarityTier>,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -242,6 +247,7 @@ impl ProfileViewState {
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
             hovered_card: None,
+            hovered_bar_slice: None,
         }
     }
 
@@ -414,6 +420,7 @@ mod tests {
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
             hovered_card: None,
+            hovered_bar_slice: None,
         }
     }
 
