@@ -48,6 +48,10 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Explicit shared-key so release builds reuse cache across tags
+          # rather than being scoped per-workflow-run.
+          shared-key: release-${{ matrix.target }}
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
