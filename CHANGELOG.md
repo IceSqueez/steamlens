@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.4] - 2026-05-06
+### 🎨 Styling
+- *(fmt)* Fixes formatting issues
+
+### 🐛 Bug Fixes
+- *(core)* Cfg-gate Path import + impl Send/Sync for windows ChildLifetimeGuard
+
+### 🚀 Features
+- *(core)* Add cross-platform path discovery + lift linux-only gate
+- *(core)* Kill-on-parent-exit job objects
+
+### 🛠️ Build
+- *(build)* Cross-platform compile matrix
+- *(workflows)* Cost-optimize cross-platform matrix
+- *(release)* Fail-fast on broken matrix entry
+
 ## [1.0.0-alpha.3] - 2026-05-06
 ### Deps
 - *(libs)* Bump postcard 1 -> 1.1 version
@@ -9,6 +25,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 - *(core)* Drop all live-Steam integration tests
 - *(workspace)* Comment cleanup and simplification pass
+- Release
 
 ### ⚡ Performance
 - *(app)* Replace progress-gated card visibility with skeleton-hydrated model
@@ -40,6 +57,9 @@ All notable changes to this project will be documented in this file.
 - *(app)* Auto-dispatch RequestGlobalPercentages so achievement rarity tags populate
 - *(profile)* Removed wrong name wrapping symbols
 - *(app)* Scanner uses lite IPC variant to skip oversized icons
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-alpha.3
 
 ### 🚀 Features
 - *(app)* Subprocess worker entrypoint (--worker <app_id>)
