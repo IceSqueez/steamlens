@@ -9,6 +9,17 @@ pub struct ChildLifetimeGuard {
     job_handle: windows_sys::Win32::Foundation::HANDLE,
 }
 
+// SAFETY: the Windows variant holds a Job Object kernel handle (raw `*mut
+// c_void`). Win32 Job Object handles are thread-safe for the only operation
+// we perform on them — `CloseHandle` in `Drop` — per
+// https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle.
+// We never read the handle's contents or mutate via `&` reference, so Send
+// (and Sync, by extension) is sound.
+#[cfg(target_os = "windows")]
+unsafe impl Send for ChildLifetimeGuard {}
+#[cfg(target_os = "windows")]
+unsafe impl Sync for ChildLifetimeGuard {}
+
 #[cfg(target_os = "windows")]
 impl Drop for ChildLifetimeGuard {
     fn drop(&mut self) {
