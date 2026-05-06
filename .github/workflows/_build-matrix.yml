@@ -16,7 +16,12 @@ jobs:
     name: Build ${{ matrix.asset_name }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      # Cancel remaining matrix entries on first failure: the `publish` job
+      # in the caller (`release.yml`) requires ALL matrix entries to succeed,
+      # so a partial failure produces no release anyway. No sense burning
+      # ~50 min of macOS time confirming macOS is also broken when Linux or
+      # Windows already failed.
+      fail-fast: true
       matrix:
         include:
           - os: windows-latest
