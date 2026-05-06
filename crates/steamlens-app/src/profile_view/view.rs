@@ -142,6 +142,7 @@ fn build_profile_section<'a>(
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
         capsule_handles: &state.capsule_handles,
+        capsule_size: state.capsule_size,
     })
 }
 
