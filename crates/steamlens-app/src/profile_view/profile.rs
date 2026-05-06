@@ -7,12 +7,11 @@ use iced::widget::{
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
+use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::theme::{
-    C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
-};
+use crate::theme::{C_ACCENT, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
 
-use super::types::{GameEntry, ProfileViewMessage, TopEntry};
+use super::types::{GameEntry, ProfileViewMessage, StoredCapsule, TopEntry};
 
 pub(crate) const C_RARITY_COMMON: Color = Color::from_rgb(0.314, 0.980, 0.482);
 pub(crate) const C_RARITY_UNCOMMON: Color = Color::from_rgb(0.545, 0.914, 0.992);
@@ -211,7 +210,7 @@ pub fn top5_closest_to_complete(
     games: &[GameEntry],
     cached_entries: &HashMap<u32, GameCacheEntry>,
 ) -> Vec<TopEntry> {
-    let mut candidates: Vec<(u32, String, f64, u64, Option<RarityTier>)> = games
+    let mut candidates: Vec<(u32, String, f64, u32, u64)> = games
         .iter()
         .filter_map(|g| {
             let prog = g.progress.as_ref()?;
@@ -219,33 +218,18 @@ pub fn top5_closest_to_complete(
                 return None;
             }
             let ratio = prog.earned as f64 / prog.total as f64;
-            let cache = cached_entries.get(&g.app_id);
-            let last_played = cache.map(|e| e.steam_last_played).unwrap_or(0);
-
-            let rarity_tier = cache.and_then(|e| {
-                if e.achievements.is_empty() {
-                    return None;
-                }
-                let tier_map = compute_tier_map_from_cached(&e.achievements);
-                e.achievements
-                    .iter()
-                    .filter(|a| a.earned)
-                    .filter_map(|a| tier_map.get(&a.api_name).copied())
-                    .max_by_key(|t| match t {
-                        RarityTier::Common => 0u8,
-                        RarityTier::Uncommon => 1,
-                        RarityTier::Rare => 2,
-                        RarityTier::Mythical => 3,
-                        RarityTier::Legendary => 4,
-                    })
-            });
+            let left = prog.total.saturating_sub(prog.earned);
+            let last_played = cached_entries
+                .get(&g.app_id)
+                .map(|e| e.steam_last_played)
+                .unwrap_or(0);
 
             Some((
                 g.app_id,
                 g.name.clone().unwrap_or_default(),
                 ratio,
+                left,
                 last_played,
-                rarity_tier,
             ))
         })
         .collect();
@@ -253,39 +237,42 @@ pub fn top5_closest_to_complete(
     candidates.sort_by(|a, b| {
         b.2.partial_cmp(&a.2)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| b.3.cmp(&a.3))
+            .then_with(|| b.4.cmp(&a.4))
     });
 
     candidates
         .into_iter()
         .take(5)
-        .map(|(app_id, game_name, ratio, _, rarity_tier)| TopEntry {
+        .map(|(app_id, game_name, ratio, left_count, _)| TopEntry {
             app_id,
             game_name,
             completion_pct: ratio * 100.0,
-            rarity_tier,
+            left_count,
         })
         .collect()
 }
 
-pub fn profile_widget<'a>(
-    user_profile: Option<&'a steamlens_core::UserProfile>,
-    avatar_handle: Option<&'a iced::widget::image::Handle>,
-    summary: &ProfileSummary,
-    top5: Vec<TopEntry>,
-    games_count: usize,
-    skeleton_phase: f32,
-    hovered_bar_slice: Option<RarityTier>,
-) -> Element<'a, crate::Message> {
+pub struct ProfileWidgetParams<'a> {
+    pub user_profile: Option<&'a steamlens_core::UserProfile>,
+    pub avatar_handle: Option<&'a iced::widget::image::Handle>,
+    pub summary: ProfileSummary,
+    pub top5: Vec<TopEntry>,
+    pub games_count: usize,
+    pub skeleton_phase: f32,
+    pub hovered_bar_slice: Option<RarityTier>,
+    pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+}
+
+pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate::Message> {
     let left_col = build_left_column(
-        user_profile,
-        avatar_handle,
-        summary,
-        games_count,
-        skeleton_phase,
-        hovered_bar_slice,
+        params.user_profile,
+        params.avatar_handle,
+        &params.summary,
+        params.games_count,
+        params.skeleton_phase,
+        params.hovered_bar_slice,
     );
-    let right_col = build_right_column(top5);
+    let right_col = build_right_column(params.top5, params.capsule_handles, params.skeleton_phase);
 
     const PROFILE_ROW_HEIGHT: f32 = 320.0;
 
@@ -848,8 +835,12 @@ fn build_tick_marks(
         .into()
 }
 
-fn build_right_column(top5: Vec<TopEntry>) -> Element<'static, crate::Message> {
-    let header = text("CLOSEST TO COMPLETE").size(11).color(C_TEXT_MUTED);
+fn build_right_column<'a>(
+    top5: Vec<TopEntry>,
+    capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    skeleton_phase: f32,
+) -> Element<'a, crate::Message> {
+    let header = text("CLOSEST TO 100%").size(11).color(C_TEXT_MUTED);
 
     if top5.is_empty() {
         return column![
@@ -860,70 +851,71 @@ fn build_right_column(top5: Vec<TopEntry>) -> Element<'static, crate::Message> {
         .into();
     }
 
-    let mut rows_col = column![header].spacing(8);
+    let mut rows_col = column![header].spacing(6);
 
     for entry in top5 {
-        rows_col = rows_col.push(build_closest_row(entry));
+        rows_col = rows_col.push(build_closest_row(entry, capsule_handles, skeleton_phase));
     }
 
     rows_col.into()
 }
 
-fn build_closest_row(entry: TopEntry) -> Element<'static, crate::Message> {
-    let color = entry.rarity_tier.map(rarity_color).unwrap_or(C_BORDER);
+fn build_closest_row<'a>(
+    entry: TopEntry,
+    capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    skeleton_phase: f32,
+) -> Element<'a, crate::Message> {
+    const CAPSULE_W: f32 = 60.0;
+    const CAPSULE_H: f32 = 22.0;
 
-    let initial = entry
-        .game_name
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_uppercase()
-        .next()
-        .unwrap_or('?');
-
-    let letter_avatar = container(text(initial.to_string()).size(14).color(color))
-        .width(Length::Fixed(32.0))
-        .height(Length::Fixed(32.0))
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_HOVER)),
-            border: iced::Border {
-                radius: 4.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
+    let capsule_el: Element<'a, crate::Message> =
+        if let Some(stored) = capsule_handles.get(&(entry.app_id, CapsuleSize::Small)) {
+            container(
+                image_widget(stored.handle.clone())
+                    .width(Length::Fixed(CAPSULE_W))
+                    .height(Length::Fixed(CAPSULE_H)),
+            )
+            .width(Length::Fixed(CAPSULE_W))
+            .height(Length::Fixed(CAPSULE_H))
+            .style(|_: &iced::Theme| container::Style {
+                border: iced::Border {
+                    radius: 3.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            })
+            .into()
+        } else {
+            crate::skeleton::skeleton_box(CAPSULE_W, CAPSULE_H, skeleton_phase)
+        };
 
     let game_name_label = text(entry.game_name.clone())
-        .size(13)
+        .size(12)
         .color(C_TEXT_PRIMARY)
         .wrapping(text::Wrapping::None);
+
+    let left_label = text(format!("{} left", entry.left_count))
+        .size(11)
+        .color(C_TEXT_MUTED);
+
+    let info_col = column![
+        container(game_name_label).width(Length::Fill).clip(true),
+        left_label,
+    ]
+    .spacing(1)
+    .width(Length::Fill);
+
     let pct_label = text(format!("{:.0}%", entry.completion_pct))
-        .size(12)
+        .size(13)
         .color(C_ACCENT);
 
-    let info_col = column![container(game_name_label).width(Length::Fill).clip(true),]
-        .spacing(2)
-        .width(Length::Fill);
-
-    let stripe = container(iced::widget::Space::new())
-        .width(Length::Fixed(3.0))
-        .height(Length::Fill)
-        .style(move |_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(color)),
-            ..container::Style::default()
-        });
-
-    let row_content = row![letter_avatar, info_col, pct_label,]
+    let row_content = row![capsule_el, info_col, pct_label,]
         .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().left(6).right(6).top(4).bottom(4));
-
-    let inner = row![stripe, row_content];
+        .align_y(Alignment::Start)
+        .padding(Padding::default().left(6).right(6).top(5).bottom(5));
 
     let app_id = entry.app_id;
-    let row_container = container(inner).style(move |_: &iced::Theme| container::Style {
+    let row_container = container(row_content).style(|_: &iced::Theme| container::Style {
         background: Some(iced::Background::Color(C_HOVER)),
         border: iced::Border {
             radius: 6.0.into(),
@@ -1210,6 +1202,7 @@ mod tests {
         assert_eq!(top5.len(), 1);
         assert!((top5[0].completion_pct - 75.0).abs() < 0.01);
         assert_eq!(top5[0].game_name, "Game 1");
+        assert_eq!(top5[0].left_count, 25);
     }
 
     #[test]
