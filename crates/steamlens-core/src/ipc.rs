@@ -1,3 +1,4 @@
+pub mod shm;
 pub mod types;
 
 use thiserror::Error;

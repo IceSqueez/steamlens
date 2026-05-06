@@ -12,10 +12,12 @@ tag = false
 
 [dependencies]
 libloading = { workspace = true }
-steamlens-vdf = { workspace = true }
-thiserror = { workspace = true }
-serde = { workspace = true }
+memmap2 = { workspace = true }
 postcard = { workspace = true }
+serde = { workspace = true }
+steamlens-vdf = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

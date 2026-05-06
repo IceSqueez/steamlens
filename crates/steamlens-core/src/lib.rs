@@ -19,6 +19,7 @@ mod user_stats;
 
 pub use client::{Client, Image, connect};
 pub use error::{LibraryError, SteamError};
+pub use ipc::shm::{INLINE_THRESHOLD_BYTES, ShmError, ShmReader, ShmWriter};
 pub use ipc::{
     AchievementData, AchievementIcon, FrameError, StatData, StatValue, WorkerCommand,
     WorkerResponse,
