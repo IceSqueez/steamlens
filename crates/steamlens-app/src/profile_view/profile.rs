@@ -553,16 +553,7 @@ fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, crate::Me
     ]
     .align_y(Alignment::Center);
 
-    let separator = container(iced::widget::Space::new())
-        .width(Length::Fill)
-        .height(Length::Fixed(1.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                a: 0.30,
-                ..C_BORDER
-            })),
-            ..container::Style::default()
-        });
+    let separator = iced::widget::rule::horizontal(1);
 
     column![separator, label_row].spacing(6).into()
 }
