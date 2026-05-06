@@ -20,7 +20,7 @@ pub(crate) const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 pub(crate) const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
 const RARITY_CARD_WIDTH: f32 = 95.0;
-const RARITY_CARD_GAP: f32 = 8.0;
+const RARITY_CARD_GAP: f32 = 16.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
 
@@ -504,9 +504,9 @@ fn build_count_card<'a>(
 
     let number = text(count_str).size(18).color(accent);
     let pct_text = text(pct_str).size(10).color(Color { a: 0.75, ..accent });
-    let label_text = text(label).size(9).color(C_TEXT_MUTED);
+    let label_text = text(label).size(11).color(C_TEXT_MUTED);
 
-    let info_col = column![number, pct_text, label_text]
+    let info_col = column![number, label_text, pct_text]
         .spacing(2)
         .padding(Padding::default().left(8).right(6).top(6).bottom(6));
 
