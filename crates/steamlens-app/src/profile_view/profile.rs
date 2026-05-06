@@ -20,7 +20,7 @@ pub(crate) const C_RARITY_RARE: Color = Color::from_rgb(0.741, 0.576, 0.976);
 pub(crate) const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 pub(crate) const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
-const RARITY_CARD_WIDTH: f32 = 120.0;
+const RARITY_CARD_WIDTH: f32 = 95.0;
 const RARITY_CARD_GAP: f32 = 8.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
