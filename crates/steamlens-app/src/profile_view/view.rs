@@ -781,7 +781,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
             .into(),
     };
 
-    let hover_overlay: Element<'_, crate::Message> = if is_hovered {
+    let hover_overlay: Element<'_, crate::Message> = if is_hovered || is_pinned {
         build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
     } else {
         iced::widget::Space::new()
