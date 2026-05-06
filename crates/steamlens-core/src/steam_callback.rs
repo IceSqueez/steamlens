@@ -5,6 +5,9 @@ pub const CALLBACK_ID_USER_STATS_STORED: i32 = 1102;
 pub const CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED: i32 = 1109;
 pub const CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
 
+pub const STEAM_RESULT_OK: i32 = 1;
+pub const STEAM_RESULT_NO_STATS_SCHEMA: i32 = 2;
+
 /// Only `k_EResultOK` (1) is named; other Steamworks codes are
 /// preserved as `Other(i32)` for caller inspection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
