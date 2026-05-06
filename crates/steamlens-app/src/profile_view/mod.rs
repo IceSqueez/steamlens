@@ -246,6 +246,7 @@ pub fn view_with_cache_actions<'a>(
     cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
+    steam_level: Option<u32>,
 ) -> iced::Element<'a, crate::Message> {
     view::render_with_cache_actions(
         state,
@@ -254,5 +255,6 @@ pub fn view_with_cache_actions<'a>(
         cached_entries,
         skeleton_phase,
         pinned,
+        steam_level,
     )
 }

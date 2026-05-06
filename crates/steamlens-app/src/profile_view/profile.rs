@@ -268,6 +268,7 @@ pub struct ProfileWidgetParams<'a> {
     pub hovered_bar_slice: Option<RarityTier>,
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub capsule_size: CapsuleSize,
+    pub steam_level: Option<u32>,
 }
 
 pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate::Message> {
@@ -278,6 +279,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate:
         params.games_count,
         params.skeleton_phase,
         params.hovered_bar_slice,
+        params.steam_level,
     );
     let right_col = build_right_column(
         params.top5,
@@ -329,6 +331,7 @@ fn build_left_column<'a>(
     games_count: usize,
     skeleton_phase: f32,
     hovered_bar_slice: Option<RarityTier>,
+    steam_level: Option<u32>,
 ) -> Element<'a, crate::Message> {
     let header_row = build_profile_header(
         user_profile,
@@ -336,6 +339,7 @@ fn build_left_column<'a>(
         summary,
         games_count,
         skeleton_phase,
+        steam_level,
     );
     let rarity_cards = build_rarity_cards(summary);
     let separator_row = build_cards_separator(summary);
@@ -359,6 +363,7 @@ fn build_profile_header<'a>(
     summary: &ProfileSummary,
     games_count: usize,
     skeleton_phase: f32,
+    steam_level: Option<u32>,
 ) -> Element<'a, crate::Message> {
     let persona = user_profile
         .map(|p| p.persona_name.as_str())
@@ -368,7 +373,11 @@ fn build_profile_header<'a>(
 
     let nickname = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
 
-    let profile_level = container(text("lvl \u{2014}").size(11).color(C_ACCENT))
+    let level_str = match steam_level {
+        Some(n) => format!("level ({n})"),
+        None => "level (X)".to_owned(),
+    };
+    let profile_level = container(text(level_str).size(11).color(C_ACCENT))
         .padding(Padding::default().left(6).right(6).top(2).bottom(2))
         .style(|_: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(Color {

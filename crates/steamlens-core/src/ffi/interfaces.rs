@@ -112,6 +112,36 @@ pub struct ISteamUser012 {
     _reserved_15_user_has_license_for_app: usize,
 }
 
+/// `SteamUser023` vtable — field order is positional; slot order load-bearing.
+#[repr(C)]
+pub struct ISteamUser023 {
+    _reserved_00_get_h_steam_user: usize,
+    _reserved_01_b_logged_on: usize,
+    _reserved_02_get_steam_id: usize,
+    _reserved_03_initiate_game_connection_deprecated: usize,
+    _reserved_04_terminate_game_connection_deprecated: usize,
+    _reserved_05_track_app_usage_event: usize,
+    _reserved_06_get_user_data_folder: usize,
+    _reserved_07_start_voice_recording: usize,
+    _reserved_08_stop_voice_recording: usize,
+    _reserved_09_get_available_voice: usize,
+    _reserved_10_get_voice: usize,
+    _reserved_11_decompress_voice: usize,
+    _reserved_12_get_voice_optimal_sample_rate: usize,
+    _reserved_13_get_auth_session_ticket: usize,
+    _reserved_14_get_auth_ticket_for_web_api: usize,
+    _reserved_15_begin_auth_session: usize,
+    _reserved_16_end_auth_session: usize,
+    _reserved_17_cancel_auth_ticket: usize,
+    _reserved_18_user_has_license_for_app: usize,
+    _reserved_19_b_is_behind_nat: usize,
+    _reserved_20_advertise_game: usize,
+    _reserved_21_request_encrypted_app_ticket: usize,
+    _reserved_22_get_encrypted_app_ticket: usize,
+    _reserved_23_get_game_badge_level: usize,
+    pub get_player_steam_level: unsafe extern "C" fn(this: *mut c_void) -> i32,
+}
+
 pub type CreateInterfaceFn =
     unsafe extern "C" fn(version: *const c_char, return_code: *mut i32) -> *mut c_void;
 

@@ -13,6 +13,7 @@ pub struct ProbedProfile {
     pub persona_name: String,
     pub avatar_image: Option<Vec<u8>>,
     pub game_summaries: Vec<GameSummary>,
+    pub steam_level: Option<u32>,
 }
 
 #[derive(Debug, Error)]
@@ -82,6 +83,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
                 persona_name: payload.persona_name,
                 avatar_image: payload.avatar_png,
                 game_summaries: payload.game_summaries,
+                steam_level: payload.steam_level,
             })
         }
         WorkerResponse::Error { message, .. } => {

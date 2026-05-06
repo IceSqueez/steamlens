@@ -365,6 +365,7 @@ mod tests {
                 change_number: 0,
                 last_played: Some(1_700_000_000),
             }],
+            steam_level: Some(42),
         };
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
@@ -376,6 +377,7 @@ mod tests {
         );
         assert_eq!(restored.game_summaries.len(), 1);
         assert_eq!(restored.game_summaries[0].app_id, 12345);
+        assert_eq!(restored.steam_level, Some(42));
     }
 
     #[test]
@@ -385,6 +387,7 @@ mod tests {
             persona_name: "Ghost".to_owned(),
             avatar_png: None,
             game_summaries: vec![],
+            steam_level: None,
         };
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
@@ -392,5 +395,6 @@ mod tests {
         assert_eq!(restored.persona_name, "Ghost");
         assert!(restored.avatar_png.is_none());
         assert!(restored.game_summaries.is_empty());
+        assert!(restored.steam_level.is_none());
     }
 }
