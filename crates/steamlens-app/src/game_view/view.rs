@@ -1133,10 +1133,14 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, Message>
     )
     .width(Length::Fill);
 
+    let separator = container(iced::widget::rule::horizontal(1))
+        .padding(Padding::default().left(8).right(8).top(8).bottom(0))
+        .width(Length::Fixed(card_w));
+
     let card_body = column![
         top_row,
         iced::widget::Space::new().height(Length::Fixed(10.0)),
-        iced::widget::rule::horizontal(1),
+        separator,
         iced::widget::Space::new().height(Length::Fill),
         bottom_row,
     ]
@@ -1464,10 +1468,14 @@ fn achievement_card_widget<'a>(
             .into()
     };
 
+    let separator = container(iced::widget::rule::horizontal(1))
+        .padding(Padding::default().left(8).right(8).top(8).bottom(0))
+        .width(Length::Fixed(card_w));
+
     let card_body = column![
         top_row,
         iced::widget::Space::new().height(Length::Fixed(10.0)),
-        iced::widget::rule::horizontal(1),
+        separator,
         iced::widget::Space::new().height(Length::Fill),
         bottom_row,
     ]
