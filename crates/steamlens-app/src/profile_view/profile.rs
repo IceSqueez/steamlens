@@ -290,7 +290,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate:
 
     let two_col_row = row![
         container(left_col)
-            .width(Length::FillPortion(3))
+            .width(Length::FillPortion(5))
             .height(Length::Fixed(PROFILE_ROW_HEIGHT))
             .padding(18)
             .style(|_: &iced::Theme| container::Style {
@@ -302,7 +302,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate:
                 ..container::Style::default()
             }),
         container(right_col)
-            .width(Length::FillPortion(1))
+            .width(Length::FillPortion(2))
             .height(Length::Fixed(PROFILE_ROW_HEIGHT))
             .padding(16)
             .style(|_: &iced::Theme| container::Style {

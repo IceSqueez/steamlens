@@ -64,7 +64,7 @@ fn card_width(size: CapsuleSize) -> f32 {
 }
 
 fn total_card_height(capsule_h: f32) -> f32 {
-    capsule_h + 32.0 + 4.0 + 8.0 + 9.0 + 24.0
+    capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 24.0 + 8.0
 }
 
 pub fn render_with_cache_actions<'a>(
@@ -632,25 +632,46 @@ fn build_skeleton_card<'a>(
 
     let capsule_skel = skeleton_box(capsule_w, capsule_h, phase);
     let name_skel = skeleton_box(card_w * title_width_ratio, 12.0, phase);
-    let progress_skel = skeleton_box(card_w, 4.0, phase);
-    let tag_skel_a = skeleton_box(card_w * 0.30, 18.0, phase);
-    let tag_skel_b = skeleton_box(card_w * 0.22, 18.0, phase);
+    let counter_skel = skeleton_box(card_w * 0.18, 12.0, phase);
+    let progress_skel = skeleton_box(card_w - 16.0, 8.0, phase);
+    let tag_skel_genre = skeleton_box(card_w * 0.28, 18.0, phase);
+    let tag_skel_pct = skeleton_box(card_w * 0.18, 18.0, phase);
 
     let separator_space = iced::widget::Space::new()
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(4.0 + 8.0));
+        .height(Length::Fixed(8.0));
 
-    let name_container = container(name_skel)
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(32.0))
-        .align_x(Alignment::Start)
+    let name_row_skel = container(
+        row![
+            name_skel,
+            iced::widget::Space::new().width(Length::Fill),
+            counter_skel
+        ]
         .align_y(Alignment::Center)
-        .padding(Padding::default().left(6).right(6).top(8).bottom(8));
+        .width(Length::Fixed(card_w - 16.0)),
+    )
+    .width(Length::Fixed(card_w))
+    .height(Length::Fixed(24.0))
+    .align_y(Alignment::Center)
+    .padding(Padding::default().left(8).right(8));
+
+    let bar_container = container(progress_skel)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(8.0))
+        .padding(Padding::default().left(8).right(8));
+
+    let bar_gap = iced::widget::Space::new()
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(8.0));
 
     let tags_row = container(
-        row![tag_skel_a, tag_skel_b]
-            .spacing(6)
-            .align_y(Alignment::Center),
+        row![
+            tag_skel_genre,
+            iced::widget::Space::new().width(Length::Fill),
+            tag_skel_pct
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
     )
     .width(Length::Fixed(card_w))
     .height(Length::Fixed(24.0))
@@ -659,8 +680,9 @@ fn build_skeleton_card<'a>(
     let card_inner = column![
         capsule_skel,
         separator_space,
-        name_container,
-        progress_skel,
+        name_row_skel,
+        bar_gap,
+        bar_container,
         tags_row,
     ]
     .spacing(0);
@@ -759,8 +781,6 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
             .into(),
     };
 
-    let tier_bar = build_tier_stacked_bar(tier_breakdown, card_w, capsule_h);
-
     let hover_overlay: Element<'_, crate::Message> = if is_hovered {
         build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
     } else {
@@ -770,35 +790,24 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
             .into()
     };
 
-    let capsule_stack = stack![capsule_area, tier_bar, hover_overlay];
-
-    let name_label = container(
-        text(entry.name.as_deref().unwrap_or(""))
-            .size(12)
-            .color(C_TEXT)
-            .wrapping(text::Wrapping::Word)
-            .line_height(text::LineHeight::Relative(1.2)),
-    )
-    .width(Length::Fixed(card_w))
-    .height(Length::Fixed(32.0))
-    .align_x(Alignment::Start)
-    .align_y(Alignment::End)
-    .padding(Padding::default().left(6).right(6).top(0).bottom(4));
+    let capsule_stack = stack![capsule_area, hover_overlay];
 
     let separator = container(iced::widget::rule::horizontal(1))
         .padding(Padding::default().left(8).right(8).top(8).bottom(0))
         .width(Length::Fixed(card_w));
 
+    let name_row = build_name_row(entry, card_w);
+
+    let tier_bar = build_tier_stacked_bar(
+        tier_breakdown,
+        entry.progress.as_ref().map(|p| p.earned).unwrap_or(0),
+        entry.progress.as_ref().map(|p| p.total).unwrap_or(0),
+        card_w,
+    );
+
     let tags_row = build_tags_row(entry, card_w, genre);
 
-    let card_inner = column![
-        capsule_stack,
-        separator,
-        iced::widget::Space::new().height(Length::Fill),
-        name_label,
-        tags_row,
-    ]
-    .spacing(0);
+    let card_inner = column![capsule_stack, separator, name_row, tier_bar, tags_row,].spacing(0);
 
     let card = container(card_inner)
         .width(Length::Fixed(card_w))
@@ -887,10 +896,12 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
 
 fn build_tier_stacked_bar<'a>(
     tier_breakdown: &'a [(RarityTier, u32)],
+    total_earned: u32,
+    total_achievements: u32,
     card_w: f32,
-    capsule_h: f32,
 ) -> Element<'a, crate::Message> {
-    const BAR_H: f32 = 4.0;
+    const BAR_H: f32 = 8.0;
+    const BAR_RADIUS: f32 = 4.0;
     const TIER_ORDER: [RarityTier; 5] = [
         RarityTier::Common,
         RarityTier::Uncommon,
@@ -898,23 +909,27 @@ fn build_tier_stacked_bar<'a>(
         RarityTier::Mythical,
         RarityTier::Legendary,
     ];
+    const C_TRACK: Color = Color::from_rgba(0.4, 0.45, 0.65, 0.25);
 
-    let total_unlocked: u32 = tier_breakdown.iter().map(|(_, c)| c).sum();
+    let inner_w = card_w - 16.0;
+    let locked_count = total_achievements.saturating_sub(total_earned);
+    let has_any = total_achievements > 0;
 
-    let bar: Element<'_, crate::Message> = if tier_breakdown.is_empty() || total_unlocked == 0 {
+    let bar: Element<'_, crate::Message> = if !has_any {
         container(iced::widget::Space::new())
-            .width(Length::Fixed(card_w))
+            .width(Length::Fixed(inner_w))
             .height(Length::Fixed(BAR_H))
             .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
+                background: Some(iced::Background::Color(C_TRACK)),
                 border: iced::Border {
-                    radius: 2.0.into(),
+                    radius: BAR_RADIUS.into(),
                     ..iced::Border::default()
                 },
                 ..container::Style::default()
             })
             .into()
     } else {
+        let total_f = total_achievements as f32;
         let mut segments: iced::widget::Row<'_, crate::Message> = row![].spacing(0);
         let mut any_segment = false;
 
@@ -927,7 +942,7 @@ fn build_tier_stacked_bar<'a>(
             if count == 0 {
                 continue;
             }
-            let seg_w = (count as f32 / total_unlocked as f32 * card_w).max(1.0);
+            let seg_w = (count as f32 / total_f * inner_w).max(1.0);
             let color = rarity_color_for_tier(tier);
 
             if any_segment {
@@ -935,7 +950,7 @@ fn build_tier_stacked_bar<'a>(
                     .width(Length::Fixed(1.0))
                     .height(Length::Fixed(BAR_H))
                     .style(|_: &iced::Theme| container::Style {
-                        background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
+                        background: Some(iced::Background::Color(C_TRACK)),
                         ..container::Style::default()
                     });
                 segments = segments.push(gap);
@@ -952,13 +967,35 @@ fn build_tier_stacked_bar<'a>(
             any_segment = true;
         }
 
+        if locked_count > 0 {
+            if any_segment {
+                let gap = container(iced::widget::Space::new())
+                    .width(Length::Fixed(1.0))
+                    .height(Length::Fixed(BAR_H))
+                    .style(|_: &iced::Theme| container::Style {
+                        background: Some(iced::Background::Color(C_TRACK)),
+                        ..container::Style::default()
+                    });
+                segments = segments.push(gap);
+            }
+            let locked_w = (locked_count as f32 / total_f * inner_w).max(1.0);
+            let locked_seg = container(iced::widget::Space::new())
+                .width(Length::Fixed(locked_w))
+                .height(Length::Fixed(BAR_H))
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(C_TRACK)),
+                    ..container::Style::default()
+                });
+            segments = segments.push(locked_seg);
+        }
+
         container(segments)
-            .width(Length::Fixed(card_w))
+            .width(Length::Fixed(inner_w))
             .height(Length::Fixed(BAR_H))
             .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color { a: 0.35, ..C_HOVER })),
+                background: Some(iced::Background::Color(C_TRACK)),
                 border: iced::Border {
-                    radius: 2.0.into(),
+                    radius: BAR_RADIUS.into(),
                     ..iced::Border::default()
                 },
                 ..container::Style::default()
@@ -966,13 +1003,10 @@ fn build_tier_stacked_bar<'a>(
             .into()
     };
 
-    let spacer = iced::widget::Space::new()
+    container(bar)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(capsule_h - BAR_H));
-
-    container(column![spacer, bar].spacing(0))
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(capsule_h))
+        .height(Length::Fixed(BAR_H))
+        .padding(Padding::default().left(8).right(8))
         .into()
 }
 
@@ -1026,6 +1060,36 @@ fn build_hover_overlay<'a>(
         .align_x(Alignment::End)
         .align_y(Alignment::Start)
         .padding(Padding::default().top(8).right(8))
+        .into()
+}
+
+fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::Message> {
+    let name_text = text(entry.name.as_deref().unwrap_or(""))
+        .size(12)
+        .color(C_TEXT)
+        .wrapping(text::Wrapping::None);
+
+    let counter: Element<'_, crate::Message> = match entry.progress.as_ref() {
+        Some(p) if p.total > 0 => text(format!("{} / {}", p.earned, p.total))
+            .size(11)
+            .color(C_MUTED)
+            .into(),
+        _ => iced::widget::Space::new().width(Length::Shrink).into(),
+    };
+
+    let inner = row![
+        name_text,
+        iced::widget::Space::new().width(Length::Fill),
+        counter
+    ]
+    .align_y(Alignment::Center)
+    .spacing(4);
+
+    container(inner)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(24.0))
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(8).right(8).top(4).bottom(0))
         .into()
 }
 
@@ -1117,14 +1181,19 @@ fn build_tags_row<'a>(
             .into()
     });
 
-    let mut tags: iced::widget::Row<'_, crate::Message> =
+    let mut left_tags: iced::widget::Row<'_, crate::Message> =
         row![].spacing(6).align_y(Alignment::Center);
+
+    if let Some(gtag) = genre_tag {
+        left_tags = left_tags.push(gtag);
+    }
+
+    let mut tags = row![left_tags, iced::widget::Space::new().width(Length::Fill)]
+        .spacing(0)
+        .align_y(Alignment::Center);
 
     if let Some(ctag) = completion_tag {
         tags = tags.push(ctag);
-    }
-    if let Some(gtag) = genre_tag {
-        tags = tags.push(gtag);
     }
 
     container(tags)
