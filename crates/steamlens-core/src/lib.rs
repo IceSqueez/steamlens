@@ -20,7 +20,7 @@ pub use ipc::shm::{
 pub use ipc::{
     AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
     CardOnlyAchievement, CardOnlyPayload, FrameError, ProbeResultPayload, StatData, StatValue,
-    WorkerCommand, WorkerResponse,
+    WorkerCommand, WorkerErrorKind, WorkerResponse,
 };
 pub use library::{GameSummary, enumerate_owned_games};
 pub use probe::{ProbeError, ProbedProfile, probe_steam};

@@ -5,7 +5,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use steamlens_core::ipc::{
-    FrameError, WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
+    FrameError, WorkerCommand, WorkerErrorKind, WorkerResponse, decode_frame, encode_frame,
+    parse_header,
 };
 use steamlens_core::{
     AchievementData, AchievementIcon, Client, StatKind, StatValue, SteamCallback,
@@ -67,7 +68,7 @@ async fn probe_main() -> i32 {
         Ok(c) => c,
         Err(e) => {
             let _ = write_response(&WorkerResponse::Error {
-                context: "probe".into(),
+                kind: WorkerErrorKind::Connect,
                 message: e.to_string(),
             })
             .await;
@@ -82,7 +83,7 @@ async fn probe_main() -> i32 {
         Some(n) => n,
         None => {
             let _ = write_response(&WorkerResponse::Error {
-                context: "probe".into(),
+                kind: WorkerErrorKind::Generic,
                 message: "GetPersonaName returned null or empty".into(),
             })
             .await;
@@ -154,7 +155,7 @@ async fn worker_main(app_id: u32) -> i32 {
                 t0.elapsed()
             );
             let _ = write_response(&WorkerResponse::Error {
-                context: "connect".into(),
+                kind: WorkerErrorKind::Connect,
                 message: e.to_string(),
             })
             .await;
@@ -188,7 +189,7 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
                 match cmd {
                     Err(e) => {
                         let _ = write_response(&WorkerResponse::Error {
-                            context: "read_command".into(),
+                            kind: WorkerErrorKind::Generic,
                             message: e.to_string(),
                         }).await;
                         return 1;
@@ -236,8 +237,8 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    context: format!("SetAchievement({name})"),
-                    message: e.to_string(),
+                    kind: WorkerErrorKind::Generic,
+                    message: format!("SetAchievement({name}): {e}"),
                 },
             };
             if write_response(&resp).await.is_err() {
@@ -249,8 +250,8 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().clear_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    context: format!("ClearAchievement({name})"),
-                    message: e.to_string(),
+                    kind: WorkerErrorKind::Generic,
+                    message: format!("ClearAchievement({name}): {e}"),
                 },
             };
             if write_response(&resp).await.is_err() {
@@ -262,8 +263,8 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_stat_int(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    context: format!("SetStatInt({name})"),
-                    message: e.to_string(),
+                    kind: WorkerErrorKind::Generic,
+                    message: format!("SetStatInt({name}): {e}"),
                 },
             };
             if write_response(&resp).await.is_err() {
@@ -275,8 +276,8 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_stat_float(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    context: format!("SetStatFloat({name})"),
-                    message: e.to_string(),
+                    kind: WorkerErrorKind::Generic,
+                    message: format!("SetStatFloat({name}): {e}"),
                 },
             };
             if write_response(&resp).await.is_err() {
@@ -335,7 +336,7 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
 
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         return WorkerResponse::Error {
-            context: "RequestUserStats".into(),
+            kind: WorkerErrorKind::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -349,7 +350,7 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
         Ok(n) => n,
         Err(e) => {
             return WorkerResponse::Error {
-                context: "num_achievements".into(),
+                kind: WorkerErrorKind::NumAchievements,
                 message: e.to_string(),
             };
         }
@@ -455,7 +456,7 @@ fn shm_response_for_aas(payload: steamlens_core::AchievementsAndStatsPayload) ->
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "AchievementsAndStats/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -468,7 +469,7 @@ fn shm_response_for_count(payload: steamlens_core::AchievementCountPayload) -> W
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "AchievementCount/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -481,7 +482,7 @@ fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerResponse {
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "GlobalPercentagesReady/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -495,7 +496,7 @@ fn shm_response_for_icon(name: String, icon: AchievementIcon) -> WorkerResponse 
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "IconUpdated/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -508,7 +509,7 @@ fn shm_response_for_probe(payload: steamlens_core::ProbeResultPayload) -> Worker
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "ProbeResult/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -521,7 +522,7 @@ fn shm_response_for_card_only(payload: steamlens_core::CardOnlyPayload) -> Worke
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            context: "CardOnlyAchievements/shm".into(),
+            kind: WorkerErrorKind::Generic,
             message: e.to_string(),
         },
     }
@@ -533,7 +534,7 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
 
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         return WorkerResponse::Error {
-            context: "RequestUserStats".into(),
+            kind: WorkerErrorKind::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -546,7 +547,7 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
         Ok(n) => n,
         Err(e) => {
             return WorkerResponse::Error {
-                context: "num_achievements".into(),
+                kind: WorkerErrorKind::NumAchievements,
                 message: e.to_string(),
             };
         }
@@ -579,7 +580,7 @@ async fn quick_achievement_count(client: &Client) -> WorkerResponse {
 
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         return WorkerResponse::Error {
-            context: "QuickAchievementCount/RequestUserStats".into(),
+            kind: WorkerErrorKind::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -592,7 +593,7 @@ async fn quick_achievement_count(client: &Client) -> WorkerResponse {
         Ok(n) => n,
         Err(e) => {
             return WorkerResponse::Error {
-                context: "QuickAchievementCount/num_achievements".into(),
+                kind: WorkerErrorKind::NumAchievements,
                 message: e.to_string(),
             };
         }
@@ -648,7 +649,7 @@ async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<
                             ));
                         }
                         return Some(WorkerResponse::Error {
-                            context: "UserStatsReceived".into(),
+                            kind: WorkerErrorKind::UserStatsReceived,
                             message: format!("result code {}", result.raw()),
                         });
                     }
@@ -656,14 +657,14 @@ async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<
             }
             Err(e) => {
                 return Some(WorkerResponse::Error {
-                    context: "poll_callbacks".into(),
+                    kind: WorkerErrorKind::PollCallbacks,
                     message: e.to_string(),
                 });
             }
         }
         if std::time::Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
-                context: "UserStatsReceived".into(),
+                kind: WorkerErrorKind::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
@@ -706,7 +707,7 @@ async fn wait_for_stats_received_card_only(
                             ));
                         }
                         return Some(WorkerResponse::Error {
-                            context: "UserStatsReceived".into(),
+                            kind: WorkerErrorKind::UserStatsReceived,
                             message: format!("result code {}", result.raw()),
                         });
                     }
@@ -714,14 +715,14 @@ async fn wait_for_stats_received_card_only(
             }
             Err(e) => {
                 return Some(WorkerResponse::Error {
-                    context: "poll_callbacks".into(),
+                    kind: WorkerErrorKind::PollCallbacks,
                     message: e.to_string(),
                 });
             }
         }
         if std::time::Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
-                context: "UserStatsReceived".into(),
+                kind: WorkerErrorKind::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
@@ -733,7 +734,7 @@ async fn store_stats_and_wait(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     if let Err(e) = stats_iface.store_stats() {
         return WorkerResponse::Error {
-            context: "StoreStats".into(),
+            kind: WorkerErrorKind::StoreStats,
             message: e.to_string(),
         };
     }
@@ -751,7 +752,7 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
                             return WorkerResponse::Stored;
                         } else {
                             return WorkerResponse::Error {
-                                context: "UserStatsStored".into(),
+                                kind: WorkerErrorKind::UserStatsStored,
                                 message: format!("result code {}", result.raw()),
                             };
                         }
@@ -760,14 +761,14 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
             }
             Err(e) => {
                 return WorkerResponse::Error {
-                    context: "poll_callbacks".into(),
+                    kind: WorkerErrorKind::PollCallbacks,
                     message: e.to_string(),
                 };
             }
         }
         if std::time::Instant::now() >= deadline {
             return WorkerResponse::Error {
-                context: "StoreStats".into(),
+                kind: WorkerErrorKind::StoreStats,
                 message: "timed out waiting for UserStatsStored".into(),
             };
         }
@@ -779,13 +780,13 @@ async fn reset_all_and_wait(client: &Client, include_achievements: bool) -> Work
     let stats_iface = client.user_stats();
     if let Err(e) = stats_iface.reset_all_stats(include_achievements) {
         return WorkerResponse::Error {
-            context: "ResetAllStats".into(),
+            kind: WorkerErrorKind::ResetAllStats,
             message: e.to_string(),
         };
     }
     if let Err(e) = stats_iface.store_stats() {
         return WorkerResponse::Error {
-            context: "StoreStats after reset".into(),
+            kind: WorkerErrorKind::StoreStats,
             message: e.to_string(),
         };
     }
@@ -805,7 +806,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
         Ok(h) => h,
         Err(e) => {
             return WorkerResponse::Error {
-                context: "RequestGlobalAchievementPercentages".into(),
+                kind: WorkerErrorKind::RequestGlobalPercentages,
                 message: e.to_string(),
             };
         }
@@ -822,28 +823,28 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
         ) {
             Err(e) => {
                 return WorkerResponse::Error {
-                    context: "poll_call_result".into(),
+                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
                     message: e.to_string(),
                 };
             }
             Ok(None) => {}
             Ok(Some(Err(e))) => {
                 return WorkerResponse::Error {
-                    context: "GlobalAchievementPercentages APICall".into(),
+                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
                     message: e.to_string(),
                 };
             }
             Ok(Some(Ok(bytes))) => {
                 if bytes.len() < PAYLOAD_SIZE {
                     return WorkerResponse::Error {
-                        context: "GlobalAchievementPercentagesReady".into(),
+                        kind: WorkerErrorKind::GlobalPercentagesReady,
                         message: "payload too short".into(),
                     };
                 }
                 let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
                 if result_code != STEAM_RESULT_OK {
                     return WorkerResponse::Error {
-                        context: "GlobalAchievementPercentagesReady".into(),
+                        kind: WorkerErrorKind::GlobalPercentagesReady,
                         message: format!("result code {result_code}"),
                     };
                 }
@@ -853,7 +854,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
 
         if std::time::Instant::now() >= deadline {
             return WorkerResponse::Error {
-                context: "RequestGlobalPercentages".into(),
+                kind: WorkerErrorKind::RequestGlobalPercentages,
                 message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
             };
         }
@@ -867,7 +868,7 @@ fn collect_global_percentages(client: &Client) -> WorkerResponse {
         Ok(n) => n,
         Err(e) => {
             return WorkerResponse::Error {
-                context: "num_achievements (percentages)".into(),
+                kind: WorkerErrorKind::NumAchievements,
                 message: e.to_string(),
             };
         }

@@ -10,6 +10,41 @@ pub use types::{
 
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum WorkerErrorKind {
+    Connect,
+    RequestUserStats,
+    UserStatsReceived,
+    NumAchievements,
+    PollCallbacks,
+    StoreStats,
+    UserStatsStored,
+    ResetAllStats,
+    RequestGlobalPercentages,
+    GlobalPercentagesReady,
+    GlobalPercentagesAPICall,
+    Generic,
+}
+
+impl WorkerErrorKind {
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Connect => "connect",
+            Self::RequestUserStats => "request_user_stats",
+            Self::UserStatsReceived => "user_stats_received",
+            Self::NumAchievements => "num_achievements",
+            Self::PollCallbacks => "poll_callbacks",
+            Self::StoreStats => "store_stats",
+            Self::UserStatsStored => "user_stats_stored",
+            Self::ResetAllStats => "reset_all_stats",
+            Self::RequestGlobalPercentages => "request_global_percentages",
+            Self::GlobalPercentagesReady => "global_percentages_ready",
+            Self::GlobalPercentagesAPICall => "global_percentages_api_call",
+            Self::Generic => "generic",
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum FrameError {
     #[error("frame too large: {size} bytes (max {max})")]
@@ -66,7 +101,7 @@ pub enum WorkerResponse {
         region_bytes: u64,
     },
     Error {
-        context: String,
+        kind: WorkerErrorKind,
         message: String,
     },
     Disconnected,
@@ -181,7 +216,7 @@ mod tests {
                 region_bytes: 4096,
             },
             WorkerResponse::Error {
-                context: "StoreStats".to_owned(),
+                kind: WorkerErrorKind::StoreStats,
                 message: "pipe closed".to_owned(),
             },
             WorkerResponse::Disconnected,
@@ -190,6 +225,69 @@ mod tests {
                 region_bytes: 512,
             },
         ]
+    }
+
+    fn all_error_kinds() -> Vec<WorkerErrorKind> {
+        vec![
+            WorkerErrorKind::Connect,
+            WorkerErrorKind::RequestUserStats,
+            WorkerErrorKind::UserStatsReceived,
+            WorkerErrorKind::NumAchievements,
+            WorkerErrorKind::PollCallbacks,
+            WorkerErrorKind::StoreStats,
+            WorkerErrorKind::UserStatsStored,
+            WorkerErrorKind::ResetAllStats,
+            WorkerErrorKind::RequestGlobalPercentages,
+            WorkerErrorKind::GlobalPercentagesReady,
+            WorkerErrorKind::GlobalPercentagesAPICall,
+            WorkerErrorKind::Generic,
+        ]
+    }
+
+    #[test]
+    fn worker_error_kind_tags_are_unique_and_nonempty() {
+        let kinds = all_error_kinds();
+        let tags: Vec<&str> = kinds.iter().map(|k| k.tag()).collect();
+        for tag in &tags {
+            assert!(!tag.is_empty(), "tag must not be empty");
+        }
+        let mut deduped = tags.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(
+            deduped.len(),
+            tags.len(),
+            "all tags must be unique: {tags:?}"
+        );
+    }
+
+    #[test]
+    fn worker_error_kind_roundtrip_via_response_frame() {
+        for kind in all_error_kinds() {
+            let resp = WorkerResponse::Error {
+                kind,
+                message: format!("test error for {:?}", kind),
+            };
+            let framed = encode_frame(&resp).expect("encode must succeed");
+            let payload = &framed[4..];
+            let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
+            match decoded {
+                WorkerResponse::Error {
+                    kind: decoded_kind,
+                    message: decoded_msg,
+                } => {
+                    assert_eq!(decoded_kind, kind, "kind must round-trip: {:?}", kind);
+                    assert!(
+                        decoded_msg.contains(kind.tag()) || !decoded_msg.is_empty(),
+                        "message must be non-empty"
+                    );
+                }
+                other => panic!(
+                    "expected WorkerResponse::Error, got {:?}",
+                    std::mem::discriminant(&other)
+                ),
+            }
+        }
     }
 
     #[test]

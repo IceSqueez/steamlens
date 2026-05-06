@@ -8,7 +8,7 @@ use tokio::sync::mpsc as async_mpsc;
 
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{
-    WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
+    WorkerCommand, WorkerErrorKind, WorkerResponse, decode_frame, encode_frame, parse_header,
 };
 
 use crate::game_view::types::ResetScope;
@@ -136,20 +136,21 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
     }
 }
 
-fn error_reply(context: &str, message: String) -> SteamReply {
-    match context {
-        "connect" => SteamReply::ConnectFailed(message),
-        "load" | "RequestUserStats" | "UserStatsReceived" | "num_achievements"
-        | "poll_callbacks" => SteamReply::LoadFailed(message),
-        "apply" | "StoreStats" | "UserStatsStored" => SteamReply::SaveFailed(message),
-        "reset" | "ResetAllStats" => SteamReply::ResetFailed(message),
-        "global_percentages"
-        | "RequestGlobalPercentages"
-        | "RequestGlobalAchievementPercentages"
-        | "GlobalAchievementPercentages APICall"
-        | "GlobalAchievementPercentagesReady"
-        | "num_achievements (percentages)" => SteamReply::GlobalPercentagesFailed(message),
-        _ => SteamReply::LoadFailed(format!("[{context}] {message}")),
+fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
+    match kind {
+        WorkerErrorKind::Connect => SteamReply::ConnectFailed(message),
+        WorkerErrorKind::RequestUserStats
+        | WorkerErrorKind::UserStatsReceived
+        | WorkerErrorKind::NumAchievements
+        | WorkerErrorKind::PollCallbacks => SteamReply::LoadFailed(message),
+        WorkerErrorKind::StoreStats | WorkerErrorKind::UserStatsStored => {
+            SteamReply::SaveFailed(message)
+        }
+        WorkerErrorKind::ResetAllStats => SteamReply::ResetFailed(message),
+        WorkerErrorKind::RequestGlobalPercentages
+        | WorkerErrorKind::GlobalPercentagesReady
+        | WorkerErrorKind::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed(message),
+        WorkerErrorKind::Generic => SteamReply::LoadFailed(message),
     }
 }
 
@@ -212,8 +213,8 @@ async fn run_apply_sequence(
     for cmd in &staging_cmds {
         match round_trip(stdin, stdout, cmd, staging_timeout).await {
             Some(WorkerResponse::Ack) => {}
-            Some(WorkerResponse::Error { context, message }) => {
-                reply(rep_tx, error_reply(&context, message));
+            Some(WorkerResponse::Error { kind, message }) => {
+                reply(rep_tx, error_reply(kind, message));
                 return;
             }
             Some(other) => {
@@ -256,8 +257,8 @@ async fn run_apply_sequence(
                 ),
             }
         }
-        Some(WorkerResponse::Error { context, message }) => {
-            reply(rep_tx, error_reply(&context, message));
+        Some(WorkerResponse::Error { kind, message }) => {
+            reply(rep_tx, error_reply(kind, message));
         }
         Some(other) => {
             reply(
@@ -356,8 +357,8 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         } => {
             steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
         }
-        WorkerResponse::Error { context, message } => {
-            reply(rep_tx, error_reply(&context, message));
+        WorkerResponse::Error { kind, message } => {
+            reply(rep_tx, error_reply(kind, message));
         }
         WorkerResponse::Disconnected => {
             reply(rep_tx, SteamReply::Disconnected);
@@ -423,8 +424,8 @@ async fn bridge_loop(
         Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
             reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
         }
-        Ok(Some(WorkerResponse::Error { context, message })) => {
-            reply(&rep_tx, error_reply(&context, message));
+        Ok(Some(WorkerResponse::Error { kind, message })) => {
+            reply(&rep_tx, error_reply(kind, message));
             kill_child(&mut child).await;
             return;
         }
@@ -477,8 +478,8 @@ async fn bridge_loop(
                             Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
                                 reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
                             }
-                            Ok(Some(WorkerResponse::Error { context, message })) => {
-                                reply(&rep_tx, error_reply(&context, message));
+                            Ok(Some(WorkerResponse::Error { kind, message })) => {
+                                reply(&rep_tx, error_reply(kind, message));
                                 kill_child(&mut child).await;
                                 return;
                             }

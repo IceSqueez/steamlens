@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::ipc::{WorkerResponse, decode_frame, parse_header};
+use crate::ipc::{WorkerErrorKind, WorkerResponse, decode_frame, parse_header};
 use crate::library::GameSummary;
 
 #[derive(Debug, Clone)]
@@ -86,8 +86,8 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
                 steam_level: payload.steam_level,
             })
         }
-        WorkerResponse::Error { message, .. } => {
-            if is_not_running_message(&message) {
+        WorkerResponse::Error { kind, message } => {
+            if kind == WorkerErrorKind::Connect {
                 Err(ProbeError::SteamNotRunning)
             } else {
                 Err(ProbeError::Worker(message))
@@ -145,15 +145,6 @@ fn read_with_deadline(
     Ok(())
 }
 
-fn is_not_running_message(msg: &str) -> bool {
-    let lower = msg.to_ascii_lowercase();
-    lower.contains("not running")
-        || lower.contains("steam not running")
-        || lower.contains("createsteampipe")
-        || lower.contains("connecttoglobaluser")
-        || lower.contains("steampipe returned 0")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,17 +171,6 @@ mod tests {
     fn probe_error_display_io() {
         let e = ProbeError::Io(io::Error::new(io::ErrorKind::NotFound, "no such file"));
         assert!(e.to_string().contains("io error"));
-    }
-
-    #[test]
-    fn is_not_running_detects_known_messages() {
-        assert!(is_not_running_message(
-            "Steam client is not running. Please start Steam and try again."
-        ));
-        assert!(is_not_running_message("CreateSteamPipe returned 0"));
-        assert!(is_not_running_message("ConnectToGlobalUser failed"));
-        assert!(!is_not_running_message("GetPersonaName returned null"));
-        assert!(!is_not_running_message("timed out"));
     }
 
     #[test]
