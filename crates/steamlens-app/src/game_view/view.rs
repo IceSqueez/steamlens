@@ -1538,9 +1538,9 @@ fn achievement_card_widget<'a>(
             };
             let shadow = if let Some(gc) = glow_color {
                 iced::Shadow {
-                    color: Color::from_rgba(gc.r, gc.g, gc.b, if hovered { 0.45 } else { 0.20 }),
+                    color: Color::from_rgba(gc.r, gc.g, gc.b, if hovered { 0.50 } else { 0.30 }),
                     offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: if hovered { 14.0 } else { 8.0 },
+                    blur_radius: if hovered { 16.0 } else { 10.0 },
                 }
             } else if hovered {
                 iced::Shadow {
