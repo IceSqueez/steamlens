@@ -266,6 +266,7 @@ pub struct ProfileWidgetParams<'a> {
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub capsule_size: CapsuleSize,
 }
 
 pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate::Message> {
@@ -277,7 +278,12 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate:
         params.skeleton_phase,
         params.hovered_bar_slice,
     );
-    let right_col = build_right_column(params.top5, params.capsule_handles, params.skeleton_phase);
+    let right_col = build_right_column(
+        params.top5,
+        params.capsule_handles,
+        params.capsule_size,
+        params.skeleton_phase,
+    );
 
     const PROFILE_ROW_HEIGHT: f32 = 320.0;
 
@@ -838,6 +844,7 @@ fn build_tick_marks(
 fn build_right_column<'a>(
     top5: Vec<TopEntry>,
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    capsule_size: CapsuleSize,
     skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     let header = text("CLOSEST TO 100%").size(11).color(C_TEXT_MUTED);
@@ -854,7 +861,12 @@ fn build_right_column<'a>(
     let mut rows_col = column![header].spacing(6);
 
     for entry in top5 {
-        rows_col = rows_col.push(build_closest_row(entry, capsule_handles, skeleton_phase));
+        rows_col = rows_col.push(build_closest_row(
+            entry,
+            capsule_handles,
+            capsule_size,
+            skeleton_phase,
+        ));
     }
 
     rows_col.into()
@@ -863,13 +875,14 @@ fn build_right_column<'a>(
 fn build_closest_row<'a>(
     entry: TopEntry,
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    capsule_size: CapsuleSize,
     skeleton_phase: f32,
 ) -> Element<'a, crate::Message> {
     const CAPSULE_W: f32 = 60.0;
     const CAPSULE_H: f32 = 22.0;
 
     let capsule_el: Element<'a, crate::Message> =
-        if let Some(stored) = capsule_handles.get(&(entry.app_id, CapsuleSize::Small)) {
+        if let Some(stored) = capsule_handles.get(&(entry.app_id, capsule_size)) {
             container(
                 image_widget(stored.handle.clone())
                     .width(Length::Fixed(CAPSULE_W))
