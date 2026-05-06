@@ -20,7 +20,9 @@ use super::ProfileViewState;
 use super::profile::{
     C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
 };
-use super::profile::{compute_profile_summary, profile_widget, top5_closest_to_complete};
+use super::profile::{
+    ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
+};
 use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
 
 const CARD_GAP: f32 = 12.0;
@@ -115,11 +117,9 @@ fn render_inner<'a>(
         }
     };
 
-    let footer = build_footer(state);
-
     let mut col = column![header];
     col = col.push(profile_section);
-    col = col.push(body).push(footer);
+    col = col.push(body);
 
     col.spacing(0).into()
 }
@@ -133,15 +133,16 @@ fn build_profile_section<'a>(
 ) -> Element<'a, crate::Message> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
-    profile_widget(
+    profile_widget(ProfileWidgetParams {
         user_profile,
         avatar_handle,
-        &summary,
+        summary,
         top5,
-        state.games.len(),
+        games_count: state.games.len(),
         skeleton_phase,
-        state.hovered_bar_slice,
-    )
+        hovered_bar_slice: state.hovered_bar_slice,
+        capsule_handles: &state.capsule_handles,
+    })
 }
 
 fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
@@ -1129,57 +1130,6 @@ fn build_tags_row<'a>(
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(24.0))
         .padding(Padding::default().left(4).right(4).top(3).bottom(3))
-        .into()
-}
-
-fn build_footer(state: &ProfileViewState) -> Element<'_, crate::Message> {
-    let id_input = text_input("App ID (e.g. 105600)", &state.manual_app_id_input)
-        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::ManualAppIdChanged(s)))
-        .on_submit(crate::Message::ProfileView(
-            ProfileViewMessage::ManualAppIdSubmitted,
-        ))
-        .padding(8)
-        .size(13)
-        .width(Length::Fixed(180.0));
-
-    let can_open = state
-        .manual_app_id_input
-        .parse::<u32>()
-        .map(|id| id > 0)
-        .unwrap_or(false);
-
-    let open_btn = if can_open {
-        button(text("Open").size(13))
-            .on_press(crate::Message::ProfileView(
-                ProfileViewMessage::ManualAppIdSubmitted,
-            ))
-            .padding(Padding::default().left(14).right(14).top(8).bottom(8))
-    } else {
-        button(text("Open").size(13))
-            .padding(Padding::default().left(14).right(14).top(8).bottom(8))
-    };
-
-    let hint = text("Open by App ID:").size(12).color(C_MUTED);
-
-    let footer_row = row![hint, id_input, open_btn]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().left(16).right(16).top(10).bottom(10));
-
-    container(footer_row)
-        .width(Length::Fill)
-        .style(|theme: &iced::Theme| {
-            let palette = theme.palette();
-            container::Style {
-                background: Some(iced::Background::Color(Color {
-                    r: palette.background.r * 0.85,
-                    g: palette.background.g * 0.85,
-                    b: palette.background.b * 0.85,
-                    a: 1.0,
-                })),
-                ..container::Style::default()
-            }
-        })
         .into()
 }
 

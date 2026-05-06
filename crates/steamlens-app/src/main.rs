@@ -310,17 +310,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     return update(app, Message::OpenGameView(app_id));
                 }
-                ProfileViewMessage::ManualAppIdSubmitted => {
-                    let app_id: u32 = if let Screen::ProfileView(pv_state) = &app.screen {
-                        pv_state.manual_app_id_input.parse().unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    if app_id == 0 {
-                        return Task::none();
-                    }
-                    return update(app, Message::OpenGameView(app_id));
-                }
                 ProfileViewMessage::RescanRequested => {
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
                         let t = profile_view::update(pv_state, pv_msg);

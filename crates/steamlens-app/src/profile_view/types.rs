@@ -73,7 +73,7 @@ pub struct TopEntry {
     pub app_id: u32,
     pub game_name: String,
     pub completion_pct: f64,
-    pub rarity_tier: Option<RarityTier>,
+    pub left_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -132,8 +132,6 @@ pub enum ProfileViewMessage {
         size: CapsuleSize,
     },
     GameSelected(u32),
-    ManualAppIdChanged(String),
-    ManualAppIdSubmitted,
     RescanRequested,
     SpinnerTick(f32),
     ProgressFetched {
@@ -171,8 +169,6 @@ impl std::fmt::Debug for ProfileViewMessage {
                 write!(f, "CapsuleFailed(app={app_id}, {size})")
             }
             ProfileViewMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
-            ProfileViewMessage::ManualAppIdChanged(s) => write!(f, "ManualAppIdChanged({s:?})"),
-            ProfileViewMessage::ManualAppIdSubmitted => write!(f, "ManualAppIdSubmitted"),
             ProfileViewMessage::RescanRequested => write!(f, "RescanRequested"),
             ProfileViewMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
             ProfileViewMessage::ProgressFetched {
@@ -205,7 +201,6 @@ pub struct ProfileViewState {
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
-    pub manual_app_id_input: String,
     pub spinner_angle: f32,
     pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
     pub progress_rx:
@@ -238,7 +233,6 @@ impl ProfileViewState {
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
-            manual_app_id_input: String::new(),
             spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: None,
@@ -411,7 +405,6 @@ mod tests {
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
-            manual_app_id_input: String::new(),
             spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: None,
@@ -619,27 +612,6 @@ mod tests {
             .collect();
         assert!(names.contains(&"Terraria"));
         assert!(names.contains(&"terra Battle"));
-    }
-
-    #[test]
-    fn manual_app_id_invalid_input_blocks_submit() {
-        let cases = ["abc", "0", "", "4294967296"];
-        for case in &cases {
-            let app_id: Option<u32> = case
-                .parse::<u32>()
-                .ok()
-                .filter(|&id| id > 0 && id < u32::MAX);
-            assert!(
-                app_id.is_none(),
-                "invalid input '{case}' should block submit"
-            );
-        }
-
-        let valid: Option<u32> = "105600"
-            .parse::<u32>()
-            .ok()
-            .filter(|&id| id > 0 && id < u32::MAX);
-        assert_eq!(valid, Some(105600));
     }
 
     #[test]
