@@ -154,6 +154,24 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
             )
         })?;
 
+    let _job_guard = match child.id() {
+        Some(pid) => steamlens_core::associate_kill_on_parent_exit(pid).map_err(|e| {
+            let _ = child.start_kill();
+            (
+                Box::new(e) as Box<dyn std::error::Error + Send>,
+                String::new(),
+            )
+        })?,
+        None => {
+            let _ = child.start_kill();
+            return Err((
+                Box::new(std::io::Error::other("spawned worker has no pid"))
+                    as Box<dyn std::error::Error + Send>,
+                String::new(),
+            ));
+        }
+    };
+
     let stderr_pipe = child.stderr.take();
     let stderr_task = tokio::spawn(async move {
         let Some(mut stderr) = stderr_pipe else {

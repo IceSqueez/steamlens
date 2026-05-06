@@ -36,5 +36,10 @@ postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 memmap2 = { version = "0.9" }
 tempfile = { version = "3" }
 winreg = { version = "0.56" }
+windows-sys = { version = "0.61", features = [
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_Foundation",
+] }
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }

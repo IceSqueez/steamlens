@@ -386,7 +386,7 @@ async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
     rep_tx: mpsc::Sender<SteamReply>,
 ) {
-    let (mut child, mut stdin, mut stdout) = loop {
+    let (mut child, mut stdin, mut stdout, mut _job_guard) = loop {
         let Some(req) = req_rx.recv().await else {
             return;
         };
@@ -459,10 +459,11 @@ async fn bridge_loop(
                 let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
 
                 match spawn_worker_child(new_app_id).await {
-                    Ok((new_child, new_stdin, new_stdout)) => {
+                    Ok((new_child, new_stdin, new_stdout, new_job_guard)) => {
                         child = new_child;
                         stdin = new_stdin;
                         stdout = new_stdout;
+                        _job_guard = new_job_guard;
                         let connect_timeout = Duration::from_secs(10);
                         match tokio::time::timeout(connect_timeout, read_response(&mut stdout))
                             .await
@@ -588,7 +589,15 @@ async fn bridge_loop(
 
 async fn spawn_worker_child(
     app_id: u32,
-) -> Result<(Child, ChildStdin, ChildStdout), std::io::Error> {
+) -> Result<
+    (
+        Child,
+        ChildStdin,
+        ChildStdout,
+        steamlens_core::ChildLifetimeGuard,
+    ),
+    std::io::Error,
+> {
     let exe = std::env::current_exe()?;
     let mut child = Command::new(exe)
         .arg("--worker")
@@ -598,13 +607,20 @@ async fn spawn_worker_child(
         .stderr(std::process::Stdio::inherit())
         .spawn()?;
 
+    let pid = child
+        .id()
+        .ok_or_else(|| std::io::Error::other("spawned worker has no pid"))?;
+    let job_guard = steamlens_core::associate_kill_on_parent_exit(pid).inspect_err(|_| {
+        let _ = child.start_kill();
+    })?;
+
     let stdin = child.stdin.take().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdin missing")
     })?;
     let stdout = child.stdout.take().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
     })?;
-    Ok((child, stdin, stdout))
+    Ok((child, stdin, stdout, job_guard))
 }
 
 #[cfg(test)]
