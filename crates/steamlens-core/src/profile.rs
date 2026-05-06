@@ -22,6 +22,8 @@ pub enum ProfileError {
     LoginUsersParse(#[from] TextVdfError),
     #[error("loginusers.vdf contains no user entries")]
     NoUsers,
+    #[error("invalid steam id: {0}")]
+    InvalidSteamId(String),
 }
 
 /// Reads `<steam_root>/config/loginusers.vdf`, picks the entry with
@@ -57,7 +59,9 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
 
     let (id_str, user_block) = chosen;
 
-    let steam_id: u64 = id_str.parse().unwrap_or(0);
+    let steam_id: u64 = id_str
+        .parse()
+        .map_err(|_| ProfileError::InvalidSteamId(id_str.clone()))?;
 
     let persona_name = user_block
         .get("PersonaName")
@@ -124,6 +128,47 @@ mod tests {
         ));
         std::fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn non_numeric_steam_id_returns_invalid_steam_id_error() {
+        let dir = tempdir();
+        write_loginusers(
+            &dir,
+            r#""users"
+{
+    "not_a_number"
+    {
+        "AccountName"   "user"
+        "PersonaName"   "User"
+        "MostRecent"    "1"
+    }
+}"#,
+        );
+        let err = load_profile_from_root(&dir).unwrap_err();
+        assert!(
+            matches!(err, ProfileError::InvalidSteamId(ref s) if s == "not_a_number"),
+            "expected InvalidSteamId(\"not_a_number\"), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn valid_numeric_steam_id_parses_correctly() {
+        let dir = tempdir();
+        write_loginusers(
+            &dir,
+            r#""users"
+{
+    "76561198000000001"
+    {
+        "AccountName"   "user"
+        "PersonaName"   "User"
+        "MostRecent"    "1"
+    }
+}"#,
+        );
+        let profile = load_profile_from_root(&dir).unwrap();
+        assert_eq!(profile.steam_id, 76561198000000001u64);
     }
 
     #[test]

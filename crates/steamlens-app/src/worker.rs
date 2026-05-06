@@ -222,11 +222,11 @@ enum DispatchOutcome {
 async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
     match cmd {
         WorkerCommand::LoadAchievementsAndStats => {
-            let resp = load_achievements_and_stats(client, app_id);
+            let resp = load_achievements_and_stats(client, app_id).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
-            let pct = fetch_global_percentages(client);
+            let pct = fetch_global_percentages(client).await;
             if write_response(&pct).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -285,7 +285,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
         }
 
         WorkerCommand::StoreStats => {
-            let resp = store_stats_and_wait(client);
+            let resp = store_stats_and_wait(client).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -294,28 +294,28 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
         WorkerCommand::ResetAllStats {
             include_achievements,
         } => {
-            let resp = reset_all_and_wait(client, include_achievements);
+            let resp = reset_all_and_wait(client, include_achievements).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::RequestGlobalPercentages => {
-            let resp = fetch_global_percentages(client);
+            let resp = fetch_global_percentages(client).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::QuickAchievementCount => {
-            let resp = quick_achievement_count(client);
+            let resp = quick_achievement_count(client).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::LoadAchievementsAndStatsCardOnly => {
-            let resp = load_achievements_card_only(client);
+            let resp = load_achievements_card_only(client).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -329,7 +329,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
     DispatchOutcome::Continue
 }
 
-fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResponse {
+async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
@@ -340,7 +340,7 @@ fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResponse {
         };
     }
 
-    let received = wait_for_stats_received(client, steam_id);
+    let received = wait_for_stats_received(client, steam_id).await;
     if let Some(err_resp) = received {
         return err_resp;
     }
@@ -527,7 +527,7 @@ fn shm_response_for_card_only(payload: steamlens_core::CardOnlyPayload) -> Worke
     }
 }
 
-fn load_achievements_card_only(client: &Client) -> WorkerResponse {
+async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
@@ -538,7 +538,7 @@ fn load_achievements_card_only(client: &Client) -> WorkerResponse {
         };
     }
 
-    if let Some(early) = wait_for_stats_received_card_only(client, steam_id) {
+    if let Some(early) = wait_for_stats_received_card_only(client, steam_id).await {
         return early;
     }
 
@@ -573,7 +573,7 @@ fn load_achievements_card_only(client: &Client) -> WorkerResponse {
     shm_response_for_card_only(steamlens_core::CardOnlyPayload { achievements })
 }
 
-fn quick_achievement_count(client: &Client) -> WorkerResponse {
+async fn quick_achievement_count(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
@@ -584,7 +584,7 @@ fn quick_achievement_count(client: &Client) -> WorkerResponse {
         };
     }
 
-    if let Some(err_resp) = wait_for_stats_received(client, steam_id) {
+    if let Some(err_resp) = wait_for_stats_received(client, steam_id).await {
         return err_resp;
     }
 
@@ -614,7 +614,7 @@ fn quick_achievement_count(client: &Client) -> WorkerResponse {
     shm_response_for_count(steamlens_core::AchievementCountPayload { earned, total })
 }
 
-fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {
+async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
         match client.poll_callbacks() {
@@ -638,9 +638,7 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                         if result.is_ok() {
                             return None;
                         }
-                        // EResult 2 here means "no stats schema for this
-                        // app" — surface as empty achievements, not error.
-                        if result.raw() == 2 {
+                        if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
                             return Some(shm_response_for_aas(
                                 steamlens_core::AchievementsAndStatsPayload {
                                     achievements: Vec::new(),
@@ -669,11 +667,11 @@ fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<Worker
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
-        std::thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
-fn wait_for_stats_received_card_only(
+async fn wait_for_stats_received_card_only(
     client: &Client,
     expected_user: u64,
 ) -> Option<WorkerResponse> {
@@ -700,7 +698,7 @@ fn wait_for_stats_received_card_only(
                         if result.is_ok() {
                             return None;
                         }
-                        if result.raw() == 2 {
+                        if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
                             return Some(shm_response_for_card_only(
                                 steamlens_core::CardOnlyPayload {
                                     achievements: Vec::new(),
@@ -727,11 +725,11 @@ fn wait_for_stats_received_card_only(
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
-        std::thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
-fn store_stats_and_wait(client: &Client) -> WorkerResponse {
+async fn store_stats_and_wait(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     if let Err(e) = stats_iface.store_stats() {
         return WorkerResponse::Error {
@@ -739,10 +737,10 @@ fn store_stats_and_wait(client: &Client) -> WorkerResponse {
             message: e.to_string(),
         };
     }
-    wait_for_store_confirmed(client)
+    wait_for_store_confirmed(client).await
 }
 
-fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
+async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
         match client.poll_callbacks() {
@@ -773,11 +771,11 @@ fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
                 message: "timed out waiting for UserStatsStored".into(),
             };
         }
-        std::thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
-fn reset_all_and_wait(client: &Client, include_achievements: bool) -> WorkerResponse {
+async fn reset_all_and_wait(client: &Client, include_achievements: bool) -> WorkerResponse {
     let stats_iface = client.user_stats();
     if let Err(e) = stats_iface.reset_all_stats(include_achievements) {
         return WorkerResponse::Error {
@@ -791,7 +789,7 @@ fn reset_all_and_wait(client: &Client, include_achievements: bool) -> WorkerResp
             message: e.to_string(),
         };
     }
-    let result = wait_for_store_confirmed(client);
+    let result = wait_for_store_confirmed(client).await;
     if matches!(result, WorkerResponse::Stored) {
         WorkerResponse::ResetDone
     } else {
@@ -799,8 +797,8 @@ fn reset_all_and_wait(client: &Client, include_achievements: bool) -> WorkerResp
     }
 }
 
-fn fetch_global_percentages(client: &Client) -> WorkerResponse {
-    const CALLBACK_ID_GLOBAL: i32 = 1110;
+async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
+    use steamlens_core::{CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY, STEAM_RESULT_OK};
     const PAYLOAD_SIZE: usize = 12;
 
     let handle = match client.user_stats().request_global_achievement_percentages() {
@@ -815,11 +813,13 @@ fn fetch_global_percentages(client: &Client) -> WorkerResponse {
 
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     loop {
-        // Drain broadcasts to keep Steam's internal queue moving; icon
-        // events arriving here are dropped (parent retries later).
         let _ = client.poll_callbacks();
 
-        match client.poll_call_result(handle, CALLBACK_ID_GLOBAL, PAYLOAD_SIZE) {
+        match client.poll_call_result(
+            handle,
+            CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY,
+            PAYLOAD_SIZE,
+        ) {
             Err(e) => {
                 return WorkerResponse::Error {
                     context: "poll_call_result".into(),
@@ -841,7 +841,7 @@ fn fetch_global_percentages(client: &Client) -> WorkerResponse {
                     };
                 }
                 let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
-                if result_code != 1 {
+                if result_code != STEAM_RESULT_OK {
                     return WorkerResponse::Error {
                         context: "GlobalAchievementPercentagesReady".into(),
                         message: format!("result code {result_code}"),
@@ -857,7 +857,7 @@ fn fetch_global_percentages(client: &Client) -> WorkerResponse {
                 message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
             };
         }
-        std::thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 

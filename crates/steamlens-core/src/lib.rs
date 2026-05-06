@@ -28,6 +28,10 @@ pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit};
 pub use profile::{ProfileError, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
-pub use steam_callback::{SteamCallback, SteamResult};
+pub use steam_callback::{
+    CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY, CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED,
+    CALLBACK_ID_USER_STATS_RECEIVED, CALLBACK_ID_USER_STATS_STORED, STEAM_RESULT_NO_STATS_SCHEMA,
+    STEAM_RESULT_OK, SteamCallback, SteamResult,
+};
 pub use steam_state::{ManifestState, read_all_last_played, read_last_played, read_manifest_state};
 pub use user_stats::UserStats;
