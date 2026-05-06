@@ -35,5 +35,6 @@ serde_json = { version = "1.0" }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 memmap2 = { version = "0.9" }
 tempfile = { version = "3" }
+winreg = { version = "0.56" }
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }
