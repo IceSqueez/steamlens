@@ -109,9 +109,7 @@ struct App {
     library_name_map: HashMap<u32, String>,
 }
 
-fn boot() -> (App, Task<Message>) {
-    let loaded_settings = settings::load_settings();
-
+fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
     let steam_root = std::path::PathBuf::new();
     let profile_result = steamlens_core::load_local_profile();
     let steamid3 = profile_result
@@ -567,9 +565,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::OpenGameView(app_id) => {
             if let Screen::ProfileView(pv_state) = std::mem::replace(
                 &mut app.screen,
-                Screen::SteamNotRunning {
-                    reason: String::new(),
-                },
+                Screen::GameView(Box::new(GameViewState::new(app_id))),
             ) {
                 app.profile_view_state = Some(pv_state);
             }
@@ -1529,7 +1525,7 @@ fn main() -> iced::Result {
     let window_w = loaded.ui.window_width;
     let window_h = loaded.ui.window_height;
 
-    iced::application(boot, update, view)
+    iced::application(move || boot_with_settings(loaded.clone()), update, view)
         .title("SteamLens")
         .theme(theme)
         .subscription(subscription)
@@ -1583,7 +1579,7 @@ mod tests {
 
     #[tokio::test]
     async fn boot_starts_in_profile_view() {
-        let (app, _task) = boot();
+        let (app, _task) = boot_with_settings(Settings::default());
         assert!(matches!(app.screen, Screen::ProfileView(_)));
         assert!(app.worker.is_some(), "worker must be spawned immediately");
     }
