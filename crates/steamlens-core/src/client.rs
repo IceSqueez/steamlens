@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::error::{LibraryError, SteamError};
 use crate::ffi::interfaces::{
     CallbackMessage, HSteamPipe, HSteamUser, ISteamApps001, ISteamApps008, ISteamClient018,
-    ISteamFriends009, ISteamUser012, ISteamUtils005,
+    ISteamFriends009, ISteamUser012, ISteamUser023, ISteamUtils005,
 };
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
@@ -18,6 +18,7 @@ use crate::user_stats::UserStats;
 
 const STEAM_CLIENT_VERSION: &str = "SteamClient018";
 const STEAM_USER_VERSION: &str = "SteamUser012";
+const STEAM_USER_023_VERSION: &str = "SteamUser023";
 const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
 const STEAM_APPS_008_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION008";
@@ -35,6 +36,7 @@ pub struct Image {
 pub struct Client {
     steam_client: RawInterface,
     steam_user: RawInterface,
+    steam_user_023: Option<RawInterface>,
     steam_user_stats: RawInterface,
     steam_apps: RawInterface,
     steam_apps_008: RawInterface,
@@ -54,6 +56,22 @@ impl Client {
 
     pub fn app_id(&self) -> u32 {
         self.app_id
+    }
+
+    /// Returns `None` when `SteamUser023` is unavailable (very old Steam
+    /// client) or when Steam returns a negative value (not a valid level).
+    pub fn get_player_steam_level(&self) -> Option<u32> {
+        let iface = self.steam_user_023?;
+        // SAFETY: `iface` was returned by `CreateInterface("SteamUser023")` and
+        // stored immediately; the vtable layout matches the public Steamworks.NET
+        // header (isteamuser.h slot 24); the pipe is alive (Client is !Send and
+        // must be dropped before the pipe); SysV-x64 ABI — `this` in RDI,
+        // return value in RAX as i32.
+        let level = unsafe {
+            let vtbl = opaque::vtable::<ISteamUser023>(iface);
+            ((*vtbl).get_player_steam_level)(iface)
+        };
+        if level < 0 { None } else { Some(level as u32) }
     }
 
     pub fn persona_name(&self) -> Option<String> {
@@ -545,9 +563,26 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         ((*vtbl).get_isteam_friends)(steam_client, user, pipe, friends_version.as_ptr())
     };
 
+    let user_023_version =
+        CString::new(STEAM_USER_023_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
+            version: STEAM_USER_023_VERSION.to_owned(),
+        })?;
+
+    // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the call.
+    // Null is non-fatal — very old Steam clients may not expose SteamUser023;
+    // stored as Option and null-guarded in `get_player_steam_level`.
+    let steam_user_023 = {
+        let raw = unsafe {
+            let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+            ((*vtbl).get_isteam_user)(steam_client, user, pipe, user_023_version.as_ptr())
+        };
+        if raw.is_null() { None } else { Some(raw) }
+    };
+
     Ok(Client {
         steam_client,
         steam_user,
+        steam_user_023,
         steam_user_stats,
         steam_apps,
         steam_apps_008,

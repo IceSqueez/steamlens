@@ -64,4 +64,5 @@ pub struct ProbeResultPayload {
     pub persona_name: String,
     pub avatar_png: Option<Vec<u8>>,
     pub game_summaries: Vec<crate::library::GameSummary>,
+    pub steam_level: Option<u32>,
 }

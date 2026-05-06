@@ -103,6 +103,7 @@ struct App {
     splash_scan_done: bool,
     splash_probe_done: bool,
     steam_running: Option<bool>,
+    steam_level: Option<u32>,
     skeleton_phase: f32,
     no_ach_cache: cache::NoAchievementsCache,
     library_name_map: HashMap<u32, String>,
@@ -149,6 +150,7 @@ fn boot() -> (App, Task<Message>) {
         splash_scan_done: false,
         splash_probe_done: false,
         steam_running: None,
+        steam_level: None,
         skeleton_phase: 0.0,
         no_ach_cache: cache::NoAchievementsCache::new(),
         library_name_map: HashMap::new(),
@@ -849,6 +851,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         p.avatar_image.clone(),
                         steam_root_opt,
                     );
+                    app.steam_level = p.steam_level;
                     app.user_profile = Some(UserProfile {
                         steam_id: p.steam_id,
                         persona_name: p.persona_name,
@@ -895,6 +898,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Err(e) => {
                     app.steam_running = Some(false);
+                    app.steam_level = None;
                     app.splash_scan_done = true;
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
                         pv_state.steam_running = Some(false);
@@ -935,6 +939,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::none();
             }
             app.steamid3 = cached.steam_id.saturating_sub(76_561_197_960_265_728);
+            app.steam_level = None;
             app.profile_avatar_handle = cached
                 .avatar_png_bytes
                 .as_ref()
@@ -1332,6 +1337,7 @@ fn view(app: &App) -> Element<'_, Message> {
             &app.cached_entries,
             app.skeleton_phase,
             &app.settings.library.pinned,
+            app.steam_level,
         ),
 
         Screen::SteamNotRunning { reason } => {
@@ -1555,6 +1561,7 @@ mod tests {
             splash_scan_done: true,
             splash_probe_done: true,
             steam_running: Some(true),
+            steam_level: None,
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
             library_name_map: HashMap::new(),
@@ -1607,6 +1614,7 @@ mod tests {
             persona_name: "TestUser".to_owned(),
             avatar_image: Some(vec![0x89, 0x50, 0x4E, 0x47]),
             game_summaries: vec![],
+            steam_level: Some(17),
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
@@ -2166,6 +2174,7 @@ mod tests {
             persona_name: "LiveName".to_owned(),
             avatar_image: None,
             game_summaries: vec![],
+            steam_level: None,
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
@@ -2673,6 +2682,7 @@ mod tests {
             splash_scan_done: true,
             splash_probe_done: true,
             steam_running: Some(true),
+            steam_level: None,
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
             library_name_map: HashMap::new(),
@@ -2721,6 +2731,7 @@ mod tests {
             splash_scan_done: true,
             splash_probe_done: true,
             steam_running: Some(true),
+            steam_level: None,
             skeleton_phase: 0.0,
             no_ach_cache: cache::NoAchievementsCache::new(),
             library_name_map: HashMap::new(),

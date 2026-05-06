@@ -74,6 +74,7 @@ pub fn render_with_cache_actions<'a>(
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
+    steam_level: Option<u32>,
 ) -> Element<'a, crate::Message> {
     render_inner(
         state,
@@ -82,6 +83,7 @@ pub fn render_with_cache_actions<'a>(
         cached_entries,
         skeleton_phase,
         pinned,
+        steam_level,
     )
 }
 
@@ -92,6 +94,7 @@ fn render_inner<'a>(
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
+    steam_level: Option<u32>,
 ) -> Element<'a, crate::Message> {
     let header = build_header(state);
 
@@ -101,6 +104,7 @@ fn render_inner<'a>(
         avatar_handle,
         cached_entries,
         skeleton_phase,
+        steam_level,
     );
 
     let body: Element<'_, crate::Message> = match &state.phase {
@@ -130,6 +134,7 @@ fn build_profile_section<'a>(
     avatar_handle: Option<&'a iced::widget::image::Handle>,
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
+    steam_level: Option<u32>,
 ) -> Element<'a, crate::Message> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
@@ -143,6 +148,7 @@ fn build_profile_section<'a>(
         hovered_bar_slice: state.hovered_bar_slice,
         capsule_handles: &state.capsule_handles,
         capsule_size: state.capsule_size,
+        steam_level,
     })
 }
 

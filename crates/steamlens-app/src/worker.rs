@@ -115,11 +115,15 @@ async fn probe_main() -> i32 {
         t0.elapsed()
     );
 
+    let steam_level = client.get_player_steam_level();
+    eprintln!("[probe] steam level: {:?}", steam_level);
+
     let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
         persona_name,
         avatar_png,
         game_summaries: games,
+        steam_level,
     });
     if write_response(&resp).await.is_err() {
         return 1;
