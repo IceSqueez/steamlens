@@ -71,8 +71,7 @@ enum Message {
     #[allow(dead_code)]
     ClearGameCache(u32),
     SkeletonTick,
-    #[allow(dead_code)]
-    FocusLibrarySearch,
+    FocusSearch,
     ToggleGamePin(u32),
     NoAchCacheLoaded(cache::NoAchievementsCache),
     NoAchCacheWritten(Result<(), String>),
@@ -1018,23 +1017,22 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 {
                     return game_view::update(state, GameViewMessage::ApplyChanges, w);
                 }
-                if modifiers.command()
-                    && c.as_str() == "k"
-                    && matches!(app.screen, Screen::ProfileView(_))
-                {
-                    return iced::widget::operation::focus(profile_view::library_search_id());
+                if modifiers.command() && c.as_str() == "f" {
+                    return Task::done(Message::FocusSearch);
                 }
             }
             Task::none()
         }
 
-        Message::FocusLibrarySearch => {
-            if matches!(app.screen, Screen::ProfileView(_)) {
+        Message::FocusSearch => match &app.screen {
+            Screen::ProfileView(_) => {
                 iced::widget::operation::focus(profile_view::library_search_id())
-            } else {
-                Task::none()
             }
-        }
+            Screen::GameView(_) => {
+                iced::widget::operation::focus(game_view::achievement_search_id())
+            }
+            _ => Task::none(),
+        },
 
         Message::ToggleGamePin(app_id) => {
             if let Some(pos) = app
