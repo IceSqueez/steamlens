@@ -13,8 +13,8 @@ pub struct AchievementRow {
     pub rarity_percent: Option<f32>,
 }
 
-impl AchievementRow {
-    pub fn from_data(data: AchievementData) -> Self {
+impl From<AchievementData> for AchievementRow {
+    fn from(data: AchievementData) -> Self {
         Self {
             data,
             is_dirty: false,
@@ -24,7 +24,9 @@ impl AchievementRow {
             rarity_percent: None,
         }
     }
+}
 
+impl AchievementRow {
     pub fn effective_achieved(&self) -> bool {
         if self.is_dirty {
             !self.data.is_achieved
@@ -60,8 +62,8 @@ pub struct StatRow {
     pub is_dirty: bool,
 }
 
-impl StatRow {
-    pub fn from_data(data: StatData) -> Self {
+impl From<StatData> for StatRow {
+    fn from(data: StatData) -> Self {
         let edit_text = data.value.to_edit_string();
         Self {
             data,
@@ -70,7 +72,9 @@ impl StatRow {
             is_dirty: false,
         }
     }
+}
 
+impl StatRow {
     pub fn validate_and_parse(&mut self) {
         let trimmed = self.edit_text.trim();
         match self.data.value {
