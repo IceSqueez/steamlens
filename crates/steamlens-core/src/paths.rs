@@ -1,0 +1,207 @@
+use std::env;
+use std::path::{Path, PathBuf};
+
+pub fn steam_install_root_candidates() -> Vec<PathBuf> {
+    if let Some(root) = env::var_os("STEAMLENS_STEAM_ROOT") {
+        return vec![PathBuf::from(root)];
+    }
+
+    #[cfg(target_os = "linux")]
+    return steam_roots_linux(env::var_os("HOME"), env::var_os("XDG_DATA_HOME"));
+
+    #[cfg(target_os = "macos")]
+    return steam_roots_macos(env::var_os("HOME"));
+
+    #[cfg(target_os = "windows")]
+    return steam_roots_windows();
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    Vec::new()
+}
+
+pub fn steamclient_lib_candidates() -> Vec<PathBuf> {
+    steam_install_root_candidates()
+        .into_iter()
+        .map(|root| root.join(steamclient_lib_subpath()))
+        .collect()
+}
+
+pub fn steamlens_root() -> PathBuf {
+    dirs_base().join("steamlens")
+}
+
+pub fn steamlens_cache_dir() -> PathBuf {
+    steamlens_root().join("cache")
+}
+
+pub fn user_data_dir(steam_root: &Path, steamid3: u32) -> PathBuf {
+    steam_root.join("userdata").join(steamid3.to_string())
+}
+
+pub fn appcache_stats_dir(steam_root: &Path) -> PathBuf {
+    steam_root.join("appcache/stats")
+}
+
+fn steamclient_lib_subpath() -> &'static str {
+    #[cfg(target_os = "linux")]
+    return "linux64/steamclient.so";
+    #[cfg(target_os = "macos")]
+    return "Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib";
+    #[cfg(target_os = "windows")]
+    return "steamclient64.dll";
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    return "";
+}
+
+#[cfg(target_os = "linux")]
+fn steam_roots_linux(
+    home: Option<std::ffi::OsString>,
+    xdg_data_home: Option<std::ffi::OsString>,
+) -> Vec<PathBuf> {
+    let mut out = Vec::with_capacity(3);
+    if let Some(ref h) = home {
+        out.push(PathBuf::from(h).join(".steam/steam"));
+    }
+    if let Some(ref xdg) = xdg_data_home {
+        out.push(PathBuf::from(xdg).join("Steam"));
+    }
+    if let Some(ref h) = home {
+        out.push(PathBuf::from(h).join(".local/share/Steam"));
+    }
+    out
+}
+
+#[cfg(target_os = "macos")]
+fn steam_roots_macos(home: Option<std::ffi::OsString>) -> Vec<PathBuf> {
+    let mut out = Vec::with_capacity(1);
+    if let Some(ref h) = home {
+        out.push(PathBuf::from(h).join("Library/Application Support/Steam"));
+    }
+    out
+}
+
+#[cfg(target_os = "windows")]
+fn steam_roots_windows() -> Vec<PathBuf> {
+    let mut out = Vec::with_capacity(3);
+    if let Some(reg) = read_steam_root_from_registry() {
+        out.push(reg);
+    }
+    if let Ok(pf86) = env::var("ProgramFiles(x86)") {
+        out.push(PathBuf::from(pf86).join("Steam"));
+    }
+    if let Ok(pf) = env::var("ProgramFiles") {
+        out.push(PathBuf::from(pf).join("Steam"));
+    }
+    out
+}
+
+#[cfg(target_os = "windows")]
+fn read_steam_root_from_registry() -> Option<PathBuf> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(key) = hkcu.open_subkey("Software\\Valve\\Steam")
+        && let Ok(path) = key.get_value::<String, _>("SteamPath")
+    {
+        return Some(PathBuf::from(path));
+    }
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok(key) = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Valve\\Steam")
+        && let Ok(path) = key.get_value::<String, _>("InstallPath")
+    {
+        return Some(PathBuf::from(path));
+    }
+
+    None
+}
+
+fn dirs_base() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(xdg) = env::var_os("XDG_DATA_HOME") {
+            return PathBuf::from(xdg);
+        }
+        let home = env::var("HOME").unwrap_or_default();
+        PathBuf::from(home).join(".local/share")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let home = env::var("HOME").unwrap_or_default();
+        PathBuf::from(home).join("Library/Application Support")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let appdata =
+            env::var("APPDATA").unwrap_or_else(|_| r"C:\Users\Default\AppData\Roaming".to_owned());
+        PathBuf::from(appdata)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    PathBuf::from(".")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_roots_three_when_home_and_xdg() {
+        let roots = steam_roots_linux(
+            Some(OsString::from("/home/alice")),
+            Some(OsString::from("/home/alice/.local/share")),
+        );
+        assert_eq!(roots.len(), 3);
+        assert_eq!(roots[0], PathBuf::from("/home/alice/.steam/steam"));
+        assert_eq!(roots[1], PathBuf::from("/home/alice/.local/share/Steam"));
+        assert_eq!(roots[2], PathBuf::from("/home/alice/.local/share/Steam"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_roots_two_without_xdg() {
+        let roots = steam_roots_linux(Some(OsString::from("/home/bob")), None);
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0], PathBuf::from("/home/bob/.steam/steam"));
+        assert_eq!(roots[1], PathBuf::from("/home/bob/.local/share/Steam"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_roots_empty_without_home_or_xdg() {
+        assert!(steam_roots_linux(None, None).is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn steamclient_candidates_append_lib_subpath() {
+        let candidates = steamclient_lib_candidates();
+        for c in &candidates {
+            assert!(c.to_string_lossy().ends_with("linux64/steamclient.so"));
+        }
+    }
+
+    #[test]
+    fn user_data_dir_constructs_path() {
+        let root = PathBuf::from("/opt/steam");
+        let p = user_data_dir(&root, 12345);
+        assert_eq!(p, PathBuf::from("/opt/steam/userdata/12345"));
+    }
+
+    #[test]
+    fn appcache_stats_dir_constructs_path() {
+        let root = PathBuf::from("/opt/steam");
+        let p = appcache_stats_dir(&root);
+        assert_eq!(p, PathBuf::from("/opt/steam/appcache/stats"));
+    }
+
+    #[test]
+    fn steamlens_root_and_cache_nested() {
+        let root = steamlens_root();
+        let cache = steamlens_cache_dir();
+        assert!(cache.starts_with(&root));
+        assert!(cache.to_string_lossy().ends_with("cache"));
+    }
+}

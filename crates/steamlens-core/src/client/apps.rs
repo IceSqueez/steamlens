@@ -1,5 +1,6 @@
 use core::ffi::c_char;
 
+use crate::client::internal::decode_steam_buf;
 use crate::ffi::interfaces::{ISteamApps001, ISteamApps008};
 use crate::ffi::opaque::{self, RawInterface};
 
@@ -10,12 +11,8 @@ pub(super) struct Apps {
 }
 
 impl Apps {
-    pub(super) fn app_name_for(&self, app_id: u32) -> Option<String> {
-        self.get_app_data_raw(app_id, c"name")
-    }
-
     pub(super) fn app_name(&self) -> Option<String> {
-        self.app_name_for(self.app_id)
+        self.get_app_data_raw(self.app_id, c"name")
     }
 
     pub(super) fn app_type(&self, app_id: u32) -> Option<String> {
@@ -72,14 +69,6 @@ impl Apps {
         if written <= 0 {
             return None;
         }
-        let len = (written as usize).min(buf.len());
-        let trimmed = buf[..len]
-            .iter()
-            .position(|&b| b == 0)
-            .map_or(&buf[..len], |nul| &buf[..nul]);
-        if trimmed.is_empty() {
-            return None;
-        }
-        String::from_utf8(trimmed.to_vec()).ok()
+        decode_steam_buf(&buf, written as usize)
     }
 }

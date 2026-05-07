@@ -3,6 +3,7 @@ mod error;
 mod ffi;
 pub mod ipc;
 pub mod library;
+pub mod paths;
 pub mod probe;
 mod process;
 pub mod profile;
@@ -22,7 +23,11 @@ pub use ipc::{
     CardOnlyAchievement, CardOnlyPayload, FrameError, ProbeResultPayload, StatData, StatValue,
     WorkerCommand, WorkerErrorKind, WorkerResponse,
 };
-pub use library::{GameSummary, enumerate_owned_games};
+pub use library::GameSummary;
+pub use paths::{
+    appcache_stats_dir, steam_install_root_candidates, steamclient_lib_candidates,
+    steamlens_cache_dir, steamlens_root, user_data_dir,
+};
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit};
 pub use profile::{ProfileError, UserProfile, load_local_profile};

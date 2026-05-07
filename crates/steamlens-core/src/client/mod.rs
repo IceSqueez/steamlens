@@ -2,6 +2,7 @@ mod apps;
 mod callbacks;
 mod connection;
 mod friends;
+mod internal;
 mod user;
 mod utils;
 
@@ -63,10 +64,6 @@ impl Client {
 
     pub fn steam_root(&self) -> Result<std::path::PathBuf, SteamError> {
         self.user.steam_root()
-    }
-
-    pub fn app_name_for(&self, app_id: u32) -> Option<String> {
-        self.apps.app_name_for(app_id)
     }
 
     pub fn app_name(&self) -> Option<String> {
