@@ -2233,7 +2233,6 @@ mod tests {
         let _task = handle_steam_reply(
             &mut state,
             SteamReply::Connected {
-                steam_id: 0,
                 app_name: Some("Terraria".to_owned()),
             },
         );
@@ -2249,13 +2248,7 @@ mod tests {
         use steam_worker::SteamReply;
 
         let mut state = GameViewState::new(105600);
-        let _task = handle_steam_reply(
-            &mut state,
-            SteamReply::Connected {
-                steam_id: 0,
-                app_name: None,
-            },
-        );
+        let _task = handle_steam_reply(&mut state, SteamReply::Connected { app_name: None });
         assert_eq!(
             state.game_name, "App 105600",
             "game_name must remain fallback when app_name is None"
@@ -2568,7 +2561,6 @@ mod tests {
             SteamReply::AchievementsAndStats {
                 achievements: vec![data],
                 stats: vec![],
-                genre: None,
             },
         );
 
