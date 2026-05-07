@@ -1,12 +1,10 @@
 use iced::widget::{button, container};
-use iced::{Background, Border, Color, Element, Length, Shadow, Vector};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Vector};
 
 use crate::ui::theme::{AppTheme, palette};
 
-#[allow(dead_code)]
 const DEFAULT_RADIUS: f32 = 8.0;
 
-#[allow(dead_code)]
 pub fn card<'a, M: Clone + 'a>(content: impl Into<Element<'a, M>>) -> Card<'a, M> {
     Card {
         content: content.into(),
@@ -17,6 +15,11 @@ pub fn card<'a, M: Clone + 'a>(content: impl Into<Element<'a, M>>) -> Card<'a, M
         forced_hover: None,
         width: None,
         height: None,
+        padding: None,
+        accent_border_width_default: 2.0,
+        accent_border_width_hover: 2.0,
+        accent_alpha_default: 0.50,
+        accent_alpha_hover: 1.00,
     }
 }
 
@@ -29,6 +32,11 @@ pub struct Card<'a, M> {
     forced_hover: Option<bool>,
     width: Option<Length>,
     height: Option<Length>,
+    padding: Option<Padding>,
+    accent_border_width_default: f32,
+    accent_border_width_hover: f32,
+    accent_alpha_default: f32,
+    accent_alpha_hover: f32,
 }
 
 impl<'a, M: Clone + 'a> Card<'a, M> {
@@ -44,6 +52,16 @@ impl<'a, M: Clone + 'a> Card<'a, M> {
 
     pub fn accent(mut self, color: Color) -> Self {
         self.accent = Some(color);
+        self
+    }
+
+    pub fn accent_maybe(mut self, color: Option<Color>) -> Self {
+        self.accent = color;
+        self
+    }
+
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = Some(padding.into());
         self
     }
 
@@ -66,26 +84,45 @@ impl<'a, M: Clone + 'a> Card<'a, M> {
         self.height = Some(height.into());
         self
     }
+
+    pub fn accent_border_width(mut self, default: f32, hover: f32) -> Self {
+        self.accent_border_width_default = default;
+        self.accent_border_width_hover = hover;
+        self
+    }
+
+    pub fn accent_alpha(mut self, default: f32, hover: f32) -> Self {
+        self.accent_alpha_default = default;
+        self.accent_alpha_hover = hover;
+        self
+    }
 }
 
 impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
     fn from(card: Card<'a, M>) -> Self {
-        let p = palette(card.theme);
-        let surface = p.surface;
-        let neutral_border = p.border;
+        let palette = palette(card.theme);
+        let surface = palette.surface;
+        let neutral_hover_border = palette.accent;
         let accent = card.accent;
         let radius = card.radius;
         let forced_hover = card.forced_hover;
+        let acc_w_default = card.accent_border_width_default;
+        let acc_w_hover = card.accent_border_width_hover;
+        let acc_a_default = card.accent_alpha_default;
+        let acc_a_hover = card.accent_alpha_hover;
 
         let mut wrapped = container(card.content);
-        if let Some(w) = card.width {
-            wrapped = wrapped.width(w);
+        if let Some(width) = card.width {
+            wrapped = wrapped.width(width);
         }
-        if let Some(h) = card.height {
-            wrapped = wrapped.height(h);
+        if let Some(height) = card.height {
+            wrapped = wrapped.height(height);
+        }
+        if let Some(padding) = card.padding {
+            wrapped = wrapped.padding(padding);
         }
 
-        let mut btn = button(wrapped)
+        let mut button = button(wrapped)
             .padding(0)
             .style(move |_theme: &iced::Theme, status| {
                 let hovered = forced_hover.unwrap_or(matches!(
@@ -93,13 +130,20 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
                     button::Status::Hovered | button::Status::Pressed
                 ));
 
-                let bg = if hovered { lift(surface, 1.18) } else { surface };
+                let bg = if hovered {
+                    lift(surface, 1.18)
+                } else {
+                    surface
+                };
 
                 let (border, shadow) = match (accent, hovered) {
                     (Some(color), true) => (
                         Border {
-                            color,
-                            width: 2.0,
+                            color: Color {
+                                a: acc_a_hover,
+                                ..color
+                            },
+                            width: acc_w_hover,
                             radius: radius.into(),
                         },
                         Shadow {
@@ -110,8 +154,11 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
                     ),
                     (Some(color), false) => (
                         Border {
-                            color: Color { a: 0.50, ..color },
-                            width: 2.0,
+                            color: Color {
+                                a: acc_a_default,
+                                ..color
+                            },
+                            width: acc_w_default,
                             radius: radius.into(),
                         },
                         Shadow {
@@ -122,7 +169,7 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
                     ),
                     (None, true) => (
                         Border {
-                            color: neutral_border,
+                            color: neutral_hover_border,
                             width: 2.0,
                             radius: radius.into(),
                         },
@@ -155,10 +202,10 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
             });
 
         if let Some(message) = card.on_press {
-            btn = btn.on_press(message);
+            button = button.on_press(message);
         }
 
-        btn.into()
+        button.into()
     }
 }
 
