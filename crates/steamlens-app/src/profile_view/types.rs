@@ -146,6 +146,10 @@ pub enum ProfileViewMessage {
     RetryFailedScans,
     BarSliceHoverEnter(RarityTier),
     BarSliceHoverExit,
+    CardTierHovered {
+        app_id: u32,
+        tier: Option<RarityTier>,
+    },
 }
 
 impl std::fmt::Debug for ProfileViewMessage {
@@ -183,6 +187,9 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::RetryFailedScans => write!(f, "RetryFailedScans"),
             ProfileViewMessage::BarSliceHoverEnter(t) => write!(f, "BarSliceHoverEnter({t:?})"),
             ProfileViewMessage::BarSliceHoverExit => write!(f, "BarSliceHoverExit"),
+            ProfileViewMessage::CardTierHovered { app_id, tier } => {
+                write!(f, "CardTierHovered(app={app_id}, tier={tier:?})")
+            }
         }
     }
 }
@@ -210,6 +217,7 @@ pub struct ProfileViewState {
     pub loader_hiding_since: Option<Instant>,
     pub hovered_card: Option<u32>,
     pub hovered_bar_slice: Option<RarityTier>,
+    pub hovered_card_tier: Option<(u32, RarityTier)>,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -241,6 +249,7 @@ impl ProfileViewState {
             loader_hiding_since: None,
             hovered_card: None,
             hovered_bar_slice: None,
+            hovered_card_tier: None,
         }
     }
 
@@ -413,6 +422,7 @@ mod tests {
             loader_hiding_since: None,
             hovered_card: None,
             hovered_bar_slice: None,
+            hovered_card_tier: None,
         }
     }
 

@@ -187,6 +187,11 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             state.hovered_bar_slice = None;
             Task::none()
         }
+
+        ProfileViewMessage::CardTierHovered { app_id, tier } => {
+            state.hovered_card_tier = tier.map(|t| (app_id, t));
+            Task::none()
+        }
     }
 }
 

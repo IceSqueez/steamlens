@@ -161,17 +161,21 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
                 let tip_text = f(idx);
                 tooltip(
                     seg_widget,
-                    container(iced::widget::text(tip_text).size(11).color(palette.text_primary))
-                        .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-                        .style(move |_: &iced::Theme| container::Style {
-                            background: Some(Background::Color(palette.surface)),
-                            border: Border {
-                                color: palette.border,
-                                width: 1.0,
-                                radius: 6.0.into(),
-                            },
-                            ..container::Style::default()
-                        }),
+                    container(
+                        iced::widget::text(tip_text)
+                            .size(11)
+                            .color(palette.text_primary),
+                    )
+                    .padding(Padding::default().left(8).right(8).top(4).bottom(4))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(Background::Color(palette.surface)),
+                        border: Border {
+                            color: palette.border,
+                            width: 1.0,
+                            radius: 6.0.into(),
+                        },
+                        ..container::Style::default()
+                    }),
                     tooltip::Position::Top,
                 )
                 .into()
