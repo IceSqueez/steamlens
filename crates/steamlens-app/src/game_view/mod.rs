@@ -549,7 +549,6 @@ pub fn update(
             state.phase = GameViewPhase::Resetting;
             worker.send(SteamRequest::ResetAll {
                 scope: state.reset_scope,
-                stat_driven_progress_max: std::collections::HashMap::new(),
             });
             Task::none()
         }
