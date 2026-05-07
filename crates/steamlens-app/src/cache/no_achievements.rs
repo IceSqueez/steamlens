@@ -1,12 +1,10 @@
-//! Cache of app_ids that scanned with no achievements, keyed by
-//! package `change_number` so entries invalidate when Steam advances it.
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::store::{CacheIoError, atomic_write};
+use crate::cache::cached::Cached;
+use crate::cache::store::CacheIoError;
 
 pub const CURRENT_NO_ACHIEVEMENTS_SCHEMA: u32 = 1;
 
@@ -36,6 +34,17 @@ impl NoAchievementsCache {
     }
 }
 
+impl Cached for NoAchievementsCache {
+    const NAME: &'static str = "no_achievements";
+    const CURRENT_SCHEMA: u32 = CURRENT_NO_ACHIEVEMENTS_SCHEMA;
+    fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+    fn path() -> PathBuf {
+        cache_path()
+    }
+}
+
 pub fn cache_path() -> PathBuf {
     crate::settings::steamlens_root()
         .join("cache")
@@ -43,32 +52,13 @@ pub fn cache_path() -> PathBuf {
 }
 
 pub async fn load() -> NoAchievementsCache {
-    let path = cache_path();
-    let Ok(bytes) = tokio::fs::read(&path).await else {
-        return NoAchievementsCache::new();
-    };
-    let parsed: Result<NoAchievementsCache, _> = serde_json::from_slice(&bytes);
-    match parsed {
-        Ok(c) if c.schema_version == CURRENT_NO_ACHIEVEMENTS_SCHEMA => c,
-        Ok(_) => {
-            eprintln!(
-                "[steamlens] no_achievements cache: schema mismatch (expected {}); discarding",
-                CURRENT_NO_ACHIEVEMENTS_SCHEMA,
-            );
-            NoAchievementsCache::new()
-        }
-        Err(e) => {
-            eprintln!("[steamlens] no_achievements cache: parse failed: {e}; discarding");
-            NoAchievementsCache::new()
-        }
-    }
+    crate::cache::cached::load::<NoAchievementsCache>()
+        .await
+        .unwrap_or_else(NoAchievementsCache::new)
 }
 
 pub async fn write(cache: &NoAchievementsCache) -> Result<(), CacheIoError> {
-    let path = cache_path();
-    let bytes =
-        serde_json::to_vec_pretty(cache).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    atomic_write(&path, &bytes).await
+    crate::cache::cached::write(cache).await
 }
 
 #[cfg(test)]
