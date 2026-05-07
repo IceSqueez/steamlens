@@ -6,6 +6,9 @@ use thiserror::Error;
 
 use crate::paths;
 
+/// Lowest SteamID64 for an individual account (Public/Individual/Desktop, AccountID=0); subtract to obtain SteamID3.
+pub const STEAMID64_INDIVIDUAL_MIN: u64 = 0x0110_0001_0000_0000;
+
 /// Disk-only snapshot of the logged-in user; no Steam pipe needed.
 #[derive(Debug, Clone)]
 pub struct UserProfile {
