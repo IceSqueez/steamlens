@@ -141,7 +141,6 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
         WorkerErrorKind::Connect => SteamReply::ConnectFailed(message),
         WorkerErrorKind::RequestUserStats
         | WorkerErrorKind::UserStatsReceived
-        | WorkerErrorKind::NumAchievements
         | WorkerErrorKind::PollCallbacks => SteamReply::LoadFailed(message),
         WorkerErrorKind::StoreStats | WorkerErrorKind::UserStatsStored => {
             SteamReply::SaveFailed(message)

@@ -348,15 +348,7 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
         return err_resp;
     }
 
-    let num = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::NumAchievements,
-                message: e.to_string(),
-            };
-        }
-    };
+    let num = stats_iface.num_achievements();
 
     if num == 0 {
         return shm_response_for_aas(steamlens_core::AchievementsAndStatsPayload {
@@ -545,15 +537,7 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
         return early;
     }
 
-    let num = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::NumAchievements,
-                message: e.to_string(),
-            };
-        }
-    };
+    let num = stats_iface.num_achievements();
 
     if num == 0 {
         return shm_response_for_card_only(steamlens_core::CardOnlyPayload {
@@ -591,15 +575,7 @@ async fn quick_achievement_count(client: &Client) -> WorkerResponse {
         return err_resp;
     }
 
-    let total = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::NumAchievements,
-                message: e.to_string(),
-            };
-        }
-    };
+    let total = stats_iface.num_achievements();
 
     let mut earned = 0u32;
     for i in 0..total {
@@ -866,15 +842,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
 
 fn collect_global_percentages(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
-    let num = match stats_iface.num_achievements() {
-        Ok(n) => n,
-        Err(e) => {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::NumAchievements,
-                message: e.to_string(),
-            };
-        }
-    };
+    let num = stats_iface.num_achievements();
     let mut map = HashMap::with_capacity(num as usize);
     for i in 0..num {
         let name = match stats_iface.achievement_name(i) {

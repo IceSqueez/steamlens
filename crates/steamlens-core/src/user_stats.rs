@@ -189,13 +189,12 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    pub fn num_achievements(&self) -> Result<u32, SteamError> {
+    pub fn num_achievements(&self) -> u32 {
         // SAFETY: see impl-level note.
-        let count = unsafe {
+        unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_num_achievements)(self.raw)
-        };
-        Ok(count)
+        }
     }
 
     pub fn achievement_name(&self, index: u32) -> Result<String, SteamError> {
