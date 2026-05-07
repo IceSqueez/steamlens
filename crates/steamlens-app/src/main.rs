@@ -1534,31 +1534,42 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
 
+    impl Default for App {
+        fn default() -> Self {
+            Self {
+                screen: Screen::SteamNotRunning {
+                    reason: String::new(),
+                },
+                worker: None,
+                worker_rx: None,
+                profile_view_state: None,
+                settings: Settings::default(),
+                settings_dirty_since: None,
+                messaging: MessagingCenter::new(),
+                cached_entries: HashMap::new(),
+                pending_hit_queue: VecDeque::new(),
+                steam_root: std::path::PathBuf::from("/tmp"),
+                steamid3: 0,
+                user_profile: None,
+                profile_avatar_handle: None,
+                splash_min_elapsed: true,
+                splash_scan_done: true,
+                splash_probe_done: true,
+                steam_running: Some(true),
+                steam_level: None,
+                skeleton_phase: 0.0,
+                no_ach_cache: cache::NoAchievementsCache::new(),
+                library_name_map: HashMap::new(),
+            }
+        }
+    }
+
     fn make_app_not_running(reason: &str) -> App {
         App {
             screen: Screen::SteamNotRunning {
                 reason: reason.to_owned(),
             },
-            worker: None,
-            worker_rx: None,
-            profile_view_state: None,
-            settings: Settings::default(),
-            settings_dirty_since: None,
-            messaging: MessagingCenter::new(),
-            cached_entries: HashMap::new(),
-            pending_hit_queue: VecDeque::new(),
-            steam_root: std::path::PathBuf::from("/tmp"),
-            steamid3: 0,
-            user_profile: None,
-            profile_avatar_handle: None,
-            splash_min_elapsed: true,
-            splash_scan_done: true,
-            splash_probe_done: true,
-            steam_running: Some(true),
-            steam_level: None,
-            skeleton_phase: 0.0,
-            no_ach_cache: cache::NoAchievementsCache::new(),
-            library_name_map: HashMap::new(),
+            ..App::default()
         }
     }
 
@@ -2593,12 +2604,6 @@ mod tests {
 
         let mut app = App {
             screen: Screen::ProfileView(Box::new(pv_state)),
-            worker: None,
-            worker_rx: None,
-            profile_view_state: None,
-            settings: Settings::default(),
-            settings_dirty_since: None,
-            messaging: MessagingCenter::new(),
             cached_entries: {
                 let mut m = HashMap::new();
                 m.insert(
@@ -2621,19 +2626,7 @@ mod tests {
                 );
                 m
             },
-            pending_hit_queue: VecDeque::new(),
-            steam_root: std::path::PathBuf::from("/tmp"),
-            steamid3: 0,
-            user_profile: None,
-            profile_avatar_handle: None,
-            splash_min_elapsed: true,
-            splash_scan_done: true,
-            splash_probe_done: true,
-            steam_running: Some(true),
-            steam_level: None,
-            skeleton_phase: 0.0,
-            no_ach_cache: cache::NoAchievementsCache::new(),
-            library_name_map: HashMap::new(),
+            ..App::default()
         };
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
@@ -2663,26 +2656,7 @@ mod tests {
         state.phase = phase;
         App {
             screen: Screen::GameView(Box::new(state)),
-            worker: None,
-            worker_rx: None,
-            profile_view_state: None,
-            settings: Settings::default(),
-            settings_dirty_since: None,
-            messaging: MessagingCenter::new(),
-            cached_entries: HashMap::new(),
-            pending_hit_queue: VecDeque::new(),
-            steam_root: std::path::PathBuf::from("/tmp"),
-            steamid3: 0,
-            user_profile: None,
-            profile_avatar_handle: None,
-            splash_min_elapsed: true,
-            splash_scan_done: true,
-            splash_probe_done: true,
-            steam_running: Some(true),
-            steam_level: None,
-            skeleton_phase: 0.0,
-            no_ach_cache: cache::NoAchievementsCache::new(),
-            library_name_map: HashMap::new(),
+            ..App::default()
         }
     }
 
