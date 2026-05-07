@@ -2651,6 +2651,68 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn open_game_view_then_go_back_round_trip() {
+        let app_id: u32 = 440;
+        let pv_state = ProfileViewState::new();
+        let mut cached_entries = HashMap::new();
+        cached_entries.insert(
+            app_id,
+            cache::GameCacheEntry {
+                schema_version: cache::CURRENT_SCHEMA_VERSION,
+                app_id,
+                name: "Team Fortress 2".to_owned(),
+                steam_last_played: 0,
+                cached_at: 1_000,
+                achievements: vec![],
+                stats: vec![],
+                progress: cache::types::CachedProgress {
+                    earned: 10,
+                    total: 520,
+                },
+                tier_breakdown: Vec::new(),
+                genre: None,
+            },
+        );
+        let mut app = App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            cached_entries,
+            ..App::default()
+        };
+
+        let _t = update(&mut app, Message::OpenGameView(app_id));
+        assert!(
+            matches!(app.screen, Screen::GameView(_)),
+            "OpenGameView must switch to GameView screen"
+        );
+        assert!(
+            app.profile_view_state.is_some(),
+            "ProfileView state must be stashed for restore"
+        );
+        assert!(
+            app.worker.is_some(),
+            "OpenGameView must respawn worker for the new app"
+        );
+        assert!(
+            app.cached_entries.contains_key(&app_id),
+            "cached entry must survive OpenGameView"
+        );
+
+        let _t = update(&mut app, Message::GoBack);
+        assert!(
+            matches!(app.screen, Screen::ProfileView(_)),
+            "GoBack from GameView must restore ProfileView screen"
+        );
+        assert!(
+            app.profile_view_state.is_none(),
+            "stash must be consumed when restoring ProfileView"
+        );
+        assert!(
+            app.cached_entries.contains_key(&app_id),
+            "cached entry must survive GoBack (overwritten with fresh game-view snapshot)"
+        );
+    }
+
     fn make_app_with_game_view_phase(phase: game_view::GameViewPhase) -> App {
         let mut state = GameViewState::new(570);
         state.phase = phase;
