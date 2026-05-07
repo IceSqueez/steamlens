@@ -158,10 +158,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             state.error_message = e;
             Task::none()
         }
-        SteamReply::StatsRequested => {
-            state.phase = GameViewPhase::LoadingData;
-            Task::none()
-        }
         SteamReply::RequestStatsFailed(e) => {
             state.phase = GameViewPhase::Error;
             state.error_message = e;
@@ -170,7 +166,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         SteamReply::AchievementsAndStats {
             achievements,
             stats,
-            genre: _,
         } => {
             let prev_revealed: std::collections::HashSet<String> = state
                 .achievements
@@ -256,19 +251,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             }
             Task::none()
         }
-        SteamReply::Callback(cb) => {
-            use steamlens_core::SteamCallback;
-            if let SteamCallback::UserStatsReceived { result, .. } = &cb {
-                if result.is_ok() && state.phase == GameViewPhase::WaitingStats {
-                    state.phase = GameViewPhase::LoadingData;
-                } else if !result.is_ok() && state.phase == GameViewPhase::WaitingStats {
-                    state.phase = GameViewPhase::Error;
-                    state.error_message =
-                        format!("Steam returned error {} for RequestUserStats", result.raw());
-                }
-            }
-            Task::none()
-        }
         SteamReply::Disconnected => Task::none(),
         SteamReply::GlobalPercentagesReady(map) => {
             for row in &mut state.achievements {
@@ -278,7 +260,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             }
             Task::none()
         }
-        SteamReply::GlobalPercentagesFailed(_) => Task::none(),
+        SteamReply::GlobalPercentagesFailed => Task::none(),
     }
 }
 

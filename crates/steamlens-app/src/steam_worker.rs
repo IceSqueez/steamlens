@@ -30,19 +30,15 @@ pub enum SteamRequest {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum SteamReply {
     Connected {
-        steam_id: u64,
         app_name: Option<String>,
     },
     ConnectFailed(String),
-    StatsRequested,
     RequestStatsFailed(String),
     AchievementsAndStats {
         achievements: Vec<steamlens_core::AchievementData>,
         stats: Vec<steamlens_core::StatData>,
-        genre: Option<String>,
     },
     LoadFailed(String),
     ChangesSaved,
@@ -54,8 +50,7 @@ pub enum SteamReply {
         icon: AchievementIcon,
     },
     GlobalPercentagesReady(HashMap<String, f32>),
-    GlobalPercentagesFailed(String),
-    Callback(steamlens_core::SteamCallback),
+    GlobalPercentagesFailed,
     Disconnected,
 }
 
@@ -146,7 +141,7 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
         WorkerErrorKind::ResetAllStats => SteamReply::ResetFailed(message),
         WorkerErrorKind::RequestGlobalPercentages
         | WorkerErrorKind::GlobalPercentagesReady
-        | WorkerErrorKind::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed(message),
+        | WorkerErrorKind::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed,
         WorkerErrorKind::Generic => SteamReply::LoadFailed(message),
     }
 }
@@ -278,8 +273,8 @@ fn read_shm<T: serde::de::DeserializeOwned>(
 
 fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
     match resp {
-        WorkerResponse::SteamConnected { steam_id, app_name } => {
-            reply(rep_tx, SteamReply::Connected { steam_id, app_name });
+        WorkerResponse::SteamConnected { app_name, .. } => {
+            reply(rep_tx, SteamReply::Connected { app_name });
         }
         WorkerResponse::Ack => {}
         WorkerResponse::AchievementsAndStats {
@@ -295,7 +290,6 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
                 SteamReply::AchievementsAndStats {
                     achievements: p.achievements,
                     stats: p.stats,
-                    genre: p.genre,
                 },
             ),
             Err(msg) => reply(rep_tx, SteamReply::LoadFailed(msg)),
@@ -319,7 +313,7 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
             region_bytes,
         ) {
             Ok(map) => reply(rep_tx, SteamReply::GlobalPercentagesReady(map)),
-            Err(msg) => reply(rep_tx, SteamReply::GlobalPercentagesFailed(msg)),
+            Err(_) => reply(rep_tx, SteamReply::GlobalPercentagesFailed),
         },
         WorkerResponse::Stored => {
             reply(rep_tx, SteamReply::ChangesSaved);
@@ -390,8 +384,8 @@ async fn await_steam_connected(
     rep_tx: &mpsc::Sender<SteamReply>,
 ) -> Result<(), ConnectError> {
     match tokio::time::timeout(timeout, ipc_pipe::read_response(stdout)).await {
-        Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
-            reply(rep_tx, SteamReply::Connected { steam_id, app_name });
+        Ok(Some(WorkerResponse::SteamConnected { app_name, .. })) => {
+            reply(rep_tx, SteamReply::Connected { app_name });
             Ok(())
         }
         Ok(Some(WorkerResponse::Error { kind, message })) => {
@@ -438,12 +432,7 @@ async fn handle_request(
             .await
             {
                 Some(resp) => handle_worker_response(resp, rep_tx),
-                None => reply(
-                    rep_tx,
-                    SteamReply::GlobalPercentagesFailed(
-                        "timed out waiting for global percentages".to_owned(),
-                    ),
-                ),
+                None => reply(rep_tx, SteamReply::GlobalPercentagesFailed),
             }
         }
 
