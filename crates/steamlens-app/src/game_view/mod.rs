@@ -176,14 +176,14 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             state.achievements = achievements
                 .into_iter()
                 .map(|data| {
-                    let mut row = AchievementRow::from_data(data);
+                    let mut row = AchievementRow::from(data);
                     if prev_revealed.contains(&row.data.id) {
                         row.revealed = true;
                     }
                     row
                 })
                 .collect();
-            state.stats = stats.into_iter().map(StatRow::from_data).collect();
+            state.stats = stats.into_iter().map(StatRow::from).collect();
             state.phase = GameViewPhase::Ready;
             state.fade_in = 0.0;
 
@@ -575,7 +575,7 @@ mod tests {
 
     fn make_state_with_achievement(id: &str) -> GameViewState {
         let mut state = GameViewState::new(0);
-        state.achievements = vec![AchievementRow::from_data(AchievementData {
+        state.achievements = vec![AchievementRow::from(AchievementData {
             id: id.to_owned(),
             display_name: id.to_owned(),
             description: String::new(),
@@ -639,7 +639,7 @@ mod tests {
             let id = format!("ACH_{i}");
             state
                 .achievements
-                .push(types::AchievementRow::from_data(types::AchievementData {
+                .push(types::AchievementRow::from(types::AchievementData {
                     id: id.clone(),
                     display_name: id.clone(),
                     description: String::new(),

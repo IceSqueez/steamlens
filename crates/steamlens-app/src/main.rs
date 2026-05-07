@@ -1086,7 +1086,7 @@ fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
                 permission: 0,
                 icon: None,
             };
-            let mut row = AchievementRow::from_data(data);
+            let mut row = AchievementRow::from(data);
             row.rarity_percent = a.global_percent.map(|p| p as f32);
             row
         })
@@ -1119,7 +1119,7 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
                 permission: 0,
                 icon: None,
             };
-            let mut row = AchievementRow::from_data(data);
+            let mut row = AchievementRow::from(data);
             row.appeared = true;
             row.card_opacity = 1.0;
             row.rarity_percent = a.global_percent.map(|p| p as f32);
@@ -1149,7 +1149,7 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
                 is_increment_only: false,
                 permission: 0,
             };
-            StatRow::from_data(data)
+            StatRow::from(data)
         })
         .collect();
 
@@ -1208,7 +1208,7 @@ fn build_cache_entry_from_scan(
                 permission: 0,
                 icon: None,
             };
-            let mut row = AchievementRow::from_data(data);
+            let mut row = AchievementRow::from(data);
             row.rarity_percent = scanned.global_percentages.get(&a.id).copied();
             row
         })
@@ -2180,7 +2180,7 @@ mod tests {
             permission: 0,
             icon: None,
         };
-        let mut row = AchievementRow::from_data(data);
+        let mut row = AchievementRow::from(data);
         row.is_dirty = true;
         state.achievements.push(row);
         state
@@ -2284,7 +2284,7 @@ mod tests {
             permission: 0,
             icon: None,
         };
-        state.achievements.push(AchievementRow::from_data(data));
+        state.achievements.push(AchievementRow::from(data));
         assert!(
             !state.achievements[0].revealed,
             "precondition: revealed must be false"
@@ -2317,7 +2317,7 @@ mod tests {
             is_hidden: bool,
             revealed: bool,
         ) -> AchievementRow {
-            let mut r = AchievementRow::from_data(AchievementData {
+            let mut r = AchievementRow::from(AchievementData {
                 id: id.to_owned(),
                 display_name: name.to_owned(),
                 description: String::new(),
@@ -2364,7 +2364,7 @@ mod tests {
             visible_achievement_ids,
         };
 
-        let mut zebra = AchievementRow::from_data(AchievementData {
+        let mut zebra = AchievementRow::from(AchievementData {
             id: "ZEBRA".to_owned(),
             display_name: "Zebra".to_owned(),
             description: String::new(),
@@ -2377,7 +2377,7 @@ mod tests {
         zebra.is_dirty = true;
         zebra.appeared = true;
 
-        let mut ant = AchievementRow::from_data(AchievementData {
+        let mut ant = AchievementRow::from(AchievementData {
             id: "ANT".to_owned(),
             display_name: "Ant".to_owned(),
             description: String::new(),
@@ -2417,7 +2417,7 @@ mod tests {
         };
 
         fn unlocked_row(id: &str, name: &str) -> AchievementRow {
-            let mut r = AchievementRow::from_data(AchievementData {
+            let mut r = AchievementRow::from(AchievementData {
                 id: id.to_owned(),
                 display_name: name.to_owned(),
                 description: String::new(),
@@ -2514,7 +2514,7 @@ mod tests {
         let mut state = GameViewState::new(0);
 
         let make_row = |id: &str| {
-            AchievementRow::from_data(AchievementData {
+            AchievementRow::from(AchievementData {
                 id: id.to_owned(),
                 display_name: id.to_owned(),
                 description: String::new(),
@@ -2563,7 +2563,7 @@ mod tests {
             permission: 0,
             icon: None,
         };
-        let mut row = AchievementRow::from_data(data.clone());
+        let mut row = AchievementRow::from(data.clone());
         row.revealed = true;
         state.achievements.push(row);
 
