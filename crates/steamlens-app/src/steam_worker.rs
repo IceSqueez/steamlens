@@ -13,7 +13,6 @@ use crate::game_view::types::ResetScope;
 use crate::ipc_pipe;
 use crate::timeouts;
 
-#[allow(dead_code)]
 pub enum SteamRequest {
     ConnectWithApp(u32),
     RequestUserStats,
@@ -26,7 +25,6 @@ pub enum SteamRequest {
     },
     ResetAll {
         scope: ResetScope,
-        stat_driven_progress_max: HashMap<String, u32>,
     },
     Disconnect,
 }
@@ -90,7 +88,7 @@ fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
     let _ = tx.send(r);
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
     match req {
         SteamRequest::RequestUserStats => vec![WorkerCommand::LoadAchievementsAndStats],
@@ -679,7 +677,6 @@ mod tests {
     fn translate_request_reset_stats_only() {
         let req = SteamRequest::ResetAll {
             scope: ResetScope::StatsOnly,
-            stat_driven_progress_max: HashMap::new(),
         };
         let cmds = translate_request(&req);
         assert_eq!(cmds.len(), 1);
@@ -698,7 +695,6 @@ mod tests {
     fn translate_request_reset_stats_and_achievements() {
         let req = SteamRequest::ResetAll {
             scope: ResetScope::StatsAndAchievements,
-            stat_driven_progress_max: HashMap::new(),
         };
         let cmds = translate_request(&req);
         assert_eq!(cmds.len(), 1);
