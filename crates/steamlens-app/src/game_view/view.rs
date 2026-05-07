@@ -1,3 +1,4 @@
+use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
     space, span, stack, text, text_input, tooltip,
@@ -5,6 +6,10 @@ use iced::widget::{
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::skeleton::skeleton_box;
+
+pub fn achievement_search_id() -> WidgetId {
+    WidgetId::new("achievement-search")
+}
 
 use super::types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp, RarityTier,
@@ -444,6 +449,7 @@ const ACH_CARD_HEIGHT: f32 = 140.0;
 
 fn filter_row(state: &GameViewState) -> Element<'_, Message> {
     let search_input = text_input("Search achievements\u{2026}", &state.search_query)
+        .id(achievement_search_id())
         .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
         .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .size(13)

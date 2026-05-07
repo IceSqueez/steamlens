@@ -1,6 +1,8 @@
 pub mod types;
 mod view;
 
+pub use view::achievement_search_id;
+
 use std::collections::{HashSet, VecDeque};
 
 use iced::Task;
