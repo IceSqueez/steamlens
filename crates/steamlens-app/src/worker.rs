@@ -12,6 +12,8 @@ use steamlens_core::{
     AchievementData, AchievementIcon, Client, StatKind, StatValue, SteamCallback,
 };
 
+use crate::timeouts;
+
 #[derive(Debug)]
 enum WorkerError {
     Io(std::io::Error),
@@ -616,7 +618,7 @@ async fn quick_achievement_count(client: &Client) -> WorkerResponse {
 }
 
 async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
     loop {
         match client.poll_callbacks() {
             Ok(callbacks) => {
@@ -668,7 +670,7 @@ async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(timeouts::POLL_INTERVAL).await;
     }
 }
 
@@ -676,7 +678,7 @@ async fn wait_for_stats_received_card_only(
     client: &Client,
     expected_user: u64,
 ) -> Option<WorkerResponse> {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
     loop {
         match client.poll_callbacks() {
             Ok(callbacks) => {
@@ -726,7 +728,7 @@ async fn wait_for_stats_received_card_only(
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(timeouts::POLL_INTERVAL).await;
     }
 }
 
@@ -742,7 +744,7 @@ async fn store_stats_and_wait(client: &Client) -> WorkerResponse {
 }
 
 async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + timeouts::STORE_CONFIRMED;
     loop {
         match client.poll_callbacks() {
             Ok(callbacks) => {
@@ -772,7 +774,7 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
                 message: "timed out waiting for UserStatsStored".into(),
             };
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(timeouts::POLL_INTERVAL).await;
     }
 }
 
@@ -812,7 +814,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
         }
     };
 
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let deadline = std::time::Instant::now() + timeouts::GLOBAL_PERCENTAGES;
     loop {
         let _ = client.poll_callbacks();
 
@@ -858,7 +860,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
                 message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
             };
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(timeouts::POLL_INTERVAL).await;
     }
 }
 

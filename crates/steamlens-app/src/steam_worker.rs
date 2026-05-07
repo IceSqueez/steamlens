@@ -12,6 +12,7 @@ use steamlens_core::ipc::{
 };
 
 use crate::game_view::types::ResetScope;
+use crate::timeouts;
 
 #[allow(dead_code)]
 pub enum SteamRequest {
@@ -194,7 +195,7 @@ async fn run_apply_sequence(
     stdout: &mut ChildStdout,
     rep_tx: &mpsc::Sender<SteamReply>,
 ) {
-    let staging_timeout = Duration::from_secs(5);
+    let staging_timeout = timeouts::STAGING;
 
     let mut staging_cmds = Vec::new();
     for name in achievements_to_set {
@@ -237,11 +238,11 @@ async fn run_apply_sequence(
         }
     }
 
-    let store_timeout = Duration::from_secs(15);
+    let store_timeout = timeouts::LIVE_LOAD;
     match round_trip(stdin, stdout, &WorkerCommand::StoreStats, store_timeout).await {
         Some(WorkerResponse::Stored) => {
             reply(rep_tx, SteamReply::ChangesSaved);
-            let load_timeout = Duration::from_secs(15);
+            let load_timeout = timeouts::LIVE_LOAD;
             match round_trip(
                 stdin,
                 stdout,
@@ -386,7 +387,7 @@ async fn drain_responses(
 
 async fn kill_child(child: &mut Child) {
     let _ = child.start_kill();
-    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+    let _ = tokio::time::timeout(timeouts::CHILD_KILL, child.wait()).await;
 }
 
 #[derive(Debug)]
@@ -422,7 +423,7 @@ async fn handle_request(
 ) {
     match req {
         SteamRequest::RequestUserStats => {
-            let timeout = Duration::from_secs(15);
+            let timeout = timeouts::LIVE_LOAD;
             match round_trip(
                 stdin,
                 stdout,
@@ -440,7 +441,7 @@ async fn handle_request(
         }
 
         SteamRequest::RequestGlobalPercentages => {
-            let timeout = Duration::from_secs(15);
+            let timeout = timeouts::GLOBAL_PERCENTAGES;
             match round_trip(
                 stdin,
                 stdout,
@@ -479,7 +480,7 @@ async fn handle_request(
 
         SteamRequest::ResetAll { scope, .. } => {
             let include_achievements = scope == ResetScope::StatsAndAchievements;
-            let timeout = Duration::from_secs(15);
+            let timeout = timeouts::LIVE_LOAD;
             match round_trip(
                 stdin,
                 stdout,
@@ -506,7 +507,7 @@ async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
     rep_tx: mpsc::Sender<SteamReply>,
 ) {
-    let connect_timeout = Duration::from_secs(10);
+    let connect_timeout = timeouts::STEAM_CONNECT;
 
     let (mut child, mut stdin, mut stdout, mut _job_guard) = loop {
         let Some(req) = req_rx.recv().await else {
@@ -552,18 +553,18 @@ async fn bridge_loop(
 
     loop {
         // Drain icon callbacks (≤50 ms) before blocking on the next request.
-        drain_responses(&mut stdout, &rep_tx, 50).await;
+        drain_responses(&mut stdout, &rep_tx, timeouts::ICON_DRAIN_MS).await;
 
         let Some(req) = req_rx.recv().await else {
             let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-            let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+            let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
             return;
         };
 
         match req {
             SteamRequest::ConnectWithApp(new_app_id) => {
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-                let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+                let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
 
                 match spawn_worker_child(new_app_id).await {
                     Ok((new_child, new_stdin, new_stdout, new_job_guard)) => {
@@ -601,8 +602,8 @@ async fn bridge_loop(
             SteamRequest::Disconnect => {
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
                 let _ =
-                    tokio::time::timeout(Duration::from_secs(3), read_response(&mut stdout)).await;
-                let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
+                    tokio::time::timeout(timeouts::CHILD_DRAIN, read_response(&mut stdout)).await;
+                let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
             }
@@ -803,7 +804,7 @@ mod tests {
     #[tokio::test]
     async fn await_steam_connected_timeout() {
         let (_tx, rx) = tokio::io::duplex(4096);
-        let timed_out = tokio::time::timeout(Duration::from_millis(50), read_from_duplex(rx))
+        let timed_out = tokio::time::timeout(timeouts::POLL_INTERVAL, read_from_duplex(rx))
             .await
             .is_err();
         assert!(timed_out, "read on empty pipe must time out");

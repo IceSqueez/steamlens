@@ -9,10 +9,9 @@ use steamlens_core::ipc::{
 };
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
+use crate::timeouts;
+
 const MAX_CONCURRENT: usize = 1;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
-const PERCENTAGES_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressData {
@@ -181,16 +180,17 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
         buf
     });
 
-    let total_timeout = CONNECT_TIMEOUT + LOAD_TIMEOUT + PERCENTAGES_TIMEOUT;
+    let total_timeout =
+        timeouts::STEAM_CONNECT + timeouts::COLD_SCAN_LOAD + timeouts::GLOBAL_PERCENTAGES;
     let result = tokio::time::timeout(total_timeout, run_full_scan_protocol(&mut child)).await;
 
     let _ = child.start_kill();
-    let exit_status = tokio::time::timeout(Duration::from_secs(2), child.wait())
+    let exit_status = tokio::time::timeout(timeouts::CHILD_KILL, child.wait())
         .await
         .ok()
         .and_then(|r| r.ok());
 
-    let stderr_bytes = tokio::time::timeout(Duration::from_secs(1), stderr_task)
+    let stderr_bytes = tokio::time::timeout(timeouts::STDERR_DRAIN, stderr_task)
         .await
         .ok()
         .and_then(|res| res.ok())
@@ -267,7 +267,7 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
     })?;
 
-    let connected = tokio::time::timeout(CONNECT_TIMEOUT, read_response(&mut stdout))
+    let connected = tokio::time::timeout(timeouts::STEAM_CONNECT, read_response(&mut stdout))
         .await
         .map_err(|_| {
             std::io::Error::new(
@@ -297,13 +297,13 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
 
     send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly).await?;
     let (achievements, stats, genre) =
-        read_card_only_skipping_async(&mut stdout, LOAD_TIMEOUT).await?;
+        read_card_only_skipping_async(&mut stdout, timeouts::COLD_SCAN_LOAD).await?;
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
     } else {
         send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
-        read_percentages_skipping_async(&mut stdout, PERCENTAGES_TIMEOUT).await
+        read_percentages_skipping_async(&mut stdout, timeouts::GLOBAL_PERCENTAGES).await
     };
 
     let _ = send_command(&mut stdin, &WorkerCommand::Shutdown).await;
