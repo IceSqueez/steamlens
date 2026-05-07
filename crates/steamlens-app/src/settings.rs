@@ -179,6 +179,12 @@ impl Default for Settings {
     }
 }
 
+pub async fn write_settings(s: &Settings) -> Result<(), crate::cache::store::CacheIoError> {
+    let text = toml::to_string_pretty(s)
+        .map_err(|e| crate::cache::store::CacheIoError::Serialize(e.to_string()))?;
+    crate::cache::store::atomic_write(&settings_path(), text.as_bytes()).await
+}
+
 /// Returns `Settings::default()` on any error (missing file, TOML parse
 /// failure, schema mismatch, path-is-a-directory). Logs and never panics.
 pub fn load_settings() -> Settings {

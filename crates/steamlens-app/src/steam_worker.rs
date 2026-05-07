@@ -389,10 +389,125 @@ async fn kill_child(child: &mut Child) {
     let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
 }
 
+#[derive(Debug)]
+enum ConnectError {
+    WorkerError(WorkerErrorKind, String),
+    UnexpectedMessage,
+    Timeout,
+}
+
+async fn await_steam_connected(
+    stdout: &mut ChildStdout,
+    timeout: Duration,
+    rep_tx: &mpsc::Sender<SteamReply>,
+) -> Result<(), ConnectError> {
+    match tokio::time::timeout(timeout, read_response(stdout)).await {
+        Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
+            reply(rep_tx, SteamReply::Connected { steam_id, app_name });
+            Ok(())
+        }
+        Ok(Some(WorkerResponse::Error { kind, message })) => {
+            Err(ConnectError::WorkerError(kind, message))
+        }
+        Ok(_) => Err(ConnectError::UnexpectedMessage),
+        Err(_) => Err(ConnectError::Timeout),
+    }
+}
+
+async fn handle_request(
+    req: SteamRequest,
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    rep_tx: &mpsc::Sender<SteamReply>,
+) {
+    match req {
+        SteamRequest::RequestUserStats => {
+            let timeout = Duration::from_secs(15);
+            match round_trip(
+                stdin,
+                stdout,
+                &WorkerCommand::LoadAchievementsAndStats,
+                timeout,
+            )
+            .await
+            {
+                Some(resp) => handle_worker_response(resp, rep_tx),
+                None => reply(
+                    rep_tx,
+                    SteamReply::LoadFailed("timed out waiting for AchievementsAndStats".to_owned()),
+                ),
+            }
+        }
+
+        SteamRequest::RequestGlobalPercentages => {
+            let timeout = Duration::from_secs(15);
+            match round_trip(
+                stdin,
+                stdout,
+                &WorkerCommand::RequestGlobalPercentages,
+                timeout,
+            )
+            .await
+            {
+                Some(resp) => handle_worker_response(resp, rep_tx),
+                None => reply(
+                    rep_tx,
+                    SteamReply::GlobalPercentagesFailed(
+                        "timed out waiting for global percentages".to_owned(),
+                    ),
+                ),
+            }
+        }
+
+        SteamRequest::ApplyChanges {
+            achievements_to_set,
+            achievements_to_clear,
+            stats_int,
+            stats_float,
+        } => {
+            run_apply_sequence(
+                achievements_to_set,
+                achievements_to_clear,
+                stats_int,
+                stats_float,
+                stdin,
+                stdout,
+                rep_tx,
+            )
+            .await;
+        }
+
+        SteamRequest::ResetAll { scope, .. } => {
+            let include_achievements = scope == ResetScope::StatsAndAchievements;
+            let timeout = Duration::from_secs(15);
+            match round_trip(
+                stdin,
+                stdout,
+                &WorkerCommand::ResetAllStats {
+                    include_achievements,
+                },
+                timeout,
+            )
+            .await
+            {
+                Some(resp) => handle_worker_response(resp, rep_tx),
+                None => reply(
+                    rep_tx,
+                    SteamReply::ResetFailed("timed out waiting for ResetAllStats".to_owned()),
+                ),
+            }
+        }
+
+        SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {}
+    }
+}
+
 async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
     rep_tx: mpsc::Sender<SteamReply>,
 ) {
+    let connect_timeout = Duration::from_secs(10);
+
     let (mut child, mut stdin, mut stdout, mut _job_guard) = loop {
         let Some(req) = req_rx.recv().await else {
             return;
@@ -419,35 +534,20 @@ async fn bridge_loop(
         }
     };
 
-    let connect_timeout = Duration::from_secs(10);
-    match tokio::time::timeout(connect_timeout, read_response(&mut stdout)).await {
-        Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
-            reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
-        }
-        Ok(Some(WorkerResponse::Error { kind, message })) => {
-            reply(&rep_tx, error_reply(kind, message));
-            kill_child(&mut child).await;
-            return;
-        }
-        Ok(other) => {
-            reply(
+    if let Err(e) = await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await {
+        match e {
+            ConnectError::WorkerError(kind, msg) => reply(&rep_tx, error_reply(kind, msg)),
+            ConnectError::UnexpectedMessage => reply(
                 &rep_tx,
-                SteamReply::ConnectFailed(format!(
-                    "unexpected first message: {:?}",
-                    other.as_ref().map(std::mem::discriminant)
-                )),
-            );
-            kill_child(&mut child).await;
-            return;
-        }
-        Err(_) => {
-            reply(
+                SteamReply::ConnectFailed("unexpected first message from worker".to_owned()),
+            ),
+            ConnectError::Timeout => reply(
                 &rep_tx,
                 SteamReply::ConnectFailed("timed out waiting for SteamConnected".to_owned()),
-            );
-            kill_child(&mut child).await;
-            return;
+            ),
         }
+        kill_child(&mut child).await;
+        return;
     }
 
     loop {
@@ -471,29 +571,24 @@ async fn bridge_loop(
                         stdin = new_stdin;
                         stdout = new_stdout;
                         _job_guard = new_job_guard;
-                        let connect_timeout = Duration::from_secs(10);
-                        match tokio::time::timeout(connect_timeout, read_response(&mut stdout))
-                            .await
+
+                        if let Err(e) =
+                            await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await
                         {
-                            Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
-                                reply(&rep_tx, SteamReply::Connected { steam_id, app_name });
-                            }
-                            Ok(Some(WorkerResponse::Error { kind, message })) => {
-                                reply(&rep_tx, error_reply(kind, message));
-                                kill_child(&mut child).await;
-                                return;
-                            }
-                            _ => {
-                                reply(
+                            match e {
+                                ConnectError::WorkerError(kind, msg) => {
+                                    reply(&rep_tx, error_reply(kind, msg))
+                                }
+                                ConnectError::UnexpectedMessage | ConnectError::Timeout => reply(
                                     &rep_tx,
                                     SteamReply::ConnectFailed(
                                         "timed out waiting for SteamConnected on reconnect"
                                             .to_owned(),
                                     ),
-                                );
-                                kill_child(&mut child).await;
-                                return;
+                                ),
                             }
+                            kill_child(&mut child).await;
+                            return;
                         }
                     }
                     Err(e) => {
@@ -512,83 +607,8 @@ async fn bridge_loop(
                 return;
             }
 
-            SteamRequest::ApplyChanges {
-                achievements_to_set,
-                achievements_to_clear,
-                stats_int,
-                stats_float,
-            } => {
-                run_apply_sequence(
-                    achievements_to_set,
-                    achievements_to_clear,
-                    stats_int,
-                    stats_float,
-                    &mut stdin,
-                    &mut stdout,
-                    &rep_tx,
-                )
-                .await;
-            }
-
-            SteamRequest::RequestUserStats => {
-                let timeout = Duration::from_secs(15);
-                match round_trip(
-                    &mut stdin,
-                    &mut stdout,
-                    &WorkerCommand::LoadAchievementsAndStats,
-                    timeout,
-                )
-                .await
-                {
-                    Some(resp) => handle_worker_response(resp, &rep_tx),
-                    None => reply(
-                        &rep_tx,
-                        SteamReply::LoadFailed(
-                            "timed out waiting for AchievementsAndStats".to_owned(),
-                        ),
-                    ),
-                }
-            }
-
-            SteamRequest::RequestGlobalPercentages => {
-                let timeout = Duration::from_secs(15);
-                match round_trip(
-                    &mut stdin,
-                    &mut stdout,
-                    &WorkerCommand::RequestGlobalPercentages,
-                    timeout,
-                )
-                .await
-                {
-                    Some(resp) => handle_worker_response(resp, &rep_tx),
-                    None => reply(
-                        &rep_tx,
-                        SteamReply::GlobalPercentagesFailed(
-                            "timed out waiting for global percentages".to_owned(),
-                        ),
-                    ),
-                }
-            }
-
-            SteamRequest::ResetAll { scope, .. } => {
-                let include_achievements = scope == ResetScope::StatsAndAchievements;
-                let timeout = Duration::from_secs(15);
-                match round_trip(
-                    &mut stdin,
-                    &mut stdout,
-                    &WorkerCommand::ResetAllStats {
-                        include_achievements,
-                    },
-                    timeout,
-                )
-                .await
-                {
-                    Some(resp) => handle_worker_response(resp, &rep_tx),
-                    None => reply(
-                        &rep_tx,
-                        SteamReply::ResetFailed("timed out waiting for ResetAllStats".to_owned()),
-                    ),
-                }
+            other => {
+                handle_request(other, &mut stdin, &mut stdout, &rep_tx).await;
             }
         }
     }
@@ -737,5 +757,77 @@ mod tests {
     fn translate_request_disconnect_produces_no_commands() {
         let cmds = translate_request(&SteamRequest::Disconnect);
         assert!(cmds.is_empty());
+    }
+
+    // ── await_steam_connected unit tests ────────────────────────────────────
+    //
+    // ChildStdout is not constructable directly. We test the underlying
+    // `read_response` logic via a tokio DuplexStream that has the same
+    // AsyncRead contract.
+
+    use steamlens_core::ipc::{WorkerResponse, decode_frame, encode_frame, parse_header};
+
+    async fn read_from_duplex(mut rx: tokio::io::DuplexStream) -> Option<WorkerResponse> {
+        use tokio::io::AsyncReadExt as _;
+
+        let mut header = [0u8; 4];
+        rx.read_exact(&mut header).await.ok()?;
+        let len = parse_header(header).ok()?;
+        let mut buf = vec![0u8; len];
+        rx.read_exact(&mut buf).await.ok()?;
+        decode_frame::<WorkerResponse>(&buf).ok()
+    }
+
+    #[tokio::test]
+    async fn await_steam_connected_happy_path() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let (mut tx, rx) = tokio::io::duplex(4096);
+        let resp = WorkerResponse::SteamConnected {
+            steam_id: 12345,
+            app_name: Some("TestGame".to_owned()),
+        };
+        tx.write_all(&encode_frame(&resp).unwrap()).await.unwrap();
+        drop(tx);
+
+        let result = read_from_duplex(rx).await;
+        assert!(matches!(
+            result,
+            Some(WorkerResponse::SteamConnected {
+                steam_id: 12345,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn await_steam_connected_timeout() {
+        let (_tx, rx) = tokio::io::duplex(4096);
+        let timed_out = tokio::time::timeout(Duration::from_millis(50), read_from_duplex(rx))
+            .await
+            .is_err();
+        assert!(timed_out, "read on empty pipe must time out");
+    }
+
+    #[tokio::test]
+    async fn await_steam_connected_worker_error() {
+        use tokio::io::AsyncWriteExt as _;
+
+        let (mut tx, rx) = tokio::io::duplex(4096);
+        let resp = WorkerResponse::Error {
+            kind: WorkerErrorKind::Connect,
+            message: "steam not running".to_owned(),
+        };
+        tx.write_all(&encode_frame(&resp).unwrap()).await.unwrap();
+        drop(tx);
+
+        let result = read_from_duplex(rx).await;
+        assert!(matches!(
+            result,
+            Some(WorkerResponse::Error {
+                kind: WorkerErrorKind::Connect,
+                ..
+            })
+        ));
     }
 }
