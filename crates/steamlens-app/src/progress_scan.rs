@@ -12,11 +12,7 @@ use crate::timeouts;
 
 const MAX_CONCURRENT: usize = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProgressData {
-    pub earned: u32,
-    pub total: u32,
-}
+pub use steamlens_core::AchievementCountPayload as ProgressData;
 
 #[derive(Debug, Clone)]
 pub struct ScannedGameData {
