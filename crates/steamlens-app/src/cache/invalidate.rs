@@ -93,7 +93,6 @@ mod tests {
             schema_version: CURRENT_SCHEMA_VERSION,
             app_id,
             name: format!("Game {app_id}"),
-            steam_last_updated: 0,
             steam_last_played: 0,
             cached_at,
             achievements: Vec::new(),
@@ -179,7 +178,7 @@ mod tests {
         let game = make_summary(6, None);
 
         let bad_cache = cache_dir.path().join("6.json");
-        let bad_json = r#"{"schema_version":99,"app_id":6,"name":"Game 6","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
+        let bad_json = r#"{"schema_version":99,"app_id":6,"name":"Game 6","steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;
@@ -194,7 +193,7 @@ mod tests {
         let game = make_summary(7, None);
 
         let bad_cache = cache_dir.path().join("7.json");
-        let bad_json = r#"{"schema_version":0,"app_id":7,"name":"Game 7","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
+        let bad_json = r#"{"schema_version":0,"app_id":7,"name":"Game 7","steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;

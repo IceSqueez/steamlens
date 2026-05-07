@@ -73,7 +73,6 @@ pub struct GameViewState {
     pub app_id: u32,
     pub game_name: String,
     pub phase: GameViewPhase,
-    pub steam_last_updated: u64,
 
     pub achievements: Vec<AchievementRow>,
     pub stats: Vec<StatRow>,
@@ -107,7 +106,6 @@ impl GameViewState {
             app_id,
             game_name: format!("App {app_id}"),
             phase: GameViewPhase::Connecting,
-            steam_last_updated: 0,
             achievements: Vec::new(),
             stats: Vec::new(),
             reveal_queue: VecDeque::new(),
