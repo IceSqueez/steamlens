@@ -109,7 +109,6 @@ fn render_inner<'a>(
 
     let body: Element<'_, crate::Message> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
-        ProfileViewPhase::Error(e) => error_view(e),
         ProfileViewPhase::Loaded => {
             let visible = state.visible_games(pinned);
 
@@ -1246,27 +1245,6 @@ fn build_tags_row<'a>(
 
 fn center_text(msg: &str) -> Element<'_, crate::Message> {
     container(text(msg).size(14).color(C_MUTED))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .into()
-}
-
-fn error_view(msg: &str) -> Element<'_, crate::Message> {
-    let content = column![
-        text("Library scan failed").size(18).color(C_ACCENT),
-        text(msg).size(13).color(C_TEXT),
-        button(text("Retry").size(13))
-            .on_press(crate::Message::ProfileView(
-                ProfileViewMessage::RescanRequested,
-            ))
-            .padding(Padding::default().left(14).right(14).top(8).bottom(8)),
-    ]
-    .spacing(12)
-    .align_x(Alignment::Center);
-
-    container(content)
         .width(Length::Fill)
         .height(Length::Fill)
         .align_x(Alignment::Center)

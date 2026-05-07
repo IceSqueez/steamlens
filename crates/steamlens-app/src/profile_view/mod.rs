@@ -38,10 +38,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
             spawn_capsule_queue(app_ids, state.capsule_size)
         }
 
-        ProfileViewMessage::ScanFailed(reason) => {
-            state.phase = ProfileViewPhase::Error(reason);
-            Task::none()
-        }
+        ProfileViewMessage::ScanFailed(_) => Task::none(),
 
         ProfileViewMessage::SearchChanged(query) => {
             state.search = query;

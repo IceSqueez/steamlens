@@ -114,7 +114,6 @@ impl std::fmt::Display for LibrarySort {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub enum ProfileViewMessage {
     ScanComplete(Vec<steamlens_core::GameSummary>),
     ScanFailed(String),
@@ -192,7 +191,6 @@ impl std::fmt::Debug for ProfileViewMessage {
 pub enum ProfileViewPhase {
     Scanning,
     Loaded,
-    Error(String),
 }
 
 pub struct ProfileViewState {

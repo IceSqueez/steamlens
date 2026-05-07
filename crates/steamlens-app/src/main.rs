@@ -347,17 +347,24 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         last_sync: Some(std::time::Instant::now()),
                     };
                 }
-                ProfileViewMessage::ScanFailed(_) => {
-                    app.splash_scan_done = true;
-                    let load_task = Task::perform(
-                        async { cache::load_library_cache().await },
-                        Message::LibraryCacheLoaded,
-                    );
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let scan_task = profile_view::update(pv_state, pv_msg);
-                        return Task::batch([scan_task, load_task]);
+                ProfileViewMessage::ScanFailed(reason) => {
+                    let is_first = if let Screen::ProfileView(pv_state) = &app.screen {
+                        pv_state.failed_app_ids.len() == 1
+                    } else {
+                        false
+                    };
+                    if is_first {
+                        app.messaging.push_banner(
+                            BannerSeverity::Warning,
+                            reason.clone(),
+                            None,
+                            true,
+                        );
                     }
-                    return load_task;
+                    if let Screen::ProfileView(pv_state) = &mut app.screen {
+                        return profile_view::update(pv_state, pv_msg);
+                    }
+                    return Task::none();
                 }
                 ProfileViewMessage::RetryFailedScans => {
                     let failed_ids: Vec<u32> =
@@ -644,6 +651,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             let scan_app_id = result.app_id;
                             let Some(data) = result.data else {
                                 pv_state.failed_app_ids.insert(scan_app_id);
+                                tasks.push(Task::done(Message::ProfileView(
+                                    ProfileViewMessage::ScanFailed(format!(
+                                        "Scan failed for app {scan_app_id}"
+                                    )),
+                                )));
                                 continue;
                             };
 
@@ -1332,7 +1344,13 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::GameView(state) => game_view::view(state, app.skeleton_phase),
     };
 
-    let with_messaging = messaging::wrap_with_messaging(screen_content, &app.messaging);
+    let failed_count = if let Screen::ProfileView(pv_state) = &app.screen {
+        pv_state.failed_app_ids.len()
+    } else {
+        0
+    };
+    let with_messaging =
+        messaging::wrap_with_messaging(screen_content, &app.messaging, failed_count);
 
     if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
         with_messaging
