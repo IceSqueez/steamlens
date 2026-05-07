@@ -15,17 +15,6 @@ A modern desktop tool to inspect and modify Steam achievements and stats.
 
 <!-- TODO: add screenshot here -->
 
-## Notes & Caveats
-
-A few things worth knowing before you start:
-
-- **Single-player and personal use.** SteamLens is for inspecting and tweaking achievements on games you own. Think of it as a tool for tinkerers and curious players — not a competitive cheat utility.
-- **Not for VAC or server-side anti-cheat games.** Multiplayer titles protected by VAC or server-side validation are out of scope. The server has the final say there, and your changes may simply be ignored.
-- **Steam Cloud can overwrite your changes.** If the game was running or Cloud is syncing, the cloud copy can win. Quit the game first, give Cloud a moment to settle, then edit.
-- **Some games store progression in stats.** Editing stats can affect quest progress, item unlocks, or save state. The consent checkbox before a stats edit is there for that reason.
-- **No warranty.** SteamLens is provided as-is. The author and contributors aren't liable for lost progress, data corruption, or other consequences of running the tool.
-- **Not affiliated with Valve.** SteamLens is an independent open-source project — no endorsement by Valve Corporation or Steam.
-
 ## Features
 
 ### Library (Profile view)
@@ -57,6 +46,17 @@ A few things worth knowing before you start:
 ## Known Limitations (Alpha)
 
 - **Linux is the primary test platform.** macOS and Windows binaries build green on CI; runtime testing on those platforms is lighter during alpha.
+
+## Notes & Caveats
+
+A few things worth knowing before you start:
+
+- **Single-player and personal use.** SteamLens is for inspecting and tweaking achievements on games you own. Think of it as a tool for tinkerers and curious players — not a competitive cheat utility.
+- **Not for VAC or server-side anti-cheat games.** Multiplayer titles protected by VAC or server-side validation are out of scope. The server has the final say there, and your changes may simply be ignored.
+- **Steam Cloud can overwrite your changes.** If the game was running or Cloud is syncing, the cloud copy can win. Quit the game first, give Cloud a moment to settle, then edit.
+- **Some games store progression in stats.** Editing stats can affect quest progress, item unlocks, or save state. The consent checkbox before a stats edit is there for that reason.
+- **No warranty.** SteamLens is provided as-is. The author and contributors aren't liable for lost progress, data corruption, or other consequences of running the tool.
+- **Not affiliated with Valve.** SteamLens is an independent open-source project — no endorsement by Valve Corporation or Steam.
 
 ## Installation
 
