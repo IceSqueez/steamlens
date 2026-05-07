@@ -144,20 +144,6 @@ pub fn make_cached_library(games: Vec<CachedLibraryEntry>) -> CachedLibrary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    fn tempdir() -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "steamlens_persistent_test_{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        path
-    }
 
     fn make_profile() -> CachedProfile {
         CachedProfile {
@@ -187,8 +173,8 @@ mod tests {
 
     #[tokio::test]
     async fn profile_cache_round_trip_via_explicit_path() {
-        let dir = tempdir();
-        let path = dir.join("profile.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("profile.json");
         let original = make_profile();
         let bytes = serde_json::to_vec_pretty(&original).unwrap();
         atomic_write(&path, &bytes).await.unwrap();
@@ -206,15 +192,15 @@ mod tests {
 
     #[tokio::test]
     async fn profile_cache_missing_file_returns_none() {
-        let dir = tempdir();
-        let result = load_profile_cache_from_path(&dir.join("does_not_exist.json")).await;
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let result = load_profile_cache_from_path(&dir.path().join("does_not_exist.json")).await;
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn profile_cache_corrupted_json_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("corrupted.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("corrupted.json");
         std::fs::write(&path, b"this isn't json {{{").unwrap();
         let result = load_profile_cache_from_path(&path).await;
         assert!(result.is_none());
@@ -222,8 +208,8 @@ mod tests {
 
     #[tokio::test]
     async fn profile_cache_schema_mismatch_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("schema.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("schema.json");
         let bad = r#"{"schema_version":1,"steam_id":1,"persona_name":"X","account_name":"x","avatar_png_bytes":null,"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_profile_cache_from_path(&path).await;
@@ -232,8 +218,8 @@ mod tests {
 
     #[tokio::test]
     async fn library_cache_round_trip_via_explicit_path() {
-        let dir = tempdir();
-        let path = dir.join("library.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("library.json");
         let original = make_library();
         let bytes = serde_json::to_vec_pretty(&original).unwrap();
         atomic_write(&path, &bytes).await.unwrap();
@@ -250,15 +236,15 @@ mod tests {
 
     #[tokio::test]
     async fn library_cache_missing_file_returns_none() {
-        let dir = tempdir();
-        let result = load_library_cache_from_path(&dir.join("nope.json")).await;
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let result = load_library_cache_from_path(&dir.path().join("nope.json")).await;
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn library_cache_corrupted_json_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("corrupted.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("corrupted.json");
         std::fs::write(&path, b"][}}}").unwrap();
         let result = load_library_cache_from_path(&path).await;
         assert!(result.is_none());
@@ -266,8 +252,8 @@ mod tests {
 
     #[tokio::test]
     async fn library_cache_schema_mismatch_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("library.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("library.json");
         let bad = r#"{"schema_version":2,"games":[],"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_library_cache_from_path(&path).await;

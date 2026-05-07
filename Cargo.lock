@@ -3994,6 +3994,7 @@ dependencies = [
  "serde",
  "serde_json",
  "steamlens-core",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml",

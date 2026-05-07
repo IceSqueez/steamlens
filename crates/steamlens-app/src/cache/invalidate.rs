@@ -73,20 +73,6 @@ mod tests {
     use super::*;
     use crate::cache::store::atomic_write;
     use crate::cache::types::{CURRENT_SCHEMA_VERSION, CachedProgress, GameCacheEntry};
-    use std::path::PathBuf;
-
-    fn tempdir() -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "steamlens_invalidate_test_{}_{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        path
-    }
 
     fn make_summary(app_id: u32, last_played: Option<u32>) -> GameSummary {
         GameSummary {
@@ -123,8 +109,8 @@ mod tests {
 
     #[tokio::test]
     async fn empty_games_list_produces_empty_result() {
-        let cache_dir = tempdir();
-        let result = classify_games_with_root(&[], &cache_dir).await;
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
+        let result = classify_games_with_root(&[], cache_dir.path()).await;
         assert!(result.hits.is_empty());
         assert!(result.dirty.is_empty());
         assert_eq!(result.schema_bumped, 0);
@@ -132,10 +118,10 @@ mod tests {
 
     #[tokio::test]
     async fn no_cache_file_goes_dirty() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary(1, None);
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![1]);
         assert_eq!(result.schema_bumped, 0);
@@ -143,13 +129,13 @@ mod tests {
 
     #[tokio::test]
     async fn cache_present_no_last_played_is_hit() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary(2, None);
 
         let entry = make_entry(2, 999_999_999);
-        write_cache(&cache_dir, 2, &entry).await;
+        write_cache(cache_dir.path(), 2, &entry).await;
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert_eq!(result.hits.len(), 1, "should be a cache hit");
         assert!(result.dirty.is_empty());
         assert_eq!(result.hits[0].app_id, 2);
@@ -157,27 +143,27 @@ mod tests {
 
     #[tokio::test]
     async fn last_played_newer_than_cached_at_goes_dirty() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let cached_at: u64 = 500;
         let game = make_summary(4, Some(1000));
 
         let entry = make_entry(4, cached_at);
-        write_cache(&cache_dir, 4, &entry).await;
+        write_cache(cache_dir.path(), 4, &entry).await;
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![4]);
     }
 
     #[tokio::test]
     async fn cache_present_last_played_older_than_cached_at_is_hit() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary(5, Some(100));
 
         let entry = make_entry(5, 999_999_999);
-        write_cache(&cache_dir, 5, &entry).await;
+        write_cache(cache_dir.path(), 5, &entry).await;
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert_eq!(
             result.hits.len(),
             1,
@@ -189,14 +175,14 @@ mod tests {
 
     #[tokio::test]
     async fn schema_version_mismatch_goes_dirty_with_count() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary(6, None);
 
-        let bad_cache = cache_dir.join("6.json");
+        let bad_cache = cache_dir.path().join("6.json");
         let bad_json = r#"{"schema_version":99,"app_id":6,"name":"Game 6","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![6]);
         assert_eq!(result.schema_bumped, 1);
@@ -204,14 +190,14 @@ mod tests {
 
     #[tokio::test]
     async fn schema_version_zero_goes_dirty_and_increments_schema_bumped() {
-        let cache_dir = tempdir();
+        let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary(7, None);
 
-        let bad_cache = cache_dir.join("7.json");
+        let bad_cache = cache_dir.path().join("7.json");
         let bad_json = r#"{"schema_version":0,"app_id":7,"name":"Game 7","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
-        let result = classify_games_with_root(&[game], &cache_dir).await;
+        let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(result.hits.is_empty(), "version-0 cache must not be a hit");
         assert_eq!(result.dirty, vec![7], "version-0 cache must be dirty");
         assert_eq!(
