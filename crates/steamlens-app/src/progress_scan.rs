@@ -73,7 +73,7 @@ impl ProgressScanner {
         !self.in_flight.is_empty() || !self.queue.is_empty()
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn is_done(&self) -> bool {
         self.queue.is_empty() && self.in_flight.is_empty()
     }
