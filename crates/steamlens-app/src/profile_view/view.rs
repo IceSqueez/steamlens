@@ -20,13 +20,13 @@ use super::ProfileViewState;
 use super::profile::{
     C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
 };
-use crate::ui::theme::{AppTheme, palette};
-use crate::ui::widgets::bar::{BarSegment, segmented_bar};
-use crate::ui::widgets::card::card;
 use super::profile::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
 };
 use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
+use crate::ui::theme::{AppTheme, palette};
+use crate::ui::widgets::bar::{BarSegment, segmented_bar};
+use crate::ui::widgets::card::card;
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
@@ -491,6 +491,7 @@ fn build_grid<'a>(
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
     let hovered_card = state.hovered_card;
+    let hovered_card_tier = state.hovered_card_tier;
 
     let entries: Vec<&'a GameEntry> = visible;
 
@@ -511,6 +512,9 @@ fn build_grid<'a>(
                 let genre = cached.and_then(|e| e.genre.as_deref());
                 let is_pinned = pinned.contains(&app_id);
                 let is_hovered = hovered_card == Some(app_id);
+                let hovered_tier = hovered_card_tier
+                    .filter(|(id, _)| *id == app_id)
+                    .map(|(_, t)| t);
                 r = r.push(build_card(
                     entry,
                     capsule_size,
@@ -520,6 +524,7 @@ fn build_grid<'a>(
                     genre,
                     is_pinned,
                     is_hovered,
+                    hovered_tier,
                 ));
                 r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
             }
@@ -579,6 +584,7 @@ fn build_card<'a>(
     genre: Option<&'a str>,
     is_pinned: bool,
     is_hovered: bool,
+    hovered_tier: Option<RarityTier>,
 ) -> Element<'a, crate::Message> {
     let app_id = entry.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
@@ -608,6 +614,7 @@ fn build_card<'a>(
         genre,
         is_pinned,
         is_hovered,
+        hovered_tier,
     });
 
     mouse_area(inner)
@@ -722,6 +729,7 @@ struct HydratedCardParams<'a> {
     genre: Option<&'a str>,
     is_pinned: bool,
     is_hovered: bool,
+    hovered_tier: Option<RarityTier>,
 }
 
 fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Message> {
@@ -736,6 +744,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         genre,
         is_pinned,
         is_hovered,
+        hovered_tier,
     } = p;
     let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
         CapsuleAsset::Loaded { handle, .. } => container(
@@ -805,10 +814,12 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
     let name_row = build_name_row(entry, card_w);
 
     let tier_bar = build_tier_stacked_bar(
+        app_id,
         tier_breakdown,
         entry.progress.as_ref().map(|p| p.earned).unwrap_or(0),
         entry.progress.as_ref().map(|p| p.total).unwrap_or(0),
         card_w,
+        hovered_tier,
     );
 
     let tags_row = build_tags_row(entry, card_w, genre);
@@ -844,10 +855,12 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
 }
 
 fn build_tier_stacked_bar<'a>(
+    app_id: u32,
     tier_breakdown: &'a [(RarityTier, u32)],
     total_earned: u32,
     total_achievements: u32,
     card_w: f32,
+    hovered_tier: Option<RarityTier>,
 ) -> Element<'a, crate::Message> {
     const BAR_H: f32 = 8.0;
     const TIER_ORDER: [RarityTier; 5] = [
@@ -860,31 +873,58 @@ fn build_tier_stacked_bar<'a>(
 
     let inner_w = card_w - 16.0;
     let locked_count = total_achievements.saturating_sub(total_earned);
+    let total = total_achievements.max(1);
 
-    let mut segments: Vec<BarSegment> = TIER_ORDER
-        .iter()
-        .filter_map(|t| {
-            let count = tier_breakdown
-                .iter()
-                .find(|(tt, _)| tt == t)
-                .map(|(_, c)| *c)
-                .unwrap_or(0);
-            (count > 0).then(|| BarSegment {
-                weight: count,
-                color: rarity_color_for_tier(*t),
-            })
-        })
-        .collect();
+    let mut segments: Vec<BarSegment> = Vec::new();
+    let mut tier_at: Vec<Option<RarityTier>> = Vec::new();
+    let mut tooltips: Vec<String> = Vec::new();
+
+    for t in TIER_ORDER.iter() {
+        let count = tier_breakdown
+            .iter()
+            .find(|(tt, _)| tt == t)
+            .map(|(_, c)| *c)
+            .unwrap_or(0);
+        if count == 0 {
+            continue;
+        }
+        let pct = count as f64 / total as f64 * 100.0;
+        segments.push(BarSegment {
+            weight: count,
+            color: rarity_color_for_tier(*t),
+        });
+        tier_at.push(Some(*t));
+        tooltips.push(format!(
+            "{} {} \u{00B7} {:.1}%",
+            count,
+            rarity_label(*t),
+            pct
+        ));
+    }
 
     if locked_count > 0 {
+        let pct = locked_count as f64 / total as f64 * 100.0;
         segments.push(BarSegment {
             weight: locked_count,
             color: palette(AppTheme::Dark).hover,
         });
+        tier_at.push(None);
+        tooltips.push(format!("{locked_count} Locked \u{00B7} {pct:.1}%"));
     }
+
+    let hovered_idx = hovered_tier.and_then(|t| tier_at.iter().position(|x| *x == Some(t)));
+
+    let tier_lookup = tier_at.clone();
+    let tip_lookup = tooltips.clone();
 
     let bar: Element<'a, crate::Message> = segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
         .theme(AppTheme::Dark)
+        .hovered(hovered_idx)
+        .on_hover(move |idx| {
+            let tier = idx.and_then(|i| tier_lookup.get(i).copied().flatten());
+            crate::Message::ProfileView(ProfileViewMessage::CardTierHovered { app_id, tier })
+        })
+        .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default())
         .into();
 
     container(bar)
@@ -892,6 +932,16 @@ fn build_tier_stacked_bar<'a>(
         .height(Length::Fixed(BAR_H))
         .padding(Padding::default().left(8).right(8))
         .into()
+}
+
+fn rarity_label(tier: RarityTier) -> &'static str {
+    match tier {
+        RarityTier::Common => "Common",
+        RarityTier::Uncommon => "Uncommon",
+        RarityTier::Rare => "Rare",
+        RarityTier::Mythical => "Mythical",
+        RarityTier::Legendary => "Legendary",
+    }
 }
 
 fn build_hover_overlay<'a>(

@@ -4,12 +4,7 @@ use iced::{Background, Border, Element, Length, Radians, gradient};
 use crate::ui::theme::{AppTheme, palette};
 
 #[allow(dead_code)]
-pub fn skeleton<'a, M: 'a>(
-    width: f32,
-    height: f32,
-    phase: f32,
-    theme: AppTheme,
-) -> Element<'a, M> {
+pub fn skeleton<'a, M: 'a>(width: f32, height: f32, phase: f32, theme: AppTheme) -> Element<'a, M> {
     let p = palette(theme);
     let gradient = build_shimmer_gradient(phase, p.surface, p.hover);
 

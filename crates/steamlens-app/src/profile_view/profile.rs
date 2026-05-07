@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use iced::widget::image::Handle as ImageHandle;
-use iced::widget::{
-    button, column, container, image as image_widget, mouse_area, row, text, tooltip,
-};
+use iced::widget::{button, column, container, image as image_widget, row, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::theme::{C_ACCENT, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
+use crate::ui::theme::{AppTheme, palette};
+use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 
 use super::types::{GameEntry, ProfileViewMessage, StoredCapsule, TopEntry};
 
@@ -598,14 +598,6 @@ fn build_rarity_bar<'a>(
     summary: &ProfileSummary,
     hovered_bar_slice: Option<RarityTier>,
 ) -> Element<'a, crate::Message> {
-    const TIER_ORDER: [RarityTier; 5] = [
-        RarityTier::Common,
-        RarityTier::Uncommon,
-        RarityTier::Rare,
-        RarityTier::Mythical,
-        RarityTier::Legendary,
-    ];
-
     let tier_counts: [(RarityTier, u32); 5] = [
         (RarityTier::Common, summary.common_count),
         (RarityTier::Uncommon, summary.uncommon_count),
@@ -616,130 +608,34 @@ fn build_rarity_bar<'a>(
 
     let total_unlocked: u32 = tier_counts.iter().map(|(_, c)| c).sum();
     let total = summary.achievement_total;
-
-    if total == 0 {
-        return container(iced::widget::Space::new())
-            .width(Length::Fill)
-            .height(Length::Fixed(BAR_HEIGHT))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_HOVER)),
-                border: iced::Border {
-                    radius: BAR_RADIUS.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into();
-    }
-
-    let unlocked_pct = total_unlocked as f32 / total as f32 * 100.0;
-
     let tick_thresholds: [u8; 5] = [0, 25, 50, 75, 100];
+    let unlocked_pct = if total > 0 {
+        total_unlocked as f32 / total as f32 * 100.0
+    } else {
+        0.0
+    };
 
-    let mut bar_row: iced::widget::Row<'a, crate::Message> = row![].spacing(0);
-    let mut first_segment = true;
-    let mut last_tier_idx: Option<usize> = None;
+    let mut segments: Vec<BarSegment> = Vec::new();
+    let mut tier_at: Vec<Option<RarityTier>> = Vec::new();
+    let mut tooltips: Vec<String> = Vec::new();
+    let total_for_pct = total.max(1);
 
-    let active_tier_count = tier_counts.iter().filter(|(_, c)| *c > 0).count();
-
-    for (seg_idx, tier) in TIER_ORDER.iter().enumerate() {
-        let count = tier_counts
-            .iter()
-            .find(|(t, _)| t == tier)
-            .map(|(_, c)| *c)
-            .unwrap_or(0);
-        if count > 0 {
-            last_tier_idx = Some(seg_idx);
-        }
-    }
-
-    for (seg_idx, tier) in TIER_ORDER.iter().enumerate() {
-        let count = tier_counts
-            .iter()
-            .find(|(t, _)| t == tier)
-            .map(|(_, c)| *c)
-            .unwrap_or(0);
-        if count == 0 {
+    for (tier, count) in tier_counts.iter() {
+        if *count == 0 {
             continue;
         }
-
-        let color = rarity_color(*tier);
-        let portion = count as u16;
-        let is_hovered = hovered_bar_slice == Some(*tier);
-        let is_first = first_segment;
-        let is_last = last_tier_idx == Some(seg_idx);
-        let _ = active_tier_count;
-
-        let effective_color = if is_hovered {
-            Color {
-                r: (color.r * 1.25).min(1.0),
-                g: (color.g * 1.25).min(1.0),
-                b: (color.b * 1.25).min(1.0),
-                a: 1.0,
-            }
-        } else {
-            color
-        };
-
-        let radius = iced::border::Radius {
-            top_left: if is_first { BAR_RADIUS } else { 0.0 },
-            bottom_left: if is_first { BAR_RADIUS } else { 0.0 },
-            top_right: if is_last { BAR_RADIUS } else { 0.0 },
-            bottom_right: if is_last { BAR_RADIUS } else { 0.0 },
-        };
-
-        let tier_copy = *tier;
-        let count_for_tooltip = count;
-        let total_for_tooltip = total;
-
-        let slice = container(iced::widget::Space::new())
-            .width(Length::FillPortion(portion))
-            .height(Length::Fixed(BAR_HEIGHT))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(effective_color)),
-                border: iced::Border {
-                    radius,
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            });
-
-        let slice_pct = if total_for_tooltip > 0 {
-            count_for_tooltip as f64 / total_for_tooltip as f64 * 100.0
-        } else {
-            0.0
-        };
-        let tooltip_text = format!(
+        let pct = *count as f64 / total_for_pct as f64 * 100.0;
+        segments.push(BarSegment {
+            weight: *count,
+            color: rarity_color(*tier),
+        });
+        tier_at.push(Some(*tier));
+        tooltips.push(format!(
             "{} {} \u{00B7} {:.1}%",
-            format_thousands(count_for_tooltip),
-            rarity_label(tier_copy),
-            slice_pct,
-        );
-
-        let tooltip_content = container(text(tooltip_text).size(11).color(C_TEXT_PRIMARY))
-            .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color::from_rgba(
-                    0.10, 0.09, 0.14, 0.95,
-                ))),
-                border: iced::Border {
-                    color: Color { a: 0.5, ..C_ACCENT },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..container::Style::default()
-            });
-
-        let hoverable_slice = mouse_area(tooltip(slice, tooltip_content, tooltip::Position::Top))
-            .on_enter(crate::Message::ProfileView(
-                ProfileViewMessage::BarSliceHoverEnter(tier_copy),
-            ))
-            .on_exit(crate::Message::ProfileView(
-                ProfileViewMessage::BarSliceHoverExit,
-            ));
-
-        bar_row = bar_row.push(hoverable_slice);
-        first_segment = false;
+            format_thousands(*count),
+            rarity_label(*tier),
+            pct
+        ));
     }
 
     let unrated_earned = summary_unrated_earned(
@@ -751,52 +647,56 @@ fn build_rarity_bar<'a>(
         total_unlocked,
     );
     if unrated_earned > 0 {
-        let unrated_segment = container(iced::widget::Space::new())
-            .width(Length::FillPortion(
-                unrated_earned.min(u16::MAX as u32) as u16
-            ))
-            .height(Length::Fixed(BAR_HEIGHT))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_ACCENT)),
-                ..container::Style::default()
-            });
-        bar_row = bar_row.push(unrated_segment);
+        let pct = unrated_earned as f64 / total_for_pct as f64 * 100.0;
+        segments.push(BarSegment {
+            weight: unrated_earned,
+            color: C_ACCENT,
+        });
+        tier_at.push(None);
+        tooltips.push(format!(
+            "{} Unrated \u{00B7} {:.1}%",
+            format_thousands(unrated_earned),
+            pct
+        ));
     }
 
     let locked = total.saturating_sub(total_unlocked);
     if locked > 0 {
-        let locked_segment = container(iced::widget::Space::new())
-            .width(Length::FillPortion(locked.min(u16::MAX as u32) as u16))
-            .height(Length::Fixed(BAR_HEIGHT))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_HOVER)),
-                border: iced::Border {
-                    radius: iced::border::Radius {
-                        top_right: BAR_RADIUS,
-                        bottom_right: BAR_RADIUS,
-                        ..iced::border::Radius::default()
-                    },
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            });
-        bar_row = bar_row.push(locked_segment);
+        let pct = locked as f64 / total_for_pct as f64 * 100.0;
+        segments.push(BarSegment {
+            weight: locked,
+            color: palette(AppTheme::Dark).hover,
+        });
+        tier_at.push(None);
+        tooltips.push(format!(
+            "{} Locked \u{00B7} {:.1}%",
+            format_thousands(locked),
+            pct
+        ));
     }
 
-    let bar_track = container(bar_row)
-        .width(Length::Fill)
-        .height(Length::Fixed(BAR_HEIGHT))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_HOVER)),
-            border: iced::Border {
-                radius: BAR_RADIUS.into(),
-                ..iced::Border::default()
+    let hovered_idx = hovered_bar_slice.and_then(|t| tier_at.iter().position(|x| *x == Some(t)));
+
+    let tier_lookup = tier_at.clone();
+    let tip_lookup = tooltips.clone();
+
+    let bar: Element<'a, crate::Message> = segmented_bar(segments, Length::Fill, BAR_HEIGHT)
+        .theme(AppTheme::Dark)
+        .radius(BAR_RADIUS)
+        .hovered(hovered_idx)
+        .on_hover(
+            move |idx| match idx.and_then(|i| tier_lookup.get(i).copied().flatten()) {
+                Some(tier) => {
+                    crate::Message::ProfileView(ProfileViewMessage::BarSliceHoverEnter(tier))
+                }
+                None => crate::Message::ProfileView(ProfileViewMessage::BarSliceHoverExit),
             },
-            ..container::Style::default()
-        });
+        )
+        .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default())
+        .into();
 
     let ticks_layer = build_tick_marks(tick_thresholds, unlocked_pct);
-    column![bar_track, ticks_layer].spacing(4).into()
+    column![bar, ticks_layer].spacing(4).into()
 }
 
 fn summary_unrated_earned(
