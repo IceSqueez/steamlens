@@ -3,12 +3,14 @@
 A modern desktop tool to inspect and modify Steam achievements and stats.
 
 [![CI](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml/badge.svg)](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/IceSqueez/steamlens?include_prereleases&label=release&color=blue)](https://github.com/IceSqueez/steamlens/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/IceSqueez/steamlens/total?label=downloads&color=lightgrey)](https://github.com/IceSqueez/steamlens/releases)
+[![Latest release](https://img.shields.io/github/v/release/IceSqueez/steamlens?include_prereleases)](https://github.com/IceSqueez/steamlens/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/IceSqueez/steamlens/total)](https://github.com/IceSqueez/steamlens/releases)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 
-[![Rust 2024](https://img.shields.io/badge/rust-2024-informational)](https://www.rust-lang.org/)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/IceSqueez/steamlens/releases/latest)
+[![Rust 2024](https://img.shields.io/badge/rust-2024-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](https://github.com/IceSqueez/steamlens/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-000000?logo=apple)](https://github.com/IceSqueez/steamlens/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-0078D6)](https://github.com/IceSqueez/steamlens/releases/latest)
 
 <!-- TODO: add screenshot here -->
 
@@ -48,7 +50,6 @@ A few things worth knowing before you start:
 
 ### General
 
-- **Unified Ctrl+F** focuses the search field in the current view (library or achievement search).
 - **Modern dark theme** (Dracula by default) for comfortable extended use.
 - **Smooth animations** throughout — card reveals on load, hover states, skeleton placeholders during hydration.
 
