@@ -1,9 +1,68 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.6] - 2026-05-07
+### ⚙️ Miscellaneous Tasks
+- *(settings)* Remove dead default_steam_root helper
+- *(cache)* Drop Default derive on NoAchievementsCache
+- *(steam_state)* Drop unused exports
+- *(cache)* Drop vestigial steam_last_updated field
+- *(genre)* Drop stale dead_code annotation on genre field
+- *(game_view)* Remove dead placeholders noise
+- *(app)* Gate is_done with cfg(test)
+- *(app)* Drop unused AchievementFilter::ALL const
+- *(steam_worker)* Drop dead annotations and unused field
+- *(game_view)* Drop 11 dead message variants superseded by SteamReply
+- *(steam_worker)* Drop dead SteamReply variants and fields hidden by wholesale allow
+- *(app)* Refine wholesale dead_code allows on UI severity enums
+
+### ⚡ Performance
+- *(ffi)* Reduced FFI call during cold-scan per achievement
+- *(settings)* Gate SettingsFlushTick subscription on dirty state
+- *(capsule_cache)* Use shared reqwest::Client with timeouts
+
+### 🐛 Bug Fixes
+- *(worker)* Async-aware sleep in worker, typed Steam ID parse, named EResult constants
+- *(app)* Stop SteamNotRunning placeholder leak and centralize settings load
+- *(progress_scan)* Kill_on_drop(true) so aborted scans do not leak worker subprocess
+
+### 📚 Documentation
+- *(readme)* Refresh features, friendlier disclaimer, regrouped badges
+
+### 🚀 Features
+- *(app)* Unified Ctrl+F focuses search across Profile and Game views
+- *(ui)* Per-game scan failure UX via banner + footer retry button
+
+### 🚜 Refactor
+- *(ipc)* Introduce typed WorkerErrorKind instead of string
+- *(client)* Split into 7 cohesive sub-types
+- *(vdf)* VDF helpers
+- *(core)* Centralize Steam paths and FFI string decode
+- *(app)* Replace inline tempdir helpers with tempfile::TempDir
+- *(timeouts)* Centralize operation timeouts into crate::timeouts
+- *(worker)* Extract disconnect_worker and return_to_profile_view helpers
+- *(ipc)* Extract shared read_response into crate::ipc_pipe
+- *(cache)* Introduce generic Cached trait to unify load/write logic
+- *(core)* Replace magic Steam community ID base with named constant
+- *(vdf)* Replace magic VDF tag bytes with named TAG_* constants
+- *(user_stats)* Drop Result wrapping from num_achievements
+- *(game_view)* Convert from_data inherents to From<X> impls
+- *(progress)* Unify ProgressData/CachedProgress under core::AchievementCountPayload
+- *(cache)* Typed CachedStatValue enum replaces value_int/value_float Options
+
+### 🧪 Testing
+- *(callback)* Drop tautological tests for derived traits
+- *(progress_scan)* Pin MAX_CONCURRENT at 1 with explanatory tripwire
+- *(probe)* Replace subprocess-spawning flake with deterministic Read-impl tests
+- *(app)* Introduce App::default() for test fixtures
+- *(app)* Integration test for OpenGameView ↔ GoBack round-trip
+- *(app)* Cover DrainProgressResults success/empty/failed branches
+- *(ipc_pipe)* IPC framing round-trip via tokio duplex
+
 ## [1.0.0-alpha.5] - 2026-05-06
 ### ⚙️ Miscellaneous Tasks
 - *(app)* Remove Open by App ID footer and related code paths
+- Release
 
 ### 🐛 Bug Fixes
 - *(profile)* Changes color for label to muted
@@ -23,6 +82,9 @@ All notable changes to this project will be documented in this file.
 - *(app)* Boost achievement card glow blur and saturation
 - *(app)* Grow tags row height and card total to fit padded pills
 - *(app)* Tighten pin button top and right padding
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-alpha.5
 
 ### 🚀 Features
 - *(app)* Introduce MessagingCenter with Banner/Footer/Toast surfaces
