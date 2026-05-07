@@ -24,7 +24,6 @@ pub struct ScannedGameData {
     pub achievements: Vec<CardOnlyAchievement>,
     pub stats: Vec<StatData>,
     pub global_percentages: HashMap<String, f32>,
-    #[allow(dead_code)]
     pub genre: Option<String>,
 }
 
