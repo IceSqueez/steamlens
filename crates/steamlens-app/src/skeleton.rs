@@ -7,7 +7,6 @@ use crate::theme::{C_HOVER, C_SURFACE};
 
 /// `phase` in `[0.0, 1.0)` cycles a bright band left-to-right across
 /// the box.
-#[allow(dead_code)]
 pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, phase: f32) -> Element<'a, M> {
     let gradient = build_shimmer_gradient(phase);
 
