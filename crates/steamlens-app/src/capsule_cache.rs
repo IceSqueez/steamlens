@@ -1,8 +1,24 @@
 use std::io::Cursor;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use image::ImageReader;
 use tokio::fs;
+
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
+            .timeout(HTTP_REQUEST_TIMEOUT)
+            .build()
+            .expect("reqwest::Client init failed")
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CapsuleSize {
@@ -156,7 +172,7 @@ pub async fn fetch_capsule(
         let url = format!(
             "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
         );
-        match reqwest::get(&url).await {
+        match http_client().get(&url).send().await {
             Ok(response) => {
                 if response.status() == reqwest::StatusCode::NOT_FOUND {
                     last_err = CapsuleError::NotFound;
