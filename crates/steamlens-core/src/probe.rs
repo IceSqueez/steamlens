@@ -174,33 +174,24 @@ mod tests {
     }
 
     #[test]
-    fn probe_child_killed_early_does_not_panic() {
-        use std::process::{Command, Stdio};
+    fn read_one_frame_blocking_eof_before_header_yields_io_error() {
+        let empty: &[u8] = &[];
+        let deadline = std::time::Instant::now() + Duration::from_millis(50);
+        let result = read_one_frame_blocking(empty, deadline);
+        assert!(
+            matches!(result, Err(ProbeReadError::Io(_))),
+            "EOF before any header byte must surface as Io error",
+        );
+    }
 
-        let exe = match std::env::current_exe() {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-        let mut child = match Command::new(&exe)
-            .arg("--probe")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(_) => return,
-        };
-
-        let stdout = child.stdout.take().expect("stdout");
-        let _ = child.kill();
-        let _ = child.wait();
-
-        let deadline = std::time::Instant::now() + Duration::from_millis(500);
-        let result = read_one_frame_blocking(stdout, deadline);
-        match result {
-            Err(ProbeReadError::Io(_) | ProbeReadError::TimedOut | ProbeReadError::Frame(_)) => {}
-            Ok(_) => {}
-        }
+    #[test]
+    fn read_one_frame_blocking_partial_header_yields_io_error() {
+        let partial: &[u8] = &[0x00, 0x00];
+        let deadline = std::time::Instant::now() + Duration::from_millis(50);
+        let result = read_one_frame_blocking(partial, deadline);
+        assert!(
+            matches!(result, Err(ProbeReadError::Io(_))),
+            "partial header followed by EOF must surface as Io error",
+        );
     }
 }
