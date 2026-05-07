@@ -1442,8 +1442,11 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let settings_flush_sub =
-        iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick);
+    let settings_flush_sub = if app.settings_dirty_since.is_some() {
+        iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick)
+    } else {
+        Subscription::none()
+    };
 
     let toast_sub = if app.messaging.has_active_toasts() {
         iced::time::every(Duration::from_millis(500)).map(|_| Message::ToastTick)
