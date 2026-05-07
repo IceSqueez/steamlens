@@ -38,5 +38,5 @@ pub use steam_callback::{
     CALLBACK_ID_USER_STATS_RECEIVED, CALLBACK_ID_USER_STATS_STORED, STEAM_RESULT_NO_STATS_SCHEMA,
     STEAM_RESULT_OK, SteamCallback, SteamResult,
 };
-pub use steam_state::{ManifestState, read_all_last_played, read_last_played, read_manifest_state};
+pub use steam_state::read_last_played;
 pub use user_stats::UserStats;
