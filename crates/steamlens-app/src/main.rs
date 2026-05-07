@@ -1131,12 +1131,9 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
         .stats
         .iter()
         .map(|s| {
-            let value = if let Some(i) = s.value_int {
-                StatValue::Int(i as i32)
-            } else if let Some(f) = s.value_float {
-                StatValue::Float(f as f32)
-            } else {
-                StatValue::Int(0)
+            let value = match s.value {
+                cache::types::CachedStatValue::Int(i) => StatValue::Int(i as i32),
+                cache::types::CachedStatValue::Float(f) => StatValue::Float(f as f32),
             };
             let data = StatData {
                 id: s.api_name.clone(),
@@ -1173,16 +1170,14 @@ fn build_cache_entry_from_scan(
         .stats
         .iter()
         .map(|s| {
-            let (value_int, value_float) = match s.value {
-                StatValue::Int(i) => (Some(i as i64), None),
-                StatValue::Float(f) => (None, Some(f as f64)),
+            let value = match s.value {
+                StatValue::Int(i) => cache::types::CachedStatValue::Int(i as i64),
+                StatValue::Float(f) => cache::types::CachedStatValue::Float(f as f64),
             };
             CachedStat {
                 api_name: s.id.clone(),
                 display_name: s.display_name.clone(),
-                value_int,
-                value_float,
-                default_value: None,
+                value,
             }
         })
         .collect();
@@ -1278,16 +1273,14 @@ fn build_game_view_cache_entry(
         .iter()
         .map(|r| {
             use steamlens_core::StatValue;
-            let (value_int, value_float) = match r.data.value {
-                StatValue::Int(i) => (Some(i as i64), None),
-                StatValue::Float(f) => (None, Some(f as f64)),
+            let value = match r.data.value {
+                StatValue::Int(i) => cache::types::CachedStatValue::Int(i as i64),
+                StatValue::Float(f) => cache::types::CachedStatValue::Float(f as f64),
             };
             CachedStat {
                 api_name: r.data.id.clone(),
                 display_name: r.data.display_name.clone(),
-                value_int,
-                value_float,
-                default_value: None,
+                value,
             }
         })
         .collect();

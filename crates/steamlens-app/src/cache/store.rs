@@ -74,7 +74,7 @@ fn tmp_path_for(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::types::{CachedAchievement, CachedProgress, CachedStat};
+    use crate::cache::types::{CachedAchievement, CachedProgress, CachedStat, CachedStatValue};
 
     fn make_entry(app_id: u32, name: &str) -> GameCacheEntry {
         GameCacheEntry {
@@ -110,9 +110,7 @@ mod tests {
             stats: vec![CachedStat {
                 api_name: "NumDeaths".to_owned(),
                 display_name: "Deaths".to_owned(),
-                value_int: Some(42),
-                value_float: None,
-                default_value: Some(0.0),
+                value: CachedStatValue::Int(42),
             }],
             progress: CachedProgress {
                 earned: 1,
@@ -190,8 +188,7 @@ mod tests {
         assert_eq!(restored.achievements[1].earned_at, None);
         assert_eq!(restored.achievements[1].global_percent, None);
         assert_eq!(restored.achievements[1].icon_path, None);
-        assert_eq!(restored.stats[0].value_int, Some(42));
-        assert_eq!(restored.stats[0].value_float, None);
+        assert_eq!(restored.stats[0].value, CachedStatValue::Int(42));
         assert_eq!(restored.progress.earned, 1);
         assert_eq!(restored.progress.total, 2);
     }

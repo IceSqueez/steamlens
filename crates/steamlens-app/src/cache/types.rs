@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::RarityTier;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameCacheEntry {
@@ -33,15 +33,17 @@ pub struct CachedAchievement {
     pub global_percent: Option<f64>,
 }
 
-/// `value_int` and `value_float` are mutually exclusive — Steam tags
-/// each stat as INT or FLOAT.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum CachedStatValue {
+    Int(i64),
+    Float(f64),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedStat {
     pub api_name: String,
     pub display_name: String,
-    pub value_int: Option<i64>,
-    pub value_float: Option<f64>,
-    pub default_value: Option<f64>,
+    pub value: CachedStatValue,
 }
 
 pub use steamlens_core::AchievementCountPayload as CachedProgress;
