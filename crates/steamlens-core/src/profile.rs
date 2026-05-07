@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use steamlens_vdf::{TextValue, TextVdfError, parse_text};
 use thiserror::Error;
 
+use crate::paths;
+
 /// Disk-only snapshot of the logged-in user; no Steam pipe needed.
 #[derive(Debug, Clone)]
 pub struct UserProfile {
@@ -30,7 +32,10 @@ pub enum ProfileError {
 /// `MostRecent == "1"` (or the first entry as fallback), and pairs it
 /// with `config/avatarcache/<steam_id>.png` when present.
 pub fn load_local_profile() -> Result<UserProfile, ProfileError> {
-    let root = default_steam_root();
+    let root = paths::steam_install_root_candidates()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| PathBuf::from("."));
     load_profile_from_root(&root)
 }
 
@@ -89,25 +94,6 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
     })
 }
 
-fn default_steam_root() -> PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".local/share/Steam")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join("Library/Application Support/Steam")
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let program_files = std::env::var("ProgramFiles(x86)")
-            .unwrap_or_else(|_| r"C:\Program Files (x86)".to_owned());
-        PathBuf::from(program_files).join("Steam")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,23 +104,12 @@ mod tests {
         std::fs::write(config_dir.join("loginusers.vdf"), content).unwrap();
     }
 
-    fn tempdir() -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "steamlens_profile_test_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        path
-    }
-
     #[test]
     fn non_numeric_steam_id_returns_invalid_steam_id_error() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "not_a_number"
@@ -145,7 +120,7 @@ mod tests {
     }
 }"#,
         );
-        let err = load_profile_from_root(&dir).unwrap_err();
+        let err = load_profile_from_root(dir).unwrap_err();
         assert!(
             matches!(err, ProfileError::InvalidSteamId(ref s) if s == "not_a_number"),
             "expected InvalidSteamId(\"not_a_number\"), got {err:?}"
@@ -154,9 +129,10 @@ mod tests {
 
     #[test]
     fn valid_numeric_steam_id_parses_correctly() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "76561198000000001"
@@ -167,15 +143,16 @@ mod tests {
     }
 }"#,
         );
-        let profile = load_profile_from_root(&dir).unwrap();
+        let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(profile.steam_id, 76561198000000001u64);
     }
 
     #[test]
     fn picks_most_recent_user() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "11111"
@@ -192,7 +169,7 @@ mod tests {
     }
 }"#,
         );
-        let profile = load_profile_from_root(&dir).unwrap();
+        let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(profile.steam_id, 22222);
         assert_eq!(profile.account_name, "new_user");
         assert_eq!(profile.persona_name, "New");
@@ -200,9 +177,10 @@ mod tests {
 
     #[test]
     fn falls_back_to_first_when_no_most_recent() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "55555"
@@ -219,41 +197,45 @@ mod tests {
     }
 }"#,
         );
-        let profile = load_profile_from_root(&dir).unwrap();
+        let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(profile.steam_id, 55555);
         assert_eq!(profile.account_name, "first_user");
     }
 
     #[test]
     fn no_users_block_returns_no_users_error() {
-        let dir = tempdir();
-        write_loginusers(&dir, r#""something_else" { }"#);
-        let err = load_profile_from_root(&dir).unwrap_err();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        write_loginusers(dir, r#""something_else" { }"#);
+        let err = load_profile_from_root(dir).unwrap_err();
         assert!(matches!(err, ProfileError::NoUsers));
     }
 
     #[test]
     fn empty_users_block_returns_no_users_error() {
-        let dir = tempdir();
-        write_loginusers(&dir, r#""users" { }"#);
-        let err = load_profile_from_root(&dir).unwrap_err();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        write_loginusers(dir, r#""users" { }"#);
+        let err = load_profile_from_root(dir).unwrap_err();
         assert!(matches!(err, ProfileError::NoUsers));
     }
 
     #[test]
     fn missing_vdf_returns_login_users_io_error() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         let config_dir = dir.join("config");
         std::fs::create_dir_all(&config_dir).unwrap();
-        let err = load_profile_from_root(&dir).unwrap_err();
+        let err = load_profile_from_root(dir).unwrap_err();
         assert!(matches!(err, ProfileError::LoginUsersIo(_)));
     }
 
     #[test]
     fn avatar_bytes_none_when_file_absent() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "99999"
@@ -264,15 +246,16 @@ mod tests {
     }
 }"#,
         );
-        let profile = load_profile_from_root(&dir).unwrap();
+        let profile = load_profile_from_root(dir).unwrap();
         assert!(profile.avatar_png_bytes.is_none());
     }
 
     #[test]
     fn avatar_bytes_present_when_file_exists() {
-        let dir = tempdir();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
         write_loginusers(
-            &dir,
+            dir,
             r#""users"
 {
     "12345"
@@ -288,7 +271,7 @@ mod tests {
         let fake_png = b"\x89PNG\r\n\x1a\n";
         std::fs::write(avatarcache.join("12345.png"), fake_png).unwrap();
 
-        let profile = load_profile_from_root(&dir).unwrap();
+        let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(
             profile.avatar_png_bytes.as_deref(),
             Some(fake_png.as_slice())

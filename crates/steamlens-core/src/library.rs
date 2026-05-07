@@ -70,13 +70,6 @@ fn is_released_game(client: &Client, app_id: u32) -> bool {
     true
 }
 
-pub fn enumerate_owned_games(
-    client: &Client,
-    apply_subscribed_filter: bool,
-) -> Result<Vec<GameSummary>, LibraryError> {
-    enumerate_owned_games_impl(client, apply_subscribed_filter)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

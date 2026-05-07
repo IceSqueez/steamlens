@@ -1,6 +1,7 @@
 use core::ffi::c_char;
 use std::path::PathBuf;
 
+use crate::client::internal::nul_terminated_str;
 use crate::error::SteamError;
 use crate::ffi::interfaces::{ISteamUser012, ISteamUser023};
 use crate::ffi::opaque::{self, RawInterface};
@@ -55,13 +56,7 @@ impl User {
             return Err(SteamError::UserDataFolderUnavailable);
         }
 
-        let nul_pos = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        if nul_pos == 0 {
-            return Err(SteamError::UserDataFolderUnavailable);
-        }
-
-        let path_str = std::str::from_utf8(&buf[..nul_pos])
-            .map_err(|_| SteamError::UserDataFolderUnavailable)?;
+        let path_str = nul_terminated_str(&buf).ok_or(SteamError::UserDataFolderUnavailable)?;
 
         Ok(PathBuf::from(path_str))
     }

@@ -102,7 +102,7 @@ async fn probe_main() -> i32 {
     let t_enum = std::time::Instant::now();
     // `BIsSubscribedApp` filter avoids per-game connect rejections
     // (refunded / expired free-weekend / revoked-license app_ids).
-    let games = match steamlens_core::enumerate_owned_games(&client, true) {
+    let games = match client.enumerate_owned_games(true) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("[probe] enumerate_owned_games failed: {e}");

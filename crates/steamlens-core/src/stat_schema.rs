@@ -1,8 +1,7 @@
-use std::path::PathBuf;
-
 use steamlens_vdf::Value;
 
 use crate::error::SteamError;
+use crate::paths;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatKind {
@@ -19,15 +18,12 @@ pub struct StatDescriptor {
     pub min_value: Option<i64>,
 }
 
-fn schema_path(app_id: u32) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home)
-        .join(".local/share/Steam/appcache/stats")
-        .join(format!("UserGameStatsSchema_{app_id}.bin"))
-}
-
 pub(crate) fn load(app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
-    let path = schema_path(app_id);
+    let root = paths::steam_install_root_candidates()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let path = paths::appcache_stats_dir(&root).join(format!("UserGameStatsSchema_{app_id}.bin"));
 
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
