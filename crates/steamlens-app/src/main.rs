@@ -2768,11 +2768,8 @@ mod tests {
             ..App::default()
         };
 
-        tx.send(progress_scan::ProgressResult {
-            app_id,
-            data: None,
-        })
-        .expect("send result");
+        tx.send(progress_scan::ProgressResult { app_id, data: None })
+            .expect("send result");
 
         let _t = update(&mut app, Message::DrainProgressResults);
 
