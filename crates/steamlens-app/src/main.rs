@@ -193,11 +193,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             app.screen = Screen::SteamNotRunning {
                 reason: reason.clone(),
             };
-            if let Some(w) = &app.worker {
-                w.send(SteamRequest::Disconnect);
-            }
-            app.worker = None;
-            app.worker_rx = None;
+            disconnect_worker(app);
             return Task::none();
         }
 
@@ -235,6 +231,27 @@ fn mark_settings_dirty(app: &mut App) {
     }
 }
 
+fn disconnect_worker(app: &mut App) {
+    if let Some(w) = &app.worker {
+        w.send(SteamRequest::Disconnect);
+    }
+    app.worker = None;
+    app.worker_rx = None;
+}
+
+fn return_to_profile_view(app: &mut App) {
+    disconnect_worker(app);
+    if let Some(stored) = app.profile_view_state.take() {
+        app.screen = Screen::ProfileView(stored);
+    } else {
+        let pv_state = ProfileViewState::new();
+        let (worker, rx) = SteamWorker::spawn();
+        app.worker = Some(worker);
+        app.worker_rx = Some(rx);
+        app.screen = Screen::ProfileView(Box::new(pv_state));
+    }
+}
+
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::Exit => iced::exit(),
@@ -263,39 +280,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         Task::none()
                     };
 
-                    if let Some(w) = &app.worker {
-                        w.send(SteamRequest::Disconnect);
-                    }
-                    app.worker = None;
-                    app.worker_rx = None;
-
-                    if let Some(stored) = app.profile_view_state.take() {
-                        app.screen = Screen::ProfileView(stored);
-                    } else {
-                        let pv_state = ProfileViewState::new();
-                        let (worker, rx) = SteamWorker::spawn();
-                        app.worker = Some(worker);
-                        app.worker_rx = Some(rx);
-                        app.screen = Screen::ProfileView(Box::new(pv_state));
-                    }
+                    return_to_profile_view(app);
                     return write_task;
                 }
                 Screen::SteamNotRunning { .. } => {
-                    if let Some(w) = &app.worker {
-                        w.send(SteamRequest::Disconnect);
-                    }
-                    app.worker = None;
-                    app.worker_rx = None;
-
-                    if let Some(stored) = app.profile_view_state.take() {
-                        app.screen = Screen::ProfileView(stored);
-                    } else {
-                        let pv_state = ProfileViewState::new();
-                        let (worker, rx) = SteamWorker::spawn();
-                        app.worker = Some(worker);
-                        app.worker_rx = Some(rx);
-                        app.screen = Screen::ProfileView(Box::new(pv_state));
-                    }
+                    return_to_profile_view(app);
                 }
                 _ => {}
             }
@@ -571,11 +560,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.profile_view_state = Some(pv_state);
             }
 
-            if let Some(w) = &app.worker {
-                w.send(SteamRequest::Disconnect);
-            }
-            app.worker = None;
-            app.worker_rx = None;
+            disconnect_worker(app);
 
             let (worker, rx) = SteamWorker::spawn();
             worker.send(SteamRequest::ConnectWithApp(app_id));
