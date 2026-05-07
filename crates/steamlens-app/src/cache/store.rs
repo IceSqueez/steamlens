@@ -76,18 +76,6 @@ mod tests {
     use super::*;
     use crate::cache::types::{CachedAchievement, CachedProgress, CachedStat};
 
-    fn tempdir() -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "steamlens_cache_test_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        path
-    }
-
     fn make_entry(app_id: u32, name: &str) -> GameCacheEntry {
         GameCacheEntry {
             schema_version: CURRENT_SCHEMA_VERSION,
@@ -138,8 +126,8 @@ mod tests {
 
     #[tokio::test]
     async fn atomic_write_creates_file_with_expected_bytes() {
-        let dir = tempdir();
-        let target = dir.join("test.bin");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let target = dir.path().join("test.bin");
         let payload = b"hello steamlens";
 
         atomic_write(&target, payload).await.expect("write");
@@ -147,14 +135,14 @@ mod tests {
         let read_back = std::fs::read(&target).expect("read");
         assert_eq!(read_back, payload);
 
-        let tmp = dir.join("test.bin.tmp");
+        let tmp = dir.path().join("test.bin.tmp");
         assert!(!tmp.exists(), ".tmp file must not remain after rename");
     }
 
     #[tokio::test]
     async fn atomic_write_overwrites_existing_file() {
-        let dir = tempdir();
-        let target = dir.join("overwrite.bin");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let target = dir.path().join("overwrite.bin");
         std::fs::write(&target, b"old content").expect("setup");
 
         atomic_write(&target, b"new content").await.expect("write");
@@ -162,14 +150,14 @@ mod tests {
         let read_back = std::fs::read(&target).expect("read");
         assert_eq!(read_back, b"new content");
 
-        let tmp = dir.join("overwrite.bin.tmp");
+        let tmp = dir.path().join("overwrite.bin.tmp");
         assert!(!tmp.exists(), ".tmp file must not remain");
     }
 
     #[tokio::test]
     async fn atomic_write_creates_parent_dirs() {
-        let dir = tempdir();
-        let target = dir.join("nested").join("deep").join("file.bin");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let target = dir.path().join("nested").join("deep").join("file.bin");
 
         atomic_write(&target, b"nested").await.expect("write");
 
@@ -179,8 +167,8 @@ mod tests {
 
     #[tokio::test]
     async fn game_cache_round_trip() {
-        let dir = tempdir();
-        let path = dir.join("105600.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("105600.json");
         let original = make_entry(105600, "Terraria");
 
         let bytes = serde_json::to_vec_pretty(&original).expect("serialize");
@@ -237,8 +225,8 @@ mod tests {
 
     #[tokio::test]
     async fn game_cache_atomic_overwrite() {
-        let dir = tempdir();
-        let path = dir.join("200.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("200.json");
 
         let entry_v1 = make_entry(200, "Game One");
         let bytes_v1 = serde_json::to_vec_pretty(&entry_v1).expect("serialize v1");
@@ -258,8 +246,8 @@ mod tests {
 
     #[tokio::test]
     async fn load_game_cache_schema_mismatch_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("999.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("999.json");
         let bad_json = br#"{"schema_version":999,"app_id":999,"name":"Bad","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&path, bad_json).expect("write");
 
@@ -269,16 +257,16 @@ mod tests {
 
     #[tokio::test]
     async fn load_game_cache_missing_file_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("nonexistent_app.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("nonexistent_app.json");
         let result = load_game_cache_from_path(&path).await;
         assert!(result.is_none(), "missing file must return None");
     }
 
     #[tokio::test]
     async fn load_game_cache_corrupted_json_returns_none() {
-        let dir = tempdir();
-        let path = dir.join("corrupted.json");
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("corrupted.json");
         std::fs::write(&path, b"not json at all ][[[").expect("write");
 
         let result = load_game_cache_from_path(&path).await;
