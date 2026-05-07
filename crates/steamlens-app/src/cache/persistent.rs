@@ -2,13 +2,12 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::store::{CacheIoError, atomic_write};
+use crate::cache::cached::Cached;
+use crate::cache::store::CacheIoError;
 
 const CURRENT_PROFILE_SCHEMA: u32 = 2;
 const CURRENT_LIBRARY_SCHEMA: u32 = 3;
 
-/// Fallback snapshot for Steam-not-running boots. Avatar PNG is
-/// embedded so a single-file restore is sufficient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedProfile {
     pub schema_version: u32,
@@ -55,64 +54,42 @@ fn now_epoch() -> u64 {
         .as_secs()
 }
 
+impl Cached for CachedProfile {
+    const NAME: &'static str = "profile";
+    const CURRENT_SCHEMA: u32 = CURRENT_PROFILE_SCHEMA;
+    fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+    fn path() -> PathBuf {
+        profile_path()
+    }
+}
+
+impl Cached for CachedLibrary {
+    const NAME: &'static str = "library";
+    const CURRENT_SCHEMA: u32 = CURRENT_LIBRARY_SCHEMA;
+    fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+    fn path() -> PathBuf {
+        library_path()
+    }
+}
+
 pub async fn write_profile_cache(profile: &CachedProfile) -> Result<(), CacheIoError> {
-    let bytes =
-        serde_json::to_vec_pretty(profile).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    atomic_write(&profile_path(), &bytes).await
+    crate::cache::cached::write(profile).await
 }
 
 pub async fn load_profile_cache() -> Option<CachedProfile> {
-    load_profile_cache_from_path(&profile_path()).await
-}
-
-pub(crate) async fn load_profile_cache_from_path(path: &std::path::Path) -> Option<CachedProfile> {
-    let bytes = tokio::fs::read(path).await.ok()?;
-    let entry: CachedProfile = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            eprintln!(
-                "[steamlens] profile cache: parse error at {}: {e}",
-                path.display()
-            );
-        })
-        .ok()?;
-    if entry.schema_version != CURRENT_PROFILE_SCHEMA {
-        eprintln!(
-            "[steamlens] profile cache: schema {} != expected {}; treating as miss",
-            entry.schema_version, CURRENT_PROFILE_SCHEMA
-        );
-        return None;
-    }
-    Some(entry)
+    crate::cache::cached::load::<CachedProfile>().await
 }
 
 pub async fn write_library_cache(library: &CachedLibrary) -> Result<(), CacheIoError> {
-    let bytes =
-        serde_json::to_vec_pretty(library).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    atomic_write(&library_path(), &bytes).await
+    crate::cache::cached::write(library).await
 }
 
 pub async fn load_library_cache() -> Option<CachedLibrary> {
-    load_library_cache_from_path(&library_path()).await
-}
-
-pub(crate) async fn load_library_cache_from_path(path: &std::path::Path) -> Option<CachedLibrary> {
-    let bytes = tokio::fs::read(path).await.ok()?;
-    let entry: CachedLibrary = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            eprintln!(
-                "[steamlens] library cache: parse error at {}: {e}",
-                path.display()
-            );
-        })
-        .ok()?;
-    if entry.schema_version != CURRENT_LIBRARY_SCHEMA {
-        eprintln!(
-            "[steamlens] library cache: schema {} != expected {}; treating as miss",
-            entry.schema_version, CURRENT_LIBRARY_SCHEMA
-        );
-        return None;
-    }
-    Some(entry)
+    crate::cache::cached::load::<CachedLibrary>().await
 }
 
 pub fn make_cached_profile(
@@ -144,6 +121,8 @@ pub fn make_cached_library(games: Vec<CachedLibraryEntry>) -> CachedLibrary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::cached::load_from_path;
+    use crate::cache::store::atomic_write;
 
     fn make_profile() -> CachedProfile {
         CachedProfile {
@@ -179,7 +158,7 @@ mod tests {
         let bytes = serde_json::to_vec_pretty(&original).unwrap();
         atomic_write(&path, &bytes).await.unwrap();
 
-        let restored = load_profile_cache_from_path(&path)
+        let restored = load_from_path::<CachedProfile>(&path)
             .await
             .expect("must load");
         assert_eq!(restored.steam_id, original.steam_id);
@@ -193,7 +172,7 @@ mod tests {
     #[tokio::test]
     async fn profile_cache_missing_file_returns_none() {
         let dir = tempfile::TempDir::new().expect("tempdir");
-        let result = load_profile_cache_from_path(&dir.path().join("does_not_exist.json")).await;
+        let result = load_from_path::<CachedProfile>(&dir.path().join("does_not_exist.json")).await;
         assert!(result.is_none());
     }
 
@@ -202,7 +181,7 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("corrupted.json");
         std::fs::write(&path, b"this isn't json {{{").unwrap();
-        let result = load_profile_cache_from_path(&path).await;
+        let result = load_from_path::<CachedProfile>(&path).await;
         assert!(result.is_none());
     }
 
@@ -212,7 +191,7 @@ mod tests {
         let path = dir.path().join("schema.json");
         let bad = r#"{"schema_version":1,"steam_id":1,"persona_name":"X","account_name":"x","avatar_png_bytes":null,"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
-        let result = load_profile_cache_from_path(&path).await;
+        let result = load_from_path::<CachedProfile>(&path).await;
         assert!(result.is_none(), "stale schema must be treated as miss");
     }
 
@@ -224,7 +203,7 @@ mod tests {
         let bytes = serde_json::to_vec_pretty(&original).unwrap();
         atomic_write(&path, &bytes).await.unwrap();
 
-        let restored = load_library_cache_from_path(&path)
+        let restored = load_from_path::<CachedLibrary>(&path)
             .await
             .expect("must load");
         assert_eq!(restored.games.len(), 1);
@@ -237,7 +216,7 @@ mod tests {
     #[tokio::test]
     async fn library_cache_missing_file_returns_none() {
         let dir = tempfile::TempDir::new().expect("tempdir");
-        let result = load_library_cache_from_path(&dir.path().join("nope.json")).await;
+        let result = load_from_path::<CachedLibrary>(&dir.path().join("nope.json")).await;
         assert!(result.is_none());
     }
 
@@ -246,7 +225,7 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("corrupted.json");
         std::fs::write(&path, b"][}}}").unwrap();
-        let result = load_library_cache_from_path(&path).await;
+        let result = load_from_path::<CachedLibrary>(&path).await;
         assert!(result.is_none());
     }
 
@@ -256,7 +235,7 @@ mod tests {
         let path = dir.path().join("library.json");
         let bad = r#"{"schema_version":2,"games":[],"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
-        let result = load_library_cache_from_path(&path).await;
+        let result = load_from_path::<CachedLibrary>(&path).await;
         assert!(result.is_none());
     }
 
