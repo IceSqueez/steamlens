@@ -311,7 +311,10 @@ fn banner_strip<'a>(banner: &'a Banner) -> Element<'a, crate::Message> {
         .into()
 }
 
-pub fn status_footer<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Message> {
+pub fn status_footer<'a>(
+    messaging: &'a MessagingCenter,
+    failed_count: usize,
+) -> Element<'a, crate::Message> {
     let (dot_color, left_content, right_btn) = match &messaging.footer {
         FooterStatus::Connected { games, last_sync } => {
             let sync_text = if let Some(t) = last_sync {
@@ -396,7 +399,38 @@ pub fn status_footer<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::M
         .align_y(iced::Alignment::Center)
         .width(Length::Fill);
 
-    if let Some(btn) = right_btn {
+    if failed_count > 0 {
+        let retry_label = format!("Retry ({failed_count})");
+        let retry_btn = button(text(retry_label).size(11).color(C_WARNING))
+            .on_press(crate::Message::ProfileView(
+                crate::profile_view::types::ProfileViewMessage::RetryFailedScans,
+            ))
+            .padding(Padding::default().left(10).right(10).top(3).bottom(3))
+            .style(|_: &iced::Theme, status| {
+                let hovered = matches!(
+                    status,
+                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+                );
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(Color {
+                        a: if hovered { 0.22 } else { 0.12 },
+                        ..C_WARNING
+                    })),
+                    border: iced::Border {
+                        color: Color {
+                            a: 0.45,
+                            ..C_WARNING
+                        },
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    text_color: C_WARNING,
+                    ..iced::widget::button::Style::default()
+                }
+            });
+        footer_row = footer_row.push(iced::widget::Space::new().width(Length::Fill));
+        footer_row = footer_row.push(retry_btn);
+    } else if let Some(btn) = right_btn {
         footer_row = footer_row.push(iced::widget::Space::new().width(Length::Fill));
         footer_row = footer_row.push(btn);
     }
@@ -554,8 +588,9 @@ fn toast_card<'a>(toast: &'a Toast) -> Element<'a, crate::Message> {
 pub fn wrap_with_messaging<'a>(
     content: Element<'a, crate::Message>,
     messaging: &'a MessagingCenter,
+    failed_count: usize,
 ) -> Element<'a, crate::Message> {
-    let footer = status_footer(messaging);
+    let footer = status_footer(messaging, failed_count);
 
     let col_with_footer = if let Some(banners) = banner_stack(messaging) {
         column![banners, content, footer]
