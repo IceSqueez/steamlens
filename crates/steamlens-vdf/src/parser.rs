@@ -80,6 +80,16 @@ pub enum VdfError {
     },
 }
 
+const TAG_SECTION: u8 = 0x00;
+const TAG_STRING: u8 = 0x01;
+const TAG_INT32: u8 = 0x02;
+const TAG_FLOAT32: u8 = 0x03;
+const TAG_PTR: u8 = 0x04;
+const TAG_WSTRING: u8 = 0x05;
+const TAG_COLOR: u8 = 0x06;
+const TAG_UINT64: u8 = 0x07;
+const TAG_SECTION_END: u8 = 0x08;
+
 pub(crate) struct Cursor<'a> {
     data: &'a [u8],
     pos: usize,
@@ -143,26 +153,26 @@ impl<'a> Cursor<'a> {
             let tag_offset = self.pos;
             let tag = self.read_u8()?;
 
-            if tag == 0x08 {
+            if tag == TAG_SECTION_END {
                 return Ok(Value::Section(children));
             }
 
             let key = self.read_null_terminated()?;
 
             let value = match tag {
-                0x00 => self.read_section()?,
-                0x01 => Value::String(self.read_null_terminated()?),
-                0x02 => Value::Int32(i32::from_le_bytes(self.read_array()?)),
-                0x03 => Value::Float32(f32::from_le_bytes(self.read_array()?)),
-                0x04 => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
-                0x05 => {
+                TAG_SECTION => self.read_section()?,
+                TAG_STRING => Value::String(self.read_null_terminated()?),
+                TAG_INT32 => Value::Int32(i32::from_le_bytes(self.read_array()?)),
+                TAG_FLOAT32 => Value::Float32(f32::from_le_bytes(self.read_array()?)),
+                TAG_PTR => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
+                TAG_WSTRING => {
                     return Err(VdfError::UnsupportedType {
-                        tag: 0x05,
+                        tag: TAG_WSTRING,
                         offset: tag_offset,
                     });
                 }
-                0x06 => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
-                0x07 => Value::UInt64(u64::from_le_bytes(self.read_array()?)),
+                TAG_COLOR => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
+                TAG_UINT64 => Value::UInt64(u64::from_le_bytes(self.read_array()?)),
                 other => {
                     return Err(VdfError::UnknownTypeTag {
                         tag: other,
