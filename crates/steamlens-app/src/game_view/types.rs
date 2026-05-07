@@ -136,14 +136,6 @@ impl AchievementFilter {
             AchievementFilter::Hidden => "Hidden",
         }
     }
-
-    #[allow(dead_code)]
-    pub const ALL: &'static [AchievementFilter] = &[
-        AchievementFilter::All,
-        AchievementFilter::Unlocked,
-        AchievementFilter::Locked,
-        AchievementFilter::Hidden,
-    ];
 }
 
 impl std::fmt::Display for AchievementFilter {
