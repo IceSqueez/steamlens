@@ -753,26 +753,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 && since.elapsed() >= Duration::from_millis(200)
             {
                 app.settings_dirty_since = None;
-                match toml::to_string_pretty(&app.settings) {
-                    Ok(text) => {
-                        let path = settings::settings_path();
-                        let bytes = text.into_bytes();
-                        return Task::perform(
-                            async move {
-                                cache::store::atomic_write(&path, &bytes)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            Message::SettingsWritten,
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!("[steamlens] settings: serialize error: {e}");
-                        return Task::done(Message::ToastRequest(
-                            "Could not save settings".to_owned(),
-                        ));
-                    }
-                }
+                let snapshot = app.settings.clone();
+                return Task::perform(
+                    async move {
+                        settings::write_settings(&snapshot)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::SettingsWritten,
+                );
             }
             Task::none()
         }
