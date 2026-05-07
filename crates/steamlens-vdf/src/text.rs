@@ -44,6 +44,14 @@ impl TextValue {
             TextValue::String(_) => None,
         }
     }
+
+    pub fn path(&self, segments: &[&str]) -> Option<&TextValue> {
+        let mut current = self;
+        for &seg in segments {
+            current = current.get(seg)?;
+        }
+        Some(current)
+    }
 }
 
 /// Parse a text KV document (`.acf`, `libraryfolders.vdf`). The root
@@ -346,5 +354,39 @@ mod tests {
         let input = r#""k" "bad\xescape""#;
         let result = parse(input);
         assert!(matches!(result, Err(TextVdfError::InvalidEscape { .. })));
+    }
+
+    #[test]
+    fn path_traversal_happy() {
+        let input = r#"
+"root"
+{
+    "a"
+    {
+        "b"
+        {
+            "c" "found"
+        }
+    }
+}
+"#;
+        let doc = parse(input).unwrap();
+        let val = doc.path(&["root", "a", "b", "c"]).unwrap();
+        assert_eq!(val.as_str(), Some("found"));
+    }
+
+    #[test]
+    fn path_missing_key_returns_none() {
+        let input = r#""root" { "a" { "b" "x" } }"#;
+        let doc = parse(input).unwrap();
+        assert!(doc.path(&["root", "a", "missing"]).is_none());
+        assert!(doc.path(&["nope"]).is_none());
+    }
+
+    #[test]
+    fn path_empty_segments_returns_self() {
+        let input = r#""k" "v""#;
+        let doc = parse(input).unwrap();
+        assert!(std::ptr::eq(doc.path(&[]).unwrap(), &doc));
     }
 }

@@ -11,12 +11,7 @@ pub fn parse_localconfig_last_played(content: &str) -> HashMap<u32, u32> {
         Err(_) => return HashMap::new(),
     };
 
-    let apps = root
-        .get("UserLocalConfigStore")
-        .and_then(|v| v.get("Software"))
-        .and_then(|v| v.get("Valve"))
-        .and_then(|v| v.get("Steam"))
-        .and_then(|v| v.get("apps"));
+    let apps = root.path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]);
 
     let Some(apps_section) = apps else {
         return HashMap::new();
