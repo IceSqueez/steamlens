@@ -497,6 +497,15 @@ mod tests {
     }
 
     #[test]
+    fn max_concurrent_is_one_to_preserve_ordered_card_render() {
+        assert_eq!(
+            MAX_CONCURRENT, 1,
+            "raising MAX_CONCURRENT re-opens the cards-render-out-of-order race closed in Phase A.2; \
+             see ALPHA_6_HARDENING.md B.6 before changing"
+        );
+    }
+
+    #[test]
     fn take_receiver_gives_channel_once() {
         let mut scanner = ProgressScanner::new(vec![1]);
         let rx1 = scanner.take_receiver();
