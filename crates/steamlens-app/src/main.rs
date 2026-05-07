@@ -2651,6 +2651,148 @@ mod tests {
         }
     }
 
+    fn make_game_entry(app_id: u32, change_number: u32) -> profile_view::types::GameEntry {
+        use profile_view::types::{CapsuleAsset, GameEntry};
+        GameEntry {
+            app_id,
+            change_number,
+            last_played: None,
+            name: None,
+            capsule: CapsuleAsset::Unavailable,
+            progress: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn drain_progress_success_path_inserts_cached_entry() {
+        use steamlens_core::CardOnlyAchievement;
+
+        let app_id: u32 = 105600;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
+        let mut pv_state = ProfileViewState::new();
+        pv_state.games.push(make_game_entry(app_id, 7));
+        pv_state.progress_rx = Some(rx);
+
+        let mut app = App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            ..App::default()
+        };
+
+        tx.send(progress_scan::ProgressResult {
+            app_id,
+            data: Some(progress_scan::ScannedGameData {
+                app_name: Some("Terraria".to_owned()),
+                achievements: vec![CardOnlyAchievement {
+                    id: "ACH_KILL_BOSS".to_owned(),
+                    is_achieved: true,
+                }],
+                stats: vec![],
+                global_percentages: HashMap::new(),
+                genre: None,
+            }),
+        })
+        .expect("send result");
+
+        let _t = update(&mut app, Message::DrainProgressResults);
+
+        assert!(
+            app.cached_entries.contains_key(&app_id),
+            "successful scan must insert into cached_entries"
+        );
+        if let Screen::ProfileView(pv) = &app.screen {
+            let game = pv
+                .games
+                .iter()
+                .find(|g| g.app_id == app_id)
+                .expect("game still in library");
+            assert_eq!(
+                game.name.as_deref(),
+                Some("Terraria"),
+                "game name must be hydrated from scanned data"
+            );
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
+    #[tokio::test]
+    async fn drain_progress_empty_achievements_marks_no_ach_cache() {
+        let app_id: u32 = 99999;
+        let change_number: u32 = 42;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
+        let mut pv_state = ProfileViewState::new();
+        pv_state.games.push(make_game_entry(app_id, change_number));
+        pv_state.progress_rx = Some(rx);
+
+        let mut app = App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            ..App::default()
+        };
+
+        tx.send(progress_scan::ProgressResult {
+            app_id,
+            data: Some(progress_scan::ScannedGameData {
+                app_name: None,
+                achievements: vec![],
+                stats: vec![],
+                global_percentages: HashMap::new(),
+                genre: None,
+            }),
+        })
+        .expect("send result");
+
+        let _t = update(&mut app, Message::DrainProgressResults);
+
+        assert_eq!(
+            app.no_ach_cache.entries.get(&app_id).copied(),
+            Some(change_number),
+            "empty-achievements scan must record (app_id, change_number) in no_ach_cache"
+        );
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(
+                pv.games.iter().all(|g| g.app_id != app_id),
+                "empty-achievements scan must remove game from library"
+            );
+        } else {
+            panic!("expected ProfileView screen");
+        }
+        assert!(
+            !app.cached_entries.contains_key(&app_id),
+            "empty-achievements scan must drop any cached_entries for the app"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_progress_failed_scan_records_failed_app_id() {
+        let app_id: u32 = 12345;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
+        let mut pv_state = ProfileViewState::new();
+        pv_state.games.push(make_game_entry(app_id, 0));
+        pv_state.progress_rx = Some(rx);
+
+        let mut app = App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            ..App::default()
+        };
+
+        tx.send(progress_scan::ProgressResult {
+            app_id,
+            data: None,
+        })
+        .expect("send result");
+
+        let _t = update(&mut app, Message::DrainProgressResults);
+
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(
+                pv.failed_app_ids.contains(&app_id),
+                "failed scan must record app_id in failed_app_ids"
+            );
+        } else {
+            panic!("expected ProfileView screen");
+        }
+    }
+
     #[tokio::test]
     async fn open_game_view_then_go_back_round_trip() {
         let app_id: u32 = 440;
