@@ -18,15 +18,5 @@ pub const C_ACCENT_DARK: Color = Color::from_rgb8(0x7b, 0x5d, 0xb5);
 pub const C_DANGER: Color = Color::from_rgb8(0xdc, 0x64, 0x64);
 
 pub fn theme() -> Theme {
-    Theme::custom(
-        "SteamLens".to_string(),
-        iced::theme::Palette {
-            background: C_APP,
-            text: C_TEXT_SECONDARY,
-            primary: C_ACCENT,
-            success: C_ACCENT,
-            warning: Color::from_rgb8(0xe0, 0xb8, 0x60),
-            danger: C_DANGER,
-        },
-    )
+    crate::ui::theme::AppTheme::Dark.into()
 }
