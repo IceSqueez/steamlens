@@ -21,6 +21,7 @@ use super::profile::{
     C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
 };
 use crate::ui::theme::{AppTheme, palette};
+use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
 use super::profile::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
@@ -849,7 +850,6 @@ fn build_tier_stacked_bar<'a>(
     card_w: f32,
 ) -> Element<'a, crate::Message> {
     const BAR_H: f32 = 8.0;
-    const BAR_RADIUS: f32 = 4.0;
     const TIER_ORDER: [RarityTier; 5] = [
         RarityTier::Common,
         RarityTier::Uncommon,
@@ -857,125 +857,35 @@ fn build_tier_stacked_bar<'a>(
         RarityTier::Mythical,
         RarityTier::Legendary,
     ];
-    const C_TRACK: Color = Color::from_rgba(0.4, 0.45, 0.65, 0.25);
 
     let inner_w = card_w - 16.0;
     let locked_count = total_achievements.saturating_sub(total_earned);
-    let has_any = total_achievements > 0;
 
-    let bar: Element<'_, crate::Message> = if !has_any {
-        container(iced::widget::Space::new())
-            .width(Length::Fixed(inner_w))
-            .height(Length::Fixed(BAR_H))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_TRACK)),
-                border: iced::Border {
-                    radius: BAR_RADIUS.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
+    let mut segments: Vec<BarSegment> = TIER_ORDER
+        .iter()
+        .filter_map(|t| {
+            let count = tier_breakdown
+                .iter()
+                .find(|(tt, _)| tt == t)
+                .map(|(_, c)| *c)
+                .unwrap_or(0);
+            (count > 0).then(|| BarSegment {
+                weight: count,
+                color: rarity_color_for_tier(*t),
             })
-            .into()
-    } else {
-        let total_f = total_achievements as f32;
-        let mut segments: iced::widget::Row<'_, crate::Message> = row![].spacing(0);
+        })
+        .collect();
 
-        let active_tiers: Vec<(RarityTier, u32)> = TIER_ORDER
-            .iter()
-            .filter_map(|t| {
-                let c = tier_breakdown
-                    .iter()
-                    .find(|(tt, _)| tt == t)
-                    .map(|(_, c)| *c)
-                    .unwrap_or(0);
-                if c > 0 { Some((*t, c)) } else { None }
-            })
-            .collect();
-        let has_locked = locked_count > 0;
-        let earned_segs = active_tiers.len();
+    if locked_count > 0 {
+        segments.push(BarSegment {
+            weight: locked_count,
+            color: palette(AppTheme::Dark).hover,
+        });
+    }
 
-        for (i, (tier, count)) in active_tiers.iter().enumerate() {
-            let seg_w = (*count as f32 / total_f * inner_w).max(1.0);
-            let color = rarity_color_for_tier(*tier);
-            let is_first = i == 0;
-            let is_last_earned = i + 1 == earned_segs && !has_locked;
-            let radius = iced::border::Radius {
-                top_left: if is_first { BAR_RADIUS } else { 0.0 },
-                bottom_left: if is_first { BAR_RADIUS } else { 0.0 },
-                top_right: if is_last_earned { BAR_RADIUS } else { 0.0 },
-                bottom_right: if is_last_earned { BAR_RADIUS } else { 0.0 },
-            };
-
-            if i > 0 {
-                let gap = container(iced::widget::Space::new())
-                    .width(Length::Fixed(1.0))
-                    .height(Length::Fixed(BAR_H))
-                    .style(|_: &iced::Theme| container::Style {
-                        background: Some(iced::Background::Color(C_TRACK)),
-                        ..container::Style::default()
-                    });
-                segments = segments.push(gap);
-            }
-
-            let seg = container(iced::widget::Space::new())
-                .width(Length::Fixed(seg_w))
-                .height(Length::Fixed(BAR_H))
-                .style(move |_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(color)),
-                    border: iced::Border {
-                        radius,
-                        ..iced::Border::default()
-                    },
-                    ..container::Style::default()
-                });
-            segments = segments.push(seg);
-        }
-
-        if has_locked {
-            if earned_segs > 0 {
-                let gap = container(iced::widget::Space::new())
-                    .width(Length::Fixed(1.0))
-                    .height(Length::Fixed(BAR_H))
-                    .style(|_: &iced::Theme| container::Style {
-                        background: Some(iced::Background::Color(C_TRACK)),
-                        ..container::Style::default()
-                    });
-                segments = segments.push(gap);
-            }
-            let locked_w = (locked_count as f32 / total_f * inner_w).max(1.0);
-            let radius = iced::border::Radius {
-                top_left: if earned_segs == 0 { BAR_RADIUS } else { 0.0 },
-                bottom_left: if earned_segs == 0 { BAR_RADIUS } else { 0.0 },
-                top_right: BAR_RADIUS,
-                bottom_right: BAR_RADIUS,
-            };
-            let locked_seg = container(iced::widget::Space::new())
-                .width(Length::Fixed(locked_w))
-                .height(Length::Fixed(BAR_H))
-                .style(move |_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(C_TRACK)),
-                    border: iced::Border {
-                        radius,
-                        ..iced::Border::default()
-                    },
-                    ..container::Style::default()
-                });
-            segments = segments.push(locked_seg);
-        }
-
-        container(segments)
-            .width(Length::Fixed(inner_w))
-            .height(Length::Fixed(BAR_H))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_TRACK)),
-                border: iced::Border {
-                    radius: BAR_RADIUS.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into()
-    };
+    let bar: Element<'a, crate::Message> = segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
+        .theme(AppTheme::Dark)
+        .into();
 
     container(bar)
         .width(Length::Fixed(card_w))

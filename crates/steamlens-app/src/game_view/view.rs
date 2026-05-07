@@ -1,7 +1,7 @@
 use iced::widget::Id as WidgetId;
 use iced::widget::{
-    Space, button, column, container, image, mouse_area, opaque, responsive, rich_text, row,
-    scrollable, space, span, stack, text, text_input, tooltip,
+    button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
+    space, span, stack, text, text_input, tooltip,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
