@@ -7,26 +7,6 @@ use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
 
-#[allow(dead_code)]
-pub fn default_steam_root() -> PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".local/share/Steam")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join("Library/Application Support/Steam")
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let program_files = std::env::var("ProgramFiles(x86)")
-            .unwrap_or_else(|_| r"C:\Program Files (x86)".to_owned());
-        PathBuf::from(program_files).join("Steam")
-    }
-}
-
 /// Falls back to the process working directory when the home env var
 /// is absent — keeps boot infallible on unusual system configurations.
 pub fn steamlens_root() -> PathBuf {
