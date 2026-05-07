@@ -479,10 +479,8 @@ pub fn update(
             state.stats.clear();
             state.reveal_queue.clear();
             state.banner = None;
-            let steam_id_placeholder = 0u64;
             worker.send(SteamRequest::RequestUserStats);
             worker.send(SteamRequest::RequestGlobalPercentages);
-            let _ = steam_id_placeholder;
             Task::none()
         }
         GameViewMessage::ApplyChanges => {
