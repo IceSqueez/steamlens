@@ -10,6 +10,7 @@ mod skeleton;
 mod steam_worker;
 mod theme;
 mod timeouts;
+mod ui;
 mod worker;
 
 use std::collections::{HashMap, VecDeque};
