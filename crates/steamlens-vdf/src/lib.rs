@@ -258,4 +258,51 @@ mod tests {
         let sec = Value::Section(vec![]);
         assert_eq!(sec.as_section(), Some([].as_slice()));
     }
+
+    #[test]
+    fn read_array_i32_round_trip() {
+        let val: i32 = -12345;
+        let mut bytes = vec![0x02u8];
+        bytes.extend_from_slice(b"n\x00");
+        bytes.extend_from_slice(&val.to_le_bytes());
+        bytes.push(0x08);
+        let result = parse(&bytes).unwrap();
+        assert_eq!(result.get("n").and_then(|v| v.as_i32()), Some(val));
+    }
+
+    #[test]
+    fn read_array_u32_as_u64_round_trip() {
+        let val: u32 = 0xDEAD_BEEF;
+        let mut bytes = vec![0x04u8];
+        bytes.extend_from_slice(b"u\x00");
+        bytes.extend_from_slice(&val.to_le_bytes());
+        bytes.push(0x08);
+        let result = parse(&bytes).unwrap();
+        assert_eq!(
+            result.get("u").and_then(|v| v.as_u64()),
+            Some(u64::from(val))
+        );
+    }
+
+    #[test]
+    fn read_array_f32_round_trip() {
+        let val: f32 = std::f32::consts::FRAC_1_PI;
+        let mut bytes = vec![0x03u8];
+        bytes.extend_from_slice(b"f\x00");
+        bytes.extend_from_slice(&val.to_le_bytes());
+        bytes.push(0x08);
+        let result = parse(&bytes).unwrap();
+        assert_eq!(result.get("f").and_then(|v| v.as_f32()), Some(val));
+    }
+
+    #[test]
+    fn read_array_u64_round_trip() {
+        let val: u64 = 0xCAFE_BABE_DEAD_BEEF;
+        let mut bytes = vec![0x07u8];
+        bytes.extend_from_slice(b"x\x00");
+        bytes.extend_from_slice(&val.to_le_bytes());
+        bytes.push(0x08);
+        let result = parse(&bytes).unwrap();
+        assert_eq!(result.get("x").and_then(|v| v.as_u64()), Some(val));
+    }
 }

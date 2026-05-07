@@ -129,26 +129,11 @@ impl<'a> Cursor<'a> {
         })
     }
 
-    fn read_i32(&mut self) -> Result<i32, VdfError> {
-        let bytes = self.read_exact(4)?;
-        Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_u32(&mut self) -> Result<u32, VdfError> {
-        let bytes = self.read_exact(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_u64(&mut self) -> Result<u64, VdfError> {
-        let bytes = self.read_exact(8)?;
-        Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
-    }
-
-    fn read_f32(&mut self) -> Result<f32, VdfError> {
-        let bytes = self.read_exact(4)?;
-        Ok(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    fn read_array<const N: usize>(&mut self) -> Result<[u8; N], VdfError> {
+        let slice = self.read_exact(N)?;
+        let mut arr = [0u8; N];
+        arr.copy_from_slice(slice);
+        Ok(arr)
     }
 
     pub(crate) fn read_section(&mut self) -> Result<Value, VdfError> {
@@ -167,17 +152,17 @@ impl<'a> Cursor<'a> {
             let value = match tag {
                 0x00 => self.read_section()?,
                 0x01 => Value::String(self.read_null_terminated()?),
-                0x02 => Value::Int32(self.read_i32()?),
-                0x03 => Value::Float32(self.read_f32()?),
-                0x04 => Value::UInt64(u64::from(self.read_u32()?)),
+                0x02 => Value::Int32(i32::from_le_bytes(self.read_array()?)),
+                0x03 => Value::Float32(f32::from_le_bytes(self.read_array()?)),
+                0x04 => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
                 0x05 => {
                     return Err(VdfError::UnsupportedType {
                         tag: 0x05,
                         offset: tag_offset,
                     });
                 }
-                0x06 => Value::UInt64(u64::from(self.read_u32()?)),
-                0x07 => Value::UInt64(self.read_u64()?),
+                0x06 => Value::UInt64(u64::from(u32::from_le_bytes(self.read_array()?))),
+                0x07 => Value::UInt64(u64::from_le_bytes(self.read_array()?)),
                 other => {
                     return Err(VdfError::UnknownTypeTag {
                         tag: other,
