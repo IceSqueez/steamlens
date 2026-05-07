@@ -2,16 +2,15 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc as async_mpsc;
 
 use steamlens_core::AchievementIcon;
-use steamlens_core::ipc::{
-    WorkerCommand, WorkerErrorKind, WorkerResponse, decode_frame, encode_frame, parse_header,
-};
+use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse, encode_frame};
 
 use crate::game_view::types::ResetScope;
+use crate::ipc_pipe;
 use crate::timeouts;
 
 #[allow(dead_code)]
@@ -155,15 +154,6 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
     }
 }
 
-async fn read_response(stdout: &mut ChildStdout) -> Option<WorkerResponse> {
-    let mut header = [0u8; 4];
-    stdout.read_exact(&mut header).await.ok()?;
-    let len = parse_header(header).ok()?;
-    let mut buf = vec![0u8; len];
-    stdout.read_exact(&mut buf).await.ok()?;
-    decode_frame::<WorkerResponse>(&buf).ok()
-}
-
 async fn write_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> bool {
     let Ok(framed) = encode_frame(cmd) else {
         return false;
@@ -180,7 +170,7 @@ async fn round_trip(
     if !write_command(stdin, cmd).await {
         return None;
     }
-    tokio::time::timeout(timeout, read_response(stdout))
+    tokio::time::timeout(timeout, ipc_pipe::read_response(stdout))
         .await
         .ok()
         .flatten()
@@ -378,7 +368,7 @@ async fn drain_responses(
         if remaining.is_zero() {
             break;
         }
-        match tokio::time::timeout(remaining, read_response(stdout)).await {
+        match tokio::time::timeout(remaining, ipc_pipe::read_response(stdout)).await {
             Ok(Some(resp)) => handle_worker_response(resp, rep_tx),
             _ => break,
         }
@@ -402,7 +392,7 @@ async fn await_steam_connected(
     timeout: Duration,
     rep_tx: &mpsc::Sender<SteamReply>,
 ) -> Result<(), ConnectError> {
-    match tokio::time::timeout(timeout, read_response(stdout)).await {
+    match tokio::time::timeout(timeout, ipc_pipe::read_response(stdout)).await {
         Ok(Some(WorkerResponse::SteamConnected { steam_id, app_name })) => {
             reply(rep_tx, SteamReply::Connected { steam_id, app_name });
             Ok(())
@@ -601,8 +591,11 @@ async fn bridge_loop(
 
             SteamRequest::Disconnect => {
                 let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-                let _ =
-                    tokio::time::timeout(timeouts::CHILD_DRAIN, read_response(&mut stdout)).await;
+                let _ = tokio::time::timeout(
+                    timeouts::CHILD_DRAIN,
+                    ipc_pipe::read_response(&mut stdout),
+                )
+                .await;
                 let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
