@@ -63,7 +63,7 @@ pub struct CardOnlyPayload {
     pub achievements: Vec<CardOnlyAchievement>,
 }
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AchievementCountPayload {
     pub earned: u32,
     pub total: u32,

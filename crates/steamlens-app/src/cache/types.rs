@@ -44,11 +44,7 @@ pub struct CachedStat {
     pub default_value: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct CachedProgress {
-    pub earned: u32,
-    pub total: u32,
-}
+pub use steamlens_core::AchievementCountPayload as CachedProgress;
 
 #[derive(Debug, Clone)]
 pub struct CacheHit {
