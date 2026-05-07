@@ -20,6 +20,8 @@ use super::ProfileViewState;
 use super::profile::{
     C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
 };
+use crate::ui::theme::{AppTheme, palette};
+use crate::ui::widgets::card::card;
 use super::profile::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
 };
@@ -47,8 +49,6 @@ fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
 const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
 const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
-
-const C_GOLD: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
@@ -822,89 +822,24 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
     ]
     .spacing(0);
 
-    let card = container(card_inner)
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(total_h))
-        .padding(Padding::default().top(8));
-
     let is_gold = entry
         .progress
         .as_ref()
         .is_some_and(|p| p.total > 0 && p.earned >= p.total);
-    let card_btn = button(card)
-        .padding(0)
+    let accent = is_gold.then(|| palette(AppTheme::Dark).rarity_legendary);
+
+    card(card_inner)
+        .theme(AppTheme::Dark)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(total_h))
+        .padding(Padding::default().top(8))
+        .radius(6.0)
+        .hovered(is_hovered)
+        .accent_maybe(accent)
         .on_press(crate::Message::ProfileView(
             ProfileViewMessage::GameSelected(app_id),
         ))
-        .style(move |_: &iced::Theme, status| {
-            let btn_hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            let effectively_hovered = is_hovered || btn_hovered;
-
-            let bg = if effectively_hovered {
-                Color {
-                    r: (C_SURFACE.r * 1.18).min(1.0),
-                    g: (C_SURFACE.g * 1.18).min(1.0),
-                    b: (C_SURFACE.b * 1.18).min(1.0),
-                    a: 1.0,
-                }
-            } else {
-                C_SURFACE
-            };
-
-            let border_color = if is_gold && effectively_hovered {
-                C_GOLD
-            } else if effectively_hovered {
-                C_ACCENT
-            } else if is_gold {
-                Color { a: 0.5, ..C_GOLD }
-            } else {
-                Color::TRANSPARENT
-            };
-
-            let border_width = if effectively_hovered || is_gold {
-                2.0
-            } else {
-                0.0
-            };
-
-            let shadow = if is_gold {
-                iced::Shadow {
-                    color: Color::from_rgba(
-                        C_GOLD.r,
-                        C_GOLD.g,
-                        C_GOLD.b,
-                        if effectively_hovered { 0.5 } else { 0.25 },
-                    ),
-                    offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: if effectively_hovered { 14.0 } else { 6.0 },
-                }
-            } else if effectively_hovered {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
-                    offset: iced::Vector::new(0.0, 8.0),
-                    blur_radius: 18.0,
-                }
-            } else {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                    offset: iced::Vector::new(0.0, 4.0),
-                    blur_radius: 10.0,
-                }
-            };
-
-            button::Style {
-                background: Some(iced::Background::Color(bg)),
-                border: iced::Border {
-                    color: border_color,
-                    width: border_width,
-                    radius: 6.0.into(),
-                },
-                shadow,
-                ..button::Style::default()
-            }
-        });
-
-    card_btn.into()
+        .into()
 }
 
 fn build_tier_stacked_bar<'a>(

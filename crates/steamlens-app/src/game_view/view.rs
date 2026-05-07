@@ -1,7 +1,7 @@
 use iced::widget::Id as WidgetId;
 use iced::widget::{
-    button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
-    space, span, stack, text, text_input, tooltip,
+    Space, button, column, container, image, mouse_area, opaque, responsive, rich_text, row,
+    scrollable, space, span, stack, text, text_input, tooltip,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -21,6 +21,8 @@ use crate::theme::{
     C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
     C_TEXT_SECONDARY,
 };
+use crate::ui::theme::{AppTheme, palette};
+use crate::ui::widgets::card::card;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
@@ -1498,77 +1500,28 @@ fn achievement_card_widget<'a>(
     } else {
         None
     };
-    button(card_container)
-        .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)))
-        .padding(0)
-        .style(move |_theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            let bg = if hovered {
-                Color {
-                    r: (C_SURFACE.r * 1.18).min(1.0),
-                    g: (C_SURFACE.g * 1.18).min(1.0),
-                    b: (C_SURFACE.b * 1.18).min(1.0),
-                    a: 1.0,
-                }
-            } else {
-                C_SURFACE
-            };
-            let border = if is_hidden_card {
-                Border {
-                    color: Color {
-                        a: if hovered { 0.55 } else { 0.40 },
-                        ..C_BORDER
-                    },
-                    width: 1.0,
-                    radius: 10.0.into(),
-                }
-            } else if let Some(gc) = glow_color {
-                Border {
-                    color: Color {
-                        a: if hovered { 0.85 } else { 0.45 },
-                        ..gc
-                    },
-                    width: if hovered { 2.0 } else { 1.0 },
-                    radius: 8.0.into(),
-                }
-            } else {
-                Border {
-                    color: if hovered {
-                        C_PURPLE
-                    } else {
-                        Color::TRANSPARENT
-                    },
-                    width: if hovered { 2.0 } else { 0.0 },
-                    radius: 8.0.into(),
-                }
-            };
-            let shadow = if let Some(gc) = glow_color {
-                iced::Shadow {
-                    color: Color::from_rgba(gc.r, gc.g, gc.b, if hovered { 0.50 } else { 0.30 }),
-                    offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: if hovered { 16.0 } else { 10.0 },
-                }
-            } else if hovered {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
-                    offset: iced::Vector::new(0.0, 8.0),
-                    blur_radius: 18.0,
-                }
-            } else {
-                iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                    offset: iced::Vector::new(0.0, 4.0),
-                    blur_radius: 10.0,
-                }
-            };
-            button::Style {
-                background: Some(Background::Color(bg)),
-                border,
-                shadow,
-                ..button::Style::default()
-            }
-        })
-        .into()
+
+    let mut c = card(card_container)
+        .theme(AppTheme::Dark)
+        .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)));
+
+    if is_hidden_card {
+        c = c
+            .accent(palette(AppTheme::Dark).border)
+            .accent_border_width(1.0, 1.0)
+            .accent_alpha(0.40, 0.55)
+            .radius(10.0);
+    } else if let Some(gc) = glow_color {
+        c = c
+            .accent(gc)
+            .accent_border_width(1.0, 2.0)
+            .accent_alpha(0.45, 0.85)
+            .radius(8.0);
+    } else {
+        c = c.radius(8.0);
+    }
+
+    c.into()
 }
 
 fn stats_tab(state: &GameViewState) -> Element<'_, Message> {
