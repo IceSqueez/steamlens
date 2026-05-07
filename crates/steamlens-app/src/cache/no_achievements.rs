@@ -8,7 +8,7 @@ use crate::cache::store::CacheIoError;
 
 pub const CURRENT_NO_ACHIEVEMENTS_SCHEMA: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoAchievementsCache {
     pub schema_version: u32,
     pub entries: HashMap<u32, u32>,
