@@ -4,11 +4,10 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
-use steamlens_core::ipc::{
-    WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
-};
+use steamlens_core::ipc::{WorkerCommand, WorkerResponse, encode_frame};
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
+use crate::ipc_pipe;
 use crate::timeouts;
 
 const MAX_CONCURRENT: usize = 1;
@@ -267,20 +266,23 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
     })?;
 
-    let connected = tokio::time::timeout(timeouts::STEAM_CONNECT, read_response(&mut stdout))
-        .await
-        .map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "timed out waiting for SteamConnected",
-            )
-        })?
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "worker closed before SteamConnected",
-            )
-        })?;
+    let connected = tokio::time::timeout(
+        timeouts::STEAM_CONNECT,
+        ipc_pipe::read_response(&mut stdout),
+    )
+    .await
+    .map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timed out waiting for SteamConnected",
+        )
+    })?
+    .ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "worker closed before SteamConnected",
+        )
+    })?;
 
     let app_name = match connected {
         WorkerResponse::SteamConnected { app_name, .. } => app_name,
@@ -330,7 +332,7 @@ async fn read_card_only_skipping_async(
                 "timed out waiting for CardOnlyAchievements",
             ));
         }
-        let frame = tokio::time::timeout(remaining, read_response(stdout))
+        let frame = tokio::time::timeout(remaining, ipc_pipe::read_response(stdout))
             .await
             .map_err(|_| {
                 std::io::Error::new(
@@ -388,7 +390,7 @@ async fn read_percentages_skipping_async(
         if remaining.is_zero() {
             return HashMap::new();
         }
-        let frame = match tokio::time::timeout(remaining, read_response(stdout)).await {
+        let frame = match tokio::time::timeout(remaining, ipc_pipe::read_response(stdout)).await {
             Ok(Some(f)) => f,
             _ => return HashMap::new(),
         };
@@ -412,15 +414,6 @@ async fn read_percentages_skipping_async(
             _ => continue,
         }
     }
-}
-
-async fn read_response(stdout: &mut ChildStdout) -> Option<WorkerResponse> {
-    let mut header = [0u8; 4];
-    stdout.read_exact(&mut header).await.ok()?;
-    let len = parse_header(header).ok()?;
-    let mut buf = vec![0u8; len];
-    stdout.read_exact(&mut buf).await.ok()?;
-    decode_frame::<WorkerResponse>(&buf).ok()
 }
 
 async fn send_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> Result<(), std::io::Error> {

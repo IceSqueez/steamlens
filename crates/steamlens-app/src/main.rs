@@ -1,6 +1,7 @@
 mod cache;
 mod capsule_cache;
 mod game_view;
+mod ipc_pipe;
 mod messaging;
 mod profile_view;
 mod progress_scan;
