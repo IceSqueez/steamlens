@@ -8,6 +8,7 @@ mod settings;
 mod skeleton;
 mod steam_worker;
 mod theme;
+mod timeouts;
 mod worker;
 
 use std::collections::{HashMap, VecDeque};
@@ -161,7 +162,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
 
     let probe_task = Task::perform(
         async {
-            steamlens_core::probe_steam(std::time::Duration::from_secs(15))
+            steamlens_core::probe_steam(timeouts::PROBE_STEAM_BOOT)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -315,7 +316,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let t = profile_view::update(pv_state, pv_msg);
                         let probe_task = Task::perform(
                             async {
-                                steamlens_core::probe_steam(std::time::Duration::from_secs(30))
+                                steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
                                     .await
                                     .map_err(|e| e.to_string())
                             },
@@ -799,7 +800,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::perform(
                 async {
-                    steamlens_core::probe_steam(std::time::Duration::from_secs(30))
+                    steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
                         .await
                         .map_err(|e| e.to_string())
                 },
