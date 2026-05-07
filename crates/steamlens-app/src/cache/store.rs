@@ -81,7 +81,6 @@ mod tests {
             schema_version: CURRENT_SCHEMA_VERSION,
             app_id,
             name: name.to_owned(),
-            steam_last_updated: 1_773_063_072,
             steam_last_played: 1_777_926_953,
             cached_at: 1_746_360_000,
             achievements: vec![
@@ -181,7 +180,6 @@ mod tests {
         assert_eq!(restored.app_id, original.app_id);
         assert_eq!(restored.name, original.name);
         assert_eq!(restored.schema_version, original.schema_version);
-        assert_eq!(restored.steam_last_updated, original.steam_last_updated);
         assert_eq!(restored.steam_last_played, original.steam_last_played);
         assert_eq!(restored.cached_at, original.cached_at);
         assert_eq!(restored.achievements.len(), original.achievements.len());
@@ -232,8 +230,7 @@ mod tests {
         let bytes_v1 = serde_json::to_vec_pretty(&entry_v1).expect("serialize v1");
         atomic_write(&path, &bytes_v1).await.expect("write v1");
 
-        let mut entry_v2 = make_entry(200, "Game Two");
-        entry_v2.steam_last_updated = 9_999_999_999;
+        let entry_v2 = make_entry(200, "Game Two");
         let bytes_v2 = serde_json::to_vec_pretty(&entry_v2).expect("serialize v2");
         atomic_write(&path, &bytes_v2).await.expect("write v2");
 
@@ -241,14 +238,13 @@ mod tests {
             .await
             .expect("should deserialize v2");
         assert_eq!(loaded.name, "Game Two");
-        assert_eq!(loaded.steam_last_updated, 9_999_999_999);
     }
 
     #[tokio::test]
     async fn load_game_cache_schema_mismatch_returns_none() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("999.json");
-        let bad_json = br#"{"schema_version":999,"app_id":999,"name":"Bad","steam_last_updated":0,"steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
+        let bad_json = br#"{"schema_version":999,"app_id":999,"name":"Bad","steam_last_played":0,"cached_at":0,"achievements":[],"stats":[],"progress":{"earned":0,"total":0}}"#;
         std::fs::write(&path, bad_json).expect("write");
 
         let result = load_game_cache_from_path(&path).await;
