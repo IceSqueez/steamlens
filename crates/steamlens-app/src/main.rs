@@ -28,7 +28,7 @@ use messaging::{BannerSeverity, FooterStatus, MessagingCenter, ToastKind};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
-use steamlens_core::{ProbedProfile, UserProfile};
+use steamlens_core::{ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 #[derive(Debug)]
 enum Screen {
@@ -117,7 +117,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
     let steamid3 = profile_result
         .as_ref()
         .ok()
-        .map(|p| p.steam_id.saturating_sub(76_561_197_960_265_728))
+        .map(|p| p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN))
         .unwrap_or(0);
 
     let mut pv_state = ProfileViewState::new();
@@ -809,7 +809,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         .as_ref()
                         .map(|u| u.account_name.clone())
                         .unwrap_or_default();
-                    app.steamid3 = p.steam_id.saturating_sub(76_561_197_960_265_728);
+                    app.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
                     app.profile_avatar_handle = p
                         .avatar_image
                         .as_ref()
@@ -910,7 +910,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if app.user_profile.is_some() && app.steam_running != Some(false) {
                 return Task::none();
             }
-            app.steamid3 = cached.steam_id.saturating_sub(76_561_197_960_265_728);
+            app.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
             app.steam_level = None;
             app.profile_avatar_handle = cached
                 .avatar_png_bytes
@@ -1600,7 +1600,7 @@ mod tests {
         let profile = app.user_profile.as_ref().expect("profile must be set");
         assert_eq!(profile.persona_name, "TestUser");
         assert_eq!(profile.steam_id, 76561198000000042);
-        assert_eq!(app.steamid3, 76561198000000042 - 76_561_197_960_265_728);
+        assert_eq!(app.steamid3, 76561198000000042 - STEAMID64_INDIVIDUAL_MIN);
         assert!(app.profile_avatar_handle.is_some());
     }
 
@@ -1698,7 +1698,7 @@ mod tests {
         let p = app.user_profile.as_ref().expect("profile must be set");
         assert_eq!(p.persona_name, "FromCache");
         assert_eq!(p.account_name, "cache_login");
-        assert_eq!(app.steamid3, 76561198000000042 - 76_561_197_960_265_728);
+        assert_eq!(app.steamid3, 76561198000000042 - STEAMID64_INDIVIDUAL_MIN);
     }
 
     #[test]
