@@ -212,7 +212,7 @@ pub struct ProfileViewState {
     pub progress_rx:
         Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
     pub failed_app_ids: HashSet<u32>,
-    pub steam_running: Option<bool>,
+    pub library_name_map: HashMap<u32, String>,
     pub loader_pulse_phase: f32,
     pub loader_hiding_since: Option<Instant>,
     pub hovered_card: Option<u32>,
@@ -244,7 +244,7 @@ impl ProfileViewState {
             progress_scanner: None,
             progress_rx: None,
             failed_app_ids: HashSet::new(),
-            steam_running: None,
+            library_name_map: HashMap::new(),
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
             hovered_card: None,
@@ -278,9 +278,9 @@ impl ProfileViewState {
         result
     }
 
-    pub fn loader_phase(&self) -> LoaderPhase {
+    pub fn loader_phase(&self, steam_running: Option<bool>) -> LoaderPhase {
         if self.games.is_empty() {
-            if self.steam_running == Some(false) {
+            if steam_running == Some(false) {
                 return LoaderPhase::SteamOff;
             }
             return LoaderPhase::Alpha;
@@ -301,8 +301,8 @@ impl ProfileViewState {
         }
     }
 
-    pub fn loader_needs_pulse_subscription(&self) -> bool {
-        match self.loader_phase() {
+    pub fn loader_needs_pulse_subscription(&self, steam_running: Option<bool>) -> bool {
+        match self.loader_phase(steam_running) {
             LoaderPhase::Alpha | LoaderPhase::Beta { .. } => true,
             LoaderPhase::Failed { .. } | LoaderPhase::SteamOff => false,
             LoaderPhase::Gamma => self
@@ -417,7 +417,7 @@ mod tests {
             progress_scanner: None,
             progress_rx: None,
             failed_app_ids: HashSet::new(),
-            steam_running: None,
+            library_name_map: HashMap::new(),
             loader_pulse_phase: 0.0,
             loader_hiding_since: None,
             hovered_card: None,
@@ -728,7 +728,7 @@ mod tests {
     #[test]
     fn loader_phase_alpha_when_no_games() {
         let state = ProfileViewState::new();
-        assert_eq!(state.loader_phase(), LoaderPhase::Alpha);
+        assert_eq!(state.loader_phase(None), LoaderPhase::Alpha);
     }
 
     #[test]
@@ -756,7 +756,7 @@ mod tests {
         ]);
         state.phase = ProfileViewPhase::Loaded;
         assert_eq!(
-            state.loader_phase(),
+            state.loader_phase(None),
             LoaderPhase::Beta {
                 loaded: 1,
                 total: 2
@@ -778,7 +778,7 @@ mod tests {
             }),
         }]);
         state.phase = ProfileViewPhase::Loaded;
-        assert_eq!(state.loader_phase(), LoaderPhase::Gamma);
+        assert_eq!(state.loader_phase(None), LoaderPhase::Gamma);
     }
 
     #[test]
