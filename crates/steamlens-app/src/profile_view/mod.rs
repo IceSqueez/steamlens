@@ -6,10 +6,9 @@ pub use view::ProfileViewProps;
 pub use view::library_search_id;
 
 use iced::Task;
-use iced::widget::image::Handle as ImageHandle;
 
 use crate::app_context::AppContext;
-use crate::capsule_cache::{self, CapsuleSize};
+use crate::capsule_cache::CapsuleSize;
 use crate::messaging::FooterStatus;
 use crate::progress_scan::ProgressData;
 use types::{
@@ -255,31 +254,7 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileView
         .map(|chunk| {
             let batch: Vec<Task<ProfileViewMessage>> = chunk
                 .into_iter()
-                .map(|app_id| {
-                    Task::perform(
-                        async move { capsule_cache::fetch_capsule(app_id, size).await },
-                        move |result| match result {
-                            Ok((fetched_size, pixels)) => {
-                                let handle = ImageHandle::from_rgba(
-                                    pixels.width,
-                                    pixels.height,
-                                    pixels.rgba,
-                                );
-                                ProfileViewMessage::CapsuleLoaded {
-                                    app_id,
-                                    size: fetched_size,
-                                    handle,
-                                    width: pixels.width,
-                                    height: pixels.height,
-                                }
-                            }
-                            Err((fetched_size, _)) => ProfileViewMessage::CapsuleFailed {
-                                app_id,
-                                size: fetched_size,
-                            },
-                        },
-                    )
-                })
+                .map(|app_id| crate::capsule_commands::fetch_capsule(app_id, size))
                 .collect();
             Task::batch(batch)
         })
