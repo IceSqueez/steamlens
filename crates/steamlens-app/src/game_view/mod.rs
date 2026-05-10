@@ -4,6 +4,8 @@ mod view;
 pub use view::GameViewProps;
 pub use view::achievement_search_id;
 
+use std::collections::HashMap;
+
 pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
     crate::screen::AppHeaderContent {
         search: Some(view::build_game_search_block(state)),
@@ -195,6 +197,15 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             achievements,
             stats,
         } => {
+            let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> = state
+                .achievements
+                .drain(..)
+                .filter_map(|r| {
+                    let id = r.data.id.clone();
+                    r.data.icon.map(|ico| (id, ico))
+                })
+                .collect();
+
             let prev_revealed: std::collections::HashSet<String> = state
                 .achievements
                 .iter()
@@ -203,7 +214,10 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 .collect();
             state.achievements = achievements
                 .into_iter()
-                .map(|data| {
+                .map(|mut data| {
+                    if data.icon.is_none() {
+                        data.icon = existing_icons.remove(&data.id);
+                    }
                     let mut row = AchievementRow::from(data);
                     if prev_revealed.contains(&row.data.id) {
                         row.revealed = true;

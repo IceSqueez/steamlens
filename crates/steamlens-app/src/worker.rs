@@ -208,11 +208,15 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
             }
 
             _ = interval.tick() => {
-                if let Ok(callbacks) = client.poll_callbacks() {
-                    forward_icon_callbacks(callbacks, &client).await;
-                }
+                poll_and_forward(&client).await;
             }
         }
+    }
+}
+
+async fn poll_and_forward(client: &Client) {
+    if let Ok(callbacks) = client.poll_callbacks() {
+        forward_icon_callbacks(callbacks, client).await;
     }
 }
 
@@ -596,50 +600,47 @@ async fn quick_achievement_count(client: &Client) -> WorkerResponse {
 async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<WorkerResponse> {
     let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
     loop {
-        match client.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    if let SteamCallback::UserStatsReceived {
-                        result,
-                        user_steam_id,
-                        game_id,
-                        ..
-                    } = cb
-                    {
-                        if user_steam_id != expected_user {
-                            continue;
-                        }
-                        eprintln!(
-                            "[worker] UserStatsReceived: result={} game={}",
-                            result.raw(),
-                            game_id,
-                        );
-                        if result.is_ok() {
-                            return None;
-                        }
-                        if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
-                            return Some(shm_response_for_aas(
-                                steamlens_core::AchievementsAndStatsPayload {
-                                    achievements: Vec::new(),
-                                    stats: Vec::new(),
-                                    genre: None,
-                                },
-                            ));
-                        }
-                        return Some(WorkerResponse::Error {
-                            kind: WorkerErrorKind::UserStatsReceived,
-                            message: format!("result code {}", result.raw()),
-                        });
+        if let Ok(callbacks) = client.poll_callbacks() {
+            for cb in &callbacks {
+                if let SteamCallback::UserStatsReceived {
+                    result,
+                    user_steam_id,
+                    game_id,
+                    ..
+                } = cb
+                {
+                    if *user_steam_id != expected_user {
+                        continue;
                     }
+                    eprintln!(
+                        "[worker] UserStatsReceived: result={} game={}",
+                        result.raw(),
+                        game_id,
+                    );
+                    if result.is_ok() {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return None;
+                    }
+                    if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return Some(shm_response_for_aas(
+                            steamlens_core::AchievementsAndStatsPayload {
+                                achievements: Vec::new(),
+                                stats: Vec::new(),
+                                genre: None,
+                            },
+                        ));
+                    }
+                    forward_icon_callbacks(callbacks.clone(), client).await;
+                    return Some(WorkerResponse::Error {
+                        kind: WorkerErrorKind::UserStatsReceived,
+                        message: format!("result code {}", result.raw()),
+                    });
                 }
             }
-            Err(e) => {
-                return Some(WorkerResponse::Error {
-                    kind: WorkerErrorKind::PollCallbacks,
-                    message: e.to_string(),
-                });
-            }
+            forward_icon_callbacks(callbacks, client).await;
         }
+
         if std::time::Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
                 kind: WorkerErrorKind::UserStatsReceived,
@@ -656,48 +657,45 @@ async fn wait_for_stats_received_card_only(
 ) -> Option<WorkerResponse> {
     let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
     loop {
-        match client.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    if let SteamCallback::UserStatsReceived {
-                        result,
-                        user_steam_id,
-                        game_id,
-                        ..
-                    } = cb
-                    {
-                        if user_steam_id != expected_user {
-                            continue;
-                        }
-                        eprintln!(
-                            "[worker] UserStatsReceived (card-only): result={} game={}",
-                            result.raw(),
-                            game_id,
-                        );
-                        if result.is_ok() {
-                            return None;
-                        }
-                        if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
-                            return Some(shm_response_for_card_only(
-                                steamlens_core::CardOnlyPayload {
-                                    achievements: Vec::new(),
-                                },
-                            ));
-                        }
-                        return Some(WorkerResponse::Error {
-                            kind: WorkerErrorKind::UserStatsReceived,
-                            message: format!("result code {}", result.raw()),
-                        });
+        if let Ok(callbacks) = client.poll_callbacks() {
+            for cb in &callbacks {
+                if let SteamCallback::UserStatsReceived {
+                    result,
+                    user_steam_id,
+                    game_id,
+                    ..
+                } = cb
+                {
+                    if *user_steam_id != expected_user {
+                        continue;
                     }
+                    eprintln!(
+                        "[worker] UserStatsReceived (card-only): result={} game={}",
+                        result.raw(),
+                        game_id,
+                    );
+                    if result.is_ok() {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return None;
+                    }
+                    if result.raw() == steamlens_core::STEAM_RESULT_NO_STATS_SCHEMA {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return Some(shm_response_for_card_only(
+                            steamlens_core::CardOnlyPayload {
+                                achievements: Vec::new(),
+                            },
+                        ));
+                    }
+                    forward_icon_callbacks(callbacks.clone(), client).await;
+                    return Some(WorkerResponse::Error {
+                        kind: WorkerErrorKind::UserStatsReceived,
+                        message: format!("result code {}", result.raw()),
+                    });
                 }
             }
-            Err(e) => {
-                return Some(WorkerResponse::Error {
-                    kind: WorkerErrorKind::PollCallbacks,
-                    message: e.to_string(),
-                });
-            }
+            forward_icon_callbacks(callbacks, client).await;
         }
+
         if std::time::Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
                 kind: WorkerErrorKind::UserStatsReceived,
@@ -722,28 +720,24 @@ async fn store_stats_and_wait(client: &Client) -> WorkerResponse {
 async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
     let deadline = std::time::Instant::now() + timeouts::STORE_CONFIRMED;
     loop {
-        match client.poll_callbacks() {
-            Ok(callbacks) => {
-                for cb in callbacks {
-                    if let SteamCallback::UserStatsStored { result, .. } = cb {
-                        if result.is_ok() {
-                            return WorkerResponse::Stored;
-                        } else {
-                            return WorkerResponse::Error {
-                                kind: WorkerErrorKind::UserStatsStored,
-                                message: format!("result code {}", result.raw()),
-                            };
-                        }
+        if let Ok(callbacks) = client.poll_callbacks() {
+            for cb in &callbacks {
+                if let SteamCallback::UserStatsStored { result, .. } = cb {
+                    if result.is_ok() {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return WorkerResponse::Stored;
+                    } else {
+                        forward_icon_callbacks(callbacks.clone(), client).await;
+                        return WorkerResponse::Error {
+                            kind: WorkerErrorKind::UserStatsStored,
+                            message: format!("result code {}", result.raw()),
+                        };
                     }
                 }
             }
-            Err(e) => {
-                return WorkerResponse::Error {
-                    kind: WorkerErrorKind::PollCallbacks,
-                    message: e.to_string(),
-                };
-            }
+            forward_icon_callbacks(callbacks, client).await;
         }
+
         if std::time::Instant::now() >= deadline {
             return WorkerResponse::Error {
                 kind: WorkerErrorKind::StoreStats,
@@ -792,7 +786,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
 
     let deadline = std::time::Instant::now() + timeouts::GLOBAL_PERCENTAGES;
     loop {
-        let _ = client.poll_callbacks();
+        poll_and_forward(client).await;
 
         match client.poll_call_result(
             handle,
@@ -813,6 +807,7 @@ async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
                 };
             }
             Ok(Some(Ok(bytes))) => {
+                poll_and_forward(client).await;
                 if bytes.len() < PAYLOAD_SIZE {
                     return WorkerResponse::Error {
                         kind: WorkerErrorKind::GlobalPercentagesReady,
