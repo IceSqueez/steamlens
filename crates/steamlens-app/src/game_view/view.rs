@@ -23,6 +23,7 @@ use crate::theme::{
 };
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
+use crate::ui::widgets::pill::pill;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
@@ -38,6 +39,7 @@ const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
 const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
+
 fn msg(m: GameViewMessage) -> Message {
     Message::GameView(m)
 }
@@ -1364,68 +1366,26 @@ fn achievement_card_widget<'a>(
         _ => C_TEXT_MUTED,
     };
 
-    let badge = container(text(badge_text).size(10).color(if is_locked_badge {
+    let badge_text_color = if is_locked_badge {
         C_LOCKED_DESC
     } else {
         Color {
             a: 0.9,
             ..badge_color
         }
-    }))
-    .padding(Padding::default().left(6).right(6).top(2).bottom(2))
-    .style(move |_theme| container::Style {
-        background: Some(Background::Color(Color {
-            a: if is_locked_badge { 0.10 } else { 0.15 },
-            ..badge_color
-        })),
-        border: Border {
-            color: Color {
-                a: if is_locked_badge { 0.25 } else { 0.4 },
-                ..badge_color
-            },
-            width: 1.0,
-            radius: 8.0.into(),
-        },
-        ..container::Style::default()
-    });
+    };
+    let badge = pill(
+        text(badge_text).size(11).color(badge_text_color),
+        badge_color,
+    );
 
     let rarity_badge: Option<Element<'_, Message>> = if spoiler_hidden {
         None
     } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
         let tc = tier_color(t);
-        let bg_alpha = match t {
-            RarityTier::Common | RarityTier::Uncommon => 0.15,
-            _ => 0.18,
-        };
         let label = format!("{} \u{00B7} {:.1}%", t.label(), pct);
-
-        let dot = container(space())
-            .width(Length::Fixed(6.0))
-            .height(Length::Fixed(6.0))
-            .style(move |_theme| container::Style {
-                background: Some(Background::Color(tc)),
-                border: Border {
-                    radius: 3.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
-            });
-
-        let pill_content = row![dot, text(label).size(10).color(Color { a: 0.95, ..tc })]
-            .spacing(5)
-            .align_y(Alignment::Center);
-
-        let rb = container(pill_content)
-            .padding(Padding::default().left(8).right(8).top(3).bottom(3))
-            .style(move |_theme| container::Style {
-                background: Some(Background::Color(Color { a: bg_alpha, ..tc })),
-                border: Border {
-                    color: Color { a: 0.5, ..tc },
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                ..container::Style::default()
-            });
+        let label_text = text(label).size(11).color(Color { a: 0.95, ..tc });
+        let rb = pill(label_text, tc).with_dot(tc);
         Some(rb.into())
     } else {
         None
