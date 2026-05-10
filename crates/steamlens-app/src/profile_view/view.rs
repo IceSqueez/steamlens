@@ -70,55 +70,46 @@ fn total_card_height(capsule_h: f32) -> f32 {
     capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 32.0 + 8.0
 }
 
-pub fn render<'a>(
-    state: &'a ProfileViewState,
-    user_profile: Option<&'a steamlens_core::UserProfile>,
-    avatar_handle: Option<&'a iced::widget::image::Handle>,
-    cached_entries: &'a HashMap<u32, GameCacheEntry>,
-    skeleton_phase: f32,
-    pinned: &'a [u32],
-    steam_level: Option<u32>,
-) -> crate::screen::ScreenContent<'a, crate::Message> {
-    render_inner(
-        state,
-        user_profile,
-        avatar_handle,
-        cached_entries,
-        skeleton_phase,
-        pinned,
-        steam_level,
-    )
+pub struct ProfileViewProps<'a> {
+    pub user_profile: Option<&'a steamlens_core::UserProfile>,
+    pub avatar_handle: Option<&'a iced::widget::image::Handle>,
+    pub cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    pub skeleton_phase: f32,
+    pub pinned: &'a [u32],
+    pub steam_level: Option<u32>,
+    pub steam_running: Option<bool>,
 }
 
-fn render_inner<'a>(
+pub fn render<'a>(
     state: &'a ProfileViewState,
-    user_profile: Option<&'a steamlens_core::UserProfile>,
-    avatar_handle: Option<&'a iced::widget::image::Handle>,
-    cached_entries: &'a HashMap<u32, GameCacheEntry>,
-    skeleton_phase: f32,
-    pinned: &'a [u32],
-    steam_level: Option<u32>,
+    props: ProfileViewProps<'a>,
 ) -> crate::screen::ScreenContent<'a, crate::Message> {
-    let header = build_header(state);
+    let header = build_header(state, props.steam_running);
 
     let profile_section = build_profile_section(
         state,
-        user_profile,
-        avatar_handle,
-        cached_entries,
-        skeleton_phase,
-        steam_level,
+        props.user_profile,
+        props.avatar_handle,
+        props.cached_entries,
+        props.skeleton_phase,
+        props.steam_level,
     );
 
     let body: Element<'_, crate::Message> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
         ProfileViewPhase::Loaded => {
-            let visible = state.visible_games(pinned);
+            let visible = state.visible_games(props.pinned);
 
             if visible.is_empty() {
                 center_text("No games found.")
             } else {
-                build_grid(state, visible, cached_entries, skeleton_phase, pinned)
+                build_grid(
+                    state,
+                    visible,
+                    props.cached_entries,
+                    props.skeleton_phase,
+                    props.pinned,
+                )
             }
         }
     };
@@ -155,8 +146,11 @@ fn build_profile_section<'a>(
     })
 }
 
-fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
-    let title_block = build_title_block(state.games.len());
+fn build_header(
+    state: &ProfileViewState,
+    steam_running: Option<bool>,
+) -> Element<'_, crate::Message> {
+    let title_block = build_title_block(state.games.len(), steam_running);
     let search_block = build_search_block(state);
     let sort_block = build_sort_segment(state.sort);
     let size_block = build_size_segment(state.capsule_size);
@@ -178,12 +172,20 @@ fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
     .into()
 }
 
-fn build_title_block(game_count: usize) -> Element<'static, crate::Message> {
+fn build_title_block(
+    game_count: usize,
+    steam_running: Option<bool>,
+) -> Element<'static, crate::Message> {
     let title = text("Library").size(22).color(C_ACCENT);
     let count = text(format!("{game_count} games"))
         .size(12)
         .color(C_TEXT_DIM);
-    row![title, count]
+    let status_color = match steam_running {
+        Some(false) => C_TEXT_MUTED,
+        _ => C_ACCENT,
+    };
+    let dot = text("\u{25CF}").size(10).color(status_color);
+    row![dot, title, count]
         .spacing(8)
         .align_y(Alignment::Center)
         .into()

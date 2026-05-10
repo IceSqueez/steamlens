@@ -53,7 +53,12 @@ fn dracula_border_radius(r: f32) -> iced::Border {
     }
 }
 
-pub fn render(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+pub struct GameViewProps {
+    pub skeleton_phase: f32,
+}
+
+pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, Message> {
+    let skeleton_phase = props.skeleton_phase;
     match state.phase {
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
             loading_view(state, skeleton_phase)

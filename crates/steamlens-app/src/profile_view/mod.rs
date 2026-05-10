@@ -2,6 +2,7 @@ pub mod profile;
 pub mod types;
 mod view;
 
+pub use view::ProfileViewProps;
 pub use view::library_search_id;
 
 use iced::Task;
@@ -247,20 +248,7 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
 
 pub fn render<'a>(
     state: &'a ProfileViewState,
-    user_profile: Option<&'a steamlens_core::UserProfile>,
-    avatar_handle: Option<&'a iced::widget::image::Handle>,
-    cached_entries: &'a std::collections::HashMap<u32, crate::cache::GameCacheEntry>,
-    skeleton_phase: f32,
-    pinned: &'a [u32],
-    steam_level: Option<u32>,
+    props: view::ProfileViewProps<'a>,
 ) -> crate::screen::ScreenContent<'a, crate::Message> {
-    view::render(
-        state,
-        user_profile,
-        avatar_handle,
-        cached_entries,
-        skeleton_phase,
-        pinned,
-        steam_level,
-    )
+    view::render(state, props)
 }
