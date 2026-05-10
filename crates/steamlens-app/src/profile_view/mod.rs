@@ -249,7 +249,7 @@ pub fn render<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> crate::ui::shell::ShellContent<'a, crate::Message> {
+) -> crate::screen::ScreenContent<'a, crate::Message> {
     view::render(
         state,
         user_profile,
