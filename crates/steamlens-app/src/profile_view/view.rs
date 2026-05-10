@@ -613,6 +613,8 @@ fn build_skeleton_card<'a>(
     total_h: f32,
     phase: f32,
 ) -> Element<'a, ProfileViewMessage> {
+    use crate::ui::widgets::skeleton::SKEL_DEFAULT_RADIUS;
+
     let title_width_ratio = match entry.app_id % 5 {
         0 => 0.75,
         1 => 0.60,
@@ -621,26 +623,44 @@ fn build_skeleton_card<'a>(
         _ => 0.70,
     };
 
-    let capsule_skel = skeleton_box(capsule_w, capsule_h, phase);
-    let name_skel = skeleton_box(card_w * title_width_ratio, CARD_NAME_TEXT_HEIGHT, phase);
+    let capsule_skel = container(skeleton_box(
+        capsule_w,
+        capsule_h,
+        SKEL_DEFAULT_RADIUS,
+        phase,
+    ))
+    .width(Length::Fixed(card_w))
+    .height(Length::Fixed(capsule_h))
+    .align_x(Alignment::Center);
+
+    let name_skel = skeleton_box(
+        card_w * title_width_ratio,
+        CARD_NAME_TEXT_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
+        phase,
+    );
     let counter_skel = skeleton_box(
         card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
         CARD_COUNTER_TEXT_SIZE,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
     let progress_skel = skeleton_box(
         card_w - CARD_PROGRESS_BAR_INSET,
         CARD_PROGRESS_BAR_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
     let tag_skel_genre = skeleton_box(
         card_w * SKEL_GENRE_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
     let tag_skel_pct = skeleton_box(
         card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
 
@@ -673,10 +693,6 @@ fn build_skeleton_card<'a>(
         .height(Length::Fixed(CARD_PROGRESS_BAR_HEIGHT))
         .padding(Padding::default().left(CARD_H_PAD).right(CARD_H_PAD));
 
-    let bar_gap = iced::widget::Space::new()
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(8.0));
-
     let tags_row = container(
         row![
             tag_skel_genre,
@@ -701,8 +717,8 @@ fn build_skeleton_card<'a>(
         capsule_skel,
         separator_space,
         name_row_skel,
-        bar_gap,
         bar_container,
+        iced::widget::Space::new().height(Length::Fill),
         tags_row,
     ]
     .spacing(0);
