@@ -447,6 +447,7 @@ fn build_profile_header<'a>(
 }
 
 const AVATAR_SIZE: f32 = 100.0;
+const AVATAR_RADIUS: f32 = 8.0;
 
 fn build_avatar<'a>(
     avatar_handle: Option<&'a ImageHandle>,
@@ -462,7 +463,7 @@ fn build_avatar<'a>(
         .height(Length::Fixed(AVATAR_SIZE))
         .style(|_: &iced::Theme| container::Style {
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: AVATAR_RADIUS.into(),
                 ..iced::Border::default()
             },
             ..container::Style::default()
@@ -470,7 +471,12 @@ fn build_avatar<'a>(
         .into();
     }
 
-    crate::ui::widgets::skeleton::skeleton_box(AVATAR_SIZE, AVATAR_SIZE, skeleton_phase)
+    crate::ui::widgets::skeleton::skeleton_box(
+        AVATAR_SIZE,
+        AVATAR_SIZE,
+        AVATAR_RADIUS,
+        skeleton_phase,
+    )
 }
 
 fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, ProfileViewMessage> {
@@ -804,7 +810,12 @@ fn build_closest_row<'a>(
             })
             .into()
         } else {
-            crate::ui::widgets::skeleton::skeleton_box(CAPSULE_W, CAPSULE_H, skeleton_phase)
+            crate::ui::widgets::skeleton::skeleton_box(
+                CAPSULE_W,
+                CAPSULE_H,
+                crate::ui::widgets::skeleton::SKEL_DEFAULT_RADIUS,
+                skeleton_phase,
+            )
         };
 
     let game_name_label = text(entry.game_name.clone())

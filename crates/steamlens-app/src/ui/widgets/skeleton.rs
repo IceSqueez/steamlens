@@ -6,8 +6,10 @@ use crate::ui::theme::{palette, theme_from_iced};
 #[cfg(test)]
 use crate::ui::theme::AppTheme;
 
+pub const SKEL_DEFAULT_RADIUS: f32 = 4.0;
+
 /// `phase` in `[0.0, 1.0)` cycles a bright band left-to-right across the box.
-pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, phase: f32) -> Element<'a, M> {
+pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, radius: f32, phase: f32) -> Element<'a, M> {
     container(Space::new())
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
@@ -18,7 +20,7 @@ pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, phase: f32) -> Element<'
                     build_shimmer_gradient(phase, p.surface, p.hover),
                 ))),
                 border: Border {
-                    radius: 4.0.into(),
+                    radius: radius.into(),
                     ..Border::default()
                 },
                 ..container::Style::default()
@@ -136,7 +138,7 @@ mod tests {
         let w = 120.0_f32;
         let h = 45.0_f32;
         let phase = 0.5_f32;
-        let _el: iced::Element<'_, ()> = skeleton_box(w, h, phase);
+        let _el: iced::Element<'_, ()> = skeleton_box(w, h, SKEL_DEFAULT_RADIUS, phase);
     }
 
     #[test]

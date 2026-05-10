@@ -6,7 +6,7 @@ use iced::widget::{
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::screen::{ScreenContent, compose_screen};
-use crate::ui::widgets::skeleton::skeleton_box;
+use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 
 pub fn achievement_search_id() -> WidgetId {
     WidgetId::new("achievement-search")
@@ -1116,14 +1116,24 @@ fn build_skeleton_ach_grid(
 }
 
 fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameViewMessage> {
-    let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, phase);
+    let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, SKEL_DEFAULT_RADIUS, phase);
 
     let title_w = card_w * 0.60;
     let desc_w = card_w * 0.80;
 
     let text_col = column![
-        skeleton_box(title_w, ACH_CARD_TITLE_TEXT_SIZE, phase),
-        skeleton_box(desc_w, ACH_CARD_DESCRIPTION_TEXT_SIZE, phase),
+        skeleton_box(
+            title_w,
+            ACH_CARD_TITLE_TEXT_SIZE,
+            SKEL_DEFAULT_RADIUS,
+            phase
+        ),
+        skeleton_box(
+            desc_w,
+            ACH_CARD_DESCRIPTION_TEXT_SIZE,
+            SKEL_DEFAULT_RADIUS,
+            phase
+        ),
     ]
     .spacing(ACH_CARD_TEXT_COL_SPACING);
 
@@ -1135,11 +1145,13 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameView
     let pill1 = skeleton_box(
         SKEL_ACH_CARD_STATUS_PILL_WIDTH,
         SKEL_ACH_CARD_PILL_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
     let pill2 = skeleton_box(
         SKEL_ACH_CARD_RARITY_PILL_WIDTH,
         SKEL_ACH_CARD_PILL_HEIGHT,
+        SKEL_DEFAULT_RADIUS,
         phase,
     );
 
