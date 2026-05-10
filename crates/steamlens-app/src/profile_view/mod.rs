@@ -8,10 +8,13 @@ pub use view::library_search_id;
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
 
+use crate::app_context::AppContext;
 use crate::capsule_cache::{self, CapsuleSize};
+use crate::messaging::FooterStatus;
 use crate::progress_scan::ProgressData;
 use types::{
-    CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase, ProfileViewState, StoredCapsule,
+    CapsuleAsset, GameEntry, ProfileEvent, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
+    StoredCapsule,
 };
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
@@ -19,8 +22,8 @@ const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 pub fn update(
     state: &mut ProfileViewState,
     message: ProfileViewMessage,
-    steam_running: Option<bool>,
-) -> Task<ProfileViewMessage> {
+    ctx: &mut AppContext,
+) -> (Task<ProfileViewMessage>, ProfileEvent) {
     match message {
         ProfileViewMessage::ScanComplete(enumerated) => {
             state.games = enumerated
@@ -40,19 +43,25 @@ pub fn update(
             state.phase = ProfileViewPhase::Loaded;
 
             let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
-            spawn_capsule_queue(app_ids, state.capsule_size)
+            (
+                spawn_capsule_queue(app_ids, state.capsule_size),
+                ProfileEvent::None,
+            )
         }
 
-        ProfileViewMessage::ScanFailed(_) => Task::none(),
+        ProfileViewMessage::ScanFailed(_) => (Task::none(), ProfileEvent::None),
 
         ProfileViewMessage::SearchChanged(query) => {
+            let q = query.clone();
+            let _ = ctx.update_settings(|s| s.library.search = q);
             state.search = query;
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::SortChanged(sort) => {
+            let _ = ctx.update_settings(|s| s.library.sort = sort);
             state.sort = sort;
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CapsuleSizeChanged(new_size) => {
@@ -73,11 +82,12 @@ pub fn update(
                 }
             }
 
-            if miss_ids.is_empty() {
+            let task = if miss_ids.is_empty() {
                 Task::none()
             } else {
                 spawn_capsule_queue(miss_ids, new_size)
-            }
+            };
+            (task, ProfileEvent::None)
         }
 
         ProfileViewMessage::CapsuleLoaded {
@@ -97,7 +107,7 @@ pub fn update(
             );
 
             if size != state.capsule_size {
-                return Task::none();
+                return (Task::none(), ProfileEvent::None);
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.capsule = CapsuleAsset::Loaded {
@@ -106,17 +116,17 @@ pub fn update(
                     height,
                 };
             }
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CapsuleFailed { app_id, size } => {
             if size != state.capsule_size {
-                return Task::none();
+                return (Task::none(), ProfileEvent::None);
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.capsule = CapsuleAsset::Unavailable;
             }
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::ProgressFetched {
@@ -127,16 +137,32 @@ pub fn update(
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
             }
-            Task::none()
+            let with_prog = state.games.iter().filter(|g| g.progress.is_some()).count();
+            let total_games = state.games.len();
+            ctx.messaging.footer = FooterStatus::Scanning {
+                current: with_prog,
+                total: total_games,
+                label: "Loading achievements\u{2026}".to_owned(),
+            };
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::ProgressScanDone => {
+            ctx.messaging.footer = FooterStatus::Connected {
+                games: state.games.len(),
+                last_sync: Some(std::time::Instant::now()),
+            };
             state.progress_scanner = None;
             state.progress_rx = None;
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::GameSelected(_) => Task::none(),
+        ProfileViewMessage::GameSelected(app_id) => {
+            if app_id == 0 {
+                return (Task::none(), ProfileEvent::None);
+            }
+            (Task::none(), ProfileEvent::OpenGame(app_id))
+        }
 
         ProfileViewMessage::RescanRequested => {
             state.phase = ProfileViewPhase::Scanning;
@@ -146,12 +172,12 @@ pub fn update(
             state.progress_rx = None;
             state.loader_pulse_phase = 0.0;
             state.loader_hiding_since = None;
-            Task::none()
+            (Task::none(), ProfileEvent::RequestRescan)
         }
 
         ProfileViewMessage::SpinnerTick(_) => {
             state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::LoaderPulseTick => {
@@ -159,6 +185,7 @@ pub fn update(
 
             state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
 
+            let steam_running = ctx.steam_running;
             if let types::LoaderPhase::Gamma = state.loader_phase(steam_running) {
                 if state.loader_hiding_since.is_none() {
                     state.loader_hiding_since = Some(Instant::now());
@@ -166,41 +193,54 @@ pub fn update(
             } else {
                 state.loader_hiding_since = None;
             }
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CardHoverEnter(app_id) => {
             state.hovered_card = Some(app_id);
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CardHoverExit(app_id) => {
             if state.hovered_card == Some(app_id) {
                 state.hovered_card = None;
             }
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::RetryFailedScans => Task::none(),
+        ProfileViewMessage::RetryFailedScans => {
+            let ids: Vec<u32> = state.failed_app_ids.iter().copied().collect();
+            state.failed_app_ids.clear();
+            if !ids.is_empty() {
+                let mut scanner = crate::progress_scan::ProgressScanner::new(ids);
+                state.progress_rx = scanner.take_receiver();
+                state.progress_scanner = Some(scanner);
+            }
+            (Task::none(), ProfileEvent::None)
+        }
 
         ProfileViewMessage::BarSliceHoverEnter(tier) => {
             state.hovered_bar_slice = Some(tier);
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::BarSliceHoverExit => {
             state.hovered_bar_slice = None;
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CardTierHovered { app_id, tier } => {
             state.hovered_card_tier = tier.map(|t| (app_id, t));
-            Task::none()
+            (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::ToastRequestProxy(_)
-        | ProfileViewMessage::ToggleGamePinProxy(_)
-        | ProfileViewMessage::OpenGameViewProxy(_) => Task::none(),
+        ProfileViewMessage::RequestToast(text) => (Task::none(), ProfileEvent::Toast(text)),
+
+        ProfileViewMessage::RequestToggleGamePin(id) => {
+            (Task::none(), ProfileEvent::ToggleGamePin(id))
+        }
+
+        ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
     }
 }
 

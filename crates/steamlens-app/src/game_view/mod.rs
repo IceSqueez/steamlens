@@ -8,7 +8,8 @@ use std::collections::{HashSet, VecDeque};
 
 use iced::Task;
 
-use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
+use crate::profile_view::types::ProfileViewState;
+use crate::steam_worker::{SteamReply, SteamRequest};
 
 use types::{
     AchievementFilter, AchievementRow, AchievementSort, ActiveTab, Banner, BannerKind, BulkOp,
@@ -46,8 +47,13 @@ pub enum GameViewMessage {
     RevealTick,
     GameViewFadeTick,
     RareGlowTick,
-    // PR3 bridge variant — translated to App-level Message::GoBack by main.rs; replaced by OutEvent in PR4.
-    GoBackProxy,
+    RequestGoBack,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameViewEvent {
+    None,
+    GoBack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,6 +96,8 @@ pub struct GameViewState {
     pub rare_glow_phase: f32,
 
     pub error_message: String,
+
+    pub prev_profile_state: Box<ProfileViewState>,
 }
 
 impl GameViewState {
@@ -117,7 +125,13 @@ impl GameViewState {
             fade_in: 0.0,
             rare_glow_phase: 0.0,
             error_message: String::new(),
+            prev_profile_state: Box::new(ProfileViewState::new()),
         }
+    }
+
+    pub fn with_prev_profile(mut self, prev: Box<ProfileViewState>) -> Self {
+        self.prev_profile_state = prev;
+        self
     }
 
     pub fn dirty_count(&self) -> usize {
@@ -293,8 +307,9 @@ pub(crate) fn compute_tier_breakdown(achievements: &[AchievementRow]) -> Vec<(Ra
 pub fn update(
     state: &mut GameViewState,
     message: GameViewMessage,
-    worker: &SteamWorker,
-) -> Task<GameViewMessage> {
+    ctx: &mut crate::app_context::AppContext,
+) -> (Task<GameViewMessage>, GameViewEvent) {
+    let worker = ctx.worker.as_ref();
     match message {
         GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
@@ -308,23 +323,25 @@ pub fn update(
                     row.is_dirty = !row.is_dirty;
                 }
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatEdited(id, text) => {
             if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
                 row.edit_text = text;
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatEditCommitted(id) => {
             if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
                 row.validate_and_parse();
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::FilterChanged(f) => {
+            let filter = f;
+            let _ = ctx.update_settings(|s| s.manager.filter = filter);
             state.filter = f;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityTierToggled(tier) => {
             if state.rarity_tier_set.contains(&tier) {
@@ -332,28 +349,50 @@ pub fn update(
             } else {
                 state.rarity_tier_set.insert(tier);
             }
-            Task::none()
+            let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
+            let include_hidden = state.include_hidden;
+            let _ = ctx.update_settings(|s| {
+                s.manager.rarity_tiers = tiers;
+                s.manager.include_hidden = include_hidden;
+            });
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityFilterCleared => {
             state.rarity_tier_set.clear();
             state.include_hidden = false;
-            Task::none()
+            let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
+            let include_hidden = state.include_hidden;
+            let _ = ctx.update_settings(|s| {
+                s.manager.rarity_tiers = tiers;
+                s.manager.include_hidden = include_hidden;
+            });
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::HiddenPillToggled => {
             state.include_hidden = !state.include_hidden;
-            Task::none()
+            let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
+            let include_hidden = state.include_hidden;
+            let _ = ctx.update_settings(|s| {
+                s.manager.rarity_tiers = tiers;
+                s.manager.include_hidden = include_hidden;
+            });
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::AchievementSortChanged(s) => {
+            let sort = s;
+            let _ = ctx.update_settings(|s| s.manager.sort = sort);
             state.achievement_sort = s;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::SearchChanged(q) => {
+            let query = q.clone();
+            let _ = ctx.update_settings(|s| s.manager.search = query);
             state.search_query = q;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::TabChanged(tab) => {
             state.active_tab = tab;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatsConsentToggled(v) => {
             state.stats_edit_consent = v;
@@ -367,7 +406,7 @@ pub fn update(
                     }
                 }
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::BulkAction(op) => {
             let visible: std::collections::HashSet<String> = visible_achievement_ids(
@@ -401,7 +440,7 @@ pub fn update(
                     }
                 }
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ReloadRequested => {
             state.phase = GameViewPhase::WaitingStats;
@@ -409,55 +448,61 @@ pub fn update(
             state.stats.clear();
             state.reveal_queue.clear();
             state.banner = None;
-            worker.send(SteamRequest::RequestUserStats);
-            worker.send(SteamRequest::RequestGlobalPercentages);
-            Task::none()
+            if let Some(w) = worker {
+                w.send(SteamRequest::RequestUserStats);
+                w.send(SteamRequest::RequestGlobalPercentages);
+            }
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ApplyChanges => {
             if state.dirty_count() == 0 || state.has_stat_errors() {
-                return Task::none();
+                return (Task::none(), GameViewEvent::None);
             }
             let payload = build_apply_payload(&state.achievements, &state.stats);
             state.phase = GameViewPhase::Saving;
-            worker.send(SteamRequest::ApplyChanges {
-                achievements_to_set: payload.achievements_to_set,
-                achievements_to_clear: payload.achievements_to_clear,
-                stats_int: payload.stats_int,
-                stats_float: payload.stats_float,
-            });
-            Task::none()
+            if let Some(w) = worker {
+                w.send(SteamRequest::ApplyChanges {
+                    achievements_to_set: payload.achievements_to_set,
+                    achievements_to_clear: payload.achievements_to_clear,
+                    stats_int: payload.stats_int,
+                    stats_float: payload.stats_float,
+                });
+            }
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ResetClicked => {
             state.reset_scope = ResetScope::StatsOnly;
             state.reset_confirm_input.clear();
             state.show_reset_modal = true;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ResetScopeSelected(scope) => {
             state.reset_scope = scope;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ResetConfirmInputChanged(text) => {
             state.reset_confirm_input = text;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ResetConfirmed => {
             state.show_reset_modal = false;
             state.reset_confirm_input.clear();
             state.phase = GameViewPhase::Resetting;
-            worker.send(SteamRequest::ResetAll {
-                scope: state.reset_scope,
-            });
-            Task::none()
+            if let Some(w) = worker {
+                w.send(SteamRequest::ResetAll {
+                    scope: state.reset_scope,
+                });
+            }
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ResetCancelled => {
             state.show_reset_modal = false;
             state.reset_confirm_input.clear();
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::BannerDismissed => {
             state.banner = None;
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::DiscardChanges => {
             for row in &mut state.achievements {
@@ -469,20 +514,20 @@ pub fn update(
                 row.is_dirty = false;
                 row.edit_error = None;
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RevealHidden(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
                 row.revealed = true;
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::SpinnerTick => {
             state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
             if state.phase == GameViewPhase::Ready && state.fade_in < 1.0 {
                 state.fade_in = (state.fade_in + 0.08).min(1.0);
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RevealTick => {
             if let Some(id) = state.reveal_queue.pop_front()
@@ -490,7 +535,7 @@ pub fn update(
             {
                 row.appeared = true;
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
 
         GameViewMessage::GameViewFadeTick => {
@@ -499,15 +544,15 @@ pub fn update(
                     row.card_opacity = (row.card_opacity + MANAGER_FADE_DELTA).min(1.0);
                 }
             }
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
 
         GameViewMessage::RareGlowTick => {
             state.rare_glow_phase = (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
-            Task::none()
+            (Task::none(), GameViewEvent::None)
         }
 
-        GameViewMessage::GoBackProxy => Task::none(),
+        GameViewMessage::RequestGoBack => (Task::none(), GameViewEvent::GoBack),
     }
 }
 
@@ -573,9 +618,35 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_context::{AnimationState, AppContext};
+    use crate::messaging::MessagingCenter;
+    use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
+    use std::collections::{HashMap, VecDeque};
     use steamlens_core::AchievementIcon;
     use types::{AchievementData, AchievementRow};
+
+    fn make_test_ctx() -> AppContext {
+        AppContext {
+            worker: None,
+            worker_rx: None,
+            settings: Settings::default(),
+            settings_dirty_since: None,
+            messaging: MessagingCenter::new(),
+            cached_entries: HashMap::new(),
+            pending_hit_queue: VecDeque::new(),
+            steam_root: std::path::PathBuf::from("/tmp"),
+            steamid3: 0,
+            user_profile: None,
+            profile_avatar_handle: None,
+            steam_running: Some(true),
+            steam_level: None,
+            no_ach_cache: crate::cache::NoAchievementsCache::new(),
+            animation: AnimationState {
+                skeleton_phase: 0.0,
+            },
+        }
+    }
 
     fn make_state_with_achievement(id: &str) -> GameViewState {
         let mut state = GameViewState::new(0);
@@ -664,9 +735,9 @@ mod tests {
             "precondition: none appeared"
         );
 
-        let worker = SteamWorker::new_disconnected();
+        let mut ctx = make_test_ctx();
         for expected_remaining in [2usize, 1, 0] {
-            let _task = update(&mut state, GameViewMessage::RevealTick, &worker);
+            let _task = update(&mut state, GameViewMessage::RevealTick, &mut ctx);
             assert_eq!(
                 state.reveal_queue.len(),
                 expected_remaining,

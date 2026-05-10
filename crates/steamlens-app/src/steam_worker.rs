@@ -71,12 +71,6 @@ impl SteamWorker {
     pub fn send(&self, req: SteamRequest) {
         let _ = self.request_tx.send(req);
     }
-
-    #[cfg(test)]
-    pub fn new_disconnected() -> Self {
-        let (req_tx, _req_rx) = async_mpsc::unbounded_channel::<SteamRequest>();
-        SteamWorker { request_tx: req_tx }
-    }
 }
 
 fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {

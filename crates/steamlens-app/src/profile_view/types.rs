@@ -150,10 +150,18 @@ pub enum ProfileViewMessage {
         app_id: u32,
         tier: Option<RarityTier>,
     },
-    // PR3 bridge variants — translated to App-level messages by main.rs; replaced by OutEvent in PR4.
-    ToastRequestProxy(String),
-    ToggleGamePinProxy(u32),
-    OpenGameViewProxy(u32),
+    RequestToast(String),
+    RequestToggleGamePin(u32),
+    RequestOpenGame(u32),
+}
+
+#[derive(Debug, Clone)]
+pub enum ProfileEvent {
+    None,
+    OpenGame(u32),
+    Toast(String),
+    ToggleGamePin(u32),
+    RequestRescan,
 }
 
 impl std::fmt::Debug for ProfileViewMessage {
@@ -194,9 +202,9 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::CardTierHovered { app_id, tier } => {
                 write!(f, "CardTierHovered(app={app_id}, tier={tier:?})")
             }
-            ProfileViewMessage::ToastRequestProxy(msg) => write!(f, "ToastRequestProxy({msg:?})"),
-            ProfileViewMessage::ToggleGamePinProxy(id) => write!(f, "ToggleGamePinProxy({id})"),
-            ProfileViewMessage::OpenGameViewProxy(id) => write!(f, "OpenGameViewProxy({id})"),
+            ProfileViewMessage::RequestToast(msg) => write!(f, "RequestToast({msg:?})"),
+            ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
+            ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
         }
     }
 }

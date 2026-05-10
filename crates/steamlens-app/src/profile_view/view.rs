@@ -423,7 +423,7 @@ fn build_icon_button(
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
     )
-    .on_press(ProfileViewMessage::ToastRequestProxy(toast_msg.to_owned()))
+    .on_press(ProfileViewMessage::RequestToast(toast_msg.to_owned()))
     .padding(0)
     .style(|_: &iced::Theme, status| {
         let hovered = matches!(
@@ -923,7 +923,7 @@ fn build_hover_overlay<'a>(
                 .size(11)
                 .color(if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY }),
         )
-        .on_press(ProfileViewMessage::ToggleGamePinProxy(app_id))
+        .on_press(ProfileViewMessage::RequestToggleGamePin(app_id))
         .padding(Padding::default().left(10).right(10).top(4).bottom(4))
         .style(move |_: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
