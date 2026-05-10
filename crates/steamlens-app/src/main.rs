@@ -1,6 +1,7 @@
 mod app_context;
 mod cache;
 mod capsule_cache;
+mod capsule_commands;
 mod game_view;
 mod ipc_pipe;
 mod messaging;
@@ -8,7 +9,9 @@ mod profile_view;
 mod progress_scan;
 mod screen;
 mod settings;
+mod settings_commands;
 mod skeleton;
+mod splash_commands;
 mod steam_worker;
 mod theme;
 mod timeouts;
@@ -145,28 +148,13 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         splash_probe_done: false,
     };
 
-    let min_splash_task = Task::perform(
-        async { tokio::time::sleep(std::time::Duration::from_millis(750)).await },
-        |_| Message::SplashMinElapsed,
-    );
-
-    let probe_task = Task::perform(
-        async {
-            steamlens_core::probe_steam(timeouts::PROBE_STEAM_BOOT)
-                .await
-                .map_err(|e| e.to_string())
-        },
-        Message::ProbeResult,
-    );
-
-    let no_ach_load_task = Task::perform(
-        cache::load_no_achievements_cache(),
-        Message::NoAchCacheLoaded,
-    );
-
     (
         app,
-        Task::batch([min_splash_task, probe_task, no_ach_load_task]),
+        Task::batch([
+            splash_commands::min_splash_wait(),
+            splash_commands::probe_steam_boot(),
+            cache::commands::load_no_ach_cache(),
+        ]),
     )
 }
 
@@ -324,10 +312,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 let games = enumerated_games.unwrap_or_default();
                 let steam_root = app.context.steam_root.clone();
                 let steamid3 = app.context.steamid3;
-                let classify_task = Task::perform(
-                    async move { cache::classify_games(&games, &steam_root, steamid3).await },
-                    Message::CacheClassified,
-                );
+                let classify_task = cache::commands::classify_games(games, steam_root, steamid3);
 
                 let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
 
@@ -354,14 +339,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 })
                                 .collect(),
                         );
-                        tasks.push(Task::perform(
-                            async move {
-                                cache::write_library_cache(&cached)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            |r| Message::PersistentCacheWritten("library", r),
-                        ));
+                        tasks.push(cache::commands::write_library_cache(cached));
                     }
                 }
 
@@ -400,15 +378,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::batch([extra, pin_task])
                 }
                 ProfileEvent::RequestRescan => {
-                    let probe_task = Task::perform(
-                        async {
-                            steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
-                                .await
-                                .map_err(|e| e.to_string())
-                        },
-                        Message::ProbeResult,
-                    );
-                    Task::batch([extra, probe_task])
+                    Task::batch([extra, splash_commands::probe_steam_reconnect()])
                 }
             }
         }
@@ -477,8 +447,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ClearAllCache => {
-            let cache_games_dir = settings::steamlens_root().join("cache").join("games");
-            let cache_images_dir = settings::steamlens_root().join("cache").join("images");
             app.context.cached_entries.clear();
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 for entry in &mut pv_state.games {
@@ -491,13 +459,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     pv_state.progress_scanner = Some(scanner);
                 }
             }
-            Task::batch([Task::perform(
-                async move {
-                    let _ = tokio::fs::remove_dir_all(&cache_games_dir).await;
-                    let _ = tokio::fs::remove_dir_all(&cache_images_dir).await;
-                },
-                |()| Message::ToastRequest("Cache cleared".to_owned()),
-            )])
+            cache::commands::clear_all_cache()
         }
 
         Message::ClearGameCache(app_id) => {
@@ -528,13 +490,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             } else {
                 format!("App {app_id}")
             };
-            Task::perform(
-                async move {
-                    let _ = tokio::fs::remove_file(&cache_path).await;
-                    name
-                },
-                |name| Message::ToastRequest(format!("Cache cleared for {name}")),
-            )
+            cache::commands::clear_game_cache(cache_path, name)
         }
 
         Message::OpenGameView(app_id) => open_game_view(app, app_id),
@@ -566,14 +522,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             app.context.steamid3,
                         );
                         app.context.cached_entries.insert(app_id, entry.clone());
-                        Task::perform(
-                            async move {
-                                cache::write_game_cache(&entry)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            move |result| Message::CacheWritten { app_id, result },
-                        )
+                        cache::commands::write_game_cache(entry)
                     };
                     go_back_to_profile(app);
                     Task::batch([task, write_task])
@@ -617,14 +566,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 if let Some(cn) = change_number {
                                     app.context.no_ach_cache.insert(scan_app_id, cn);
                                     let snapshot = app.context.no_ach_cache.clone();
-                                    tasks.push(Task::perform(
-                                        async move {
-                                            cache::write_no_achievements_cache(&snapshot)
-                                                .await
-                                                .map_err(|e| e.to_string())
-                                        },
-                                        Message::NoAchCacheWritten,
-                                    ));
+                                    tasks.push(cache::commands::write_no_ach_cache(snapshot));
                                 }
                                 continue;
                             }
@@ -661,17 +603,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                     app.context
                                         .cached_entries
                                         .insert(scan_app_id, entry.clone());
-                                    tasks.push(Task::perform(
-                                        async move {
-                                            cache::write_game_cache(&entry)
-                                                .await
-                                                .map_err(|e| e.to_string())
-                                        },
-                                        move |res| Message::CacheWritten {
-                                            app_id: scan_app_id,
-                                            result: res,
-                                        },
-                                    ));
+                                    tasks.push(cache::commands::write_game_cache(entry));
                                 }
                             }
                         }
@@ -698,14 +630,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             {
                 app.context.settings_dirty_since = None;
                 let snapshot = app.context.settings.clone();
-                return Task::perform(
-                    async move {
-                        settings::write_settings(&snapshot)
-                            .await
-                            .map_err(|e| e.to_string())
-                    },
-                    Message::SettingsWritten,
-                );
+                return settings_commands::write_settings(snapshot);
             }
             Task::none()
         }
@@ -739,14 +664,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 total: 0,
                 label: "Connecting to Steam\u{2026}".to_owned(),
             };
-            Task::perform(
-                async {
-                    steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
-                        .await
-                        .map_err(|e| e.to_string())
-                },
-                Message::ProbeResult,
-            )
+            splash_commands::probe_steam_reconnect()
         }
 
         Message::ProbeResult(result) => {
@@ -787,14 +705,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     let mut tasks: Vec<Task<Message>> = Vec::new();
 
-                    tasks.push(Task::perform(
-                        async move {
-                            cache::write_profile_cache(&cached)
-                                .await
-                                .map_err(|e| e.to_string())
-                        },
-                        |r| Message::PersistentCacheWritten("profile", r),
-                    ));
+                    tasks.push(cache::commands::write_profile_cache(cached));
 
                     if !p.game_summaries.is_empty() {
                         app.splash_scan_done = true;
@@ -814,10 +725,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             ProfileViewMessage::ScanComplete(filtered),
                         )));
                     } else {
-                        tasks.push(Task::perform(
-                            async { cache::load_library_cache().await },
-                            Message::LibraryCacheLoaded,
-                        ));
+                        tasks.push(cache::commands::load_library_cache());
                     }
 
                     Task::batch(tasks)
@@ -846,10 +754,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         false,
                     );
 
-                    Task::perform(
-                        async { cache::load_profile_cache().await },
-                        Message::ProfileCacheLoaded,
-                    )
+                    cache::commands::load_profile_cache()
                 }
             }
         }

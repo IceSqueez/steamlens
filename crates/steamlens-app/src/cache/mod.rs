@@ -1,4 +1,5 @@
 pub mod cached;
+pub mod commands;
 pub mod invalidate;
 pub mod no_achievements;
 pub mod persistent;
