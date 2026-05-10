@@ -41,6 +41,13 @@ const CARD_PROGRESS_BAR_INSET: f32 = 16.0;
 const SKEL_COUNTER_PILL_WIDTH_RATIO: f32 = 0.18;
 const SKEL_GENRE_PILL_WIDTH_RATIO: f32 = 0.28;
 
+const CARD_H_PAD: f32 = 8.0;
+const CARD_NAME_ROW_HEIGHT: f32 = 24.0;
+const CARD_NAME_ROW_PAD_TOP: f32 = 4.0;
+const CARD_TAGS_ROW_HEIGHT: f32 = 32.0;
+const CARD_TAGS_ROW_PAD_TOP: f32 = 3.0;
+const CARD_TAGS_ROW_PAD_BOTTOM: f32 = 8.0;
+
 fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
     let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
 
@@ -651,14 +658,20 @@ fn build_skeleton_card<'a>(
         .width(Length::Fixed(card_w - 16.0)),
     )
     .width(Length::Fixed(card_w))
-    .height(Length::Fixed(24.0))
+    .height(Length::Fixed(CARD_NAME_ROW_HEIGHT))
     .align_y(Alignment::Center)
-    .padding(Padding::default().left(8).right(8));
+    .padding(
+        Padding::default()
+            .left(CARD_H_PAD)
+            .right(CARD_H_PAD)
+            .top(CARD_NAME_ROW_PAD_TOP)
+            .bottom(0),
+    );
 
     let bar_container = container(progress_skel)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(8.0))
-        .padding(Padding::default().left(8).right(8));
+        .height(Length::Fixed(CARD_PROGRESS_BAR_HEIGHT))
+        .padding(Padding::default().left(CARD_H_PAD).right(CARD_H_PAD));
 
     let bar_gap = iced::widget::Space::new()
         .width(Length::Fixed(card_w))
@@ -674,8 +687,15 @@ fn build_skeleton_card<'a>(
         .align_y(Alignment::Center),
     )
     .width(Length::Fixed(card_w))
-    .height(Length::Fixed(24.0))
-    .padding(Padding::default().left(4).right(4).top(3).bottom(3));
+    .height(Length::Fixed(CARD_TAGS_ROW_HEIGHT))
+    .padding(
+        Padding::default()
+            .left(CARD_H_PAD)
+            .right(CARD_H_PAD)
+            .top(CARD_TAGS_ROW_PAD_TOP)
+            .bottom(CARD_TAGS_ROW_PAD_BOTTOM),
+    )
+    .align_y(Alignment::End);
 
     let card_inner = column![
         capsule_skel,
@@ -916,7 +936,7 @@ fn build_tier_stacked_bar<'a>(
     container(bar)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(BAR_H))
-        .padding(Padding::default().left(8).right(8))
+        .padding(Padding::default().left(CARD_H_PAD).right(CARD_H_PAD))
         .into()
 }
 
@@ -1007,9 +1027,15 @@ fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileV
 
     container(inner)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(24.0))
+        .height(Length::Fixed(CARD_NAME_ROW_HEIGHT))
         .align_y(Alignment::Center)
-        .padding(Padding::default().left(8).right(8).top(4).bottom(0))
+        .padding(
+            Padding::default()
+                .left(CARD_H_PAD)
+                .right(CARD_H_PAD)
+                .top(CARD_NAME_ROW_PAD_TOP)
+                .bottom(0),
+        )
         .into()
 }
 
@@ -1060,8 +1086,14 @@ fn build_tags_row<'a>(
 
     container(tags)
         .width(Length::Fixed(card_w))
-        .height(Length::Fixed(32.0))
-        .padding(Padding::default().left(8).right(8).top(3).bottom(8))
+        .height(Length::Fixed(CARD_TAGS_ROW_HEIGHT))
+        .padding(
+            Padding::default()
+                .left(CARD_H_PAD)
+                .right(CARD_H_PAD)
+                .top(CARD_TAGS_ROW_PAD_TOP)
+                .bottom(CARD_TAGS_ROW_PAD_BOTTOM),
+        )
         .align_y(Alignment::End)
         .into()
 }

@@ -434,6 +434,7 @@ fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, GameViewM
 const ACH_CARD_GAP: f32 = 12.0;
 const ACH_MIN_GAP: f32 = 12.0;
 const ACH_CARD_WIDTH: f32 = 260.0;
+const ACH_CARD_TEXT_COL_SPACING: u32 = 2;
 
 fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
     let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
@@ -1124,7 +1125,7 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameView
         skeleton_box(title_w, ACH_CARD_TITLE_TEXT_SIZE, phase),
         skeleton_box(desc_w, ACH_CARD_DESCRIPTION_TEXT_SIZE, phase),
     ]
-    .spacing(4);
+    .spacing(ACH_CARD_TEXT_COL_SPACING);
 
     let top_row = row![icon, text_col]
         .spacing(8)
@@ -1356,7 +1357,7 @@ fn achievement_card_widget<'a>(
         .into()
     };
 
-    let text_col = column![name_label, desc_label].spacing(2);
+    let text_col = column![name_label, desc_label].spacing(ACH_CARD_TEXT_COL_SPACING);
 
     let top_row = row![icon_el, text_col]
         .spacing(8)
