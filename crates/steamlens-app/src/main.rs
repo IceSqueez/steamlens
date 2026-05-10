@@ -271,12 +271,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::Exit => iced::exit(),
 
-        Message::GoBack => {
-            if let Screen::SteamNotRunning { .. } = &app.screen {
-                return_to_profile_view(app);
+        Message::GoBack => match &app.screen {
+            Screen::GameView(_) => {
+                update(app, Message::GameView(GameViewMessage::RequestGoBack))
             }
-            Task::none()
-        }
+            Screen::SteamNotRunning { .. } => {
+                return_to_profile_view(app);
+                Task::none()
+            }
+            _ => Task::none(),
+        },
 
         Message::ProfileView(msg) => {
             let Screen::ProfileView(pv_state) = &mut app.screen else {
