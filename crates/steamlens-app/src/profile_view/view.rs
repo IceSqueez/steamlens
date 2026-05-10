@@ -28,6 +28,7 @@ use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
+use crate::ui::widgets::tooltip_box::tooltip_box;
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
@@ -360,24 +361,7 @@ fn segment_row(
         });
 
         let item_el: Element<'static, crate::Message> = match hint {
-            Some(text_str) => tooltip(
-                btn,
-                container(text(*text_str).size(11).color(C_TEXT_PRIMARY))
-                    .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-                    .style(|_: &iced::Theme| container::Style {
-                        background: Some(iced::Background::Color(Color::from_rgba(
-                            0.10, 0.09, 0.14, 0.95,
-                        ))),
-                        border: iced::Border {
-                            color: Color { a: 0.5, ..C_ACCENT },
-                            width: 1.0,
-                            radius: 4.0.into(),
-                        },
-                        ..container::Style::default()
-                    }),
-                tooltip::Position::Bottom,
-            )
-            .into(),
+            Some(text_str) => tooltip_box(btn, *text_str, tooltip::Position::Bottom),
             None => btn.into(),
         };
         r = r.push(item_el);

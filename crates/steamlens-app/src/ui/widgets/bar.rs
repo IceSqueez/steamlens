@@ -1,5 +1,7 @@
 use iced::widget::{Space, container, mouse_area, row, tooltip};
-use iced::{Background, Border, Color, Element, Length, Padding, border};
+use iced::{Background, Border, Color, Element, Length, border};
+
+use super::tooltip_box::tooltip_box;
 
 use crate::ui::theme::{AppTheme, palette};
 
@@ -159,26 +161,7 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
 
             let mut interactive: Element<'a, M> = if let Some(f) = bar.tooltip_for.as_ref() {
                 let tip_text = f(idx);
-                tooltip(
-                    seg_widget,
-                    container(
-                        iced::widget::text(tip_text)
-                            .size(11)
-                            .color(palette.text_primary),
-                    )
-                    .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-                    .style(move |_: &iced::Theme| container::Style {
-                        background: Some(Background::Color(palette.surface)),
-                        border: Border {
-                            color: palette.border,
-                            width: 1.0,
-                            radius: 6.0.into(),
-                        },
-                        ..container::Style::default()
-                    }),
-                    tooltip::Position::Top,
-                )
-                .into()
+                tooltip_box(seg_widget, tip_text, tooltip::Position::Top)
             } else {
                 seg_widget.into()
             };

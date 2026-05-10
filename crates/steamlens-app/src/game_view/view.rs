@@ -24,6 +24,7 @@ use crate::theme::{
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
+use crate::ui::widgets::tooltip_box::tooltip_box;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
@@ -606,24 +607,8 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
             ..button::Style::default()
         });
 
-        let with_tooltip: Element<'static, Message> = tooltip(
-            btn,
-            container(text(s.tooltip()).size(11).color(C_TEXT_PRIMARY))
-                .padding(Padding::default().left(8).right(8).top(4).bottom(4))
-                .style(|_theme| container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgba(
-                        0.10, 0.09, 0.14, 0.95,
-                    ))),
-                    border: iced::Border {
-                        color: Color { a: 0.5, ..C_ACCENT },
-                        width: 1.0,
-                        radius: 4.0.into(),
-                    },
-                    ..container::Style::default()
-                }),
-            tooltip::Position::Bottom,
-        )
-        .into();
+        let with_tooltip: Element<'static, Message> =
+            tooltip_box(btn, s.tooltip(), tooltip::Position::Bottom);
 
         items.push(with_tooltip);
         if i < last_idx {
