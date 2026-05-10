@@ -754,4 +754,10 @@ mod tests {
             "has_pending_reveals must be false when queue is empty"
         );
     }
+
+    #[test]
+    fn game_subscription_constructs_with_default_state() {
+        let state = GameViewState::new(0);
+        let _: iced::Subscription<GameViewMessage> = subscription(&state);
+    }
 }

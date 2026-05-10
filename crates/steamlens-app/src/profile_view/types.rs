@@ -153,6 +153,7 @@ pub enum ProfileViewMessage {
     RequestToast(String),
     RequestToggleGamePin(u32),
     RequestOpenGame(u32),
+    DrainProgressResults,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +163,10 @@ pub enum ProfileEvent {
     Toast(String),
     ToggleGamePin(u32),
     RequestRescan,
+    DrainedProgress {
+        cache_entries: Vec<crate::cache::GameCacheEntry>,
+        no_ach_entries: Vec<(u32, u32)>,
+    },
 }
 
 impl std::fmt::Debug for ProfileViewMessage {
@@ -205,6 +210,7 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::RequestToast(msg) => write!(f, "RequestToast({msg:?})"),
             ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
             ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
+            ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
         }
     }
 }

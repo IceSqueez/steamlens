@@ -240,7 +240,104 @@ pub fn update(
         }
 
         ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
+
+        ProfileViewMessage::DrainProgressResults => drain_progress_results(state, ctx),
     }
+}
+
+fn drain_progress_results(
+    state: &mut ProfileViewState,
+    ctx: &mut AppContext,
+) -> (Task<ProfileViewMessage>, ProfileEvent) {
+    if let Some(scanner) = &mut state.progress_scanner {
+        let _still_going = scanner.poll();
+    }
+
+    let Some(rx) = &mut state.progress_rx else {
+        return (Task::none(), ProfileEvent::None);
+    };
+
+    let mut cache_entries: Vec<crate::cache::GameCacheEntry> = Vec::new();
+    let mut no_ach_events: Vec<(u32, u32)> = Vec::new();
+    let mut tasks: Vec<Task<ProfileViewMessage>> = Vec::new();
+
+    loop {
+        match rx.try_recv() {
+            Ok(result) => {
+                let scan_app_id = result.app_id;
+                let Some(data) = result.data else {
+                    state.failed_app_ids.insert(scan_app_id);
+                    tasks.push(Task::done(ProfileViewMessage::ScanFailed(format!(
+                        "Scan failed for app {scan_app_id}"
+                    ))));
+                    continue;
+                };
+
+                if data.achievements.is_empty() {
+                    let change_number = state
+                        .games
+                        .iter()
+                        .find(|g| g.app_id == scan_app_id)
+                        .map(|g| g.change_number);
+                    state.games.retain(|g| g.app_id != scan_app_id);
+                    ctx.cached_entries.remove(&scan_app_id);
+                    if let Some(cn) = change_number {
+                        ctx.no_ach_cache.insert(scan_app_id, cn);
+                        no_ach_events.push((scan_app_id, cn));
+                    }
+                    continue;
+                }
+
+                let earned = data.earned_count();
+                let total = data.total_count();
+                tasks.push(Task::done(ProfileViewMessage::ProgressFetched {
+                    app_id: scan_app_id,
+                    earned,
+                    total,
+                }));
+
+                if let Some(scanned_name) = &data.app_name
+                    && let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id)
+                {
+                    game.name = Some(scanned_name.clone());
+                }
+
+                if let Some(game) = state.games.iter().find(|g| g.app_id == scan_app_id) {
+                    let entry = crate::build_cache_entry_from_scan(
+                        &data,
+                        scan_app_id,
+                        game.name.as_deref(),
+                        &ctx.steam_root,
+                        ctx.steamid3,
+                    );
+                    ctx.cached_entries.insert(scan_app_id, entry.clone());
+                    cache_entries.push(entry);
+                }
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                tasks.push(Task::done(ProfileViewMessage::ProgressScanDone));
+                break;
+            }
+        }
+    }
+
+    let task = if tasks.is_empty() {
+        Task::none()
+    } else {
+        Task::batch(tasks)
+    };
+
+    let event = if cache_entries.is_empty() && no_ach_events.is_empty() {
+        ProfileEvent::None
+    } else {
+        ProfileEvent::DrainedProgress {
+            cache_entries,
+            no_ach_entries: no_ach_events,
+        }
+    };
+
+    (task, event)
 }
 
 fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileViewMessage> {
@@ -263,9 +360,56 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileView
     Task::batch(tasks)
 }
 
+pub fn subscription(
+    state: &ProfileViewState,
+    steam_running: Option<bool>,
+) -> iced::Subscription<ProfileViewMessage> {
+    use iced::time;
+
+    let spinner_sub = if state.is_streaming() {
+        time::every(std::time::Duration::from_millis(80))
+            .map(|_| ProfileViewMessage::SpinnerTick(0.0))
+    } else {
+        iced::Subscription::none()
+    };
+
+    let loader_pulse_sub = if state.loader_needs_pulse_subscription(steam_running) {
+        time::every(std::time::Duration::from_millis(70))
+            .map(|_| ProfileViewMessage::LoaderPulseTick)
+    } else {
+        iced::Subscription::none()
+    };
+
+    let progress_drain_sub = if state.progress_scanner.is_some() {
+        time::every(std::time::Duration::from_millis(200))
+            .map(|_| ProfileViewMessage::DrainProgressResults)
+    } else {
+        iced::Subscription::none()
+    };
+
+    iced::Subscription::batch([spinner_sub, loader_pulse_sub, progress_drain_sub])
+}
+
 pub fn render<'a>(
     state: &'a ProfileViewState,
     props: view::ProfileViewProps<'a>,
 ) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
     view::render(state, props)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_subscription_constructs_with_default_state() {
+        let state = ProfileViewState::new();
+        let _: iced::Subscription<ProfileViewMessage> = subscription(&state, None);
+    }
+
+    #[test]
+    fn profile_subscription_constructs_steam_running() {
+        let state = ProfileViewState::new();
+        let _: iced::Subscription<ProfileViewMessage> = subscription(&state, Some(true));
+    }
 }
