@@ -5,6 +5,7 @@ mod ipc_pipe;
 mod messaging;
 mod profile_view;
 mod progress_scan;
+mod screen;
 mod settings;
 mod skeleton;
 mod steam_worker;
@@ -1309,7 +1310,7 @@ fn build_game_view_cache_entry(
 
 fn view(app: &App) -> Element<'_, Message> {
     let screen_content: Element<'_, Message> = match &app.screen {
-        Screen::ProfileView(pv_state) => crate::ui::shell::shell(profile_view::render(
+        Screen::ProfileView(pv_state) => crate::screen::compose_screen(profile_view::render(
             pv_state,
             app.user_profile.as_ref(),
             app.profile_avatar_handle.as_ref(),

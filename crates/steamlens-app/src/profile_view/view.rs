@@ -78,7 +78,7 @@ pub fn render<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> crate::ui::shell::ShellContent<'a, crate::Message> {
+) -> crate::screen::ScreenContent<'a, crate::Message> {
     render_inner(
         state,
         user_profile,
@@ -98,7 +98,7 @@ fn render_inner<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> crate::ui::shell::ShellContent<'a, crate::Message> {
+) -> crate::screen::ScreenContent<'a, crate::Message> {
     let header = build_header(state);
 
     let profile_section = build_profile_section(
@@ -123,7 +123,7 @@ fn render_inner<'a>(
         }
     };
 
-    crate::ui::shell::ShellContent {
+    crate::screen::ScreenContent {
         header,
         top: Some(profile_section),
         body,

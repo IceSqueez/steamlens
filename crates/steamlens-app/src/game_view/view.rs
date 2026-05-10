@@ -5,8 +5,8 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
+use crate::screen::{ScreenContent, compose_screen};
 use crate::skeleton::skeleton_box;
-use crate::ui::shell::{ShellContent, shell};
 
 pub fn achievement_search_id() -> WidgetId {
     WidgetId::new("achievement-search")
@@ -158,7 +158,7 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Messag
         ActiveTab::Stats => stats_tab(state),
     };
 
-    shell(ShellContent {
+    compose_screen(ScreenContent {
         header: header_bar(state),
         top: Some(top_block),
         body,

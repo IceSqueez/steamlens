@@ -3,7 +3,7 @@ use iced::{Background, Border, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
-pub struct ShellContent<'a, M> {
+pub struct ScreenContent<'a, M> {
     pub header: Element<'a, M>,
     pub top: Option<Element<'a, M>>,
     pub body: Element<'a, M>,
@@ -11,7 +11,7 @@ pub struct ShellContent<'a, M> {
 }
 
 /// Wraps view content with standardised header/footer chrome.
-pub fn shell<'a, M: 'a>(content: ShellContent<'a, M>) -> Element<'a, M> {
+pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M> {
     let header_chrome = container(content.header)
         .width(Length::Fill)
         .padding(Padding::default().left(16).right(16).top(12).bottom(12))
@@ -68,24 +68,24 @@ mod tests {
     use iced::widget::text;
 
     #[test]
-    fn shell_composes_minimal_content() {
-        let content = ShellContent::<()> {
+    fn compose_screen_minimal_content() {
+        let content = ScreenContent::<()> {
             header: text("h").into(),
             top: None,
             body: text("b").into(),
             footer: None,
         };
-        let _: Element<'_, ()> = shell(content);
+        let _: Element<'_, ()> = compose_screen(content);
     }
 
     #[test]
-    fn shell_composes_full_content() {
-        let content = ShellContent::<()> {
+    fn compose_screen_full_content() {
+        let content = ScreenContent::<()> {
             header: text("h").into(),
             top: Some(text("t").into()),
             body: text("b").into(),
             footer: Some(text("f").into()),
         };
-        let _: Element<'_, ()> = shell(content);
+        let _: Element<'_, ()> = compose_screen(content);
     }
 }
