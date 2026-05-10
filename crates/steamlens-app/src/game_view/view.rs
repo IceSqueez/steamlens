@@ -451,6 +451,11 @@ fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
 }
 const ACH_CARD_ICON: f32 = 64.0;
 const ACH_CARD_HEIGHT: f32 = 140.0;
+const ACH_CARD_TITLE_TEXT_SIZE: f32 = 13.0;
+const ACH_CARD_DESCRIPTION_TEXT_SIZE: f32 = 11.0;
+const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
+const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
+const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
 fn filter_row(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let search_input = text_input("Search achievements\u{2026}", &state.search_query)
@@ -1116,8 +1121,8 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameView
     let desc_w = card_w * 0.80;
 
     let text_col = column![
-        skeleton_box(title_w, 13.0, phase),
-        skeleton_box(desc_w, 11.0, phase),
+        skeleton_box(title_w, ACH_CARD_TITLE_TEXT_SIZE, phase),
+        skeleton_box(desc_w, ACH_CARD_DESCRIPTION_TEXT_SIZE, phase),
     ]
     .spacing(4);
 
@@ -1126,8 +1131,16 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameView
         .align_y(Alignment::Start)
         .padding(Padding::from([8u16, 8]));
 
-    let pill1 = skeleton_box(80.0, 18.0, phase);
-    let pill2 = skeleton_box(60.0, 18.0, phase);
+    let pill1 = skeleton_box(
+        SKEL_ACH_CARD_STATUS_PILL_WIDTH,
+        SKEL_ACH_CARD_PILL_HEIGHT,
+        phase,
+    );
+    let pill2 = skeleton_box(
+        SKEL_ACH_CARD_RARITY_PILL_WIDTH,
+        SKEL_ACH_CARD_PILL_HEIGHT,
+        phase,
+    );
 
     let bottom_row = container(
         row![pill1, space().width(Length::Fill), pill2]
@@ -1254,7 +1267,7 @@ fn achievement_card_widget<'a>(
                         span(after).color(C_FG),
                     ]
                     .on_link_click(iced::never)
-                    .size(13)
+                    .size(ACH_CARD_TITLE_TEXT_SIZE)
                     .wrapping(text::Wrapping::Word)
                     .line_height(text::LineHeight::Relative(1.2)),
                 )
@@ -1264,7 +1277,7 @@ fn achievement_card_widget<'a>(
             } else {
                 container(
                     text(display_name)
-                        .size(13)
+                        .size(ACH_CARD_TITLE_TEXT_SIZE)
                         .color(name_color)
                         .wrapping(text::Wrapping::Word)
                         .line_height(text::LineHeight::Relative(1.2)),
@@ -1276,7 +1289,7 @@ fn achievement_card_widget<'a>(
         } else {
             container(
                 text(display_name)
-                    .size(13)
+                    .size(ACH_CARD_TITLE_TEXT_SIZE)
                     .color(name_color)
                     .wrapping(text::Wrapping::Word)
                     .line_height(text::LineHeight::Relative(1.2)),
@@ -1314,7 +1327,7 @@ fn achievement_card_widget<'a>(
                     span(after).color(desc_color),
                 ]
                 .on_link_click(iced::never)
-                .size(11)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                 .wrapping(text::Wrapping::Word),
             )
             .width(Length::Fill)
@@ -1323,7 +1336,7 @@ fn achievement_card_widget<'a>(
         } else {
             container(
                 text(description)
-                    .size(11)
+                    .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                     .color(desc_color)
                     .wrapping(text::Wrapping::Word),
             )
@@ -1334,7 +1347,7 @@ fn achievement_card_widget<'a>(
     } else {
         container(
             text(description)
-                .size(11)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                 .color(desc_color)
                 .wrapping(text::Wrapping::Word),
         )
@@ -1368,7 +1381,9 @@ fn achievement_card_widget<'a>(
         }
     };
     let badge = pill(
-        text(badge_text).size(11).color(badge_text_color),
+        text(badge_text)
+            .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+            .color(badge_text_color),
         badge_color,
     );
 
@@ -1377,7 +1392,9 @@ fn achievement_card_widget<'a>(
     } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
         let tc = tier_color(t);
         let label = format!("{} \u{00B7} {:.1}%", t.label(), pct);
-        let label_text = text(label).size(11).color(Color { a: 0.95, ..tc });
+        let label_text = text(label)
+            .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+            .color(Color { a: 0.95, ..tc });
         let rb = pill(label_text, tc).with_dot(tc);
         Some(rb.into())
     } else {
@@ -1386,28 +1403,32 @@ fn achievement_card_widget<'a>(
 
     let bottom_row: Element<'_, GameViewMessage> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
-        let reveal_btn = button(text("Reveal").size(11).color(C_ACCENT))
-            .on_press(GameViewMessage::RevealHidden(reveal_id))
-            .padding(Padding::default().left(12).right(12).top(3).bottom(3))
-            .style(|_t, status| {
-                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                button::Style {
-                    background: Some(Background::Color(Color {
-                        a: if hovered { 0.28 } else { 0.18 },
+        let reveal_btn = button(
+            text("Reveal")
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .color(C_ACCENT),
+        )
+        .on_press(GameViewMessage::RevealHidden(reveal_id))
+        .padding(Padding::default().left(12).right(12).top(3).bottom(3))
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Background::Color(Color {
+                    a: if hovered { 0.28 } else { 0.18 },
+                    ..C_ACCENT
+                })),
+                border: Border {
+                    color: Color {
+                        a: if hovered { 0.65 } else { 0.45 },
                         ..C_ACCENT
-                    })),
-                    border: Border {
-                        color: Color {
-                            a: if hovered { 0.65 } else { 0.45 },
-                            ..C_ACCENT
-                        },
-                        width: 1.0,
-                        radius: 12.0.into(),
                     },
-                    text_color: C_ACCENT,
-                    ..button::Style::default()
-                }
-            });
+                    width: 1.0,
+                    radius: 12.0.into(),
+                },
+                text_color: C_ACCENT,
+                ..button::Style::default()
+            }
+        });
 
         row![reveal_btn, space().width(Length::Fill), badge]
             .spacing(4)

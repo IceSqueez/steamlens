@@ -38,8 +38,6 @@ pub struct ThemePalette {
     pub rarity_mythical_soft: Color,
     pub rarity_legendary_soft: Color,
 
-    pub skeleton_bg: Color,
-
     pub dot_scanning: Color,
     pub dot_connected: Color,
     pub dot_offline: Color,
@@ -128,8 +126,6 @@ pub const DARK: ThemePalette = ThemePalette {
         b: 0.4,
         a: 0.18,
     },
-
-    skeleton_bg: Color::from_rgb(0.267, 0.278, 0.353),
 
     dot_scanning: Color::from_rgb(0.741, 0.576, 0.976),
     dot_connected: Color::from_rgb(0.314, 0.980, 0.482),
@@ -227,8 +223,6 @@ pub const LIGHT: ThemePalette = ThemePalette {
     rarity_rare_soft: Color::from_rgb8(0xf0, 0xea, 0xf8),
     rarity_mythical_soft: Color::from_rgb8(0xf8, 0xe9, 0xf0),
     rarity_legendary_soft: Color::from_rgb8(0xf8, 0xf0, 0xdd),
-
-    skeleton_bg: Color::from_rgb8(0xe8, 0xe4, 0xee),
 
     dot_scanning: Color::from_rgb8(0x6d, 0x4c, 0xb5),
     dot_connected: Color::from_rgb8(0x04, 0x78, 0x57),

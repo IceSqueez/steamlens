@@ -34,7 +34,7 @@ const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
 
 const CARD_NAME_TEXT_HEIGHT: f32 = 12.0;
-const CARD_COUNTER_TEXT_HEIGHT: f32 = 12.0;
+const CARD_COUNTER_TEXT_SIZE: f32 = 11.0;
 const CARD_PILL_HEIGHT: f32 = 18.0;
 const CARD_PROGRESS_BAR_HEIGHT: f32 = 8.0;
 const CARD_PROGRESS_BAR_INSET: f32 = 16.0;
@@ -618,7 +618,7 @@ fn build_skeleton_card<'a>(
     let name_skel = skeleton_box(card_w * title_width_ratio, CARD_NAME_TEXT_HEIGHT, phase);
     let counter_skel = skeleton_box(
         card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
-        CARD_COUNTER_TEXT_HEIGHT,
+        CARD_COUNTER_TEXT_SIZE,
         phase,
     );
     let progress_skel = skeleton_box(
