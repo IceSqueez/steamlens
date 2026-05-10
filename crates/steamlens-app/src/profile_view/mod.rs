@@ -20,7 +20,7 @@ pub fn update(
     state: &mut ProfileViewState,
     message: ProfileViewMessage,
     steam_running: Option<bool>,
-) -> Task<crate::Message> {
+) -> Task<ProfileViewMessage> {
     match message {
         ProfileViewMessage::ScanComplete(enumerated) => {
             state.games = enumerated
@@ -197,19 +197,23 @@ pub fn update(
             state.hovered_card_tier = tier.map(|t| (app_id, t));
             Task::none()
         }
+
+        ProfileViewMessage::ToastRequestProxy(_)
+        | ProfileViewMessage::ToggleGamePinProxy(_)
+        | ProfileViewMessage::OpenGameViewProxy(_) => Task::none(),
     }
 }
 
-fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Message> {
+fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileViewMessage> {
     let chunks: Vec<Vec<u32>> = app_ids
         .chunks(MAX_CONCURRENT_DOWNLOADS)
         .map(|c| c.to_vec())
         .collect();
 
-    let tasks: Vec<Task<crate::Message>> = chunks
+    let tasks: Vec<Task<ProfileViewMessage>> = chunks
         .into_iter()
         .map(|chunk| {
-            let batch: Vec<Task<crate::Message>> = chunk
+            let batch: Vec<Task<ProfileViewMessage>> = chunk
                 .into_iter()
                 .map(|app_id| {
                     Task::perform(
@@ -221,20 +225,18 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
                                     pixels.height,
                                     pixels.rgba,
                                 );
-                                crate::Message::ProfileView(ProfileViewMessage::CapsuleLoaded {
+                                ProfileViewMessage::CapsuleLoaded {
                                     app_id,
                                     size: fetched_size,
                                     handle,
                                     width: pixels.width,
                                     height: pixels.height,
-                                })
+                                }
                             }
-                            Err((fetched_size, _)) => {
-                                crate::Message::ProfileView(ProfileViewMessage::CapsuleFailed {
-                                    app_id,
-                                    size: fetched_size,
-                                })
-                            }
+                            Err((fetched_size, _)) => ProfileViewMessage::CapsuleFailed {
+                                app_id,
+                                size: fetched_size,
+                            },
                         },
                     )
                 })
@@ -249,6 +251,6 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
 pub fn render<'a>(
     state: &'a ProfileViewState,
     props: view::ProfileViewProps<'a>,
-) -> crate::screen::ScreenContent<'a, crate::Message> {
+) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
     view::render(state, props)
 }

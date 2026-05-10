@@ -17,7 +17,6 @@ use super::types::{
     ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
-use crate::Message;
 use crate::theme::{
     C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
     C_TEXT_SECONDARY,
@@ -42,10 +41,6 @@ const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
 const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
-fn msg(m: GameViewMessage) -> Message {
-    Message::GameView(m)
-}
-
 fn dracula_border_radius(r: f32) -> iced::Border {
     iced::Border {
         radius: r.into(),
@@ -57,7 +52,7 @@ pub struct GameViewProps {
     pub skeleton_phase: f32,
 }
 
-pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, Message> {
+pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameViewMessage> {
     let skeleton_phase = props.skeleton_phase;
     match state.phase {
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
@@ -84,7 +79,7 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, Messag
     }
 }
 
-fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
     let phase_label = match state.phase {
         GameViewPhase::Connecting => "Connecting to Steam...",
         GameViewPhase::WaitingStats => "Requesting stats from Steam...",
@@ -99,7 +94,7 @@ fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Messa
         text(phase_label).size(13).color(C_MUTED),
         space().width(Length::Fill),
         button(text("Cancel").size(12))
-            .on_press(Message::GoBack)
+            .on_press(GameViewMessage::GoBackProxy)
             .padding(Padding::default().left(12).right(12).top(4).bottom(4))
             .style(|_theme, _status| button::Style {
                 background: None,
@@ -131,12 +126,12 @@ fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Messa
         .into()
 }
 
-fn error_view(state: &GameViewState) -> Element<'_, Message> {
+fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let content = column![
         text("Failed to load").size(20).color(C_RED),
         text(&state.error_message).size(13).color(C_MUTED),
         button(text("Back").size(13))
-            .on_press(Message::GoBack)
+            .on_press(GameViewMessage::GoBackProxy)
             .padding(Padding::from([8, 16])),
     ]
     .spacing(16)
@@ -150,9 +145,9 @@ fn error_view(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
-fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
     let tabs = tab_bar_widget(state);
-    let top_block: Element<'_, Message> = if let Some(b) = &state.banner {
+    let top_block: Element<'_, GameViewMessage> = if let Some(b) = &state.banner {
         column![tabs, banner_widget(b)].spacing(0).into()
     } else {
         tabs
@@ -171,9 +166,9 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Messag
     })
 }
 
-fn header_bar(state: &GameViewState) -> Element<'_, Message> {
+fn header_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
-        .on_press(Message::GoBack)
+        .on_press(GameViewMessage::GoBackProxy)
         .padding(Padding::from([0u16, 0]))
         .style(|_theme, _status| button::Style {
             background: None,
@@ -203,7 +198,7 @@ fn header_bar(state: &GameViewState) -> Element<'_, Message> {
         .color(C_TEXT_MUTED);
 
     let reload_btn = button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
-        .on_press(msg(GameViewMessage::ReloadRequested))
+        .on_press(GameViewMessage::ReloadRequested)
         .padding(Padding::default().left(12).right(12).top(6).bottom(6))
         .style(|_theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -240,7 +235,7 @@ fn header_bar(state: &GameViewState) -> Element<'_, Message> {
     .into()
 }
 
-fn tab_bar_widget(state: &GameViewState) -> Element<'_, Message> {
+fn tab_bar_widget(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let ach_count = state.achievements.len();
     let stats_count = state.stats.len();
     let ach_active = state.active_tab == ActiveTab::Achievements;
@@ -249,13 +244,13 @@ fn tab_bar_widget(state: &GameViewState) -> Element<'_, Message> {
         "Achievements",
         ach_count,
         ach_active,
-        msg(GameViewMessage::TabChanged(ActiveTab::Achievements)),
+        GameViewMessage::TabChanged(ActiveTab::Achievements),
     );
     let stats_tab = tab_button(
         "Stats",
         stats_count,
         !ach_active,
-        msg(GameViewMessage::TabChanged(ActiveTab::Stats)),
+        GameViewMessage::TabChanged(ActiveTab::Stats),
     );
 
     let tabs_row = row![ach_tab, stats_tab]
@@ -283,8 +278,8 @@ fn tab_button(
     label: &'static str,
     count: usize,
     active: bool,
-    on_press: Message,
-) -> Element<'static, Message> {
+    on_press: GameViewMessage,
+) -> Element<'static, GameViewMessage> {
     let label_text = text(label)
         .size(13)
         .color(if active { C_ACCENT } else { C_TEXT_MUTED });
@@ -330,7 +325,7 @@ fn tab_button(
         .into()
 }
 
-fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
+fn banner_widget(banner: &super::types::Banner) -> Element<'_, GameViewMessage> {
     let (bg, text_color) = match banner.kind {
         BannerKind::Success => (
             Color {
@@ -363,9 +358,9 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
 
     let msg_text = text(banner.message.clone()).size(13).color(text_color);
 
-    let inner: Element<'_, Message> = if banner.dismissible {
+    let inner: Element<'_, GameViewMessage> = if banner.dismissible {
         let dismiss = button(text("\u{00D7}").size(13).color(text_color))
-            .on_press(msg(GameViewMessage::BannerDismissed))
+            .on_press(GameViewMessage::BannerDismissed)
             .padding(Padding::from([2u16, 8]))
             .style(|_t, _s| button::Style {
                 background: None,
@@ -389,7 +384,10 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, Message> {
         .into()
 }
 
-fn achievements_tab<'a>(state: &'a GameViewState, skeleton_phase: f32) -> Element<'a, Message> {
+fn achievements_tab<'a>(
+    state: &'a GameViewState,
+    skeleton_phase: f32,
+) -> Element<'a, GameViewMessage> {
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
@@ -411,7 +409,7 @@ fn achievements_tab<'a>(state: &'a GameViewState, skeleton_phase: f32) -> Elemen
     col.into()
 }
 
-fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, Message>> {
+fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, GameViewMessage>> {
     if !state.has_pending_reveals() && !state.has_fading_cards() {
         return None;
     }
@@ -454,10 +452,10 @@ fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
 const ACH_CARD_ICON: f32 = 64.0;
 const ACH_CARD_HEIGHT: f32 = 140.0;
 
-fn filter_row(state: &GameViewState) -> Element<'_, Message> {
+fn filter_row(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let search_input = text_input("Search achievements\u{2026}", &state.search_query)
         .id(achievement_search_id())
-        .on_input(|s| msg(GameViewMessage::SearchChanged(s)))
+        .on_input(GameViewMessage::SearchChanged)
         .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .size(13)
         .style(|_theme, _status| iced::widget::text_input::Style {
@@ -515,7 +513,7 @@ fn filter_row(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
-fn status_segment(current: AchievementFilter) -> Element<'static, Message> {
+fn status_segment(current: AchievementFilter) -> Element<'static, GameViewMessage> {
     let filters = [
         AchievementFilter::All,
         AchievementFilter::Unlocked,
@@ -532,7 +530,7 @@ fn status_segment(current: AchievementFilter) -> Element<'static, Message> {
             })
     };
 
-    let mut items: Vec<Element<'static, Message>> = Vec::new();
+    let mut items: Vec<Element<'static, GameViewMessage>> = Vec::new();
     for (i, &f) in filters.iter().enumerate() {
         let active = current == f;
         let btn =
@@ -541,7 +539,7 @@ fn status_segment(current: AchievementFilter) -> Element<'static, Message> {
                     .size(12)
                     .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
             )
-            .on_press(msg(GameViewMessage::FilterChanged(f)))
+            .on_press(GameViewMessage::FilterChanged(f))
             .padding(Padding::default().left(10).right(10).top(5).bottom(5))
             .style(move |_theme, _status| button::Style {
                 background: Some(iced::Background::Color(if active {
@@ -574,7 +572,7 @@ fn status_segment(current: AchievementFilter) -> Element<'static, Message> {
         .into()
 }
 
-fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
+fn sort_segment(current: AchievementSort) -> Element<'static, GameViewMessage> {
     let divider_el = || {
         container(space())
             .width(Length::Fixed(1.0))
@@ -585,7 +583,7 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
             })
     };
 
-    let mut items: Vec<Element<'static, Message>> = Vec::new();
+    let mut items: Vec<Element<'static, GameViewMessage>> = Vec::new();
     let last_idx = AchievementSort::ALL.len() - 1;
     for (i, &s) in AchievementSort::ALL.iter().enumerate() {
         let active = current == s;
@@ -594,7 +592,7 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
         } else {
             C_TEXT_MUTED
         }))
-        .on_press(msg(GameViewMessage::AchievementSortChanged(s)))
+        .on_press(GameViewMessage::AchievementSortChanged(s))
         .padding(Padding::default().left(10).right(10).top(5).bottom(5))
         .style(move |_theme, _status| button::Style {
             background: Some(iced::Background::Color(if active {
@@ -609,7 +607,7 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
             ..button::Style::default()
         });
 
-        let with_tooltip: Element<'static, Message> =
+        let with_tooltip: Element<'static, GameViewMessage> =
             tooltip_box(btn, s.tooltip(), tooltip::Position::Bottom);
 
         items.push(with_tooltip);
@@ -631,7 +629,7 @@ fn sort_segment(current: AchievementSort) -> Element<'static, Message> {
         .into()
 }
 
-fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
+fn tier_rail(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let tier_map = compute_tier_map(&state.achievements);
     let all_tiers = [
         RarityTier::Common,
@@ -648,7 +646,7 @@ fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
         .count();
 
     let tier_lbl = text("TIER").size(11).color(C_TEXT_MUTED);
-    let mut chips: Vec<Element<'_, Message>> = vec![tier_lbl.into()];
+    let mut chips: Vec<Element<'_, GameViewMessage>> = vec![tier_lbl.into()];
 
     for &tier in &all_tiers {
         let count = tier_map.values().filter(|&&v| v == tier).count();
@@ -680,7 +678,7 @@ fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
         .align_y(Alignment::Center);
 
         let chip = button(pill_inner)
-            .on_press(msg(GameViewMessage::RarityTierToggled(tier)))
+            .on_press(GameViewMessage::RarityTierToggled(tier))
             .padding(Padding::default().left(8).right(10).top(4).bottom(4))
             .style(move |_theme, _status| button::Style {
                 background: Some(iced::Background::Color(Color {
@@ -731,7 +729,7 @@ fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
     .align_y(Alignment::Center);
 
     let hidden_chip = button(hidden_inner)
-        .on_press(msg(GameViewMessage::HiddenPillToggled))
+        .on_press(GameViewMessage::HiddenPillToggled)
         .padding(Padding::default().left(8).right(10).top(4).bottom(4))
         .style(move |_theme, _status| button::Style {
             background: None,
@@ -753,7 +751,7 @@ fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
     let any_active = !state.rarity_tier_set.is_empty() || state.include_hidden;
     if any_active {
         let clear_btn = button(text("Clear").size(11).color(C_TEXT_DIM))
-            .on_press(msg(GameViewMessage::RarityFilterCleared))
+            .on_press(GameViewMessage::RarityFilterCleared)
             .padding(Padding::default().left(6).right(6).top(3).bottom(3))
             .style(|_theme, _status| button::Style {
                 background: None,
@@ -778,10 +776,13 @@ fn tier_rail(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
-fn action_footer<'a>(state: &'a GameViewState, filtered_count: usize) -> Element<'a, Message> {
+fn action_footer<'a>(
+    state: &'a GameViewState,
+    filtered_count: usize,
+) -> Element<'a, GameViewMessage> {
     let total = state.achievements.len();
 
-    let count_label: Element<'_, Message> = row![
+    let count_label: Element<'_, GameViewMessage> = row![
         text(format!("{filtered_count}"))
             .size(12)
             .color(C_TEXT_PRIMARY),
@@ -791,29 +792,31 @@ fn action_footer<'a>(state: &'a GameViewState, filtered_count: usize) -> Element
     ]
     .into();
 
-    let mk_outlined = |lbl: &'static str, tc: Color, m: GameViewMessage| -> Element<'_, Message> {
-        button(text(lbl).size(12).color(tc))
-            .on_press(msg(m))
-            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-            .style(move |_theme, status| {
-                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                button::Style {
-                    background: if hovered {
-                        Some(iced::Background::Color(C_HOVER))
-                    } else {
-                        None
-                    },
-                    border: iced::Border {
-                        color: C_BORDER,
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    text_color: tc,
-                    ..button::Style::default()
-                }
-            })
-            .into()
-    };
+    let mk_outlined =
+        |lbl: &'static str, tc: Color, m: GameViewMessage| -> Element<'_, GameViewMessage> {
+            button(text(lbl).size(12).color(tc))
+                .on_press(m)
+                .padding(Padding::default().left(12).right(12).top(6).bottom(6))
+                .style(move |_theme, status| {
+                    let hovered =
+                        matches!(status, button::Status::Hovered | button::Status::Pressed);
+                    button::Style {
+                        background: if hovered {
+                            Some(iced::Background::Color(C_HOVER))
+                        } else {
+                            None
+                        },
+                        border: iced::Border {
+                            color: C_BORDER,
+                            width: 1.0,
+                            radius: 6.0.into(),
+                        },
+                        text_color: tc,
+                        ..button::Style::default()
+                    }
+                })
+                .into()
+        };
 
     let unlock_btn = mk_outlined(
         "Unlock all",
@@ -846,7 +849,7 @@ fn action_footer<'a>(state: &'a GameViewState, filtered_count: usize) -> Element
         ]
         .align_y(Alignment::Center),
     )
-    .on_press(msg(GameViewMessage::ResetClicked))
+    .on_press(GameViewMessage::ResetClicked)
     .padding(Padding::default().left(12).right(12).top(6).bottom(6))
     .style(|_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -990,7 +993,7 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
     }
 }
 
-fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
@@ -1018,12 +1021,12 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, M
     let grid = responsive(move |size| {
         let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
 
-        let mut rows_col: iced::widget::Column<'_, Message> = column![]
+        let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
             .spacing(ACH_CARD_GAP as u32)
             .padding(Padding::default().top(8).bottom(4));
 
         for chunk in cards.chunks(cols) {
-            let mut r: iced::widget::Row<'_, Message> =
+            let mut r: iced::widget::Row<'_, GameViewMessage> =
                 row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
@@ -1057,7 +1060,10 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, M
         .into()
 }
 
-fn build_skeleton_ach_grid(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
+fn build_skeleton_ach_grid(
+    state: &GameViewState,
+    skeleton_phase: f32,
+) -> Element<'_, GameViewMessage> {
     let count = if state.achievements.is_empty() {
         6
     } else {
@@ -1067,7 +1073,7 @@ fn build_skeleton_ach_grid(state: &GameViewState, skeleton_phase: f32) -> Elemen
     let grid = responsive(move |size| {
         let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
 
-        let mut rows_col: iced::widget::Column<'_, Message> = column![]
+        let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
             .spacing(ACH_CARD_GAP as u32)
             .padding(Padding::default().top(8).bottom(4));
 
@@ -1076,7 +1082,7 @@ fn build_skeleton_ach_grid(state: &GameViewState, skeleton_phase: f32) -> Elemen
 
         while rendered < total_cards {
             let chunk_size = (total_cards - rendered).min(cols);
-            let mut r: iced::widget::Row<'_, Message> =
+            let mut r: iced::widget::Row<'_, GameViewMessage> =
                 row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for _ in 0..chunk_size {
                 r = r.push(build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase));
@@ -1103,7 +1109,7 @@ fn build_skeleton_ach_grid(state: &GameViewState, skeleton_phase: f32) -> Elemen
         .into()
 }
 
-fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, Message> {
+fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameViewMessage> {
     let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, phase);
 
     let title_w = card_w * 0.60;
@@ -1166,11 +1172,11 @@ fn achievement_card_widget<'a>(
     glow_pulse: f32,
     tier: Option<RarityTier>,
     _skeleton_phase: f32,
-) -> Element<'a, Message> {
+) -> Element<'a, GameViewMessage> {
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
 
-    let icon_el: Element<'_, Message> = if spoiler_hidden {
+    let icon_el: Element<'_, GameViewMessage> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
             .width(Length::Fixed(ACH_CARD_ICON))
             .height(Length::Fixed(ACH_CARD_ICON))
@@ -1233,7 +1239,7 @@ fn achievement_card_widget<'a>(
     };
 
     let name_color = if row.is_dirty { C_YELLOW } else { C_FG };
-    let name_label: Element<'_, Message> =
+    let name_label: Element<'_, GameViewMessage> =
         if !row.is_dirty && !spoiler_hidden && !search_query.is_empty() {
             if let Some((before, matched, after)) = highlight_split(&display_name, &search_query) {
                 let before = before.to_owned();
@@ -1294,7 +1300,7 @@ fn achievement_card_widget<'a>(
         C_TEXT_SECONDARY
     };
 
-    let desc_label: Element<'_, Message> = if !spoiler_hidden && !search_query.is_empty() {
+    let desc_label: Element<'_, GameViewMessage> = if !spoiler_hidden && !search_query.is_empty() {
         if let Some((before, matched, after)) = highlight_split(&description, &search_query) {
             let before = before.to_owned();
             let matched = matched.to_owned();
@@ -1366,7 +1372,7 @@ fn achievement_card_widget<'a>(
         badge_color,
     );
 
-    let rarity_badge: Option<Element<'_, Message>> = if spoiler_hidden {
+    let rarity_badge: Option<Element<'_, GameViewMessage>> = if spoiler_hidden {
         None
     } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
         let tc = tier_color(t);
@@ -1378,10 +1384,10 @@ fn achievement_card_widget<'a>(
         None
     };
 
-    let bottom_row: Element<'_, Message> = if spoiler_hidden {
+    let bottom_row: Element<'_, GameViewMessage> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
         let reveal_btn = button(text("Reveal").size(11).color(C_ACCENT))
-            .on_press(msg(GameViewMessage::RevealHidden(reveal_id)))
+            .on_press(GameViewMessage::RevealHidden(reveal_id))
             .padding(Padding::default().left(12).right(12).top(3).bottom(3))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1409,7 +1415,7 @@ fn achievement_card_widget<'a>(
             .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     } else {
-        let mut right_group: iced::widget::Row<'_, Message> =
+        let mut right_group: iced::widget::Row<'_, GameViewMessage> =
             row![].spacing(6).align_y(Alignment::Center);
         if let Some(rb) = rarity_badge {
             right_group = right_group.push(rb);
@@ -1450,7 +1456,7 @@ fn achievement_card_widget<'a>(
 
     let mut c = card(card_container)
         .theme(AppTheme::Dark)
-        .on_press(msg(GameViewMessage::AchievementToggled(toggle_id)));
+        .on_press(GameViewMessage::AchievementToggled(toggle_id));
 
     if is_hidden_card {
         c = c
@@ -1471,9 +1477,9 @@ fn achievement_card_widget<'a>(
     c.into()
 }
 
-fn stats_tab(state: &GameViewState) -> Element<'_, Message> {
+fn stats_tab(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let consent_check = iced::widget::checkbox(state.stats_edit_consent)
-        .on_toggle(|v| msg(GameViewMessage::StatsConsentToggled(v)))
+        .on_toggle(GameViewMessage::StatsConsentToggled)
         .size(14);
     let consent_label = text("I understand that editing stats may corrupt game saves").size(13);
     let consent_row = row![consent_check, consent_label]
@@ -1529,7 +1535,7 @@ fn stats_tab(state: &GameViewState) -> Element<'_, Message> {
         ..container::Style::default()
     });
 
-    let rows: Vec<Element<'_, Message>> = state
+    let rows: Vec<Element<'_, GameViewMessage>> = state
         .stats
         .iter()
         .map(|s| stat_row_widget(s, state.stats_edit_consent))
@@ -1543,7 +1549,7 @@ fn stats_tab(state: &GameViewState) -> Element<'_, Message> {
         .into()
 }
 
-fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message> {
+fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, GameViewMessage> {
     let is_protected = row.data.permission != 0;
     let can_edit = editing_enabled && !is_protected;
 
@@ -1558,10 +1564,10 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
         None => value_str,
     };
 
-    let value_col: Element<'_, Message> = if can_edit {
+    let value_col: Element<'_, GameViewMessage> = if can_edit {
         text_input("", &row.edit_text)
-            .on_input(|s| msg(GameViewMessage::StatEdited(row.data.id.clone(), s)))
-            .on_submit(msg(GameViewMessage::StatEditCommitted(row.data.id.clone())))
+            .on_input(|s| GameViewMessage::StatEdited(row.data.id.clone(), s))
+            .on_submit(GameViewMessage::StatEditCommitted(row.data.id.clone()))
             .padding(6)
             .size(13)
             .width(Length::FillPortion(2))
@@ -1577,13 +1583,13 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
         .into()
     };
 
-    let dirty_dot: Element<'_, Message> = if row.is_dirty {
+    let dirty_dot: Element<'_, GameViewMessage> = if row.is_dirty {
         text("*").size(12).color(C_YELLOW).into()
     } else {
         space().width(10).into()
     };
 
-    let name_col: Element<'_, Message> = row![
+    let name_col: Element<'_, GameViewMessage> = row![
         text(row.data.display_name.clone())
             .size(13)
             .color(C_FG)
@@ -1595,7 +1601,7 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
     .width(Length::FillPortion(3))
     .into();
 
-    let type_col: Element<'_, Message> = text(type_badge)
+    let type_col: Element<'_, GameViewMessage> = text(type_badge)
         .size(12)
         .color(C_MUTED)
         .width(Length::FillPortion(1))
@@ -1628,7 +1634,7 @@ fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, Message>
         .into()
 }
 
-fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
+fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let dirty = state.dirty_count();
     let has_errors = state.has_stat_errors();
     let is_busy = matches!(
@@ -1647,7 +1653,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
 
     let cancel_btn = if dirty > 0 && !is_busy {
         button(text(cancel_label).size(13).color(C_FG))
-            .on_press(msg(GameViewMessage::DiscardChanges))
+            .on_press(GameViewMessage::DiscardChanges)
             .padding(Padding::from([8u16, 16]))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1690,7 +1696,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
     let apply_enabled = dirty > 0 && !has_errors && !is_busy;
     let apply_btn = if apply_enabled {
         button(text(apply_label).size(13))
-            .on_press(msg(GameViewMessage::ApplyChanges))
+            .on_press(GameViewMessage::ApplyChanges)
             .padding(Padding::from([8u16, 16]))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1731,7 +1737,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
             })
     };
 
-    let spinner_el: Element<'_, Message> = if is_busy {
+    let spinner_el: Element<'_, GameViewMessage> = if is_busy {
         text(spinner_frame(state.spinner_angle))
             .size(16)
             .color(C_PURPLE)
@@ -1751,21 +1757,19 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
     .into()
 }
 
-fn reset_modal(state: &GameViewState) -> Element<'_, Message> {
+fn reset_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let scope_stats = radio_option(
         "Stats only",
         "Resets all stat counters to their default values.",
         state.reset_scope == ResetScope::StatsOnly,
-        msg(GameViewMessage::ResetScopeSelected(ResetScope::StatsOnly)),
+        GameViewMessage::ResetScopeSelected(ResetScope::StatsOnly),
     );
 
     let scope_all = radio_option(
         "Stats + Achievements",
         "Resets stats AND locks all achievements. This cannot be undone.",
         state.reset_scope == ResetScope::StatsAndAchievements,
-        msg(GameViewMessage::ResetScopeSelected(
-            ResetScope::StatsAndAchievements,
-        )),
+        GameViewMessage::ResetScopeSelected(ResetScope::StatsAndAchievements),
     );
 
     let warning_box = container(
@@ -1806,7 +1810,7 @@ fn reset_modal(state: &GameViewState) -> Element<'_, Message> {
     .color(C_MUTED);
 
     let confirm_input = text_input(state.game_name.trim(), &state.reset_confirm_input)
-        .on_input(|s| msg(GameViewMessage::ResetConfirmInputChanged(s)))
+        .on_input(GameViewMessage::ResetConfirmInputChanged)
         .size(13)
         .padding(Padding::from([6u16, 10]))
         .style(|_theme, _status| iced::widget::text_input::Style {
@@ -1858,14 +1862,14 @@ fn reset_modal(state: &GameViewState) -> Element<'_, Message> {
             ..button::Style::default()
         });
         if confirm_enabled {
-            base.on_press(msg(GameViewMessage::ResetConfirmed))
+            base.on_press(GameViewMessage::ResetConfirmed)
         } else {
             base
         }
     };
 
     let cancel_btn = button(text("Cancel").size(13))
-        .on_press(msg(GameViewMessage::ResetCancelled))
+        .on_press(GameViewMessage::ResetCancelled)
         .padding(Padding::from([8u16, 16]))
         .style(|_t, _s| button::Style {
             background: Some(iced::Background::Color(C_CURRENT_LINE)),
@@ -1935,8 +1939,8 @@ fn radio_option<'a>(
     label: &'a str,
     sublabel: &'a str,
     selected: bool,
-    on_press: Message,
-) -> Element<'a, Message> {
+    on_press: GameViewMessage,
+) -> Element<'a, GameViewMessage> {
     let indicator = if selected {
         text("(\u{2022})").size(14).color(C_PURPLE)
     } else {
@@ -1961,7 +1965,7 @@ fn radio_option<'a>(
     .into()
 }
 
-fn saving_overlay<'a>(angle: f32, label: &'a str) -> Element<'a, Message> {
+fn saving_overlay<'a>(angle: f32, label: &'a str) -> Element<'a, GameViewMessage> {
     let spinner = text(spinner_frame(angle)).size(24).color(C_PURPLE);
 
     let content = column![spinner, text(label).size(14).color(C_FG)]
