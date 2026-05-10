@@ -96,15 +96,15 @@ impl std::fmt::Display for CapsuleError {
 pub fn cache_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
-        dirs_base().join("Library/Caches/steamlens/capsules")
+        dirs_base()
+            .join("Library")
+            .join("Caches")
+            .join("steamlens")
+            .join("capsules")
     }
-    #[cfg(windows)]
+    #[cfg(not(target_os = "macos"))]
     {
-        dirs_base().join("steamlens\\capsules")
-    }
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        dirs_base().join("steamlens/capsules")
+        dirs_base().join("steamlens").join("capsules")
     }
 }
 

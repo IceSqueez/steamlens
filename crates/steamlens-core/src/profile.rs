@@ -43,7 +43,7 @@ pub fn load_local_profile() -> Result<UserProfile, ProfileError> {
 }
 
 pub fn load_profile_from_root(steam_root: &Path) -> Result<UserProfile, ProfileError> {
-    let vdf_path = steam_root.join("config/loginusers.vdf");
+    let vdf_path = steam_root.join("config").join("loginusers.vdf");
     let content = std::fs::read_to_string(&vdf_path)?;
     let root = parse_text(&content)?;
     parse_profile(&root, steam_root)
@@ -84,7 +84,8 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
         .to_owned();
 
     let avatar_path = steam_root
-        .join("config/avatarcache")
+        .join("config")
+        .join("avatarcache")
         .join(format!("{steam_id}.png"));
 
     let avatar_png_bytes = std::fs::read(&avatar_path).ok();

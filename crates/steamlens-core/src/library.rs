@@ -16,7 +16,7 @@ pub(crate) fn enumerate_owned_games_impl(
 ) -> Result<Vec<GameSummary>, LibraryError> {
     let steam_root = client.steam_root().map_err(LibraryError::SteamRoot)?;
 
-    let packageinfo_path = steam_root.join("appcache/packageinfo.vdf");
+    let packageinfo_path = steam_root.join("appcache").join("packageinfo.vdf");
     let bytes = std::fs::read(&packageinfo_path).map_err(LibraryError::PackageInfoIo)?;
 
     let candidate_ids =
@@ -26,7 +26,8 @@ pub(crate) fn enumerate_owned_games_impl(
     let localconfig_path = steam_root
         .join("userdata")
         .join(steamid3.to_string())
-        .join("config/localconfig.vdf");
+        .join("config")
+        .join("localconfig.vdf");
 
     let last_played_map = std::fs::read_to_string(&localconfig_path)
         .ok()
