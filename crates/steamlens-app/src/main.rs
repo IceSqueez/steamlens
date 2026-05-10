@@ -272,9 +272,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Exit => iced::exit(),
 
         Message::GoBack => match &app.screen {
-            Screen::GameView(_) => {
-                update(app, Message::GameView(GameViewMessage::RequestGoBack))
-            }
+            Screen::GameView(_) => update(app, Message::GameView(GameViewMessage::RequestGoBack)),
             Screen::SteamNotRunning { .. } => {
                 return_to_profile_view(app);
                 Task::none()
