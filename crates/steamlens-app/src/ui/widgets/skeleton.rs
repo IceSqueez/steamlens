@@ -133,7 +133,10 @@ mod tests {
 
     #[test]
     fn skeleton_box_constructs_without_panic() {
-        let _el: iced::Element<'_, ()> = skeleton_box(120.0, 45.0, 0.5);
+        let w = 120.0_f32;
+        let h = 45.0_f32;
+        let phase = 0.5_f32;
+        let _el: iced::Element<'_, ()> = skeleton_box(w, h, phase);
     }
 
     #[test]
