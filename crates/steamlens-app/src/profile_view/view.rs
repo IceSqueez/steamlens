@@ -70,7 +70,7 @@ fn total_card_height(capsule_h: f32) -> f32 {
     capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 32.0 + 8.0
 }
 
-pub fn render_with_cache_actions<'a>(
+pub fn render<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
@@ -78,7 +78,7 @@ pub fn render_with_cache_actions<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> Element<'a, crate::Message> {
+) -> crate::ui::shell::ShellContent<'a, crate::Message> {
     render_inner(
         state,
         user_profile,
@@ -98,7 +98,7 @@ fn render_inner<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> Element<'a, crate::Message> {
+) -> crate::ui::shell::ShellContent<'a, crate::Message> {
     let header = build_header(state);
 
     let profile_section = build_profile_section(
@@ -123,11 +123,12 @@ fn render_inner<'a>(
         }
     };
 
-    let mut col = column![header];
-    col = col.push(profile_section);
-    col = col.push(body);
-
-    col.spacing(0).into()
+    crate::ui::shell::ShellContent {
+        header,
+        top: Some(profile_section),
+        body,
+        footer: None,
+    }
 }
 
 fn build_profile_section<'a>(
@@ -163,7 +164,7 @@ fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
     let settings_btn = build_icon_button("\u{2699}", "Settings \u{2014} coming soon");
     let about_btn = build_icon_button("\u{24D8}", "About \u{2014} coming soon");
 
-    let header_row = row![
+    row![
         title_block,
         search_block,
         sort_block,
@@ -173,21 +174,8 @@ fn build_header(state: &ProfileViewState) -> Element<'_, crate::Message> {
         about_btn,
     ]
     .spacing(12)
-    .padding(Padding::default().left(16).right(16).top(12).bottom(12))
-    .align_y(Alignment::Center);
-
-    container(header_row)
-        .width(Length::Fill)
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
+    .align_y(Alignment::Center)
+    .into()
 }
 
 fn build_title_block(game_count: usize) -> Element<'static, crate::Message> {
