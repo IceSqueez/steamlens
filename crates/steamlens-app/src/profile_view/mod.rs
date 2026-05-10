@@ -15,7 +15,11 @@ use types::{
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
-pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task<crate::Message> {
+pub fn update(
+    state: &mut ProfileViewState,
+    message: ProfileViewMessage,
+    steam_running: Option<bool>,
+) -> Task<crate::Message> {
     match message {
         ProfileViewMessage::ScanComplete(enumerated) => {
             state.games = enumerated
@@ -154,7 +158,7 @@ pub fn update(state: &mut ProfileViewState, message: ProfileViewMessage) -> Task
 
             state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
 
-            if let types::LoaderPhase::Gamma = state.loader_phase() {
+            if let types::LoaderPhase::Gamma = state.loader_phase(steam_running) {
                 if state.loader_hiding_since.is_none() {
                     state.loader_hiding_since = Some(Instant::now());
                 }

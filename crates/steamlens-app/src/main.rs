@@ -1,3 +1,4 @@
+mod app_context;
 mod cache;
 mod capsule_cache;
 mod game_view;
@@ -15,16 +16,14 @@ mod ui;
 mod worker;
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Color, Element, Subscription, Task};
 
-use cache::{
-    CacheHit, CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry,
-};
+use app_context::{AnimationState, AppContext};
+use cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewMessage, GameViewState};
 use messaging::{BannerSeverity, FooterStatus, MessagingCenter, ToastKind};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
@@ -89,27 +88,11 @@ impl std::fmt::Debug for GameViewState {
 }
 
 struct App {
+    context: AppContext,
     screen: Screen,
-    worker: Option<SteamWorker>,
-    worker_rx: Option<mpsc::Receiver<SteamReply>>,
-    profile_view_state: Option<Box<ProfileViewState>>,
-    settings: Settings,
-    settings_dirty_since: Option<Instant>,
-    messaging: MessagingCenter,
-    cached_entries: HashMap<u32, GameCacheEntry>,
-    pending_hit_queue: VecDeque<CacheHit>,
-    steam_root: std::path::PathBuf,
-    steamid3: u64,
-    user_profile: Option<UserProfile>,
-    profile_avatar_handle: Option<iced::widget::image::Handle>,
     splash_min_elapsed: bool,
     splash_scan_done: bool,
     splash_probe_done: bool,
-    steam_running: Option<bool>,
-    steam_level: Option<u32>,
-    skeleton_phase: f32,
-    no_ach_cache: cache::NoAchievementsCache,
-    library_name_map: HashMap<u32, String>,
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
@@ -133,11 +116,9 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         .and_then(|p| p.avatar_png_bytes.as_ref())
         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
-    let app = App {
-        screen: Screen::ProfileView(Box::new(pv_state)),
+    let context = AppContext {
         worker: Some(worker),
         worker_rx: Some(rx),
-        profile_view_state: None,
         settings: loaded_settings,
         settings_dirty_since: None,
         messaging: MessagingCenter::new(),
@@ -147,14 +128,21 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         steamid3,
         user_profile,
         profile_avatar_handle,
+        steam_running: None,
+        steam_level: None,
+        no_ach_cache: cache::NoAchievementsCache::new(),
+        animation: AnimationState {
+            skeleton_phase: 0.0,
+        },
+        previous_profile_state: None,
+    };
+
+    let app = App {
+        context,
+        screen: Screen::ProfileView(Box::new(pv_state)),
         splash_min_elapsed: false,
         splash_scan_done: false,
         splash_probe_done: false,
-        steam_running: None,
-        steam_level: None,
-        skeleton_phase: 0.0,
-        no_ach_cache: cache::NoAchievementsCache::new(),
-        library_name_map: HashMap::new(),
     };
 
     let min_splash_task = Task::perform(
@@ -183,7 +171,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
 }
 
 fn drain_worker_replies(app: &mut App) -> Task<Message> {
-    let Some(rx) = &app.worker_rx else {
+    let Some(rx) = &app.context.worker_rx else {
         return Task::none();
     };
 
@@ -200,14 +188,14 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
         }
 
         if let SteamReply::Connected { .. } = &reply
-            && let Some(w) = &app.worker
+            && let Some(w) = &app.context.worker
         {
             w.send(SteamRequest::RequestUserStats);
             w.send(SteamRequest::RequestGlobalPercentages);
         }
 
         if let SteamReply::ResetDone = &reply
-            && let Some(w) = &app.worker
+            && let Some(w) = &app.context.worker
         {
             w.send(SteamRequest::RequestUserStats);
         }
@@ -227,29 +215,23 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
     }
 }
 
-fn mark_settings_dirty(app: &mut App) {
-    if app.settings_dirty_since.is_none() {
-        app.settings_dirty_since = Some(Instant::now());
-    }
-}
-
 fn disconnect_worker(app: &mut App) {
-    if let Some(w) = &app.worker {
+    if let Some(w) = &app.context.worker {
         w.send(SteamRequest::Disconnect);
     }
-    app.worker = None;
-    app.worker_rx = None;
+    app.context.worker = None;
+    app.context.worker_rx = None;
 }
 
 fn return_to_profile_view(app: &mut App) {
     disconnect_worker(app);
-    if let Some(stored) = app.profile_view_state.take() {
+    if let Some(stored) = app.context.previous_profile_state.take() {
         app.screen = Screen::ProfileView(stored);
     } else {
         let pv_state = ProfileViewState::new();
         let (worker, rx) = SteamWorker::spawn();
-        app.worker = Some(worker);
-        app.worker_rx = Some(rx);
+        app.context.worker = Some(worker);
+        app.context.worker_rx = Some(rx);
         app.screen = Screen::ProfileView(Box::new(pv_state));
     }
 }
@@ -266,10 +248,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let entry = build_game_view_cache_entry(
                             state,
                             app_id,
-                            &app.steam_root,
-                            app.steamid3,
+                            &app.context.steam_root,
+                            app.context.steamid3,
                         );
-                        app.cached_entries.insert(app_id, entry.clone());
+                        app.context.cached_entries.insert(app_id, entry.clone());
                         Task::perform(
                             async move {
                                 cache::write_game_cache(&entry)
@@ -294,6 +276,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ProfileView(pv_msg) => {
+            let steam_running = app.context.steam_running;
             match &pv_msg {
                 ProfileViewMessage::GameSelected(app_id) => {
                     let app_id = *app_id;
@@ -304,7 +287,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 ProfileViewMessage::RescanRequested => {
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let t = profile_view::update(pv_state, pv_msg);
+                        let t = profile_view::update(pv_state, pv_msg, steam_running);
                         let probe_task = Task::perform(
                             async {
                                 steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
@@ -318,12 +301,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return Task::none();
                 }
                 ProfileViewMessage::SortChanged(new_sort) => {
-                    app.settings.library.sort = *new_sort;
-                    mark_settings_dirty(app);
+                    let sort = *new_sort;
+                    let _ = app.context.update_settings(|s| s.library.sort = sort);
                 }
                 ProfileViewMessage::SearchChanged(new_search) => {
-                    app.settings.library.search = new_search.clone();
-                    mark_settings_dirty(app);
+                    let search = new_search.clone();
+                    let _ = app.context.update_settings(|s| s.library.search = search);
                 }
                 ProfileViewMessage::ProgressFetched { .. } => {
                     let (current, total) = if let Screen::ProfileView(pv) = &app.screen {
@@ -332,7 +315,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     } else {
                         (0, 0)
                     };
-                    app.messaging.footer = FooterStatus::Scanning {
+                    app.context.messaging.footer = FooterStatus::Scanning {
                         current,
                         total,
                         label: "Loading achievements\u{2026}".to_owned(),
@@ -344,7 +327,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     } else {
                         0
                     };
-                    app.messaging.footer = FooterStatus::Connected {
+                    app.context.messaging.footer = FooterStatus::Connected {
                         games,
                         last_sync: Some(std::time::Instant::now()),
                     };
@@ -356,7 +339,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         false
                     };
                     if is_first {
-                        app.messaging.push_banner(
+                        app.context.messaging.push_banner(
                             BannerSeverity::Warning,
                             reason.clone(),
                             None,
@@ -364,7 +347,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         );
                     }
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        return profile_view::update(pv_state, pv_msg);
+                        return profile_view::update(pv_state, pv_msg, steam_running);
                     }
                     return Task::none();
                 }
@@ -390,8 +373,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ProfileViewMessage::ScanComplete(enumerated) => {
                     app.splash_scan_done = true;
                     let games = enumerated.clone();
-                    let steam_root = app.steam_root.clone();
-                    let steamid3 = app.steamid3;
+                    let steam_root = app.context.steam_root.clone();
+                    let steamid3 = app.context.steamid3;
                     let classify_task = Task::perform(
                         async move { cache::classify_games(&games, &steam_root, steamid3).await },
                         Message::CacheClassified,
@@ -422,16 +405,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
 
                     if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let scan_task = profile_view::update(pv_state, pv_msg);
+                        let scan_task = profile_view::update(pv_state, pv_msg, steam_running);
                         tasks.push(scan_task);
 
-                        if !app.library_name_map.is_empty() {
+                        if !pv_state.library_name_map.is_empty() {
+                            let name_map = std::mem::take(&mut pv_state.library_name_map);
                             for game in &mut pv_state.games {
-                                if let Some(name) = app.library_name_map.get(&game.app_id) {
+                                if let Some(name) = name_map.get(&game.app_id) {
                                     game.name = Some(name.clone());
                                 }
                             }
-                            app.library_name_map.clear();
                         }
                     }
                     return Task::batch(tasks);
@@ -440,7 +423,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
 
             if let Screen::ProfileView(pv_state) = &mut app.screen {
-                return profile_view::update(pv_state, pv_msg);
+                return profile_view::update(pv_state, pv_msg, steam_running);
             }
             Task::none()
         }
@@ -452,13 +435,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 schema_bumped,
             } = result;
 
-            app.pending_hit_queue.extend(hits);
+            app.context.pending_hit_queue.extend(hits);
 
             if let Screen::ProfileView(pv_state) = &mut app.screen
                 && !dirty.is_empty()
             {
                 let total = pv_state.games.len();
-                app.messaging.footer = FooterStatus::Scanning {
+                app.context.messaging.footer = FooterStatus::Scanning {
                     current: 0,
                     total,
                     label: "Loading achievements\u{2026}".to_owned(),
@@ -469,7 +452,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
 
             if schema_bumped > 0 {
-                app.messaging.push_toast(
+                app.context.messaging.push_toast(
                     ToastKind::Info,
                     format!("Cache rebuilt: {} entries updated", schema_bumped),
                     None,
@@ -481,7 +464,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DrainHitQueue => {
             const HITS_PER_TICK: usize = 8;
             for _ in 0..HITS_PER_TICK {
-                let Some(hit) = app.pending_hit_queue.pop_front() else {
+                let Some(hit) = app.context.pending_hit_queue.pop_front() else {
                     break;
                 };
                 let mut entry = hit.entry;
@@ -496,7 +479,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         total: entry.progress.total,
                     });
                 }
-                app.cached_entries.insert(hit.app_id, entry);
+                app.context.cached_entries.insert(hit.app_id, entry);
             }
             Task::none()
         }
@@ -511,7 +494,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::ClearAllCache => {
             let cache_games_dir = settings::steamlens_root().join("cache").join("games");
             let cache_images_dir = settings::steamlens_root().join("cache").join("images");
-            app.cached_entries.clear();
+            app.context.cached_entries.clear();
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 for entry in &mut pv_state.games {
                     entry.progress = None;
@@ -533,14 +516,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ClearGameCache(app_id) => {
-            app.cached_entries.remove(&app_id);
+            app.context.cached_entries.remove(&app_id);
 
             if let Screen::ProfileView(pv_state) = &mut app.screen
                 && let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id)
             {
                 entry.progress = None;
             }
-            if let Some(pv_state) = &mut app.profile_view_state
+            if let Some(pv_state) = &mut app.context.previous_profile_state
                 && let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id)
             {
                 entry.progress = None;
@@ -566,7 +549,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 &mut app.screen,
                 Screen::GameView(Box::new(GameViewState::new(app_id))),
             ) {
-                app.profile_view_state = Some(pv_state);
+                app.context.previous_profile_state = Some(pv_state);
             }
 
             disconnect_worker(app);
@@ -575,18 +558,25 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             worker.send(SteamRequest::ConnectWithApp(app_id));
 
             let mut state = GameViewState::new(app_id);
-            state.filter = app.settings.manager.filter;
-            state.achievement_sort = app.settings.manager.sort;
-            state.rarity_tier_set = app.settings.manager.rarity_tiers.iter().copied().collect();
-            state.include_hidden = app.settings.manager.include_hidden;
-            state.search_query = app.settings.manager.search.clone();
+            state.filter = app.context.settings.manager.filter;
+            state.achievement_sort = app.context.settings.manager.sort;
+            state.rarity_tier_set = app
+                .context
+                .settings
+                .manager
+                .rarity_tiers
+                .iter()
+                .copied()
+                .collect();
+            state.include_hidden = app.context.settings.manager.include_hidden;
+            state.search_query = app.context.settings.manager.search.clone();
 
-            if let Some(cached) = app.cached_entries.get(&app_id) {
+            if let Some(cached) = app.context.cached_entries.get(&app_id) {
                 seed_game_view_from_cache(&mut state, cached);
             }
 
-            app.worker = Some(worker);
-            app.worker_rx = Some(rx);
+            app.context.worker = Some(worker);
+            app.context.worker_rx = Some(rx);
             app.screen = Screen::GameView(Box::new(state));
 
             Task::none()
@@ -602,35 +592,35 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             match &m {
                 GameViewMessage::FilterChanged(f) => {
-                    app.settings.manager.filter = *f;
-                    mark_settings_dirty(app);
+                    let filter = *f;
+                    let _ = app.context.update_settings(|s| s.manager.filter = filter);
                 }
                 GameViewMessage::AchievementSortChanged(s) => {
-                    app.settings.manager.sort = *s;
-                    mark_settings_dirty(app);
+                    let sort = *s;
+                    let _ = app.context.update_settings(|s| s.manager.sort = sort);
                 }
                 GameViewMessage::SearchChanged(q) => {
-                    app.settings.manager.search = q.clone();
-                    mark_settings_dirty(app);
+                    let query = q.clone();
+                    let _ = app.context.update_settings(|s| s.manager.search = query);
                 }
                 _ => {}
             }
 
             let task = if let Screen::GameView(state) = &mut app.screen
-                && let Some(worker) = &app.worker
+                && let Some(worker) = &app.context.worker
             {
                 game_view::update(state, m, worker)
             } else {
                 Task::none()
             };
 
-            if sync_after {
-                if let Screen::GameView(state) = &app.screen {
-                    app.settings.manager.rarity_tiers =
-                        state.rarity_tier_set.iter().copied().collect();
-                    app.settings.manager.include_hidden = state.include_hidden;
-                }
-                mark_settings_dirty(app);
+            if sync_after && let Screen::GameView(state) = &app.screen {
+                let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
+                let include_hidden = state.include_hidden;
+                let _ = app.context.update_settings(|s| {
+                    s.manager.rarity_tiers = tiers;
+                    s.manager.include_hidden = include_hidden;
+                });
             }
 
             task
@@ -661,9 +651,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 continue;
                             };
 
-                            // Record (app_id, change_number) so the next
-                            // boot skips this app until its package
-                            // advances.
                             if data.achievements.is_empty() {
                                 let change_number = pv_state
                                     .games
@@ -671,10 +658,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                     .find(|g| g.app_id == scan_app_id)
                                     .map(|g| g.change_number);
                                 pv_state.games.retain(|g| g.app_id != scan_app_id);
-                                app.cached_entries.remove(&scan_app_id);
+                                app.context.cached_entries.remove(&scan_app_id);
                                 if let Some(cn) = change_number {
-                                    app.no_ach_cache.insert(scan_app_id, cn);
-                                    let snapshot = app.no_ach_cache.clone();
+                                    app.context.no_ach_cache.insert(scan_app_id, cn);
+                                    let snapshot = app.context.no_ach_cache.clone();
                                     tasks.push(Task::perform(
                                         async move {
                                             cache::write_no_achievements_cache(&snapshot)
@@ -713,10 +700,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                         &data,
                                         scan_app_id,
                                         game.name.as_deref(),
-                                        &app.steam_root,
-                                        app.steamid3,
+                                        &app.context.steam_root,
+                                        app.context.steamid3,
                                     );
-                                    app.cached_entries.insert(scan_app_id, entry.clone());
+                                    app.context
+                                        .cached_entries
+                                        .insert(scan_app_id, entry.clone());
                                     tasks.push(Task::perform(
                                         async move {
                                             cache::write_game_cache(&entry)
@@ -749,11 +738,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::SettingsFlushTick => {
-            if let Some(since) = app.settings_dirty_since
+            if let Some(since) = app.context.settings_dirty_since
                 && since.elapsed() >= Duration::from_millis(200)
             {
-                app.settings_dirty_since = None;
-                let snapshot = app.settings.clone();
+                app.context.settings_dirty_since = None;
+                let snapshot = app.context.settings.clone();
                 return Task::perform(
                     async move {
                         settings::write_settings(&snapshot)
@@ -775,7 +764,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ToastRequest(msg) => {
-            app.messaging.push_toast(ToastKind::Info, msg, None);
+            app.context.messaging.push_toast(ToastKind::Info, msg, None);
             Task::none()
         }
 
@@ -785,18 +774,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::RetrySteamConnect => {
-            app.steam_running = None;
+            app.context.steam_running = None;
             app.splash_scan_done = false;
-            app.messaging
+            app.context
+                .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-            app.messaging.footer = FooterStatus::Scanning {
+            app.context.messaging.footer = FooterStatus::Scanning {
                 current: 0,
                 total: 0,
                 label: "Connecting to Steam\u{2026}".to_owned(),
             };
-            if let Screen::ProfileView(pv_state) = &mut app.screen {
-                pv_state.steam_running = None;
-            }
             Task::perform(
                 async {
                     steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
@@ -811,19 +798,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.splash_probe_done = true;
             match result {
                 Ok(p) => {
-                    app.steam_running = Some(true);
-                    app.messaging
+                    app.context.steam_running = Some(true);
+                    app.context
+                        .messaging
                         .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        pv_state.steam_running = Some(true);
-                    }
                     let account_name = app
+                        .context
                         .user_profile
                         .as_ref()
                         .map(|u| u.account_name.clone())
                         .unwrap_or_default();
-                    app.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
-                    app.profile_avatar_handle = p
+                    app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
+                    app.context.profile_avatar_handle = p
                         .avatar_image
                         .as_ref()
                         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
@@ -836,8 +822,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         p.avatar_image.clone(),
                         steam_root_opt,
                     );
-                    app.steam_level = p.steam_level;
-                    app.user_profile = Some(UserProfile {
+                    app.context.steam_level = p.steam_level;
+                    app.context.user_profile = Some(UserProfile {
                         steam_id: p.steam_id,
                         persona_name: p.persona_name,
                         account_name,
@@ -857,14 +843,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     if !p.game_summaries.is_empty() {
                         app.splash_scan_done = true;
-                        let no_ach = &app.no_ach_cache;
+                        let no_ach = &app.context.no_ach_cache;
                         let filtered: Vec<_> = p
                             .game_summaries
                             .into_iter()
                             .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
                             .collect();
                         let total = filtered.len();
-                        app.messaging.footer = FooterStatus::Scanning {
+                        app.context.messaging.footer = FooterStatus::Scanning {
                             current: 0,
                             total,
                             label: "Discovering library\u{2026}".to_owned(),
@@ -882,12 +868,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::batch(tasks)
                 }
                 Err(e) => {
-                    app.steam_running = Some(false);
-                    app.steam_level = None;
+                    app.context.steam_running = Some(false);
+                    app.context.steam_level = None;
                     app.splash_scan_done = true;
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        pv_state.steam_running = Some(false);
-                    }
                     eprintln!("[steamlens] probe failed: {e}");
 
                     let cached_count = if let Screen::ProfileView(pv) = &app.screen {
@@ -895,10 +878,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     } else {
                         0
                     };
-                    app.messaging.footer = FooterStatus::Offline {
+                    app.context.messaging.footer = FooterStatus::Offline {
                         cached_games: cached_count,
                     };
-                    app.messaging.push_banner(
+                    app.context.messaging.push_banner(
                         BannerSeverity::Warning,
                         "Steam is not running \u{2014} showing cached data",
                         Some(messaging::BannerAction {
@@ -920,16 +903,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let Some(cached) = maybe else {
                 return Task::none();
             };
-            if app.user_profile.is_some() && app.steam_running != Some(false) {
+            if app.context.user_profile.is_some() && app.context.steam_running != Some(false) {
                 return Task::none();
             }
-            app.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
-            app.steam_level = None;
-            app.profile_avatar_handle = cached
+            app.context.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
+            app.context.steam_level = None;
+            app.context.profile_avatar_handle = cached
                 .avatar_png_bytes
                 .as_ref()
                 .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
-            app.user_profile = Some(UserProfile {
+            app.context.user_profile = Some(UserProfile {
                 steam_id: cached.steam_id,
                 persona_name: cached.persona_name,
                 account_name: cached.account_name,
@@ -965,14 +948,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .filter(|e| !e.name.is_empty())
                 .map(|e| (e.app_id, e.name))
                 .collect();
-            app.library_name_map = name_map;
+            if let Screen::ProfileView(pv_state) = &mut app.screen {
+                pv_state.library_name_map = name_map;
+            }
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
             )))
         }
 
         Message::NoAchCacheLoaded(loaded) => {
-            app.no_ach_cache = loaded;
+            app.context.no_ach_cache = loaded;
             Task::none()
         }
 
@@ -991,27 +976,28 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ToastTick => {
-            app.messaging.tick_toasts();
+            app.context.messaging.tick_toasts();
             Task::none()
         }
 
         Message::ToastHovered(id, hovered) => {
-            app.messaging.set_toast_hovered(id, hovered);
+            app.context.messaging.set_toast_hovered(id, hovered);
             Task::none()
         }
 
         Message::DismissToast(id) => {
-            app.messaging.dismiss_toast(id);
+            app.context.messaging.dismiss_toast(id);
             Task::none()
         }
 
         Message::DismissBanner(id) => {
-            app.messaging.dismiss_banner(id);
+            app.context.messaging.dismiss_banner(id);
             Task::none()
         }
 
         Message::SkeletonTick => {
-            app.skeleton_phase = (app.skeleton_phase + 0.02) % 1.0;
+            app.context.animation.skeleton_phase =
+                (app.context.animation.skeleton_phase + 0.02) % 1.0;
             Task::none()
         }
 
@@ -1027,7 +1013,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     && let Screen::GameView(state) = &mut app.screen
                     && state.dirty_count() > 0
                     && !state.has_stat_errors()
-                    && let Some(w) = &app.worker
+                    && let Some(w) = &app.context.worker
                 {
                     return game_view::update(state, GameViewMessage::ApplyChanges, w);
                 }
@@ -1048,21 +1034,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             _ => Task::none(),
         },
 
-        Message::ToggleGamePin(app_id) => {
-            if let Some(pos) = app
-                .settings
-                .library
-                .pinned
-                .iter()
-                .position(|&id| id == app_id)
-            {
-                app.settings.library.pinned.remove(pos);
+        Message::ToggleGamePin(app_id) => app.context.update_settings(|s| {
+            if let Some(pos) = s.library.pinned.iter().position(|&id| id == app_id) {
+                s.library.pinned.remove(pos);
             } else {
-                app.settings.library.pinned.push(app_id);
+                s.library.pinned.push(app_id);
             }
-            mark_settings_dirty(app);
-            Task::none()
-        }
+        }),
     }
 }
 
@@ -1309,15 +1287,16 @@ fn build_game_view_cache_entry(
 }
 
 fn view(app: &App) -> Element<'_, Message> {
+    let skeleton_phase = app.context.animation.skeleton_phase;
     let screen_content: Element<'_, Message> = match &app.screen {
         Screen::ProfileView(pv_state) => crate::screen::compose_screen(profile_view::render(
             pv_state,
-            app.user_profile.as_ref(),
-            app.profile_avatar_handle.as_ref(),
-            &app.cached_entries,
-            app.skeleton_phase,
-            &app.settings.library.pinned,
-            app.steam_level,
+            app.context.user_profile.as_ref(),
+            app.context.profile_avatar_handle.as_ref(),
+            &app.context.cached_entries,
+            skeleton_phase,
+            &app.context.settings.library.pinned,
+            app.context.steam_level,
         )),
 
         Screen::SteamNotRunning { reason } => {
@@ -1336,7 +1315,7 @@ fn view(app: &App) -> Element<'_, Message> {
             center(content).into()
         }
 
-        Screen::GameView(state) => game_view::view(state, app.skeleton_phase),
+        Screen::GameView(state) => game_view::view(state, skeleton_phase),
     };
 
     let failed_count = if let Screen::ProfileView(pv_state) = &app.screen {
@@ -1345,7 +1324,7 @@ fn view(app: &App) -> Element<'_, Message> {
         0
     };
     let with_messaging =
-        messaging::wrap_with_messaging(screen_content, &app.messaging, failed_count);
+        messaging::wrap_with_messaging(screen_content, &app.context.messaging, failed_count);
 
     if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
         with_messaging
@@ -1400,7 +1379,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         }
     });
 
-    let poll_sub = if app.worker.is_some() {
+    let poll_sub = if app.context.worker.is_some() {
         iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollWorker)
     } else {
         Subscription::none()
@@ -1435,7 +1414,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let loader_pulse_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.loader_needs_pulse_subscription() {
+        if state.loader_needs_pulse_subscription(app.context.steam_running) {
             iced::time::every(std::time::Duration::from_millis(70))
                 .map(|_| Message::ProfileView(ProfileViewMessage::LoaderPulseTick))
         } else {
@@ -1451,19 +1430,19 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let settings_flush_sub = if app.settings_dirty_since.is_some() {
+    let settings_flush_sub = if app.context.settings_dirty_since.is_some() {
         iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick)
     } else {
         Subscription::none()
     };
 
-    let toast_sub = if app.messaging.has_active_toasts() {
+    let toast_sub = if app.context.messaging.has_active_toasts() {
         iced::time::every(Duration::from_millis(500)).map(|_| Message::ToastTick)
     } else {
         Subscription::none()
     };
 
-    let hit_drain_sub = if !app.pending_hit_queue.is_empty() {
+    let hit_drain_sub = if !app.context.pending_hit_queue.is_empty() {
         iced::time::every(Duration::from_millis(16)).map(|_| Message::DrainHitQueue)
     } else {
         Subscription::none()
@@ -1532,29 +1511,32 @@ mod tests {
     impl Default for App {
         fn default() -> Self {
             Self {
+                context: AppContext {
+                    worker: None,
+                    worker_rx: None,
+                    settings: Settings::default(),
+                    settings_dirty_since: None,
+                    messaging: MessagingCenter::new(),
+                    cached_entries: HashMap::new(),
+                    pending_hit_queue: VecDeque::new(),
+                    steam_root: std::path::PathBuf::from("/tmp"),
+                    steamid3: 0,
+                    user_profile: None,
+                    profile_avatar_handle: None,
+                    steam_running: Some(true),
+                    steam_level: None,
+                    no_ach_cache: cache::NoAchievementsCache::new(),
+                    animation: AnimationState {
+                        skeleton_phase: 0.0,
+                    },
+                    previous_profile_state: None,
+                },
                 screen: Screen::SteamNotRunning {
                     reason: String::new(),
                 },
-                worker: None,
-                worker_rx: None,
-                profile_view_state: None,
-                settings: Settings::default(),
-                settings_dirty_since: None,
-                messaging: MessagingCenter::new(),
-                cached_entries: HashMap::new(),
-                pending_hit_queue: VecDeque::new(),
-                steam_root: std::path::PathBuf::from("/tmp"),
-                steamid3: 0,
-                user_profile: None,
-                profile_avatar_handle: None,
                 splash_min_elapsed: true,
                 splash_scan_done: true,
                 splash_probe_done: true,
-                steam_running: Some(true),
-                steam_level: None,
-                skeleton_phase: 0.0,
-                no_ach_cache: cache::NoAchievementsCache::new(),
-                library_name_map: HashMap::new(),
             }
         }
     }
@@ -1580,7 +1562,10 @@ mod tests {
     async fn boot_starts_in_profile_view() {
         let (app, _task) = boot_with_settings(Settings::default());
         assert!(matches!(app.screen, Screen::ProfileView(_)));
-        assert!(app.worker.is_some(), "worker must be spawned immediately");
+        assert!(
+            app.context.worker.is_some(),
+            "worker must be spawned immediately"
+        );
     }
 
     #[tokio::test]
@@ -1600,9 +1585,9 @@ mod tests {
         app.splash_min_elapsed = false;
         app.splash_scan_done = false;
         app.splash_probe_done = false;
-        app.steam_running = None;
-        app.user_profile = None;
-        app.profile_avatar_handle = None;
+        app.context.steam_running = None;
+        app.context.user_profile = None;
+        app.context.profile_avatar_handle = None;
         app
     }
 
@@ -1618,13 +1603,20 @@ mod tests {
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
-        assert_eq!(app.steam_running, Some(true));
+        assert_eq!(app.context.steam_running, Some(true));
         assert!(app.splash_probe_done);
-        let profile = app.user_profile.as_ref().expect("profile must be set");
+        let profile = app
+            .context
+            .user_profile
+            .as_ref()
+            .expect("profile must be set");
         assert_eq!(profile.persona_name, "TestUser");
         assert_eq!(profile.steam_id, 76561198000000042);
-        assert_eq!(app.steamid3, 76561198000000042 - STEAMID64_INDIVIDUAL_MIN);
-        assert!(app.profile_avatar_handle.is_some());
+        assert_eq!(
+            app.context.steamid3,
+            76561198000000042 - STEAMID64_INDIVIDUAL_MIN
+        );
+        assert!(app.context.profile_avatar_handle.is_some());
     }
 
     #[test]
@@ -1636,16 +1628,17 @@ mod tests {
             account_name: "fallback".to_owned(),
             avatar_png_bytes: None,
         };
-        app.user_profile = Some(prior.clone());
+        app.context.user_profile = Some(prior.clone());
 
         let _t = update(
             &mut app,
             Message::ProbeResult(Err("Steam is not running".to_owned())),
         );
 
-        assert_eq!(app.steam_running, Some(false));
+        assert_eq!(app.context.steam_running, Some(false));
         assert!(app.splash_probe_done);
         let profile = app
+            .context
             .user_profile
             .as_ref()
             .expect("profile must be preserved");
@@ -1656,14 +1649,17 @@ mod tests {
     #[test]
     fn probe_result_err_with_no_prior_profile_keeps_none() {
         let mut app = make_app_probing();
-        assert!(app.user_profile.is_none(), "precondition: no prior profile");
+        assert!(
+            app.context.user_profile.is_none(),
+            "precondition: no prior profile"
+        );
 
         let _t = update(&mut app, Message::ProbeResult(Err("timeout".to_owned())));
 
-        assert_eq!(app.steam_running, Some(false));
+        assert_eq!(app.context.steam_running, Some(false));
         assert!(app.splash_probe_done);
         assert!(
-            app.user_profile.is_none(),
+            app.context.user_profile.is_none(),
             "no profile should remain None on probe error without disk fallback"
         );
     }
@@ -1707,7 +1703,7 @@ mod tests {
     #[test]
     fn profile_cache_loaded_populates_when_user_profile_is_none() {
         let mut app = make_app_probing();
-        app.steam_running = Some(false);
+        app.context.steam_running = Some(false);
         let cached = CachedProfile {
             schema_version: 2,
             steam_id: 76561198000000042,
@@ -1718,17 +1714,24 @@ mod tests {
             steam_root: None,
         };
         let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
-        let p = app.user_profile.as_ref().expect("profile must be set");
+        let p = app
+            .context
+            .user_profile
+            .as_ref()
+            .expect("profile must be set");
         assert_eq!(p.persona_name, "FromCache");
         assert_eq!(p.account_name, "cache_login");
-        assert_eq!(app.steamid3, 76561198000000042 - STEAMID64_INDIVIDUAL_MIN);
+        assert_eq!(
+            app.context.steamid3,
+            76561198000000042 - STEAMID64_INDIVIDUAL_MIN
+        );
     }
 
     #[test]
     fn profile_cache_loaded_skipped_when_probe_succeeded_first() {
         let mut app = make_app_probing();
-        app.steam_running = Some(true);
-        app.user_profile = Some(UserProfile {
+        app.context.steam_running = Some(true);
+        app.context.user_profile = Some(UserProfile {
             steam_id: 1,
             persona_name: "LiveFromProbe".to_owned(),
             account_name: "live".to_owned(),
@@ -1744,7 +1747,7 @@ mod tests {
             cached_at: 0,
         };
         let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
-        let p = app.user_profile.as_ref().unwrap();
+        let p = app.context.user_profile.as_ref().unwrap();
         assert_eq!(
             p.persona_name, "LiveFromProbe",
             "probe-Ok profile must not be overwritten by cache"
@@ -1754,16 +1757,16 @@ mod tests {
     #[test]
     fn profile_cache_loaded_none_is_noop() {
         let mut app = make_app_probing();
-        app.steam_running = Some(false);
+        app.context.steam_running = Some(false);
         let _t = update(&mut app, Message::ProfileCacheLoaded(None));
-        assert!(app.user_profile.is_none());
-        assert_eq!(app.steam_running, Some(false));
+        assert!(app.context.user_profile.is_none());
+        assert_eq!(app.context.steam_running, Some(false));
     }
 
     #[test]
     fn library_cache_loaded_some_dispatches_scan_complete_when_games_empty() {
         let mut app = make_app_probing();
-        app.steam_running = Some(false);
+        app.context.steam_running = Some(false);
         let cached = CachedLibrary {
             schema_version: 3,
             games: vec![CachedLibraryEntry {
@@ -1837,7 +1840,7 @@ mod tests {
             &mut app,
             Message::PersistentCacheWritten("profile", Err("disk full".to_owned())),
         );
-        assert_eq!(app.steam_running, None);
+        assert_eq!(app.context.steam_running, None);
     }
 
     fn make_game_entry_for_scan(app_id: u32, name: &str) -> crate::profile_view::types::GameEntry {
@@ -2028,14 +2031,13 @@ mod tests {
         };
 
         let mut state = ProfileViewState::new();
-        state.steam_running = Some(true);
         state.games.push(mk_entry(1, true));
         state.games.push(mk_entry(2, true));
         state.games.push(mk_entry(3, false));
         state.failed_app_ids.insert(3);
 
         assert_eq!(
-            state.loader_phase(),
+            state.loader_phase(Some(true)),
             LoaderPhase::Failed {
                 failed: 1,
                 total: 3
@@ -2047,9 +2049,8 @@ mod tests {
     #[test]
     fn loader_phase_steam_off_when_no_games_and_steam_off() {
         use crate::profile_view::types::{LoaderPhase, ProfileViewState};
-        let mut state = ProfileViewState::new();
-        state.steam_running = Some(false);
-        assert_eq!(state.loader_phase(), LoaderPhase::SteamOff);
+        let state = ProfileViewState::new();
+        assert_eq!(state.loader_phase(Some(false)), LoaderPhase::SteamOff);
     }
 
     #[test]
@@ -2057,7 +2058,7 @@ mod tests {
         use crate::profile_view::types::{LoaderPhase, ProfileViewState};
         let state = ProfileViewState::new();
         assert_eq!(
-            state.loader_phase(),
+            state.loader_phase(None),
             LoaderPhase::Alpha,
             "steam_running=None during boot probe → Alpha not SteamOff"
         );
@@ -2104,28 +2105,22 @@ mod tests {
     }
 
     #[test]
-    fn retry_steam_connect_resets_steam_running_and_pv_mirror() {
+    fn retry_steam_connect_resets_steam_running() {
         let mut app = make_app_probing();
-        app.steam_running = Some(false);
-        if let Screen::ProfileView(pv) = &mut app.screen {
-            pv.steam_running = Some(false);
-        }
+        app.context.steam_running = Some(false);
 
         let _t = update(&mut app, Message::RetrySteamConnect);
 
         assert_eq!(
-            app.steam_running, None,
-            "App.steam_running reset to None during re-probe"
+            app.context.steam_running, None,
+            "AppContext.steam_running reset to None during re-probe"
         );
-        if let Screen::ProfileView(pv) = &app.screen {
-            assert_eq!(pv.steam_running, None, "pv mirror also reset");
-        }
     }
 
     #[test]
     fn account_name_preserved_when_probe_succeeds() {
         let mut app = make_app_probing();
-        app.user_profile = Some(UserProfile {
+        app.context.user_profile = Some(UserProfile {
             steam_id: 1,
             persona_name: "OldName".to_owned(),
             account_name: "preserved_login".to_owned(),
@@ -2141,7 +2136,7 @@ mod tests {
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
-        let p = app.user_profile.as_ref().unwrap();
+        let p = app.context.user_profile.as_ref().unwrap();
         assert_eq!(p.persona_name, "LiveName", "persona overridden by probe");
         assert_eq!(
             p.account_name, "preserved_login",
@@ -2599,35 +2594,31 @@ mod tests {
 
         let mut app = App {
             screen: Screen::ProfileView(Box::new(pv_state)),
-            cached_entries: {
-                let mut m = HashMap::new();
-                m.insert(
-                    app_id,
-                    cache::GameCacheEntry {
-                        schema_version: cache::CURRENT_SCHEMA_VERSION,
-                        app_id,
-                        name: "Team Fortress 2".to_owned(),
-                        steam_last_played: 0,
-                        cached_at: 1_000,
-                        achievements: vec![],
-                        stats: vec![],
-                        progress: cache::types::CachedProgress {
-                            earned: 10,
-                            total: 520,
-                        },
-                        tier_breakdown: Vec::new(),
-                        genre: None,
-                    },
-                );
-                m
-            },
             ..App::default()
         };
+        app.context.cached_entries.insert(
+            app_id,
+            cache::GameCacheEntry {
+                schema_version: cache::CURRENT_SCHEMA_VERSION,
+                app_id,
+                name: "Team Fortress 2".to_owned(),
+                steam_last_played: 0,
+                cached_at: 1_000,
+                achievements: vec![],
+                stats: vec![],
+                progress: cache::types::CachedProgress {
+                    earned: 10,
+                    total: 520,
+                },
+                tier_breakdown: Vec::new(),
+                genre: None,
+            },
+        );
 
         let _task = update(&mut app, Message::ClearGameCache(app_id));
 
         assert!(
-            !app.cached_entries.contains_key(&app_id),
+            !app.context.cached_entries.contains_key(&app_id),
             "cached_entries must no longer contain the cleared app_id"
         );
 
@@ -2691,7 +2682,7 @@ mod tests {
         let _t = update(&mut app, Message::DrainProgressResults);
 
         assert!(
-            app.cached_entries.contains_key(&app_id),
+            app.context.cached_entries.contains_key(&app_id),
             "successful scan must insert into cached_entries"
         );
         if let Screen::ProfileView(pv) = &app.screen {
@@ -2739,7 +2730,7 @@ mod tests {
         let _t = update(&mut app, Message::DrainProgressResults);
 
         assert_eq!(
-            app.no_ach_cache.entries.get(&app_id).copied(),
+            app.context.no_ach_cache.entries.get(&app_id).copied(),
             Some(change_number),
             "empty-achievements scan must record (app_id, change_number) in no_ach_cache"
         );
@@ -2752,7 +2743,7 @@ mod tests {
             panic!("expected ProfileView screen");
         }
         assert!(
-            !app.cached_entries.contains_key(&app_id),
+            !app.context.cached_entries.contains_key(&app_id),
             "empty-achievements scan must drop any cached_entries for the app"
         );
     }
@@ -2789,8 +2780,11 @@ mod tests {
     async fn open_game_view_then_go_back_round_trip() {
         let app_id: u32 = 440;
         let pv_state = ProfileViewState::new();
-        let mut cached_entries = HashMap::new();
-        cached_entries.insert(
+        let mut app = App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            ..App::default()
+        };
+        app.context.cached_entries.insert(
             app_id,
             cache::GameCacheEntry {
                 schema_version: cache::CURRENT_SCHEMA_VERSION,
@@ -2808,11 +2802,6 @@ mod tests {
                 genre: None,
             },
         );
-        let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
-            cached_entries,
-            ..App::default()
-        };
 
         let _t = update(&mut app, Message::OpenGameView(app_id));
         assert!(
@@ -2820,15 +2809,15 @@ mod tests {
             "OpenGameView must switch to GameView screen"
         );
         assert!(
-            app.profile_view_state.is_some(),
+            app.context.previous_profile_state.is_some(),
             "ProfileView state must be stashed for restore"
         );
         assert!(
-            app.worker.is_some(),
+            app.context.worker.is_some(),
             "OpenGameView must respawn worker for the new app"
         );
         assert!(
-            app.cached_entries.contains_key(&app_id),
+            app.context.cached_entries.contains_key(&app_id),
             "cached entry must survive OpenGameView"
         );
 
@@ -2838,11 +2827,11 @@ mod tests {
             "GoBack from GameView must restore ProfileView screen"
         );
         assert!(
-            app.profile_view_state.is_none(),
+            app.context.previous_profile_state.is_none(),
             "stash must be consumed when restoring ProfileView"
         );
         assert!(
-            app.cached_entries.contains_key(&app_id),
+            app.context.cached_entries.contains_key(&app_id),
             "cached entry must survive GoBack (overwritten with fresh game-view snapshot)"
         );
     }
