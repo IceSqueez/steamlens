@@ -46,6 +46,8 @@ pub enum GameViewMessage {
     RevealTick,
     GameViewFadeTick,
     RareGlowTick,
+    // PR3 bridge variant — translated to App-level Message::GoBack by main.rs; replaced by OutEvent in PR4.
+    GoBackProxy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -145,7 +147,7 @@ impl GameViewState {
     }
 }
 
-pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<crate::Message> {
+pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<GameViewMessage> {
     match reply {
         SteamReply::Connected { app_name, .. } => {
             if let Some(name) = app_name {
@@ -292,7 +294,7 @@ pub fn update(
     state: &mut GameViewState,
     message: GameViewMessage,
     worker: &SteamWorker,
-) -> Task<crate::Message> {
+) -> Task<GameViewMessage> {
     match message {
         GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
@@ -504,17 +506,19 @@ pub fn update(
             state.rare_glow_phase = (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
             Task::none()
         }
+
+        GameViewMessage::GoBackProxy => Task::none(),
     }
 }
 
 pub fn view(
     state: &GameViewState,
     props: view::GameViewProps,
-) -> iced::Element<'_, crate::Message> {
+) -> iced::Element<'_, GameViewMessage> {
     view::render(state, props)
 }
 
-pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message> {
+pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage> {
     use iced::time;
 
     let needs_spinner = matches!(
@@ -532,22 +536,19 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message>
         || (state.phase == GameViewPhase::Ready && state.has_fading_cards());
 
     let spinner_sub = if needs_tick {
-        time::every(std::time::Duration::from_millis(33))
-            .map(|_| crate::Message::GameView(GameViewMessage::SpinnerTick))
+        time::every(std::time::Duration::from_millis(33)).map(|_| GameViewMessage::SpinnerTick)
     } else {
         iced::Subscription::none()
     };
 
     let reveal_sub = if state.has_pending_reveals() {
-        time::every(std::time::Duration::from_millis(30))
-            .map(|_| crate::Message::GameView(GameViewMessage::RevealTick))
+        time::every(std::time::Duration::from_millis(30)).map(|_| GameViewMessage::RevealTick)
     } else {
         iced::Subscription::none()
     };
 
     let fade_sub = if state.has_fading_cards() {
-        time::every(std::time::Duration::from_millis(33))
-            .map(|_| crate::Message::GameView(GameViewMessage::GameViewFadeTick))
+        time::every(std::time::Duration::from_millis(33)).map(|_| GameViewMessage::GameViewFadeTick)
     } else {
         iced::Subscription::none()
     };
@@ -561,8 +562,7 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message>
                     .is_some_and(|&t| t == types::RarityTier::Legendary)
         });
     let glow_sub = if has_legendary {
-        time::every(std::time::Duration::from_millis(40))
-            .map(|_| crate::Message::GameView(GameViewMessage::RareGlowTick))
+        time::every(std::time::Duration::from_millis(40)).map(|_| GameViewMessage::RareGlowTick)
     } else {
         iced::Subscription::none()
     };

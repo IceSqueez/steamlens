@@ -204,7 +204,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             continue;
         };
 
-        let t = game_view::handle_steam_reply(state, reply);
+        let t = game_view::handle_steam_reply(state, reply).map(Message::GameView);
         tasks.push(t);
     }
 
@@ -275,7 +275,27 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::ProfileView(ProfileViewMessage::ToastRequestProxy(text)) => {
+            update(app, Message::ToastRequest(text))
+        }
+
+        Message::ProfileView(ProfileViewMessage::ToggleGamePinProxy(app_id)) => {
+            update(app, Message::ToggleGamePin(app_id))
+        }
+
+        Message::ProfileView(ProfileViewMessage::OpenGameViewProxy(app_id)) => {
+            update(app, Message::OpenGameView(app_id))
+        }
+
         Message::ProfileView(pv_msg) => {
+            let Screen::ProfileView(pv_state) = &mut app.screen else {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[steamlens] dropped stale ProfileView message: {pv_msg:?} (current screen: not ProfileView)"
+                );
+                return Task::none();
+            };
+
             let steam_running = app.context.steam_running;
             match &pv_msg {
                 ProfileViewMessage::GameSelected(app_id) => {
@@ -286,19 +306,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return update(app, Message::OpenGameView(app_id));
                 }
                 ProfileViewMessage::RescanRequested => {
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let t = profile_view::update(pv_state, pv_msg, steam_running);
-                        let probe_task = Task::perform(
-                            async {
-                                steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            Message::ProbeResult,
-                        );
-                        return Task::batch([t, probe_task]);
-                    }
-                    return Task::none();
+                    let t = profile_view::update(pv_state, pv_msg, steam_running)
+                        .map(Message::ProfileView);
+                    let probe_task = Task::perform(
+                        async {
+                            steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::ProbeResult,
+                    );
+                    return Task::batch([t, probe_task]);
                 }
                 ProfileViewMessage::SortChanged(new_sort) => {
                     let sort = *new_sort;
@@ -309,35 +327,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     let _ = app.context.update_settings(|s| s.library.search = search);
                 }
                 ProfileViewMessage::ProgressFetched { .. } => {
-                    let (current, total) = if let Screen::ProfileView(pv) = &app.screen {
-                        let with_prog = pv.games.iter().filter(|g| g.progress.is_some()).count();
-                        (with_prog, pv.games.len())
-                    } else {
-                        (0, 0)
-                    };
+                    let with_prog = pv_state
+                        .games
+                        .iter()
+                        .filter(|g| g.progress.is_some())
+                        .count();
+                    let total = pv_state.games.len();
                     app.context.messaging.footer = FooterStatus::Scanning {
-                        current,
+                        current: with_prog,
                         total,
                         label: "Loading achievements\u{2026}".to_owned(),
                     };
                 }
                 ProfileViewMessage::ProgressScanDone => {
-                    let games = if let Screen::ProfileView(pv) = &app.screen {
-                        pv.games.len()
-                    } else {
-                        0
-                    };
                     app.context.messaging.footer = FooterStatus::Connected {
-                        games,
+                        games: pv_state.games.len(),
                         last_sync: Some(std::time::Instant::now()),
                     };
                 }
                 ProfileViewMessage::ScanFailed(reason) => {
-                    let is_first = if let Screen::ProfileView(pv_state) = &app.screen {
-                        pv_state.failed_app_ids.len() == 1
-                    } else {
-                        false
-                    };
+                    let is_first = pv_state.failed_app_ids.len() == 1;
                     if is_first {
                         app.context.messaging.push_banner(
                             BannerSeverity::Warning,
@@ -346,28 +355,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             true,
                         );
                     }
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        return profile_view::update(pv_state, pv_msg, steam_running);
-                    }
-                    return Task::none();
+                    return profile_view::update(pv_state, pv_msg, steam_running)
+                        .map(Message::ProfileView);
                 }
                 ProfileViewMessage::RetryFailedScans => {
-                    let failed_ids: Vec<u32> =
-                        if let Screen::ProfileView(pv_state) = &mut app.screen {
-                            let ids: Vec<u32> = pv_state.failed_app_ids.iter().copied().collect();
-                            pv_state.failed_app_ids.clear();
-                            ids
-                        } else {
-                            Vec::new()
-                        };
-                    if failed_ids.is_empty() {
+                    let ids: Vec<u32> = pv_state.failed_app_ids.iter().copied().collect();
+                    pv_state.failed_app_ids.clear();
+                    if ids.is_empty() {
                         return Task::none();
                     }
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let mut scanner = crate::progress_scan::ProgressScanner::new(failed_ids);
-                        pv_state.progress_rx = scanner.take_receiver();
-                        pv_state.progress_scanner = Some(scanner);
-                    }
+                    let mut scanner = crate::progress_scan::ProgressScanner::new(ids);
+                    pv_state.progress_rx = scanner.take_receiver();
+                    pv_state.progress_scanner = Some(scanner);
                     return Task::none();
                 }
                 ProfileViewMessage::ScanComplete(enumerated) => {
@@ -404,16 +403,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         ));
                     }
 
-                    if let Screen::ProfileView(pv_state) = &mut app.screen {
-                        let scan_task = profile_view::update(pv_state, pv_msg, steam_running);
-                        tasks.push(scan_task);
+                    let scan_task = profile_view::update(pv_state, pv_msg, steam_running)
+                        .map(Message::ProfileView);
+                    tasks.push(scan_task);
 
-                        if !pv_state.library_name_map.is_empty() {
-                            let name_map = std::mem::take(&mut pv_state.library_name_map);
-                            for game in &mut pv_state.games {
-                                if let Some(name) = name_map.get(&game.app_id) {
-                                    game.name = Some(name.clone());
-                                }
+                    if !pv_state.library_name_map.is_empty() {
+                        let name_map = std::mem::take(&mut pv_state.library_name_map);
+                        for game in &mut pv_state.games {
+                            if let Some(name) = name_map.get(&game.app_id) {
+                                game.name = Some(name.clone());
                             }
                         }
                     }
@@ -422,10 +420,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 _ => {}
             }
 
-            if let Screen::ProfileView(pv_state) = &mut app.screen {
-                return profile_view::update(pv_state, pv_msg, steam_running);
-            }
-            Task::none()
+            profile_view::update(pv_state, pv_msg, steam_running).map(Message::ProfileView)
         }
 
         Message::CacheClassified(result) => {
@@ -582,7 +577,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::GameView(GameViewMessage::GoBackProxy) => update(app, Message::GoBack),
+
         Message::GameView(m) => {
+            let Screen::GameView(state) = &mut app.screen else {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[steamlens] dropped stale GameView message: {m:?} (current screen: not GameView)"
+                );
+                return Task::none();
+            };
+
             let sync_after = matches!(
                 &m,
                 GameViewMessage::RarityTierToggled(_)
@@ -606,15 +611,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 _ => {}
             }
 
-            let task = if let Screen::GameView(state) = &mut app.screen
-                && let Some(worker) = &app.context.worker
-            {
-                game_view::update(state, m, worker)
+            let task = if let Some(worker) = &app.context.worker {
+                game_view::update(state, m, worker).map(Message::GameView)
             } else {
                 Task::none()
             };
 
-            if sync_after && let Screen::GameView(state) = &app.screen {
+            if sync_after {
                 let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
                 let include_hidden = state.include_hidden;
                 let _ = app.context.update_settings(|s| {
@@ -1015,7 +1018,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     && !state.has_stat_errors()
                     && let Some(w) = &app.context.worker
                 {
-                    return game_view::update(state, GameViewMessage::ApplyChanges, w);
+                    return game_view::update(state, GameViewMessage::ApplyChanges, w)
+                        .map(Message::GameView);
                 }
                 if modifiers.command() && c.as_str() == "f" {
                     return Task::done(Message::FocusSearch);
@@ -1300,6 +1304,7 @@ fn view(app: &App) -> Element<'_, Message> {
                 steam_running: app.context.steam_running,
             };
             crate::screen::compose_screen(profile_view::render(pv_state, props))
+                .map(Message::ProfileView)
         }
 
         Screen::SteamNotRunning { reason } => {
@@ -1320,7 +1325,7 @@ fn view(app: &App) -> Element<'_, Message> {
 
         Screen::GameView(state) => {
             let props = game_view::GameViewProps { skeleton_phase };
-            game_view::view(state, props)
+            game_view::view(state, props).map(Message::GameView)
         }
     };
 
@@ -1392,7 +1397,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let game_view_sub = if let Screen::GameView(state) = &app.screen {
-        game_view::subscription(state)
+        game_view::subscription(state).map(Message::GameView)
     } else {
         Subscription::none()
     };

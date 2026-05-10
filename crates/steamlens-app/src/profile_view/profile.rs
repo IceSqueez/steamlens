@@ -284,7 +284,7 @@ pub struct ProfileWidgetParams<'a> {
     pub steam_level: Option<u32>,
 }
 
-pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, crate::Message> {
+pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, ProfileViewMessage> {
     let left_col = build_left_column(
         params.user_profile,
         params.avatar_handle,
@@ -345,7 +345,7 @@ fn build_left_column<'a>(
     skeleton_phase: f32,
     hovered_bar_slice: Option<RarityTier>,
     steam_level: Option<u32>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let header_row = build_profile_header(
         user_profile,
         avatar_handle,
@@ -377,7 +377,7 @@ fn build_profile_header<'a>(
     games_count: usize,
     skeleton_phase: f32,
     steam_level: Option<u32>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let persona = user_profile
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
@@ -451,7 +451,7 @@ const AVATAR_SIZE: f32 = 100.0;
 fn build_avatar<'a>(
     avatar_handle: Option<&'a ImageHandle>,
     skeleton_phase: f32,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     if let Some(handle) = avatar_handle {
         return container(
             image_widget(handle.clone())
@@ -473,7 +473,7 @@ fn build_avatar<'a>(
     crate::skeleton::skeleton_box(AVATAR_SIZE, AVATAR_SIZE, skeleton_phase)
 }
 
-fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, crate::Message> {
+fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, ProfileViewMessage> {
     let tiers: [(RarityTier, u32); 5] = [
         (RarityTier::Common, summary.common_count),
         (RarityTier::Uncommon, summary.uncommon_count),
@@ -508,7 +508,7 @@ fn build_count_card<'a>(
     label: &'static str,
     count: u32,
     pct: f64,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let count_str = format_thousands(count);
     let pct_str = format!("{pct:.1}%");
 
@@ -543,7 +543,7 @@ fn build_count_card<'a>(
         .into()
 }
 
-fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, crate::Message> {
+fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, ProfileViewMessage> {
     let total = summary.achievement_total;
     let earned = summary.earned_total;
     let remaining = total.saturating_sub(earned);
@@ -572,7 +572,7 @@ fn build_cards_separator(summary: &ProfileSummary) -> Element<'static, crate::Me
     column![separator, label_row].spacing(6).into()
 }
 
-fn build_breakdown_label() -> Element<'static, crate::Message> {
+fn build_breakdown_label() -> Element<'static, ProfileViewMessage> {
     text("ACHIEVEMENTS BREAKDOWN")
         .size(10)
         .color(C_TEXT_MUTED)
@@ -582,7 +582,7 @@ fn build_breakdown_label() -> Element<'static, crate::Message> {
 fn build_rarity_bar<'a>(
     summary: &ProfileSummary,
     hovered_bar_slice: Option<RarityTier>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let tier_counts: [(RarityTier, u32); 5] = [
         (RarityTier::Common, summary.common_count),
         (RarityTier::Uncommon, summary.uncommon_count),
@@ -665,16 +665,14 @@ fn build_rarity_bar<'a>(
     let tier_lookup = tier_at.clone();
     let tip_lookup = tooltips.clone();
 
-    let bar: Element<'a, crate::Message> = segmented_bar(segments, Length::Fill, BAR_HEIGHT)
+    let bar: Element<'a, ProfileViewMessage> = segmented_bar(segments, Length::Fill, BAR_HEIGHT)
         .theme(AppTheme::Dark)
         .radius(BAR_RADIUS)
         .hovered(hovered_idx)
         .on_hover(
             move |idx| match idx.and_then(|i| tier_lookup.get(i).copied().flatten()) {
-                Some(tier) => {
-                    crate::Message::ProfileView(ProfileViewMessage::BarSliceHoverEnter(tier))
-                }
-                None => crate::Message::ProfileView(ProfileViewMessage::BarSliceHoverExit),
+                Some(tier) => ProfileViewMessage::BarSliceHoverEnter(tier),
+                None => ProfileViewMessage::BarSliceHoverExit,
             },
         )
         .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default())
@@ -699,8 +697,8 @@ fn summary_unrated_earned(
 fn build_tick_marks(
     tick_thresholds: [u8; 5],
     unlocked_pct: f32,
-) -> Element<'static, crate::Message> {
-    let mut ticks_row: iced::widget::Row<'static, crate::Message> = row![].spacing(0);
+) -> Element<'static, ProfileViewMessage> {
+    let mut ticks_row: iced::widget::Row<'static, ProfileViewMessage> = row![].spacing(0);
     let lit_color = overall_tier_color(unlocked_pct);
 
     for (i, threshold) in tick_thresholds.iter().enumerate() {
@@ -753,7 +751,7 @@ fn build_right_column<'a>(
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let header = text("CLOSEST TO 100%").size(11).color(C_TEXT_MUTED);
 
     if top5.is_empty() {
@@ -784,11 +782,11 @@ fn build_closest_row<'a>(
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     const CAPSULE_W: f32 = 60.0;
     const CAPSULE_H: f32 = 22.0;
 
-    let capsule_el: Element<'a, crate::Message> =
+    let capsule_el: Element<'a, ProfileViewMessage> =
         if let Some(stored) = capsule_handles.get(&(entry.app_id, capsule_size)) {
             container(
                 image_widget(stored.handle.clone())
@@ -845,7 +843,7 @@ fn build_closest_row<'a>(
     });
 
     button(row_container)
-        .on_press(crate::Message::OpenGameView(app_id))
+        .on_press(ProfileViewMessage::OpenGameViewProxy(app_id))
         .padding(0)
         .style(|_: &iced::Theme, _status| button::Style {
             background: None,

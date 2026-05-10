@@ -83,7 +83,7 @@ pub struct ProfileViewProps<'a> {
 pub fn render<'a>(
     state: &'a ProfileViewState,
     props: ProfileViewProps<'a>,
-) -> crate::screen::ScreenContent<'a, crate::Message> {
+) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
     let header = build_header(state, props.steam_running);
 
     let profile_section = build_profile_section(
@@ -95,7 +95,7 @@ pub fn render<'a>(
         props.steam_level,
     );
 
-    let body: Element<'_, crate::Message> = match &state.phase {
+    let body: Element<'_, ProfileViewMessage> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
         ProfileViewPhase::Loaded => {
             let visible = state.visible_games(props.pinned);
@@ -129,7 +129,7 @@ fn build_profile_section<'a>(
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     steam_level: Option<u32>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let summary = compute_profile_summary(cached_entries);
     let top5 = top5_closest_to_complete(&state.games, cached_entries);
     profile_widget(ProfileWidgetParams {
@@ -149,7 +149,7 @@ fn build_profile_section<'a>(
 fn build_header(
     state: &ProfileViewState,
     steam_running: Option<bool>,
-) -> Element<'_, crate::Message> {
+) -> Element<'_, ProfileViewMessage> {
     let title_block = build_title_block(state.games.len(), steam_running);
     let search_block = build_search_block(state);
     let sort_block = build_sort_segment(state.sort);
@@ -175,7 +175,7 @@ fn build_header(
 fn build_title_block(
     game_count: usize,
     steam_running: Option<bool>,
-) -> Element<'static, crate::Message> {
+) -> Element<'static, ProfileViewMessage> {
     let title = text("Library").size(22).color(C_ACCENT);
     let count = text(format!("{game_count} games"))
         .size(12)
@@ -195,10 +195,10 @@ pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
 }
 
-fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
+fn build_search_block(state: &ProfileViewState) -> Element<'_, ProfileViewMessage> {
     let input = text_input("Search games\u{2026}", &state.search)
         .id(library_search_id())
-        .on_input(|s| crate::Message::ProfileView(ProfileViewMessage::SearchChanged(s)))
+        .on_input(ProfileViewMessage::SearchChanged)
         .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .size(13)
         .style(
@@ -249,21 +249,21 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, crate::Message> {
         .into()
 }
 
-fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {
+fn build_sort_segment(current: LibrarySort) -> Element<'static, ProfileViewMessage> {
     let label = text("SORT").size(11).color(C_TEXT_MUTED);
     let order = [
         LibrarySort::NameAsc,
         LibrarySort::LastPlayed,
         LibrarySort::Completion,
     ];
-    let items: Vec<(&'static str, Option<&'static str>, bool, crate::Message)> = order
+    let items: Vec<(&'static str, Option<&'static str>, bool, ProfileViewMessage)> = order
         .iter()
         .map(|&s| {
             (
                 s.short_label(),
                 Some(s.tooltip()),
                 current == s,
-                crate::Message::ProfileView(ProfileViewMessage::SortChanged(s)),
+                ProfileViewMessage::SortChanged(s),
             )
         })
         .collect();
@@ -274,28 +274,26 @@ fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> 
         .into()
 }
 
-fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> {
+fn build_size_segment(current: CapsuleSize) -> Element<'static, ProfileViewMessage> {
     let label = text("SIZE").size(11).color(C_TEXT_MUTED);
     let segment = segment_row(&[
         (
             "S",
             None,
             current == CapsuleSize::Small,
-            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Small)),
+            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Small),
         ),
         (
             "M",
             None,
             current == CapsuleSize::Medium,
-            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(
-                CapsuleSize::Medium,
-            )),
+            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Medium),
         ),
         (
             "L",
             None,
             current == CapsuleSize::Large,
-            crate::Message::ProfileView(ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Large)),
+            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Large),
         ),
     ]);
     row![label, segment]
@@ -305,8 +303,8 @@ fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> 
 }
 
 fn segment_row(
-    items: &[(&'static str, Option<&'static str>, bool, crate::Message)],
-) -> Element<'static, crate::Message> {
+    items: &[(&'static str, Option<&'static str>, bool, ProfileViewMessage)],
+) -> Element<'static, ProfileViewMessage> {
     let mut r = row![].spacing(0).align_y(Alignment::Center);
     let last_idx = items.len().saturating_sub(1);
 
@@ -350,7 +348,7 @@ fn segment_row(
             }
         });
 
-        let item_el: Element<'static, crate::Message> = match hint {
+        let item_el: Element<'static, ProfileViewMessage> = match hint {
             Some(text_str) => tooltip_box(btn, *text_str, tooltip::Position::Bottom),
             None => btn.into(),
         };
@@ -381,7 +379,7 @@ fn segment_row(
         .into()
 }
 
-fn build_rescan_button() -> Element<'static, crate::Message> {
+fn build_rescan_button() -> Element<'static, ProfileViewMessage> {
     button(
         row![
             text("\u{21BB}").size(12).color(C_APP),
@@ -390,9 +388,7 @@ fn build_rescan_button() -> Element<'static, crate::Message> {
         .spacing(5)
         .align_y(Alignment::Center),
     )
-    .on_press(crate::Message::ProfileView(
-        ProfileViewMessage::RescanRequested,
-    ))
+    .on_press(ProfileViewMessage::RescanRequested)
     .padding(Padding::default().left(14).right(14).top(7).bottom(7))
     .style(|_: &iced::Theme, status| {
         let hovered = matches!(
@@ -419,7 +415,7 @@ fn build_rescan_button() -> Element<'static, crate::Message> {
 fn build_icon_button(
     glyph: &'static str,
     toast_msg: &'static str,
-) -> Element<'static, crate::Message> {
+) -> Element<'static, ProfileViewMessage> {
     button(
         container(text(glyph).size(14).color(C_TEXT_MUTED))
             .width(Length::Fixed(32.0))
@@ -427,7 +423,7 @@ fn build_icon_button(
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
     )
-    .on_press(crate::Message::ToastRequest(toast_msg.to_owned()))
+    .on_press(ProfileViewMessage::ToastRequestProxy(toast_msg.to_owned()))
     .padding(0)
     .style(|_: &iced::Theme, status| {
         let hovered = matches!(
@@ -462,7 +458,7 @@ fn build_grid<'a>(
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
     let hovered_card = state.hovered_card;
@@ -473,12 +469,12 @@ fn build_grid<'a>(
     let grid = responsive(move |size| {
         let (cols, gap) = compute_grid(size.width, card_w, MIN_GAP);
 
-        let mut rows_col: iced::widget::Column<'_, crate::Message> = column![]
+        let mut rows_col: iced::widget::Column<'_, ProfileViewMessage> = column![]
             .spacing(CARD_GAP as u32)
             .padding(Padding::default().top(8).bottom(8));
 
         for chunk in entries.chunks(cols) {
-            let mut r: iced::widget::Row<'_, crate::Message> =
+            let mut r: iced::widget::Row<'_, ProfileViewMessage> =
                 row![iced::widget::Space::new().width(Length::Fixed(gap))];
             for entry in chunk {
                 let app_id = entry.app_id;
@@ -560,7 +556,7 @@ fn build_card<'a>(
     is_pinned: bool,
     is_hovered: bool,
     hovered_tier: Option<RarityTier>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let app_id = entry.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
     let total_h = total_card_height(capsule_h);
@@ -569,12 +565,8 @@ fn build_card<'a>(
         let inner =
             build_skeleton_card(entry, card_w, capsule_w, capsule_h, total_h, skeleton_phase);
         return mouse_area(inner)
-            .on_enter(crate::Message::ProfileView(
-                ProfileViewMessage::CardHoverEnter(app_id),
-            ))
-            .on_exit(crate::Message::ProfileView(
-                ProfileViewMessage::CardHoverExit(app_id),
-            ))
+            .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
+            .on_exit(ProfileViewMessage::CardHoverExit(app_id))
             .into();
     }
 
@@ -593,12 +585,8 @@ fn build_card<'a>(
     });
 
     mouse_area(inner)
-        .on_enter(crate::Message::ProfileView(
-            ProfileViewMessage::CardHoverEnter(app_id),
-        ))
-        .on_exit(crate::Message::ProfileView(
-            ProfileViewMessage::CardHoverExit(app_id),
-        ))
+        .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
+        .on_exit(ProfileViewMessage::CardHoverExit(app_id))
         .into()
 }
 
@@ -609,7 +597,7 @@ fn build_skeleton_card<'a>(
     capsule_h: f32,
     total_h: f32,
     phase: f32,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let title_width_ratio = match entry.app_id % 5 {
         0 => 0.75,
         1 => 0.60,
@@ -707,7 +695,7 @@ struct HydratedCardParams<'a> {
     hovered_tier: Option<RarityTier>,
 }
 
-fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Message> {
+fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileViewMessage> {
     let HydratedCardParams {
         entry,
         app_id,
@@ -721,7 +709,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         is_hovered,
         hovered_tier,
     } = p;
-    let capsule_area: Element<'_, crate::Message> = match &entry.capsule {
+    let capsule_area: Element<'_, ProfileViewMessage> = match &entry.capsule {
         CapsuleAsset::Loaded { handle, .. } => container(
             container(
                 img_widget(handle.clone())
@@ -771,7 +759,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
             .into(),
     };
 
-    let hover_overlay: Element<'_, crate::Message> = if is_hovered || is_pinned {
+    let hover_overlay: Element<'_, ProfileViewMessage> = if is_hovered || is_pinned {
         build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
     } else {
         iced::widget::Space::new()
@@ -823,9 +811,7 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, crate::Mess
         .radius(6.0)
         .hovered(is_hovered)
         .accent_maybe(accent)
-        .on_press(crate::Message::ProfileView(
-            ProfileViewMessage::GameSelected(app_id),
-        ))
+        .on_press(ProfileViewMessage::GameSelected(app_id))
         .into()
 }
 
@@ -836,7 +822,7 @@ fn build_tier_stacked_bar<'a>(
     total_achievements: u32,
     card_w: f32,
     hovered_tier: Option<RarityTier>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     const BAR_H: f32 = 8.0;
     const TIER_ORDER: [RarityTier; 5] = [
         RarityTier::Common,
@@ -892,15 +878,16 @@ fn build_tier_stacked_bar<'a>(
     let tier_lookup = tier_at.clone();
     let tip_lookup = tooltips.clone();
 
-    let bar: Element<'a, crate::Message> = segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
-        .theme(AppTheme::Dark)
-        .hovered(hovered_idx)
-        .on_hover(move |idx| {
-            let tier = idx.and_then(|i| tier_lookup.get(i).copied().flatten());
-            crate::Message::ProfileView(ProfileViewMessage::CardTierHovered { app_id, tier })
-        })
-        .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default())
-        .into();
+    let bar: Element<'a, ProfileViewMessage> =
+        segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
+            .theme(AppTheme::Dark)
+            .hovered(hovered_idx)
+            .on_hover(move |idx| {
+                let tier = idx.and_then(|i| tier_lookup.get(i).copied().flatten());
+                ProfileViewMessage::CardTierHovered { app_id, tier }
+            })
+            .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default())
+            .into();
 
     container(bar)
         .width(Length::Fixed(card_w))
@@ -924,7 +911,7 @@ fn build_hover_overlay<'a>(
     is_pinned: bool,
     card_w: f32,
     capsule_h: f32,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let pin_label = if is_pinned {
         "\u{2299} Unpin"
     } else {
@@ -936,7 +923,7 @@ fn build_hover_overlay<'a>(
                 .size(11)
                 .color(if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY }),
         )
-        .on_press(crate::Message::ToggleGamePin(app_id))
+        .on_press(ProfileViewMessage::ToggleGamePinProxy(app_id))
         .padding(Padding::default().left(10).right(10).top(4).bottom(4))
         .style(move |_: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -972,13 +959,13 @@ fn build_hover_overlay<'a>(
         .into()
 }
 
-fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, crate::Message> {
+fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileViewMessage> {
     let name_text = text(entry.name.as_deref().unwrap_or(""))
         .size(12)
         .color(C_TEXT)
         .wrapping(text::Wrapping::None);
 
-    let counter: Element<'_, crate::Message> = match entry.progress.as_ref() {
+    let counter: Element<'_, ProfileViewMessage> = match entry.progress.as_ref() {
         Some(p) if p.total > 0 => text(format!("{} / {}", p.earned, p.total))
             .size(11)
             .color(C_MUTED)
@@ -1006,10 +993,10 @@ fn build_tags_row<'a>(
     entry: &'a GameEntry,
     card_w: f32,
     genre: Option<&'a str>,
-) -> Element<'a, crate::Message> {
+) -> Element<'a, ProfileViewMessage> {
     let progress = entry.progress.as_ref();
 
-    let completion_tag: Option<Element<'_, crate::Message>> = progress.and_then(|p| {
+    let completion_tag: Option<Element<'_, ProfileViewMessage>> = progress.and_then(|p| {
         if p.total == 0 {
             return None;
         }
@@ -1029,10 +1016,10 @@ fn build_tags_row<'a>(
         Some(p.into())
     });
 
-    let genre_tag: Option<Element<'_, crate::Message>> =
+    let genre_tag: Option<Element<'_, ProfileViewMessage>> =
         genre.map(|g| pill(text(g).size(11).color(C_TEXT_MUTED), C_TEXT_MUTED).into());
 
-    let mut left_tags: iced::widget::Row<'_, crate::Message> =
+    let mut left_tags: iced::widget::Row<'_, ProfileViewMessage> =
         row![].spacing(6).align_y(Alignment::Center);
 
     if let Some(gtag) = genre_tag {
@@ -1055,7 +1042,7 @@ fn build_tags_row<'a>(
         .into()
 }
 
-fn center_text(msg: &str) -> Element<'_, crate::Message> {
+fn center_text(msg: &str) -> Element<'_, ProfileViewMessage> {
     container(text(msg).size(14).color(C_MUTED))
         .width(Length::Fill)
         .height(Length::Fill)
