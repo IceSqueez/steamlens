@@ -7,16 +7,16 @@ pub use view::library_search_id;
 
 pub fn header_content<'a>(
     state: &'a types::ProfileViewState,
-    steam_running: Option<bool>,
+    _steam_running: Option<bool>,
 ) -> crate::screen::AppHeaderContent<'a> {
     crate::screen::AppHeaderContent {
-        leading: view::build_title_block(state.games.len(), steam_running),
         search: Some(view::build_search_block(&state.search)),
         screen_actions: vec![
             view::build_sort_segment(state.sort),
             view::build_size_segment(state.capsule_size),
             view::build_rescan_button(),
         ],
+        second_row: None,
     }
 }
 

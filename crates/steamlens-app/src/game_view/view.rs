@@ -165,7 +165,106 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
     })
 }
 
-pub(crate) fn build_game_leading(state: &GameViewState) -> Element<'_, crate::Message> {
+pub(crate) fn build_game_search_block(state: &GameViewState) -> Element<'_, crate::Message> {
+    let search_input = text_input("Search achievements\u{2026}", state.search_query.as_str())
+        .id(achievement_search_id())
+        .on_input(crate::Message::GlobalSearchChanged)
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
+        .size(13)
+        .style(|_theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(Color::TRANSPARENT),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            icon: C_TEXT_MUTED,
+            placeholder: C_TEXT_MUTED,
+            value: C_TEXT_PRIMARY,
+            selection: Color {
+                a: 0.35,
+                ..C_ACCENT
+            },
+        })
+        .width(Length::Fill);
+
+    container(search_input)
+        .width(Length::Fixed(280.0))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+pub(crate) fn build_game_sort_segment(state: &GameViewState) -> Element<'_, crate::Message> {
+    let label = text("SORT").size(11).color(C_TEXT_MUTED);
+    let divider_el = || {
+        container(space())
+            .width(Length::Fixed(1.0))
+            .height(Length::Fixed(20.0))
+            .style(|_theme| container::Style {
+                background: Some(iced::Background::Color(C_BORDER)),
+                ..container::Style::default()
+            })
+    };
+
+    let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
+    let last_idx = AchievementSort::ALL.len() - 1;
+    for (i, &s) in AchievementSort::ALL.iter().enumerate() {
+        let active = state.achievement_sort == s;
+        let btn = button(text(s.short_label()).size(12).color(if active {
+            C_ACCENT
+        } else {
+            C_TEXT_MUTED
+        }))
+        .on_press(crate::Message::GameSortChanged(s))
+        .padding(Padding::default().left(10).right(10).top(5).bottom(5))
+        .style(move |_theme, _status| button::Style {
+            background: Some(iced::Background::Color(if active {
+                Color {
+                    a: 0.15,
+                    ..C_ACCENT
+                }
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: iced::Border::default(),
+            ..button::Style::default()
+        });
+
+        let with_tooltip: Element<'_, crate::Message> =
+            tooltip_box(btn, s.tooltip(), tooltip::Position::Bottom);
+
+        items.push(with_tooltip);
+        if i < last_idx {
+            items.push(divider_el().into());
+        }
+    }
+
+    let segment =
+        container(row(items).align_y(Alignment::Center)).style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_SURFACE)),
+            border: iced::Border {
+                color: C_BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..container::Style::default()
+        });
+
+    row![label, segment]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+pub(crate) fn build_game_back_row() -> Element<'static, crate::Message> {
     let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
         .on_press(crate::Message::GoBack)
         .padding(Padding::from([0u16, 0]))
@@ -175,28 +274,11 @@ pub(crate) fn build_game_leading(state: &GameViewState) -> Element<'_, crate::Me
             ..button::Style::default()
         });
 
-    let divider = container(space())
-        .width(Length::Fixed(1.0))
-        .height(Length::Fixed(16.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
-            ..container::Style::default()
-        });
+    row![back_btn].spacing(0).align_y(Alignment::Center).into()
+}
 
-    let earned = state
-        .achievements
-        .iter()
-        .filter(|r| r.effective_achieved())
-        .count();
-    let total = state.achievements.len();
-
-    let title_text = text(&state.game_name).size(16).color(C_TEXT_PRIMARY);
-
-    let unlocked_subtitle = text(format!("{earned} / {total} unlocked"))
-        .size(12)
-        .color(C_TEXT_MUTED);
-
-    let reload_btn = button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
+pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
+    button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
         .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
         .padding(Padding::default().left(12).right(12).top(6).bottom(6))
         .style(|_theme, status| {
@@ -219,19 +301,8 @@ pub(crate) fn build_game_leading(state: &GameViewState) -> Element<'_, crate::Me
                 },
                 ..button::Style::default()
             }
-        });
-
-    row![
-        back_btn,
-        divider,
-        title_text,
-        unlocked_subtitle,
-        space().width(Length::Fill),
-        reload_btn,
-    ]
-    .spacing(14)
-    .align_y(Alignment::Center)
-    .into()
+        })
+        .into()
 }
 
 fn tab_bar_widget(state: &GameViewState) -> Element<'_, GameViewMessage> {
@@ -458,56 +529,12 @@ const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
 const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
 fn filter_row(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let search_input = text_input("Search achievements\u{2026}", &state.search_query)
-        .id(achievement_search_id())
-        .on_input(GameViewMessage::SearchChanged)
-        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
-        .size(13)
-        .style(|_theme, _status| iced::widget::text_input::Style {
-            background: iced::Background::Color(Color::TRANSPARENT),
-            border: iced::Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            icon: C_TEXT_MUTED,
-            placeholder: C_TEXT_MUTED,
-            value: C_TEXT_PRIMARY,
-            selection: Color {
-                a: 0.35,
-                ..C_ACCENT
-            },
-        });
-
-    let search_block = container(search_input)
-        .width(Length::Fixed(300.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        });
-
     let status_seg = status_segment(state.filter);
 
-    let sort_label = text("SORT").size(11).color(C_TEXT_MUTED);
-    let sort_seg = sort_segment(state.achievement_sort);
-    let sort_row = row![sort_label, sort_seg]
-        .spacing(6)
-        .align_y(Alignment::Center);
-
-    let inner = row![
-        search_block,
-        status_seg,
-        space().width(Length::Fill),
-        sort_row,
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .padding(Padding::default().left(16).right(16).top(8).bottom(8));
+    let inner = row![status_seg, space().width(Length::Fill)]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(16).right(16).top(8).bottom(8));
 
     container(inner)
         .width(Length::Fill)
@@ -560,63 +587,6 @@ fn status_segment(current: AchievementFilter) -> Element<'static, GameViewMessag
             });
         items.push(btn.into());
         if i < filters.len() - 1 {
-            items.push(divider_el().into());
-        }
-    }
-
-    container(row(items).align_y(Alignment::Center))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
-}
-
-fn sort_segment(current: AchievementSort) -> Element<'static, GameViewMessage> {
-    let divider_el = || {
-        container(space())
-            .width(Length::Fixed(1.0))
-            .height(Length::Fixed(20.0))
-            .style(|_theme| container::Style {
-                background: Some(iced::Background::Color(C_BORDER)),
-                ..container::Style::default()
-            })
-    };
-
-    let mut items: Vec<Element<'static, GameViewMessage>> = Vec::new();
-    let last_idx = AchievementSort::ALL.len() - 1;
-    for (i, &s) in AchievementSort::ALL.iter().enumerate() {
-        let active = current == s;
-        let btn = button(text(s.short_label()).size(12).color(if active {
-            C_ACCENT
-        } else {
-            C_TEXT_MUTED
-        }))
-        .on_press(GameViewMessage::AchievementSortChanged(s))
-        .padding(Padding::default().left(10).right(10).top(5).bottom(5))
-        .style(move |_theme, _status| button::Style {
-            background: Some(iced::Background::Color(if active {
-                Color {
-                    a: 0.15,
-                    ..C_ACCENT
-                }
-            } else {
-                Color::TRANSPARENT
-            })),
-            border: iced::Border::default(),
-            ..button::Style::default()
-        });
-
-        let with_tooltip: Element<'static, GameViewMessage> =
-            tooltip_box(btn, s.tooltip(), tooltip::Position::Bottom);
-
-        items.push(with_tooltip);
-        if i < last_idx {
             items.push(divider_el().into());
         }
     }

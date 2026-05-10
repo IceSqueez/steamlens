@@ -157,25 +157,6 @@ fn build_profile_section<'a>(
     })
 }
 
-pub(crate) fn build_title_block(
-    game_count: usize,
-    steam_running: Option<bool>,
-) -> Element<'static, crate::Message> {
-    let title = text("Library").size(22).color(C_ACCENT);
-    let count = text(format!("{game_count} games"))
-        .size(12)
-        .color(C_TEXT_DIM);
-    let status_color = match steam_running {
-        Some(false) => C_TEXT_MUTED,
-        _ => C_ACCENT,
-    };
-    let dot = text("\u{25CF}").size(10).color(status_color);
-    row![dot, title, count]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
-}
-
 pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
 }
