@@ -20,9 +20,16 @@ pub fn steam_install_root_candidates() -> Vec<PathBuf> {
 }
 
 pub fn steamclient_lib_candidates() -> Vec<PathBuf> {
+    let subpath = steamclient_lib_subpath();
     steam_install_root_candidates()
         .into_iter()
-        .map(|root| root.join(steamclient_lib_subpath()))
+        .map(|root| {
+            let mut p = root;
+            for segment in &subpath {
+                p = p.join(segment);
+            }
+            p
+        })
         .collect()
 }
 
@@ -39,18 +46,24 @@ pub fn user_data_dir(steam_root: &Path, steamid3: u32) -> PathBuf {
 }
 
 pub fn appcache_stats_dir(steam_root: &Path) -> PathBuf {
-    steam_root.join("appcache/stats")
+    steam_root.join("appcache").join("stats")
 }
 
-fn steamclient_lib_subpath() -> &'static str {
+fn steamclient_lib_subpath() -> Vec<&'static str> {
     #[cfg(target_os = "linux")]
-    return "linux64/steamclient.so";
+    return vec!["linux64", "steamclient.so"];
     #[cfg(target_os = "macos")]
-    return "Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib";
+    return vec![
+        "Steam.AppBundle",
+        "Steam",
+        "Contents",
+        "MacOS",
+        "steamclient.dylib",
+    ];
     #[cfg(target_os = "windows")]
-    return "steamclient64.dll";
+    return vec!["steamclient64.dll"];
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "";
+    return vec![];
 }
 
 #[cfg(target_os = "linux")]
@@ -60,13 +73,13 @@ fn steam_roots_linux(
 ) -> Vec<PathBuf> {
     let mut out = Vec::with_capacity(3);
     if let Some(ref h) = home {
-        out.push(PathBuf::from(h).join(".steam/steam"));
+        out.push(PathBuf::from(h).join(".steam").join("steam"));
     }
     if let Some(ref xdg) = xdg_data_home {
         out.push(PathBuf::from(xdg).join("Steam"));
     }
     if let Some(ref h) = home {
-        out.push(PathBuf::from(h).join(".local/share/Steam"));
+        out.push(PathBuf::from(h).join(".local").join("share").join("Steam"));
     }
     out
 }
@@ -75,7 +88,12 @@ fn steam_roots_linux(
 fn steam_roots_macos(home: Option<std::ffi::OsString>) -> Vec<PathBuf> {
     let mut out = Vec::with_capacity(1);
     if let Some(ref h) = home {
-        out.push(PathBuf::from(h).join("Library/Application Support/Steam"));
+        out.push(
+            PathBuf::from(h)
+                .join("Library")
+                .join("Application Support")
+                .join("Steam"),
+        );
     }
     out
 }
@@ -104,14 +122,14 @@ fn read_steam_root_from_registry() -> Option<PathBuf> {
     if let Ok(key) = hkcu.open_subkey("Software\\Valve\\Steam")
         && let Ok(path) = key.get_value::<String, _>("SteamPath")
     {
-        return Some(PathBuf::from(path));
+        return Some(PathBuf::from(path.replace('/', "\\")));
     }
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     if let Ok(key) = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Valve\\Steam")
         && let Ok(path) = key.get_value::<String, _>("InstallPath")
     {
-        return Some(PathBuf::from(path));
+        return Some(PathBuf::from(path.replace('/', "\\")));
     }
 
     None
@@ -124,12 +142,14 @@ fn dirs_base() -> PathBuf {
             return PathBuf::from(xdg);
         }
         let home = env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".local/share")
+        PathBuf::from(home).join(".local").join("share")
     }
     #[cfg(target_os = "macos")]
     {
         let home = env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join("Library/Application Support")
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
     }
     #[cfg(target_os = "windows")]
     {

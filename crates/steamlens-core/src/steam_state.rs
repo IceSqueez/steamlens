@@ -6,10 +6,12 @@ use steamlens_vdf::parse_text;
 /// clients may omit the `Software/Valve/Steam` nesting — callers MUST
 /// NOT dirty the cache solely because `LastPlayed` is unavailable.
 pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u64> {
-    let vdf_path = steam_root
+    let localconfig_path = steam_root
         .join("userdata")
         .join(steamid3.to_string())
-        .join("config/localconfig.vdf");
+        .join("config")
+        .join("localconfig.vdf");
+
 
     let content = std::fs::read_to_string(&vdf_path).ok()?;
     let root = parse_text(&content).ok()?;
