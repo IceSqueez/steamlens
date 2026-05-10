@@ -1,6 +1,7 @@
 pub mod types;
 mod view;
 
+pub use view::GameViewProps;
 pub use view::achievement_search_id;
 
 use std::collections::{HashSet, VecDeque};
@@ -506,8 +507,11 @@ pub fn update(
     }
 }
 
-pub fn view(state: &GameViewState, skeleton_phase: f32) -> iced::Element<'_, crate::Message> {
-    view::render(state, skeleton_phase)
+pub fn view(
+    state: &GameViewState,
+    props: view::GameViewProps,
+) -> iced::Element<'_, crate::Message> {
+    view::render(state, props)
 }
 
 pub fn subscription(state: &GameViewState) -> iced::Subscription<crate::Message> {

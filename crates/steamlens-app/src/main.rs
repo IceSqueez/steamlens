@@ -1289,15 +1289,18 @@ fn build_game_view_cache_entry(
 fn view(app: &App) -> Element<'_, Message> {
     let skeleton_phase = app.context.animation.skeleton_phase;
     let screen_content: Element<'_, Message> = match &app.screen {
-        Screen::ProfileView(pv_state) => crate::screen::compose_screen(profile_view::render(
-            pv_state,
-            app.context.user_profile.as_ref(),
-            app.context.profile_avatar_handle.as_ref(),
-            &app.context.cached_entries,
-            skeleton_phase,
-            &app.context.settings.library.pinned,
-            app.context.steam_level,
-        )),
+        Screen::ProfileView(pv_state) => {
+            let props = profile_view::ProfileViewProps {
+                user_profile: app.context.user_profile.as_ref(),
+                avatar_handle: app.context.profile_avatar_handle.as_ref(),
+                cached_entries: &app.context.cached_entries,
+                skeleton_phase,
+                pinned: &app.context.settings.library.pinned,
+                steam_level: app.context.steam_level,
+                steam_running: app.context.steam_running,
+            };
+            crate::screen::compose_screen(profile_view::render(pv_state, props))
+        }
 
         Screen::SteamNotRunning { reason } => {
             let content: Element<'_, Message> = column![
@@ -1315,7 +1318,10 @@ fn view(app: &App) -> Element<'_, Message> {
             center(content).into()
         }
 
-        Screen::GameView(state) => game_view::view(state, skeleton_phase),
+        Screen::GameView(state) => {
+            let props = game_view::GameViewProps { skeleton_phase };
+            game_view::view(state, props)
+        }
     };
 
     let failed_count = if let Screen::ProfileView(pv_state) = &app.screen {
