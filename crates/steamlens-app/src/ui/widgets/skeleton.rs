@@ -1,23 +1,28 @@
 use iced::widget::{Space, container};
 use iced::{Background, Border, Element, Length, Radians, gradient};
 
-use crate::ui::theme::{AppTheme, palette};
+use crate::ui::theme::{palette, theme_from_iced};
 
-#[allow(dead_code)]
-pub fn skeleton<'a, M: 'a>(width: f32, height: f32, phase: f32, theme: AppTheme) -> Element<'a, M> {
-    let p = palette(theme);
-    let gradient = build_shimmer_gradient(phase, p.surface, p.hover);
+#[cfg(test)]
+use crate::ui::theme::AppTheme;
 
+/// `phase` in `[0.0, 1.0)` cycles a bright band left-to-right across the box.
+pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, phase: f32) -> Element<'a, M> {
     container(Space::new())
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
-        .style(move |_theme: &iced::Theme| container::Style {
-            background: Some(Background::Gradient(gradient::Gradient::Linear(gradient))),
-            border: Border {
-                radius: 4.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
+        .style(move |t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            container::Style {
+                background: Some(Background::Gradient(gradient::Gradient::Linear(
+                    build_shimmer_gradient(phase, p.surface, p.hover),
+                ))),
+                border: Border {
+                    radius: 4.0.into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            }
         })
         .into()
 }
@@ -70,6 +75,68 @@ mod tests {
     use super::*;
 
     #[test]
+    fn skeleton_phase_wraps_at_one() {
+        let mut phase = 0.99f32;
+        phase = (phase + 0.02) % 1.0;
+        assert!(phase < 1.0);
+        assert!(phase >= 0.0);
+    }
+
+    #[test]
+    fn skeleton_phase_stays_in_range_after_many_ticks() {
+        let mut phase = 0.0f32;
+        for _ in 0..1000 {
+            phase = (phase + 0.02) % 1.0;
+            assert!(phase >= 0.0, "phase went negative: {phase}");
+            assert!(phase < 1.0, "phase exceeded 1.0: {phase}");
+        }
+    }
+
+    #[test]
+    fn build_shimmer_gradient_mid_phase_has_stops_in_range() {
+        let p = palette(AppTheme::Dark);
+        let grad = build_shimmer_gradient(0.5, p.surface, p.hover);
+        for stop in grad.stops.into_iter().flatten() {
+            assert!(
+                (0.0..=1.0).contains(&stop.offset),
+                "stop offset out of range: {}",
+                stop.offset
+            );
+        }
+    }
+
+    #[test]
+    fn build_shimmer_gradient_low_phase_wraps_correctly() {
+        let p = palette(AppTheme::Dark);
+        let grad = build_shimmer_gradient(0.05, p.surface, p.hover);
+        for stop in grad.stops.into_iter().flatten() {
+            assert!(
+                (0.0..=1.0).contains(&stop.offset),
+                "stop offset out of range at low phase: {}",
+                stop.offset
+            );
+        }
+    }
+
+    #[test]
+    fn build_shimmer_gradient_high_phase_wraps_correctly() {
+        let p = palette(AppTheme::Dark);
+        let grad = build_shimmer_gradient(0.95, p.surface, p.hover);
+        for stop in grad.stops.into_iter().flatten() {
+            assert!(
+                (0.0..=1.0).contains(&stop.offset),
+                "stop offset out of range at high phase: {}",
+                stop.offset
+            );
+        }
+    }
+
+    #[test]
+    fn skeleton_box_constructs_without_panic() {
+        let _el: iced::Element<'_, ()> = skeleton_box(120.0, 45.0, 0.5);
+    }
+
+    #[test]
     fn shimmer_gradient_stops_in_range_for_full_phase_sweep() {
         let p = palette(AppTheme::Dark);
         for i in 0..100 {
@@ -88,7 +155,8 @@ mod tests {
     #[test]
     fn skeleton_constructs_without_panic_in_each_theme() {
         for theme in [AppTheme::Dark, AppTheme::Light] {
-            let _el: iced::Element<'_, ()> = skeleton(120.0, 45.0, 0.5, theme);
+            let p = palette(theme);
+            let _grad = build_shimmer_gradient(0.5, p.surface, p.hover);
         }
     }
 }

@@ -10,7 +10,6 @@ mod progress_scan;
 mod screen;
 mod settings;
 mod settings_commands;
-mod skeleton;
 mod splash_commands;
 mod steam_worker;
 mod theme;

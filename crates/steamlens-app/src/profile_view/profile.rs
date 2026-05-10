@@ -470,7 +470,7 @@ fn build_avatar<'a>(
         .into();
     }
 
-    crate::skeleton::skeleton_box(AVATAR_SIZE, AVATAR_SIZE, skeleton_phase)
+    crate::ui::widgets::skeleton::skeleton_box(AVATAR_SIZE, AVATAR_SIZE, skeleton_phase)
 }
 
 fn build_rarity_cards(summary: &ProfileSummary) -> Element<'static, ProfileViewMessage> {
@@ -804,7 +804,7 @@ fn build_closest_row<'a>(
             })
             .into()
         } else {
-            crate::skeleton::skeleton_box(CAPSULE_W, CAPSULE_H, skeleton_phase)
+            crate::ui::widgets::skeleton::skeleton_box(CAPSULE_W, CAPSULE_H, skeleton_phase)
         };
 
     let game_name_label = text(entry.game_name.clone())
