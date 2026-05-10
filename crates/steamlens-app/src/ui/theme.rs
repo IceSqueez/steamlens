@@ -257,10 +257,21 @@ pub const LIGHT: ThemePalette = ThemePalette {
     },
 };
 
+pub const THEME_NAME_DARK: &str = "SteamLens Dark";
+pub const THEME_NAME_LIGHT: &str = "SteamLens Light";
+
 pub fn palette(theme: AppTheme) -> &'static ThemePalette {
     match theme {
         AppTheme::Dark => &DARK,
         AppTheme::Light => &LIGHT,
+    }
+}
+
+pub fn theme_from_iced(t: &iced::Theme) -> AppTheme {
+    use iced::theme::Base;
+    match t.name() {
+        n if n == THEME_NAME_LIGHT => AppTheme::Light,
+        _ => AppTheme::Dark,
     }
 }
 
@@ -279,8 +290,8 @@ fn iced_palette(theme: AppTheme) -> iced::theme::Palette {
 impl From<AppTheme> for iced::Theme {
     fn from(theme: AppTheme) -> Self {
         let name = match theme {
-            AppTheme::Dark => "SteamLens Dark",
-            AppTheme::Light => "SteamLens Light",
+            AppTheme::Dark => THEME_NAME_DARK,
+            AppTheme::Light => THEME_NAME_LIGHT,
         };
         iced::Theme::custom(name.to_owned(), iced_palette(theme))
     }
