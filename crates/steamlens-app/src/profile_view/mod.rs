@@ -241,7 +241,7 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<crate::Mess
     Task::batch(tasks)
 }
 
-pub fn view_with_cache_actions<'a>(
+pub fn render<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
@@ -249,8 +249,8 @@ pub fn view_with_cache_actions<'a>(
     skeleton_phase: f32,
     pinned: &'a [u32],
     steam_level: Option<u32>,
-) -> iced::Element<'a, crate::Message> {
-    view::render_with_cache_actions(
+) -> crate::ui::shell::ShellContent<'a, crate::Message> {
+    view::render(
         state,
         user_profile,
         avatar_handle,

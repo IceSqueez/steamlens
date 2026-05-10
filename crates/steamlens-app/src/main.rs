@@ -1309,7 +1309,7 @@ fn build_game_view_cache_entry(
 
 fn view(app: &App) -> Element<'_, Message> {
     let screen_content: Element<'_, Message> = match &app.screen {
-        Screen::ProfileView(pv_state) => profile_view::view_with_cache_actions(
+        Screen::ProfileView(pv_state) => crate::ui::shell::shell(profile_view::render(
             pv_state,
             app.user_profile.as_ref(),
             app.profile_avatar_handle.as_ref(),
@@ -1317,7 +1317,7 @@ fn view(app: &App) -> Element<'_, Message> {
             app.skeleton_phase,
             &app.settings.library.pinned,
             app.steam_level,
-        ),
+        )),
 
         Screen::SteamNotRunning { reason } => {
             let content: Element<'_, Message> = column![
