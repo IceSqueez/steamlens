@@ -10,7 +10,6 @@ pub struct ScreenContent<'a, M> {
     pub footer: Option<Element<'a, M>>,
 }
 
-/// Wraps view content with standardised header/footer chrome.
 pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M> {
     let header_chrome = container(content.header)
         .width(Length::Fill)

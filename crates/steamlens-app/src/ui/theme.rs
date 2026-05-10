@@ -7,7 +7,7 @@ pub enum AppTheme {
     Light,
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ThemePalette {
     pub app: Color,
@@ -49,18 +49,19 @@ pub struct ThemePalette {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SeverityPalette {
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code))]
     pub info: SeveritySlot,
     pub success: SeveritySlot,
     pub warning: SeveritySlot,
     pub error: SeveritySlot,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct SeveritySlot {
     pub text: Color,
+    #[cfg_attr(not(test), expect(dead_code))]
     pub background: Color,
+    #[cfg_attr(not(test), expect(dead_code))]
     pub border: Color,
 }
 
@@ -335,6 +336,7 @@ mod tests {
             assert_ne!(s.success.text, s.error.text);
             assert_ne!(s.warning.text, s.info.text);
             assert_ne!(s.success.background, s.error.background);
+            assert_ne!(s.success.border, s.error.border);
         }
     }
 

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::cache::{self, CachedLibrary, GameCacheEntry, NoAchievementsCache};
-use crate::settings::steamlens_root;
 use steamlens_core::GameSummary;
 
 pub fn load_no_ach_cache() -> Task<crate::Message> {
@@ -72,28 +71,6 @@ pub fn write_no_ach_cache(snapshot: NoAchievementsCache) -> Task<crate::Message>
     )
 }
 
-pub fn clear_all_cache() -> Task<crate::Message> {
-    let cache_games_dir = steamlens_root().join("cache").join("games");
-    let cache_images_dir = steamlens_root().join("cache").join("images");
-    Task::perform(
-        async move {
-            let _ = tokio::fs::remove_dir_all(&cache_games_dir).await;
-            let _ = tokio::fs::remove_dir_all(&cache_images_dir).await;
-        },
-        |()| crate::Message::ToastRequest("Cache cleared".to_owned()),
-    )
-}
-
-pub fn clear_game_cache(cache_path: PathBuf, game_name: String) -> Task<crate::Message> {
-    Task::perform(
-        async move {
-            let _ = tokio::fs::remove_file(&cache_path).await;
-            game_name
-        },
-        |name| crate::Message::ToastRequest(format!("Cache cleared for {name}")),
-    )
-}
-
 pub fn classify_games(
     games: Vec<GameSummary>,
     steam_root: PathBuf,
@@ -122,19 +99,6 @@ mod tests {
     #[test]
     fn load_profile_cache_builds() {
         let _: Task<crate::Message> = load_profile_cache();
-    }
-
-    #[test]
-    fn clear_all_cache_builds() {
-        let _: Task<crate::Message> = clear_all_cache();
-    }
-
-    #[test]
-    fn clear_game_cache_builds() {
-        let _: Task<crate::Message> = clear_game_cache(
-            std::path::PathBuf::from("/tmp/440.json"),
-            "Test Game".to_owned(),
-        );
     }
 
     #[test]

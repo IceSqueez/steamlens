@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use iced::widget::container;
 use iced::{Background, Border, Element, Length, Radians, gradient};
 
