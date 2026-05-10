@@ -6,6 +6,7 @@ use iced::widget::{
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::skeleton::skeleton_box;
+use crate::ui::shell::{ShellContent, shell};
 
 pub fn achievement_search_id() -> WidgetId {
     WidgetId::new("achievement-search")
@@ -145,20 +146,24 @@ fn error_view(state: &GameViewState) -> Element<'_, Message> {
 }
 
 fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, Message> {
-    let hdr = header_bar(state);
     let tabs = tab_bar_widget(state);
+    let top_block: Element<'_, Message> = if let Some(b) = &state.banner {
+        column![tabs, banner_widget(b)].spacing(0).into()
+    } else {
+        tabs
+    };
+
     let body = match state.active_tab {
         ActiveTab::Achievements => achievements_tab(state, skeleton_phase),
         ActiveTab::Stats => stats_tab(state),
     };
-    let footer = footer_bar(state);
 
-    let mut col = column![hdr, tabs];
-    if let Some(b) = &state.banner {
-        col = col.push(banner_widget(b));
-    }
-    col = col.push(body).push(footer);
-    col.spacing(0).into()
+    shell(ShellContent {
+        header: header_bar(state),
+        top: Some(top_block),
+        body,
+        footer: Some(footer_bar(state)),
+    })
 }
 
 fn header_bar(state: &GameViewState) -> Element<'_, Message> {
@@ -217,7 +222,7 @@ fn header_bar(state: &GameViewState) -> Element<'_, Message> {
             }
         });
 
-    let header_row = row![
+    row![
         back_btn,
         divider,
         title_text,
@@ -226,16 +231,8 @@ fn header_bar(state: &GameViewState) -> Element<'_, Message> {
         reload_btn,
     ]
     .spacing(14)
-    .align_y(Alignment::Center);
-
-    container(header_row)
-        .padding(Padding::default().left(20).right(20).top(14).bottom(14))
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        })
-        .into()
+    .align_y(Alignment::Center)
+    .into()
 }
 
 fn tab_bar_widget(state: &GameViewState) -> Element<'_, Message> {
@@ -1738,7 +1735,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
         space().width(20).into()
     };
 
-    let footer_row = row![
+    row![
         space().width(Length::Fill),
         spinner_el,
         cancel_btn,
@@ -1746,15 +1743,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, Message> {
     ]
     .spacing(8)
     .align_y(Alignment::Center)
-    .padding(Padding::from([12u16, 16]));
-
-    container(footer_row)
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
-            ..container::Style::default()
-        })
-        .into()
+    .into()
 }
 
 fn reset_modal(state: &GameViewState) -> Element<'_, Message> {
