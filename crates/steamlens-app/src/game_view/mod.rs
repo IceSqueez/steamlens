@@ -4,6 +4,14 @@ mod view;
 pub use view::GameViewProps;
 pub use view::achievement_search_id;
 
+pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
+    crate::screen::AppHeaderContent {
+        leading: view::build_game_leading(state),
+        search: None,
+        screen_actions: vec![],
+    }
+}
+
 use std::collections::{HashSet, VecDeque};
 
 use iced::Task;

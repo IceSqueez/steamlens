@@ -159,16 +159,15 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
     };
 
     compose_screen(ScreenContent {
-        header: header_bar(state),
         top: Some(top_block),
         body,
         footer: Some(footer_bar(state)),
     })
 }
 
-fn header_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
+pub(crate) fn build_game_leading(state: &GameViewState) -> Element<'_, crate::Message> {
     let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
-        .on_press(GameViewMessage::RequestGoBack)
+        .on_press(crate::Message::GoBack)
         .padding(Padding::from([0u16, 0]))
         .style(|_theme, _status| button::Style {
             background: None,
@@ -198,7 +197,7 @@ fn header_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
         .color(C_TEXT_MUTED);
 
     let reload_btn = button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
-        .on_press(GameViewMessage::ReloadRequested)
+        .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
         .padding(Padding::default().left(12).right(12).top(6).bottom(6))
         .style(|_theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);

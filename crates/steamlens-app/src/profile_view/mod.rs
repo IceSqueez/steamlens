@@ -5,6 +5,21 @@ mod view;
 pub use view::ProfileViewProps;
 pub use view::library_search_id;
 
+pub fn header_content<'a>(
+    state: &'a types::ProfileViewState,
+    steam_running: Option<bool>,
+) -> crate::screen::AppHeaderContent<'a> {
+    crate::screen::AppHeaderContent {
+        leading: view::build_title_block(state.games.len(), steam_running),
+        search: Some(view::build_search_block(&state.search)),
+        screen_actions: vec![
+            view::build_sort_segment(state.sort),
+            view::build_size_segment(state.capsule_size),
+            view::build_rescan_button(),
+        ],
+    }
+}
+
 use iced::Task;
 
 use crate::app_context::AppContext;
@@ -232,8 +247,6 @@ pub fn update(
             state.hovered_card_tier = tier.map(|t| (app_id, t));
             (Task::none(), ProfileEvent::None)
         }
-
-        ProfileViewMessage::RequestToast(text) => (Task::none(), ProfileEvent::Toast(text)),
 
         ProfileViewMessage::RequestToggleGamePin(id) => {
             (Task::none(), ProfileEvent::ToggleGamePin(id))

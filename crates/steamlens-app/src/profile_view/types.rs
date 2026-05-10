@@ -150,7 +150,6 @@ pub enum ProfileViewMessage {
         app_id: u32,
         tier: Option<RarityTier>,
     },
-    RequestToast(String),
     RequestToggleGamePin(u32),
     RequestOpenGame(u32),
     DrainProgressResults,
@@ -160,7 +159,6 @@ pub enum ProfileViewMessage {
 pub enum ProfileEvent {
     None,
     OpenGame(u32),
-    Toast(String),
     ToggleGamePin(u32),
     RequestRescan,
     DrainedProgress {
@@ -207,7 +205,6 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::CardTierHovered { app_id, tier } => {
                 write!(f, "CardTierHovered(app={app_id}, tier={tier:?})")
             }
-            ProfileViewMessage::RequestToast(msg) => write!(f, "RequestToast({msg:?})"),
             ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
             ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
             ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
