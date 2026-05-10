@@ -1,10 +1,17 @@
-use iced::widget::{Space, button, column, container, row, text};
-use iced::{Alignment, Background, Border, Element, Length, Padding};
+use iced::widget::Id as WidgetId;
+use iced::widget::{Space, button, column, container, row, text, text_input};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
+pub struct SearchConfig<'a> {
+    pub placeholder: &'a str,
+    pub value: &'a str,
+    pub id: WidgetId,
+}
+
 pub struct AppHeaderContent<'a> {
-    pub search: Option<Element<'a, crate::Message>>,
+    pub search: Option<SearchConfig<'a>>,
     pub screen_actions: Vec<Element<'a, crate::Message>>,
     pub second_row: Option<Element<'a, crate::Message>>,
 }
@@ -22,8 +29,8 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
         top_row = top_row.push(title_el);
     }
 
-    if let Some(search) = content.search {
-        top_row = top_row.push(search);
+    if let Some(cfg) = content.search {
+        top_row = top_row.push(build_search_input(cfg));
     }
     for action in content.screen_actions {
         top_row = top_row.push(action);
@@ -53,6 +60,72 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
                 ..container::Style::default()
             }
         })
+        .into()
+}
+
+fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
+    let input = text_input(cfg.placeholder, cfg.value)
+        .id(cfg.id)
+        .on_input(crate::Message::GlobalSearchChanged)
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
+        .size(13)
+        .style(|t: &iced::Theme, _status| {
+            let p = palette(theme_from_iced(t));
+            iced::widget::text_input::Style {
+                background: Background::Color(Color::TRANSPARENT),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                icon: p.text_muted,
+                placeholder: p.text_muted,
+                value: p.text_primary,
+                selection: Color { a: 0.3, ..p.accent },
+            }
+        })
+        .width(Length::Fill);
+
+    let kbd_badge = container(text("Ctrl K").size(10).style(|t: &iced::Theme| {
+        let p = palette(theme_from_iced(t));
+        iced::widget::text::Style {
+            color: Some(p.text_dim),
+        }
+    }))
+    .padding(Padding::default().left(6).right(6).top(2).bottom(2))
+    .style(|t: &iced::Theme| {
+        let p = palette(theme_from_iced(t));
+        container::Style {
+            background: Some(Background::Color(p.border)),
+            border: Border {
+                color: p.border,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
+            ..container::Style::default()
+        }
+    });
+
+    let inner_row = row![input, kbd_badge]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .padding(Padding::default().left(0).right(8));
+
+    container(inner_row)
+        .width(Length::Fixed(320.0))
+        .style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            container::Style {
+                background: Some(Background::Color(p.surface)),
+                border: Border {
+                    color: p.border,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                ..container::Style::default()
+            }
+        })
+        .padding(Padding::default().left(8).right(8).top(0).bottom(0))
         .into()
 }
 

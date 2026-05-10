@@ -8,7 +8,11 @@ use std::collections::HashMap;
 
 pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
     crate::screen::AppHeaderContent {
-        search: Some(view::build_game_search_block(state)),
+        search: Some(crate::screen::SearchConfig {
+            placeholder: "Search achievements\u{2026}",
+            value: state.search_query.as_str(),
+            id: view::achievement_search_id(),
+        }),
         screen_actions: vec![
             view::build_game_sort_segment(state),
             view::build_game_reload_button(),
