@@ -12,8 +12,7 @@ pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option
         .join("config")
         .join("localconfig.vdf");
 
-
-    let content = std::fs::read_to_string(&vdf_path).ok()?;
+    let content = std::fs::read_to_string(&localconfig_path).ok()?;
     let root = parse_text(&content).ok()?;
 
     let last_played_str = root
