@@ -71,6 +71,11 @@ enum Message {
     FocusSearch,
     NoAchCacheLoaded(cache::NoAchievementsCache),
     NoAchCacheWritten(Result<(), String>),
+    GlobalSearchChanged(String),
+    GlobalSortChanged(profile_view::types::LibrarySort),
+    GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
+    GlobalRescanRequested,
+    GlobalToast(String),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -351,12 +356,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ProfileEvent::OpenGame(app_id) => {
                     let open_task = open_game_view(app, app_id);
                     Task::batch([extra, open_task])
-                }
-                ProfileEvent::Toast(text) => {
-                    app.context
-                        .messaging
-                        .push_toast(ToastKind::Info, text, None);
-                    extra
                 }
                 ProfileEvent::ToggleGamePin(id) => {
                     let pin_task = app.context.update_settings(|s| {
@@ -770,7 +769,46 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             _ => Task::none(),
         },
+
+        Message::GlobalSearchChanged(text) => {
+            route_to_profile(app, ProfileViewMessage::SearchChanged(text))
+        }
+
+        Message::GlobalSortChanged(sort) => {
+            route_to_profile(app, ProfileViewMessage::SortChanged(sort))
+        }
+
+        Message::GlobalCapsuleSizeChanged(size) => {
+            route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
+        }
+
+        Message::GlobalRescanRequested => {
+            let Screen::ProfileView(state) = &mut app.screen else {
+                return Task::none();
+            };
+            let (task, event) =
+                profile_view::update(state, ProfileViewMessage::RescanRequested, &mut app.context);
+            let task = task.map(Message::ProfileView);
+            if matches!(event, ProfileEvent::RequestRescan) {
+                Task::batch([task, splash_commands::probe_steam_reconnect()])
+            } else {
+                task
+            }
+        }
+
+        Message::GlobalToast(msg) => {
+            app.context.messaging.push_toast(ToastKind::Info, msg, None);
+            Task::none()
+        }
     }
+}
+
+fn route_to_profile(app: &mut App, msg: ProfileViewMessage) -> Task<Message> {
+    let Screen::ProfileView(state) = &mut app.screen else {
+        return Task::none();
+    };
+    let (task, _event) = profile_view::update(state, msg, &mut app.context);
+    task.map(Message::ProfileView)
 }
 
 fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
@@ -1017,7 +1055,18 @@ fn build_game_view_cache_entry(
 
 fn view(app: &App) -> Element<'_, Message> {
     let skeleton_phase = app.context.animation.skeleton_phase;
-    let screen_content: Element<'_, Message> = match &app.screen {
+
+    let header: Option<Element<'_, Message>> = match &app.screen {
+        Screen::ProfileView(pv_state) => Some(crate::screen::render_app_header(
+            profile_view::header_content(pv_state, app.context.steam_running),
+        )),
+        Screen::GameView(state) => Some(crate::screen::render_app_header(
+            game_view::header_content(state),
+        )),
+        Screen::SteamNotRunning { .. } => None,
+    };
+
+    let body: Element<'_, Message> = match &app.screen {
         Screen::ProfileView(pv_state) => {
             let props = profile_view::ProfileViewProps {
                 user_profile: app.context.user_profile.as_ref(),
@@ -1026,7 +1075,6 @@ fn view(app: &App) -> Element<'_, Message> {
                 skeleton_phase,
                 pinned: &app.context.settings.library.pinned,
                 steam_level: app.context.steam_level,
-                steam_running: app.context.steam_running,
             };
             crate::screen::compose_screen(profile_view::render(pv_state, props))
                 .map(Message::ProfileView)
@@ -1052,6 +1100,11 @@ fn view(app: &App) -> Element<'_, Message> {
             let props = game_view::GameViewProps { skeleton_phase };
             game_view::view(state, props).map(Message::GameView)
         }
+    };
+
+    let screen_content: Element<'_, Message> = match header {
+        Some(h) => column![h, body].spacing(0).into(),
+        None => body,
     };
 
     let failed_count = if let Screen::ProfileView(pv_state) = &app.screen {

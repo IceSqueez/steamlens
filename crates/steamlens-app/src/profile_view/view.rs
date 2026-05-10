@@ -92,15 +92,12 @@ pub struct ProfileViewProps<'a> {
     pub skeleton_phase: f32,
     pub pinned: &'a [u32],
     pub steam_level: Option<u32>,
-    pub steam_running: Option<bool>,
 }
 
 pub fn render<'a>(
     state: &'a ProfileViewState,
     props: ProfileViewProps<'a>,
 ) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
-    let header = build_header(state, props.steam_running);
-
     let profile_section = build_profile_section(
         state,
         props.user_profile,
@@ -130,7 +127,6 @@ pub fn render<'a>(
     };
 
     crate::screen::ScreenContent {
-        header,
         top: Some(profile_section),
         body,
         footer: None,
@@ -161,36 +157,10 @@ fn build_profile_section<'a>(
     })
 }
 
-fn build_header(
-    state: &ProfileViewState,
-    steam_running: Option<bool>,
-) -> Element<'_, ProfileViewMessage> {
-    let title_block = build_title_block(state.games.len(), steam_running);
-    let search_block = build_search_block(state);
-    let sort_block = build_sort_segment(state.sort);
-    let size_block = build_size_segment(state.capsule_size);
-    let rescan_btn = build_rescan_button();
-    let settings_btn = build_icon_button("\u{2699}", "Settings \u{2014} coming soon");
-    let about_btn = build_icon_button("\u{24D8}", "About \u{2014} coming soon");
-
-    row![
-        title_block,
-        search_block,
-        sort_block,
-        size_block,
-        rescan_btn,
-        settings_btn,
-        about_btn,
-    ]
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .into()
-}
-
-fn build_title_block(
+pub(crate) fn build_title_block(
     game_count: usize,
     steam_running: Option<bool>,
-) -> Element<'static, ProfileViewMessage> {
+) -> Element<'static, crate::Message> {
     let title = text("Library").size(22).color(C_ACCENT);
     let count = text(format!("{game_count} games"))
         .size(12)
@@ -210,10 +180,10 @@ pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
 }
 
-fn build_search_block(state: &ProfileViewState) -> Element<'_, ProfileViewMessage> {
-    let input = text_input("Search games\u{2026}", &state.search)
+pub(crate) fn build_search_block(search_text: &str) -> Element<'_, crate::Message> {
+    let input = text_input("Search games\u{2026}", search_text)
         .id(library_search_id())
-        .on_input(ProfileViewMessage::SearchChanged)
+        .on_input(crate::Message::GlobalSearchChanged)
         .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .size(13)
         .style(
@@ -264,21 +234,21 @@ fn build_search_block(state: &ProfileViewState) -> Element<'_, ProfileViewMessag
         .into()
 }
 
-fn build_sort_segment(current: LibrarySort) -> Element<'static, ProfileViewMessage> {
+pub(crate) fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {
     let label = text("SORT").size(11).color(C_TEXT_MUTED);
     let order = [
         LibrarySort::NameAsc,
         LibrarySort::LastPlayed,
         LibrarySort::Completion,
     ];
-    let items: Vec<(&'static str, Option<&'static str>, bool, ProfileViewMessage)> = order
+    let items: Vec<(&'static str, Option<&'static str>, bool, crate::Message)> = order
         .iter()
         .map(|&s| {
             (
                 s.short_label(),
                 Some(s.tooltip()),
                 current == s,
-                ProfileViewMessage::SortChanged(s),
+                crate::Message::GlobalSortChanged(s),
             )
         })
         .collect();
@@ -289,26 +259,26 @@ fn build_sort_segment(current: LibrarySort) -> Element<'static, ProfileViewMessa
         .into()
 }
 
-fn build_size_segment(current: CapsuleSize) -> Element<'static, ProfileViewMessage> {
+pub(crate) fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> {
     let label = text("SIZE").size(11).color(C_TEXT_MUTED);
     let segment = segment_row(&[
         (
             "S",
             None,
             current == CapsuleSize::Small,
-            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Small),
+            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Small),
         ),
         (
             "M",
             None,
             current == CapsuleSize::Medium,
-            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Medium),
+            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Medium),
         ),
         (
             "L",
             None,
             current == CapsuleSize::Large,
-            ProfileViewMessage::CapsuleSizeChanged(CapsuleSize::Large),
+            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Large),
         ),
     ]);
     row![label, segment]
@@ -318,8 +288,8 @@ fn build_size_segment(current: CapsuleSize) -> Element<'static, ProfileViewMessa
 }
 
 fn segment_row(
-    items: &[(&'static str, Option<&'static str>, bool, ProfileViewMessage)],
-) -> Element<'static, ProfileViewMessage> {
+    items: &[(&'static str, Option<&'static str>, bool, crate::Message)],
+) -> Element<'static, crate::Message> {
     let mut r = row![].spacing(0).align_y(Alignment::Center);
     let last_idx = items.len().saturating_sub(1);
 
@@ -363,7 +333,7 @@ fn segment_row(
             }
         });
 
-        let item_el: Element<'static, ProfileViewMessage> = match hint {
+        let item_el: Element<'static, crate::Message> = match hint {
             Some(text_str) => tooltip_box(btn, *text_str, tooltip::Position::Bottom),
             None => btn.into(),
         };
@@ -394,7 +364,7 @@ fn segment_row(
         .into()
 }
 
-fn build_rescan_button() -> Element<'static, ProfileViewMessage> {
+pub(crate) fn build_rescan_button() -> Element<'static, crate::Message> {
     button(
         row![
             text("\u{21BB}").size(12).color(C_APP),
@@ -403,7 +373,7 @@ fn build_rescan_button() -> Element<'static, ProfileViewMessage> {
         .spacing(5)
         .align_y(Alignment::Center),
     )
-    .on_press(ProfileViewMessage::RescanRequested)
+    .on_press(crate::Message::GlobalRescanRequested)
     .padding(Padding::default().left(14).right(14).top(7).bottom(7))
     .style(|_: &iced::Theme, status| {
         let hovered = matches!(
@@ -421,46 +391,6 @@ fn build_rescan_button() -> Element<'static, ProfileViewMessage> {
                 ..iced::Border::default()
             },
             text_color: C_APP,
-            ..iced::widget::button::Style::default()
-        }
-    })
-    .into()
-}
-
-fn build_icon_button(
-    glyph: &'static str,
-    toast_msg: &'static str,
-) -> Element<'static, ProfileViewMessage> {
-    button(
-        container(text(glyph).size(14).color(C_TEXT_MUTED))
-            .width(Length::Fixed(32.0))
-            .height(Length::Fixed(32.0))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center),
-    )
-    .on_press(ProfileViewMessage::RequestToast(toast_msg.to_owned()))
-    .padding(0)
-    .style(|_: &iced::Theme, status| {
-        let hovered = matches!(
-            status,
-            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-        );
-        iced::widget::button::Style {
-            background: Some(iced::Background::Color(if hovered {
-                C_HOVER
-            } else {
-                Color::TRANSPARENT
-            })),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            text_color: if hovered {
-                C_TEXT_PRIMARY
-            } else {
-                C_TEXT_MUTED
-            },
             ..iced::widget::button::Style::default()
         }
     })

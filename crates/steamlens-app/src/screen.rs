@@ -1,17 +1,26 @@
-use iced::widget::{column, container};
-use iced::{Background, Border, Element, Length, Padding};
+use iced::widget::{button, column, container, row, text};
+use iced::{Alignment, Background, Border, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
-pub struct ScreenContent<'a, M> {
-    pub header: Element<'a, M>,
-    pub top: Option<Element<'a, M>>,
-    pub body: Element<'a, M>,
-    pub footer: Option<Element<'a, M>>,
+pub struct AppHeaderContent<'a> {
+    pub leading: Element<'a, crate::Message>,
+    pub search: Option<Element<'a, crate::Message>>,
+    pub screen_actions: Vec<Element<'a, crate::Message>>,
 }
 
-pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M> {
-    let header_chrome = container(content.header)
+pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Message> {
+    let mut r = row![content.leading].spacing(12).align_y(Alignment::Center);
+
+    if let Some(search) = content.search {
+        r = r.push(search);
+    }
+    for action in content.screen_actions {
+        r = r.push(action);
+    }
+    r = r.push(build_global_actions());
+
+    container(r)
         .width(Length::Fill)
         .padding(Padding::default().left(16).right(16).top(12).bottom(12))
         .style(|t: &iced::Theme| {
@@ -25,9 +34,66 @@ pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M
                 },
                 ..container::Style::default()
             }
-        });
+        })
+        .into()
+}
 
-    let mut col = column![header_chrome].spacing(0);
+fn build_global_actions() -> Element<'static, crate::Message> {
+    use crate::theme::{C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
+
+    let make_icon_btn = |glyph: &'static str, toast_msg: &'static str| {
+        button(
+            container(text(glyph).size(14).color(C_TEXT_MUTED))
+                .width(Length::Fixed(32.0))
+                .height(Length::Fixed(32.0))
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center),
+        )
+        .on_press(crate::Message::GlobalToast(toast_msg.to_owned()))
+        .padding(0)
+        .style(|_: &iced::Theme, status| {
+            let hovered = matches!(
+                status,
+                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+            );
+            iced::widget::button::Style {
+                background: Some(iced::Background::Color(if hovered {
+                    C_HOVER
+                } else {
+                    iced::Color::TRANSPARENT
+                })),
+                border: iced::Border {
+                    color: C_BORDER,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: if hovered {
+                    C_TEXT_PRIMARY
+                } else {
+                    C_TEXT_MUTED
+                },
+                ..iced::widget::button::Style::default()
+            }
+        })
+    };
+
+    row![
+        make_icon_btn("\u{2699}", "Settings \u{2014} coming soon"),
+        make_icon_btn("\u{24D8}", "About \u{2014} coming soon"),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+pub struct ScreenContent<'a, M> {
+    pub top: Option<Element<'a, M>>,
+    pub body: Element<'a, M>,
+    pub footer: Option<Element<'a, M>>,
+}
+
+pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M> {
+    let mut col = column![].spacing(0);
 
     if let Some(top) = content.top {
         col = col.push(top);
@@ -69,7 +135,6 @@ mod tests {
     #[test]
     fn compose_screen_minimal_content() {
         let content = ScreenContent::<()> {
-            header: text("h").into(),
             top: None,
             body: text("b").into(),
             footer: None,
@@ -80,7 +145,6 @@ mod tests {
     #[test]
     fn compose_screen_full_content() {
         let content = ScreenContent::<()> {
-            header: text("h").into(),
             top: Some(text("t").into()),
             body: text("b").into(),
             footer: Some(text("f").into()),
