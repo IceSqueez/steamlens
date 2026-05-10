@@ -6,9 +6,12 @@ pub use view::achievement_search_id;
 
 pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
     crate::screen::AppHeaderContent {
-        leading: view::build_game_leading(state),
-        search: None,
-        screen_actions: vec![],
+        search: Some(view::build_game_search_block(state)),
+        screen_actions: vec![
+            view::build_game_sort_segment(state),
+            view::build_game_reload_button(),
+        ],
+        second_row: Some(view::build_game_back_row()),
     }
 }
 

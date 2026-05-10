@@ -76,6 +76,7 @@ enum Message {
     GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
     GlobalRescanRequested,
     GlobalToast(String),
+    GameSortChanged(game_view::types::AchievementSort),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -770,9 +771,32 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             _ => Task::none(),
         },
 
-        Message::GlobalSearchChanged(text) => {
-            route_to_profile(app, ProfileViewMessage::SearchChanged(text))
-        }
+        Message::GlobalSearchChanged(query) => match &mut app.screen {
+            Screen::ProfileView(state) => {
+                let (task, _event) = profile_view::update(
+                    state,
+                    ProfileViewMessage::SearchChanged(query),
+                    &mut app.context,
+                );
+                task.map(Message::ProfileView)
+            }
+            Screen::GameView(state) => {
+                let (task, event) = game_view::update(
+                    state,
+                    GameViewMessage::SearchChanged(query),
+                    &mut app.context,
+                );
+                let task = task.map(Message::GameView);
+                match event {
+                    GameViewEvent::GoBack => {
+                        go_back_to_profile(app);
+                        task
+                    }
+                    GameViewEvent::None => task,
+                }
+            }
+            _ => Task::none(),
+        },
 
         Message::GlobalSortChanged(sort) => {
             route_to_profile(app, ProfileViewMessage::SortChanged(sort))
@@ -782,23 +806,39 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
         }
 
-        Message::GlobalRescanRequested => {
-            let Screen::ProfileView(state) = &mut app.screen else {
-                return Task::none();
-            };
-            let (task, event) =
-                profile_view::update(state, ProfileViewMessage::RescanRequested, &mut app.context);
-            let task = task.map(Message::ProfileView);
-            if matches!(event, ProfileEvent::RequestRescan) {
-                Task::batch([task, splash_commands::probe_steam_reconnect()])
-            } else {
-                task
+        Message::GlobalRescanRequested => match &mut app.screen {
+            Screen::ProfileView(state) => {
+                let (task, event) = profile_view::update(
+                    state,
+                    ProfileViewMessage::RescanRequested,
+                    &mut app.context,
+                );
+                let task = task.map(Message::ProfileView);
+                if matches!(event, ProfileEvent::RequestRescan) {
+                    Task::batch([task, splash_commands::probe_steam_reconnect()])
+                } else {
+                    task
+                }
             }
-        }
+            Screen::GameView(_) => splash_commands::probe_steam_reconnect(),
+            _ => Task::none(),
+        },
 
         Message::GlobalToast(msg) => {
             app.context.messaging.push_toast(ToastKind::Info, msg, None);
             Task::none()
+        }
+
+        Message::GameSortChanged(sort) => {
+            let Screen::GameView(state) = &mut app.screen else {
+                return Task::none();
+            };
+            let (task, _event) = game_view::update(
+                state,
+                GameViewMessage::AchievementSortChanged(sort),
+                &mut app.context,
+            );
+            task.map(Message::GameView)
         }
     }
 }

@@ -4,23 +4,38 @@ use iced::{Alignment, Background, Border, Element, Length, Padding};
 use crate::ui::theme::{palette, theme_from_iced};
 
 pub struct AppHeaderContent<'a> {
-    pub leading: Element<'a, crate::Message>,
     pub search: Option<Element<'a, crate::Message>>,
     pub screen_actions: Vec<Element<'a, crate::Message>>,
+    pub second_row: Option<Element<'a, crate::Message>>,
 }
 
 pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Message> {
-    let mut r = row![content.leading].spacing(12).align_y(Alignment::Center);
+    let mut top_row = row![].spacing(12).align_y(Alignment::Center);
+
+    {
+        let title_el = container(text("SteamLens").size(22).style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            iced::widget::text::Style {
+                color: Some(p.accent),
+            }
+        }));
+        top_row = top_row.push(title_el);
+    }
 
     if let Some(search) = content.search {
-        r = r.push(search);
+        top_row = top_row.push(search);
     }
     for action in content.screen_actions {
-        r = r.push(action);
+        top_row = top_row.push(action);
     }
-    r = r.push(build_global_actions());
+    top_row = top_row.push(build_global_actions());
 
-    container(r)
+    let inner: Element<'_, crate::Message> = match content.second_row {
+        Some(second) => column![top_row, second].spacing(8).into(),
+        None => top_row.into(),
+    };
+
+    container(inner)
         .width(Length::Fill)
         .padding(Padding::default().left(16).right(16).top(12).bottom(12))
         .style(|t: &iced::Theme| {
