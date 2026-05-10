@@ -10,6 +10,7 @@ use crate::game_view::types::RarityTier;
 use crate::theme::{C_ACCENT, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
+use crate::ui::widgets::pill::pill;
 
 use super::types::{GameEntry, ProfileViewMessage, StoredCapsule, TopEntry};
 
@@ -389,23 +390,7 @@ fn build_profile_header<'a>(
         Some(n) => format!("level ({n})"),
         None => "level (X)".to_owned(),
     };
-    let profile_level = container(text(level_str).size(11).color(C_ACCENT))
-        .padding(Padding::default().left(6).right(6).top(2).bottom(2))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                a: 0.15,
-                ..C_ACCENT
-            })),
-            border: iced::Border {
-                color: Color {
-                    a: 0.35,
-                    ..C_ACCENT
-                },
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..container::Style::default()
-        });
+    let profile_level = pill(text(level_str).size(11).color(C_ACCENT), C_ACCENT).radius(4.0);
 
     let nickname_row = row![nickname, profile_level]
         .spacing(6)

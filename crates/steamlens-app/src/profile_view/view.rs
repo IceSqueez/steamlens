@@ -27,6 +27,7 @@ use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, Pro
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
+use crate::ui::widgets::pill::pill;
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
@@ -1042,78 +1043,20 @@ fn build_tags_row<'a>(
         let tier_color = completion_tier_color(pct);
         let is_legendary = pct >= 100.0;
 
-        let dot = container(iced::widget::Space::new())
-            .width(Length::Fixed(6.0))
-            .height(Length::Fixed(6.0))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(tier_color)),
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            });
-
         let pct_text = text(format!("{pct:.0}%")).size(11).color(tier_color);
-
-        let pill_inner = row![dot, pct_text].spacing(5).align_y(Alignment::Center);
-
-        let shadow = if is_legendary {
-            iced::Shadow {
-                color: Color {
-                    a: 0.5,
-                    ..C_RARITY_LEGENDARY
-                },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 10.0,
-            }
-        } else {
-            iced::Shadow::default()
-        };
-
-        let pill = container(pill_inner)
-            .padding(Padding::default().left(10).right(10).top(3).bottom(3))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: 0.15,
-                    ..tier_color
-                })),
-                border: iced::Border {
-                    color: Color {
-                        a: 0.4,
-                        ..tier_color
-                    },
-                    width: 1.0,
-                    radius: 12.0.into(),
-                },
-                shadow,
-                ..container::Style::default()
+        let mut p = pill(pct_text, tier_color).with_dot(tier_color);
+        if is_legendary {
+            p = p.glow(Color {
+                a: 0.5,
+                ..C_RARITY_LEGENDARY
             });
+        }
 
-        Some(pill.into())
+        Some(p.into())
     });
 
-    let genre_tag: Option<Element<'_, crate::Message>> = genre.map(|g| {
-        let label = text(g).size(10).color(C_TEXT_MUTED);
-        container(label)
-            .padding(Padding::default().left(8).right(8).top(2).bottom(2))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: 0.10,
-                    ..C_TEXT_MUTED
-                })),
-                border: iced::Border {
-                    color: Color {
-                        a: 0.20,
-                        ..C_TEXT_MUTED
-                    },
-                    width: 1.0,
-                    radius: 10.0.into(),
-                },
-                ..container::Style::default()
-            })
-            .into()
-    });
+    let genre_tag: Option<Element<'_, crate::Message>> =
+        genre.map(|g| pill(text(g).size(11).color(C_TEXT_MUTED), C_TEXT_MUTED).into());
 
     let mut left_tags: iced::widget::Row<'_, crate::Message> =
         row![].spacing(6).align_y(Alignment::Center);
