@@ -94,7 +94,7 @@ fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameV
         text(phase_label).size(13).color(C_MUTED),
         space().width(Length::Fill),
         button(text("Cancel").size(12))
-            .on_press(GameViewMessage::GoBackProxy)
+            .on_press(GameViewMessage::RequestGoBack)
             .padding(Padding::default().left(12).right(12).top(4).bottom(4))
             .style(|_theme, _status| button::Style {
                 background: None,
@@ -131,7 +131,7 @@ fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
         text("Failed to load").size(20).color(C_RED),
         text(&state.error_message).size(13).color(C_MUTED),
         button(text("Back").size(13))
-            .on_press(GameViewMessage::GoBackProxy)
+            .on_press(GameViewMessage::RequestGoBack)
             .padding(Padding::from([8, 16])),
     ]
     .spacing(16)
@@ -168,7 +168,7 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
 
 fn header_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
-        .on_press(GameViewMessage::GoBackProxy)
+        .on_press(GameViewMessage::RequestGoBack)
         .padding(Padding::from([0u16, 0]))
         .style(|_theme, _status| button::Style {
             background: None,

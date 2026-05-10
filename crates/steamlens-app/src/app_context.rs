@@ -6,7 +6,6 @@ use iced::Task;
 
 use crate::cache::{self, CacheHit, GameCacheEntry};
 use crate::messaging::MessagingCenter;
-use crate::profile_view::types::ProfileViewState;
 use crate::settings::Settings;
 use crate::steam_worker::{SteamReply, SteamWorker};
 
@@ -30,8 +29,6 @@ pub struct AppContext {
     pub profile_avatar_handle: Option<iced::widget::image::Handle>,
     pub no_ach_cache: cache::NoAchievementsCache,
     pub animation: AnimationState,
-    /// Temporarily retained for Back navigation; eliminated in PR4.
-    pub previous_profile_state: Option<Box<ProfileViewState>>,
 }
 
 impl AppContext {

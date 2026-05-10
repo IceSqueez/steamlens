@@ -843,7 +843,7 @@ fn build_closest_row<'a>(
     });
 
     button(row_container)
-        .on_press(ProfileViewMessage::OpenGameViewProxy(app_id))
+        .on_press(ProfileViewMessage::RequestOpenGame(app_id))
         .padding(0)
         .style(|_: &iced::Theme, _status| button::Style {
             background: None,
