@@ -50,7 +50,6 @@ enum Message {
     GameView(GameViewMessage),
     PollWorker,
     KeyboardEvent(keyboard::Event),
-    DrainProgressResults,
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, String>),
     RetrySteamConnect,
@@ -380,6 +379,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ProfileEvent::RequestRescan => {
                     Task::batch([extra, splash_commands::probe_steam_reconnect()])
                 }
+                ProfileEvent::DrainedProgress {
+                    cache_entries,
+                    no_ach_entries,
+                } => {
+                    let mut tasks: Vec<Task<Message>> = vec![extra];
+                    for entry in cache_entries {
+                        tasks.push(cache::commands::write_game_cache(entry));
+                    }
+                    for (app_id, cn) in no_ach_entries {
+                        app.context.no_ach_cache.insert(app_id, cn);
+                        let snapshot = app.context.no_ach_cache.clone();
+                        tasks.push(cache::commands::write_no_ach_cache(snapshot));
+                    }
+                    Task::batch(tasks)
+                }
             }
         }
 
@@ -531,98 +545,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::PollWorker => drain_worker_replies(app),
-
-        Message::DrainProgressResults => {
-            let Screen::ProfileView(pv_state) = &mut app.screen else {
-                return Task::none();
-            };
-            let mut tasks: Vec<Task<Message>> = Vec::new();
-            if let Some(scanner) = &mut pv_state.progress_scanner {
-                let _still_going = scanner.poll();
-            }
-            if let Some(rx) = &mut pv_state.progress_rx {
-                loop {
-                    match rx.try_recv() {
-                        Ok(result) => {
-                            let scan_app_id = result.app_id;
-                            let Some(data) = result.data else {
-                                pv_state.failed_app_ids.insert(scan_app_id);
-                                tasks.push(Task::done(Message::ProfileView(
-                                    ProfileViewMessage::ScanFailed(format!(
-                                        "Scan failed for app {scan_app_id}"
-                                    )),
-                                )));
-                                continue;
-                            };
-
-                            if data.achievements.is_empty() {
-                                let change_number = pv_state
-                                    .games
-                                    .iter()
-                                    .find(|g| g.app_id == scan_app_id)
-                                    .map(|g| g.change_number);
-                                pv_state.games.retain(|g| g.app_id != scan_app_id);
-                                app.context.cached_entries.remove(&scan_app_id);
-                                if let Some(cn) = change_number {
-                                    app.context.no_ach_cache.insert(scan_app_id, cn);
-                                    let snapshot = app.context.no_ach_cache.clone();
-                                    tasks.push(cache::commands::write_no_ach_cache(snapshot));
-                                }
-                                continue;
-                            }
-
-                            {
-                                let earned = data.earned_count();
-                                let total = data.total_count();
-
-                                tasks.push(Task::done(Message::ProfileView(
-                                    ProfileViewMessage::ProgressFetched {
-                                        app_id: scan_app_id,
-                                        earned,
-                                        total,
-                                    },
-                                )));
-
-                                if let Some(scanned_name) = &data.app_name
-                                    && let Some(game) =
-                                        pv_state.games.iter_mut().find(|g| g.app_id == scan_app_id)
-                                {
-                                    game.name = Some(scanned_name.clone());
-                                }
-
-                                if let Some(game) =
-                                    pv_state.games.iter().find(|g| g.app_id == scan_app_id)
-                                {
-                                    let entry = build_cache_entry_from_scan(
-                                        &data,
-                                        scan_app_id,
-                                        game.name.as_deref(),
-                                        &app.context.steam_root,
-                                        app.context.steamid3,
-                                    );
-                                    app.context
-                                        .cached_entries
-                                        .insert(scan_app_id, entry.clone());
-                                    tasks.push(cache::commands::write_game_cache(entry));
-                                }
-                            }
-                        }
-                        Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
-                        Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                            tasks.push(Task::done(Message::ProfileView(
-                                ProfileViewMessage::ProgressScanDone,
-                            )));
-                            break;
-                        }
-                    }
-                }
-            }
-            if tasks.is_empty() {
-                Task::none()
-            } else {
-                Task::batch(tasks)
-            }
-        }
 
         Message::SettingsFlushTick => {
             if let Some(since) = app.context.settings_dirty_since
@@ -987,7 +909,7 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
     state.reveal_queue.clear();
 }
 
-fn build_cache_entry_from_scan(
+pub(crate) fn build_cache_entry_from_scan(
     scanned: &progress_scan::ScannedGameData,
     app_id: u32,
     entry_name: Option<&str>,
@@ -1245,45 +1167,6 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let game_view_sub = if let Screen::GameView(state) = &app.screen {
-        game_view::subscription(state).map(Message::GameView)
-    } else {
-        Subscription::none()
-    };
-
-    let profile_view_spinner_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.is_streaming() {
-            iced::time::every(std::time::Duration::from_millis(80))
-                .map(|_| Message::ProfileView(ProfileViewMessage::SpinnerTick(0.0)))
-        } else {
-            Subscription::none()
-        }
-    } else {
-        Subscription::none()
-    };
-
-    let progress_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.progress_scanner.is_some() {
-            iced::time::every(std::time::Duration::from_millis(200))
-                .map(|_| Message::DrainProgressResults)
-        } else {
-            Subscription::none()
-        }
-    } else {
-        Subscription::none()
-    };
-
-    let loader_pulse_sub = if let Screen::ProfileView(state) = &app.screen {
-        if state.loader_needs_pulse_subscription(app.context.steam_running) {
-            iced::time::every(std::time::Duration::from_millis(70))
-                .map(|_| Message::ProfileView(ProfileViewMessage::LoaderPulseTick))
-        } else {
-            Subscription::none()
-        }
-    } else {
-        Subscription::none()
-    };
-
     let skeleton_sub = if has_active_skeletons(app) {
         iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::SkeletonTick)
     } else {
@@ -1308,17 +1191,22 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let screen_sub: Subscription<Message> = match &app.screen {
+        Screen::ProfileView(state) => {
+            profile_view::subscription(state, app.context.steam_running).map(Message::ProfileView)
+        }
+        Screen::GameView(state) => game_view::subscription(state).map(Message::GameView),
+        Screen::SteamNotRunning { .. } => Subscription::none(),
+    };
+
     Subscription::batch([
         keyboard_sub,
         poll_sub,
-        game_view_sub,
-        profile_view_spinner_sub,
-        progress_sub,
-        loader_pulse_sub,
         skeleton_sub,
         settings_flush_sub,
         toast_sub,
         hit_drain_sub,
+        screen_sub,
     ])
 }
 
@@ -1856,7 +1744,10 @@ mod tests {
             pv.progress_rx = Some(rx);
         }
 
-        let _t = update(&mut app, Message::DrainProgressResults);
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+        );
 
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(
@@ -2541,7 +2432,10 @@ mod tests {
         })
         .expect("send result");
 
-        let _t = update(&mut app, Message::DrainProgressResults);
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+        );
 
         assert!(
             app.context.cached_entries.contains_key(&app_id),
@@ -2589,7 +2483,10 @@ mod tests {
         })
         .expect("send result");
 
-        let _t = update(&mut app, Message::DrainProgressResults);
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+        );
 
         assert_eq!(
             app.context.no_ach_cache.entries.get(&app_id).copied(),
@@ -2626,7 +2523,10 @@ mod tests {
         tx.send(progress_scan::ProgressResult { app_id, data: None })
             .expect("send result");
 
-        let _t = update(&mut app, Message::DrainProgressResults);
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+        );
 
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(
