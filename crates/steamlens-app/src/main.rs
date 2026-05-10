@@ -58,7 +58,6 @@ enum Message {
     PersistentCacheWritten(&'static str, Result<(), String>),
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
-    ToastRequest(String),
     ToastTick,
     ToastHovered(u32, bool),
     DismissToast(u32),
@@ -69,14 +68,8 @@ enum Message {
         app_id: u32,
         result: Result<(), String>,
     },
-    #[allow(dead_code)]
-    ClearAllCache,
-    #[allow(dead_code)]
-    ClearGameCache(u32),
     SkeletonTick,
     FocusSearch,
-    #[allow(dead_code)]
-    OpenGameView(u32),
     NoAchCacheLoaded(cache::NoAchievementsCache),
     NoAchCacheWritten(Result<(), String>),
 }
@@ -422,7 +415,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             if schema_bumped > 0 {
                 app.context.messaging.push_toast(
-                    ToastKind::Info,
+                    ToastKind::Success,
                     format!("Cache rebuilt: {} entries updated", schema_bumped),
                     None,
                 );
@@ -459,55 +452,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-
-        Message::ClearAllCache => {
-            app.context.cached_entries.clear();
-            if let Screen::ProfileView(pv_state) = &mut app.screen {
-                for entry in &mut pv_state.games {
-                    entry.progress = None;
-                }
-                let all_ids: Vec<u32> = pv_state.games.iter().map(|g| g.app_id).collect();
-                if !all_ids.is_empty() {
-                    let mut scanner = crate::progress_scan::ProgressScanner::new(all_ids);
-                    pv_state.progress_rx = scanner.take_receiver();
-                    pv_state.progress_scanner = Some(scanner);
-                }
-            }
-            cache::commands::clear_all_cache()
-        }
-
-        Message::ClearGameCache(app_id) => {
-            app.context.cached_entries.remove(&app_id);
-
-            match &mut app.screen {
-                Screen::ProfileView(pv_state) => {
-                    if let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id) {
-                        entry.progress = None;
-                    }
-                }
-                Screen::GameView(gv_state) => {
-                    if let Some(entry) = gv_state
-                        .prev_profile_state
-                        .games
-                        .iter_mut()
-                        .find(|e| e.app_id == app_id)
-                    {
-                        entry.progress = None;
-                    }
-                }
-                _ => {}
-            }
-
-            let cache_path = cache::game_cache_path(app_id);
-            let name = if let Screen::GameView(state) = &app.screen {
-                state.game_name.clone()
-            } else {
-                format!("App {app_id}")
-            };
-            cache::commands::clear_game_cache(cache_path, name)
-        }
-
-        Message::OpenGameView(app_id) => open_game_view(app, app_id),
 
         Message::GameView(m) => {
             let Screen::GameView(state) = &mut app.screen else {
@@ -560,13 +504,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::SettingsWritten(result) => {
             if let Err(e) = result {
                 eprintln!("[steamlens] settings: write error: {e}");
-                return Task::done(Message::ToastRequest("Could not save settings".to_owned()));
+                app.context
+                    .messaging
+                    .push_toast(ToastKind::Error, "Could not save settings", None);
             }
-            Task::none()
-        }
-
-        Message::ToastRequest(msg) => {
-            app.context.messaging.push_toast(ToastKind::Info, msg, None);
             Task::none()
         }
 
@@ -733,6 +674,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 pv_state.library_name_map = name_map;
             }
+            if app.context.steam_running == Some(false) {
+                app.context.messaging.push_banner(
+                    BannerSeverity::Info,
+                    "Showing cached library \u{2014} connect Steam to refresh",
+                    None,
+                    true,
+                );
+            }
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
             )))
@@ -753,6 +702,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::PersistentCacheWritten(label, result) => {
             if let Err(e) = result {
                 eprintln!("[steamlens] {label} cache: write failed: {e}");
+                app.context.messaging.push_banner(
+                    BannerSeverity::Error,
+                    format!("Cache write failed ({label}): {e}"),
+                    None,
+                    true,
+                );
             }
             Task::none()
         }
@@ -2324,72 +2279,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn clear_game_cache_removes_cached_entry_and_clears_progress() {
-        use profile_view::types::{CapsuleAsset, GameEntry};
-
-        let app_id: u32 = 440;
-
-        let game_entry = GameEntry {
-            app_id,
-            change_number: 0,
-            last_played: None,
-            name: Some("Team Fortress 2".to_owned()),
-            capsule: CapsuleAsset::Unavailable,
-            progress: Some(crate::progress_scan::ProgressData {
-                earned: 10,
-                total: 520,
-            }),
-        };
-
-        let mut pv_state = ProfileViewState::new();
-        pv_state.games.push(game_entry);
-
-        let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
-            ..App::default()
-        };
-        app.context.cached_entries.insert(
-            app_id,
-            cache::GameCacheEntry {
-                schema_version: cache::CURRENT_SCHEMA_VERSION,
-                app_id,
-                name: "Team Fortress 2".to_owned(),
-                steam_last_played: 0,
-                cached_at: 1_000,
-                achievements: vec![],
-                stats: vec![],
-                progress: cache::types::CachedProgress {
-                    earned: 10,
-                    total: 520,
-                },
-                tier_breakdown: Vec::new(),
-                genre: None,
-            },
-        );
-
-        let _task = update(&mut app, Message::ClearGameCache(app_id));
-
-        assert!(
-            !app.context.cached_entries.contains_key(&app_id),
-            "cached_entries must no longer contain the cleared app_id"
-        );
-
-        if let Screen::ProfileView(pv_state) = &app.screen {
-            let entry = pv_state.games.iter().find(|e| e.app_id == app_id);
-            assert!(
-                entry.is_some(),
-                "GameEntry must still exist in profile view"
-            );
-            assert!(
-                entry.unwrap().progress.is_none(),
-                "progress must be None after ClearGameCache"
-            );
-        } else {
-            panic!("expected ProfileView screen");
-        }
-    }
-
     fn make_game_entry(app_id: u32, change_number: u32) -> profile_view::types::GameEntry {
         use profile_view::types::{CapsuleAsset, GameEntry};
         GameEntry {
@@ -2565,18 +2454,21 @@ mod tests {
             },
         );
 
-        let _t = update(&mut app, Message::OpenGameView(app_id));
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::RequestOpenGame(app_id)),
+        );
         assert!(
             matches!(app.screen, Screen::GameView(_)),
-            "OpenGameView must switch to GameView screen"
+            "RequestOpenGame must switch to GameView screen"
         );
         assert!(
             app.context.worker.is_some(),
-            "OpenGameView must respawn worker for the new app"
+            "RequestOpenGame must respawn worker for the new app"
         );
         assert!(
             app.context.cached_entries.contains_key(&app_id),
-            "cached entry must survive OpenGameView"
+            "cached entry must survive RequestOpenGame"
         );
 
         if let Screen::GameView(gv) = &app.screen {

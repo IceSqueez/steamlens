@@ -25,10 +25,8 @@ const MAX_VISIBLE_TOASTS: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerSeverity {
-    #[allow(dead_code)]
     Info,
     Warning,
-    #[allow(dead_code)]
     Error,
 }
 
@@ -59,10 +57,8 @@ pub struct Banner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
-    #[allow(dead_code)]
     Success,
     Info,
-    #[allow(dead_code)]
     Error,
 }
 

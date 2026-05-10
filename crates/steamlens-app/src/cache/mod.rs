@@ -14,5 +14,5 @@ pub use persistent::{
     CachedLibrary, CachedLibraryEntry, CachedProfile, load_library_cache, load_profile_cache,
     make_cached_library, make_cached_profile, write_library_cache, write_profile_cache,
 };
-pub use store::{game_cache_path, write_game_cache};
+pub use store::write_game_cache;
 pub use types::{CURRENT_SCHEMA_VERSION, CacheHit, GameCacheEntry};
