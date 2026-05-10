@@ -165,43 +165,6 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
     })
 }
 
-pub(crate) fn build_game_search_block(state: &GameViewState) -> Element<'_, crate::Message> {
-    let search_input = text_input("Search achievements\u{2026}", state.search_query.as_str())
-        .id(achievement_search_id())
-        .on_input(crate::Message::GlobalSearchChanged)
-        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
-        .size(13)
-        .style(|_theme, _status| iced::widget::text_input::Style {
-            background: iced::Background::Color(Color::TRANSPARENT),
-            border: iced::Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            icon: C_TEXT_MUTED,
-            placeholder: C_TEXT_MUTED,
-            value: C_TEXT_PRIMARY,
-            selection: Color {
-                a: 0.35,
-                ..C_ACCENT
-            },
-        })
-        .width(Length::Fill);
-
-    container(search_input)
-        .width(Length::Fixed(280.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
-}
-
 pub(crate) fn build_game_sort_segment(state: &GameViewState) -> Element<'_, crate::Message> {
     let label = text("SORT").size(11).color(C_TEXT_MUTED);
     let divider_el = || {

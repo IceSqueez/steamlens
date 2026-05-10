@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image as img_widget, mouse_area, responsive, row, scrollable, stack,
-    text, text_input, tooltip,
+    text, tooltip,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -11,8 +11,7 @@ use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::theme::{
-    C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED,
-    C_TEXT_PRIMARY,
+    C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY,
 };
 use crate::ui::widgets::skeleton::skeleton_box;
 
@@ -159,60 +158,6 @@ fn build_profile_section<'a>(
 
 pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
-}
-
-pub(crate) fn build_search_block(search_text: &str) -> Element<'_, crate::Message> {
-    let input = text_input("Search games\u{2026}", search_text)
-        .id(library_search_id())
-        .on_input(crate::Message::GlobalSearchChanged)
-        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
-        .size(13)
-        .style(
-            |_theme: &iced::Theme, _status| iced::widget::text_input::Style {
-                background: iced::Background::Color(Color::TRANSPARENT),
-                border: iced::Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                icon: C_TEXT_MUTED,
-                placeholder: C_TEXT_MUTED,
-                value: C_TEXT_PRIMARY,
-                selection: Color { a: 0.3, ..C_ACCENT },
-            },
-        )
-        .width(Length::Fill);
-
-    let kbd_badge = container(text("Ctrl K").size(10).color(C_TEXT_DIM))
-        .padding(Padding::default().left(6).right(6).top(2).bottom(2))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 3.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    let inner_row = row![input, kbd_badge]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().left(0).right(8));
-
-    container(inner_row)
-        .width(Length::Fill)
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .padding(Padding::default().left(8).right(8).top(0).bottom(0))
-        .into()
 }
 
 pub(crate) fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {

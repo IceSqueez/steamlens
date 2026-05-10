@@ -10,7 +10,11 @@ pub fn header_content<'a>(
     _steam_running: Option<bool>,
 ) -> crate::screen::AppHeaderContent<'a> {
     crate::screen::AppHeaderContent {
-        search: Some(view::build_search_block(&state.search)),
+        search: Some(crate::screen::SearchConfig {
+            placeholder: "Search games\u{2026}",
+            value: &state.search,
+            id: view::library_search_id(),
+        }),
         screen_actions: vec![
             view::build_sort_segment(state.sort),
             view::build_size_segment(state.capsule_size),
