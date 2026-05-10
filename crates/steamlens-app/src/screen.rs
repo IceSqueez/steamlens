@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{Space, button, column, container, row, text};
 use iced::{Alignment, Background, Border, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
@@ -28,7 +28,10 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
     for action in content.screen_actions {
         top_row = top_row.push(action);
     }
+    top_row = top_row.push(Space::new().width(Length::Fill));
     top_row = top_row.push(build_global_actions());
+
+    let top_row = top_row.width(Length::Fill);
 
     let inner: Element<'_, crate::Message> = match content.second_row {
         Some(second) => column![top_row, second].spacing(8).into(),
