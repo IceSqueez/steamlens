@@ -6,7 +6,7 @@ use iced::widget::{
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::screen::{ScreenContent, compose_screen};
-use crate::skeleton::skeleton_box;
+use crate::ui::widgets::skeleton::skeleton_box;
 
 pub fn achievement_search_id() -> WidgetId {
     WidgetId::new("achievement-search")

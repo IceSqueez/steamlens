@@ -10,11 +10,11 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::skeleton::skeleton_box;
 use crate::theme::{
     C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED,
     C_TEXT_PRIMARY,
 };
+use crate::ui::widgets::skeleton::skeleton_box;
 
 use super::ProfileViewState;
 use super::profile::{
@@ -32,6 +32,14 @@ use crate::ui::widgets::tooltip_box::tooltip_box;
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
+
+const CARD_NAME_TEXT_HEIGHT: f32 = 12.0;
+const CARD_COUNTER_TEXT_HEIGHT: f32 = 12.0;
+const CARD_PILL_HEIGHT: f32 = 18.0;
+const CARD_PROGRESS_BAR_HEIGHT: f32 = 8.0;
+const CARD_PROGRESS_BAR_INSET: f32 = 16.0;
+const SKEL_COUNTER_PILL_WIDTH_RATIO: f32 = 0.18;
+const SKEL_GENRE_PILL_WIDTH_RATIO: f32 = 0.28;
 
 fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
     let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
@@ -607,11 +615,27 @@ fn build_skeleton_card<'a>(
     };
 
     let capsule_skel = skeleton_box(capsule_w, capsule_h, phase);
-    let name_skel = skeleton_box(card_w * title_width_ratio, 12.0, phase);
-    let counter_skel = skeleton_box(card_w * 0.18, 12.0, phase);
-    let progress_skel = skeleton_box(card_w - 16.0, 8.0, phase);
-    let tag_skel_genre = skeleton_box(card_w * 0.28, 18.0, phase);
-    let tag_skel_pct = skeleton_box(card_w * 0.18, 18.0, phase);
+    let name_skel = skeleton_box(card_w * title_width_ratio, CARD_NAME_TEXT_HEIGHT, phase);
+    let counter_skel = skeleton_box(
+        card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
+        CARD_COUNTER_TEXT_HEIGHT,
+        phase,
+    );
+    let progress_skel = skeleton_box(
+        card_w - CARD_PROGRESS_BAR_INSET,
+        CARD_PROGRESS_BAR_HEIGHT,
+        phase,
+    );
+    let tag_skel_genre = skeleton_box(
+        card_w * SKEL_GENRE_PILL_WIDTH_RATIO,
+        CARD_PILL_HEIGHT,
+        phase,
+    );
+    let tag_skel_pct = skeleton_box(
+        card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
+        CARD_PILL_HEIGHT,
+        phase,
+    );
 
     let separator_space = iced::widget::Space::new()
         .width(Length::Fixed(card_w))
