@@ -197,21 +197,18 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             achievements,
             stats,
         } => {
-            let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> = state
-                .achievements
-                .drain(..)
-                .filter_map(|r| {
-                    let id = r.data.id.clone();
-                    r.data.icon.map(|ico| (id, ico))
-                })
-                .collect();
-
-            let prev_revealed: std::collections::HashSet<String> = state
-                .achievements
-                .iter()
-                .filter(|r| r.revealed)
-                .map(|r| r.data.id.clone())
-                .collect();
+            let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> =
+                HashMap::new();
+            let mut prev_revealed: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for row in state.achievements.drain(..) {
+                if row.revealed {
+                    prev_revealed.insert(row.data.id.clone());
+                }
+                if let Some(icon) = row.data.icon {
+                    existing_icons.insert(row.data.id, icon);
+                }
+            }
             state.achievements = achievements
                 .into_iter()
                 .map(|mut data| {
