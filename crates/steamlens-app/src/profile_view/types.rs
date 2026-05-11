@@ -126,7 +126,10 @@ impl std::fmt::Display for LibrarySort {
 #[derive(Clone)]
 pub enum ProfileViewMessage {
     ScanComplete(Vec<steamlens_core::GameSummary>),
-    ScanFailed(String),
+    ScanFailed {
+        app_id: u32,
+        reason: String,
+    },
     SearchChanged(String),
     SortChanged(LibrarySort),
     CapsuleSizeChanged(CapsuleSize),
@@ -143,6 +146,7 @@ pub enum ProfileViewMessage {
     },
     GameSelected(u32),
     RescanRequested,
+    RetrySingleFailedScan(u32),
     StatusFilterChanged(GameStatusFilter),
     GenreFilterToggled(String),
     SpinnerTick(f32),
@@ -185,7 +189,9 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::ScanComplete(v) => {
                 write!(f, "ScanComplete({} enumerated)", v.len())
             }
-            ProfileViewMessage::ScanFailed(e) => write!(f, "ScanFailed({e})"),
+            ProfileViewMessage::ScanFailed { app_id, reason } => {
+                write!(f, "ScanFailed({{ app_id: {app_id}, reason: {reason:?} }})")
+            }
             ProfileViewMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
             ProfileViewMessage::SortChanged(s) => write!(f, "SortChanged({s:?})"),
             ProfileViewMessage::CapsuleSizeChanged(s) => write!(f, "CapsuleSizeChanged({s})"),
@@ -219,6 +225,9 @@ impl std::fmt::Debug for ProfileViewMessage {
             }
             ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
             ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
+            ProfileViewMessage::RetrySingleFailedScan(id) => {
+                write!(f, "RetrySingleFailedScan({id})")
+            }
             ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
             ProfileViewMessage::StatusFilterChanged(f2) => write!(f, "StatusFilterChanged({f2:?})"),
             ProfileViewMessage::GenreFilterToggled(g) => write!(f, "GenreFilterToggled({g:?})"),

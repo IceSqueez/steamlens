@@ -167,7 +167,7 @@ pub fn update(
             )
         }
 
-        ProfileViewMessage::ScanFailed(_) => (Task::none(), ProfileEvent::None),
+        ProfileViewMessage::ScanFailed { .. } => (Task::none(), ProfileEvent::None),
 
         ProfileViewMessage::SearchChanged(query) => {
             state.search = query;
@@ -336,6 +336,14 @@ pub fn update(
             (Task::none(), ProfileEvent::None)
         }
 
+        ProfileViewMessage::RetrySingleFailedScan(app_id) => {
+            state.failed_app_ids.remove(&app_id);
+            let mut scanner = crate::progress_scan::ProgressScanner::new(vec![app_id]);
+            state.progress_rx = scanner.take_receiver();
+            state.progress_scanner = Some(scanner);
+            (Task::none(), ProfileEvent::None)
+        }
+
         ProfileViewMessage::BarSliceHoverEnter(tier) => {
             state.hovered_bar_slice = Some(tier);
             (Task::none(), ProfileEvent::None)
@@ -397,9 +405,10 @@ fn drain_progress_results(
                 let scan_app_id = result.app_id;
                 let Some(data) = result.data else {
                     state.failed_app_ids.insert(scan_app_id);
-                    tasks.push(Task::done(ProfileViewMessage::ScanFailed(format!(
-                        "Scan failed for app {scan_app_id}"
-                    ))));
+                    tasks.push(Task::done(ProfileViewMessage::ScanFailed {
+                        app_id: scan_app_id,
+                        reason: format!("Scan failed for app {scan_app_id}"),
+                    }));
                     continue;
                 };
 
