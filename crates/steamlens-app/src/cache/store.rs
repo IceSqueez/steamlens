@@ -93,7 +93,6 @@ pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
     load_game_summary_from_path(&crate::paths::game_summary_path(app_id)).await
 }
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 pub async fn write_game_summary(entry: &GameSummaryCache) -> Result<(), CacheIoError> {
     let bytes =
         serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;

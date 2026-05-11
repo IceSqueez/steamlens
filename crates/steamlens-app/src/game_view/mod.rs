@@ -144,12 +144,14 @@ pub enum GameViewMessage {
     GameViewFadeTick,
     RareGlowTick,
     RequestGoBack,
+    AchievementsFullyLoaded,
 }
 
 #[derive(Debug, Clone)]
 pub enum GameViewEvent {
     None,
     GoBack,
+    AchievementsFullyLoaded { app_id: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -317,7 +319,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
 
             state.tier_breakdown = compute_tier_breakdown(&state.achievements);
 
-            Task::none()
+            Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::LoadFailed(e) => {
             state.phase = GameViewPhase::Error;
@@ -343,7 +345,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 message: "Changes saved to Steam.".to_owned(),
                 dismissible: true,
             });
-            Task::none()
+            Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::SaveFailed(e) => {
             state.phase = GameViewPhase::Ready;
@@ -352,7 +354,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 message: format!("Failed to save: {e}"),
                 dismissible: true,
             });
-            Task::none()
+            Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::ResetDone => {
             state.phase = GameViewPhase::LoadingData;
@@ -365,7 +367,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 message: format!("Reset failed: {e}"),
                 dismissible: true,
             });
-            Task::none()
+            Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::IconUpdated { name, icon } => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
@@ -583,7 +585,12 @@ pub fn update(
                 ) {
                     surface_connectivity_error(ctx, e);
                     state.phase = GameViewPhase::Ready;
-                    return (Task::none(), GameViewEvent::None);
+                    return (
+                        Task::none(),
+                        GameViewEvent::AchievementsFullyLoaded {
+                            app_id: state.app_id,
+                        },
+                    );
                 }
             }
             (Task::none(), GameViewEvent::None)
@@ -618,7 +625,12 @@ pub fn update(
                 ) {
                     surface_connectivity_error(ctx, e);
                     state.phase = GameViewPhase::Ready;
-                    return (Task::none(), GameViewEvent::None);
+                    return (
+                        Task::none(),
+                        GameViewEvent::AchievementsFullyLoaded {
+                            app_id: state.app_id,
+                        },
+                    );
                 }
             }
             (Task::none(), GameViewEvent::None)
@@ -680,6 +692,12 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
 
+        GameViewMessage::AchievementsFullyLoaded => (
+            Task::none(),
+            GameViewEvent::AchievementsFullyLoaded {
+                app_id: state.app_id,
+            },
+        ),
         GameViewMessage::RequestGoBack => (Task::none(), GameViewEvent::GoBack),
     }
 }

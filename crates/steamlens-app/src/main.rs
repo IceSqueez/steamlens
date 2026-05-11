@@ -97,6 +97,7 @@ enum Message {
     GlobalRescanRequested,
     GlobalToast(String),
     GameSortChanged(game_view::types::AchievementSort),
+    PersistGameSummary(u32),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -492,6 +493,67 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::PersistGameSummary(app_id) => {
+            let Screen::GameView(gv_state) = &app.screen else {
+                return Task::none();
+            };
+            if gv_state.app_id != app_id {
+                return Task::none();
+            }
+
+            let earned = gv_state
+                .achievements
+                .iter()
+                .filter(|a| a.effective_achieved())
+                .count() as u32;
+            let total = gv_state.achievements.len() as u32;
+
+            let change_number = gv_state
+                .prev_profile_state
+                .games
+                .iter()
+                .find(|g| g.app_id == app_id)
+                .map(|g| g.change_number)
+                .unwrap_or(0);
+
+            let genre = app
+                .context
+                .cached_entries
+                .get(&app_id)
+                .and_then(|e| e.genre.clone());
+
+            let name = gv_state.game_name.clone();
+            let tier_breakdown = gv_state.tier_breakdown.clone();
+
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            let summary = crate::cache::types::GameSummaryCache {
+                schema_version: crate::cache::types::LAYER_SCHEMA_VERSION,
+                app_id,
+                name,
+                cached_change_number: change_number,
+                cached_at: now_secs,
+                progress: crate::cache::types::CachedProgress { earned, total },
+                tier_breakdown,
+                genre,
+            };
+
+            crate::log!(
+                "persist game summary: app_id={app_id} earned={earned} total={total} change_number={change_number}"
+            );
+
+            Task::perform(
+                async move { crate::cache::store::write_game_summary(&summary).await },
+                move |result| Message::CacheWritten {
+                    app_id,
+                    result: result.map_err(|e| e.to_string()),
+                },
+            )
+        }
+
         Message::GameView(m) => {
             let Screen::GameView(state) = &mut app.screen else {
                 #[cfg(debug_assertions)]
@@ -504,6 +566,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             match event {
                 GameViewEvent::None => task,
+                GameViewEvent::AchievementsFullyLoaded { app_id } => {
+                    let sync_task = update(app, Message::PersistGameSummary(app_id));
+                    Task::batch([task, sync_task])
+                }
                 GameViewEvent::GoBack => {
                     let write_task = {
                         let Screen::GameView(gv_state) = &app.screen else {
@@ -886,6 +952,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     GameViewEvent::GoBack => {
                         go_back_to_profile(app);
                         task
+                    }
+                    GameViewEvent::AchievementsFullyLoaded { app_id } => {
+                        let sync_task = update(app, Message::PersistGameSummary(app_id));
+                        Task::batch([task, sync_task])
                     }
                     GameViewEvent::None => task,
                 }
