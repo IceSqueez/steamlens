@@ -435,37 +435,49 @@ fn entry_name(entry: &GameEntry) -> &str {
     entry.name.as_deref().unwrap_or("")
 }
 
+fn is_skeleton(entry: &GameEntry) -> bool {
+    entry.progress.is_none()
+}
+
 fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
     match sort {
         LibrarySort::LastPlayed => {
-            entries.sort_by(|a, b| match (a.last_played, b.last_played) {
-                (Some(ta), Some(tb)) => tb.cmp(&ta),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => entry_name(a)
-                    .to_lowercase()
-                    .cmp(&entry_name(b).to_lowercase()),
+            entries.sort_by(|a, b| {
+                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
+                    match (a.last_played, b.last_played) {
+                        (Some(ta), Some(tb)) => tb.cmp(&ta),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => entry_name(a)
+                            .to_lowercase()
+                            .cmp(&entry_name(b).to_lowercase()),
+                    }
+                })
             });
         }
         LibrarySort::NameAsc => {
             entries.sort_by(|a, b| {
-                entry_name(a)
-                    .to_lowercase()
-                    .cmp(&entry_name(b).to_lowercase())
+                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
+                    entry_name(a)
+                        .to_lowercase()
+                        .cmp(&entry_name(b).to_lowercase())
+                })
             });
         }
         LibrarySort::Completion => {
             entries.sort_by(|a, b| {
-                let pct_b = completion_pct(b);
-                let pct_a = completion_pct(a);
-                pct_b
-                    .partial_cmp(&pct_a)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| {
-                        entry_name(a)
-                            .to_lowercase()
-                            .cmp(&entry_name(b).to_lowercase())
-                    })
+                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
+                    let pct_b = completion_pct(b);
+                    let pct_a = completion_pct(a);
+                    pct_b
+                        .partial_cmp(&pct_a)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| {
+                            entry_name(a)
+                                .to_lowercase()
+                                .cmp(&entry_name(b).to_lowercase())
+                        })
+                })
             });
         }
     }
@@ -1030,5 +1042,52 @@ mod tests {
         assert!(ids.contains(&100));
         assert!(ids.contains(&200));
         assert!(!ids.contains(&300));
+    }
+
+    #[test]
+    fn loaded_games_sort_above_skeletons_regardless_of_user_sort() {
+        let mut by_name = make_state_with_games(vec![
+            GameEntry {
+                app_id: 100,
+                change_number: 0,
+                last_played: None,
+                name: Some("Zebra".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: Some(ProgressData {
+                    earned: 1,
+                    total: 10,
+                }),
+                genre: None,
+            },
+            GameEntry {
+                app_id: 200,
+                change_number: 0,
+                last_played: None,
+                name: Some("Apple".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+                genre: None,
+            },
+            GameEntry {
+                app_id: 300,
+                change_number: 0,
+                last_played: None,
+                name: Some("Banana".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: Some(ProgressData {
+                    earned: 5,
+                    total: 10,
+                }),
+                genre: None,
+            },
+        ]);
+        by_name.sort = LibrarySort::NameAsc;
+        let visible = by_name.visible_games(&[]);
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
+        assert_eq!(
+            ids,
+            vec![300, 100, 200],
+            "loaded (Banana, Zebra) before skeleton (Apple), inside groups name-sorted"
+        );
     }
 }
