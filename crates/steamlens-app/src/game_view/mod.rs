@@ -532,8 +532,6 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::FilterChanged(f) => {
-            let filter = f;
-            let _ = ctx.update_settings(|s| s.manager.filter = filter);
             state.filter = f;
             (Task::none(), GameViewEvent::None)
         }
