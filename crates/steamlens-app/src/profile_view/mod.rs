@@ -130,6 +130,7 @@ fn build_profile_genre_strip<'a>(
             pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
+                .with_dot(tint)
                 .selected(state.genre_filter.contains(&g))
                 .on_press(crate::Message::ProfileView(
                     types::ProfileViewMessage::GenreFilterToggled(g),

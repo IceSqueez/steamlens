@@ -3,6 +3,8 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shado
 
 const INACTIVE_BG_ALPHA: f32 = 0.10;
 const INACTIVE_BORDER_ALPHA: f32 = 0.20;
+const HOVER_BG_BOOST: f32 = 0.10;
+const HOVER_BORDER_BOOST: f32 = 0.20;
 
 pub fn pill<'a, M: 'a>(content: impl Into<Element<'a, M>>, tint: Color) -> Pill<'a, M> {
     Pill {
@@ -128,16 +130,31 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
             button(inner)
                 .on_press(msg)
                 .padding(padding)
-                .style(move |_: &iced::Theme, _status| button::Style {
-                    background: Some(Background::Color(bg)),
-                    border: Border {
-                        color: border_color,
-                        width: 1.0,
-                        radius: radius.into(),
-                    },
-                    shadow,
-                    text_color: tint,
-                    ..button::Style::default()
+                .style(move |_: &iced::Theme, status| {
+                    let hovered =
+                        matches!(status, button::Status::Hovered | button::Status::Pressed);
+                    let (bg_a, border_a) = if hovered {
+                        (
+                            (bg_alpha + HOVER_BG_BOOST).min(1.0),
+                            (border_alpha + HOVER_BORDER_BOOST).min(1.0),
+                        )
+                    } else {
+                        (bg_alpha, border_alpha)
+                    };
+                    button::Style {
+                        background: Some(Background::Color(Color { a: bg_a, ..tint })),
+                        border: Border {
+                            color: Color {
+                                a: border_a,
+                                ..tint
+                            },
+                            width: 1.0,
+                            radius: radius.into(),
+                        },
+                        shadow,
+                        text_color: tint,
+                        ..button::Style::default()
+                    }
                 })
                 .into()
         } else {
