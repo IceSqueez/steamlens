@@ -1,6 +1,6 @@
 # SteamLens
 
-A modern desktop tool to inspect and modify Steam achievements and stats.
+A Steam achievement manager with rarity insights and library statistics.
 
 [![CI](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml/badge.svg)](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/IceSqueez/steamlens?include_prereleases)](https://github.com/IceSqueez/steamlens/releases/latest)
