@@ -43,6 +43,15 @@ impl std::fmt::Debug for CapsuleAsset {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GameStatusFilter {
+    #[default]
+    All,
+    Started,
+    Completed,
+    NotStarted,
+}
+
 #[derive(Clone)]
 pub struct GameEntry {
     pub app_id: u32,
@@ -51,6 +60,7 @@ pub struct GameEntry {
     pub name: Option<String>,
     pub capsule: CapsuleAsset,
     pub progress: Option<ProgressData>,
+    pub genre: Option<String>,
 }
 
 impl GameEntry {
@@ -133,6 +143,8 @@ pub enum ProfileViewMessage {
     },
     GameSelected(u32),
     RescanRequested,
+    StatusFilterChanged(GameStatusFilter),
+    GenreFilterToggled(String),
     SpinnerTick(f32),
     ProgressFetched {
         app_id: u32,
@@ -208,6 +220,8 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
             ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
             ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
+            ProfileViewMessage::StatusFilterChanged(f2) => write!(f, "StatusFilterChanged({f2:?})"),
+            ProfileViewMessage::GenreFilterToggled(g) => write!(f, "GenreFilterToggled({g:?})"),
         }
     }
 }
@@ -236,6 +250,8 @@ pub struct ProfileViewState {
     pub hovered_card: Option<u32>,
     pub hovered_bar_slice: Option<RarityTier>,
     pub hovered_card_tier: Option<(u32, RarityTier)>,
+    pub status_filter: GameStatusFilter,
+    pub genre_filter: HashSet<String>,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -268,6 +284,8 @@ impl ProfileViewState {
             hovered_card: None,
             hovered_bar_slice: None,
             hovered_card_tier: None,
+            status_filter: GameStatusFilter::default(),
+            genre_filter: HashSet::new(),
         }
     }
 
@@ -280,20 +298,63 @@ impl ProfileViewState {
 
     pub fn visible_games<'a>(&'a self, pinned: &[u32]) -> Vec<&'a GameEntry> {
         let query = self.search.to_lowercase();
+        let status = self.status_filter;
+        let genre_filter = &self.genre_filter;
+
         let mut result: Vec<&GameEntry> = self
             .games
             .iter()
             .filter(|g| {
-                query.is_empty()
-                    || g.name
+                if !query.is_empty()
+                    && !g
+                        .name
                         .as_deref()
                         .map(|n| n.to_lowercase().contains(&query))
                         .unwrap_or(false)
+                {
+                    return false;
+                }
+
+                let status_ok = match status {
+                    GameStatusFilter::All => true,
+                    GameStatusFilter::Started => g
+                        .progress
+                        .as_ref()
+                        .map(|p| p.earned > 0 && p.earned < p.total)
+                        .unwrap_or(false),
+                    GameStatusFilter::Completed => g
+                        .progress
+                        .as_ref()
+                        .map(|p| p.total > 0 && p.earned == p.total)
+                        .unwrap_or(false),
+                    GameStatusFilter::NotStarted => {
+                        g.progress.as_ref().map(|p| p.earned == 0).unwrap_or(true)
+                    }
+                };
+                if !status_ok {
+                    return false;
+                }
+
+                if !genre_filter.is_empty() {
+                    return g
+                        .genre
+                        .as_deref()
+                        .map(|genre_str| genre_filter.contains(genre_str))
+                        .unwrap_or(false);
+                }
+
+                true
             })
             .collect();
 
         sort_entries(&mut result, self.sort, pinned);
         result
+    }
+
+    pub fn available_genres(&self) -> Vec<String> {
+        let set: std::collections::BTreeSet<String> =
+            self.games.iter().filter_map(|g| g.genre.clone()).collect();
+        set.into_iter().collect()
     }
 
     pub fn loader_phase(&self, steam_running: Option<bool>) -> LoaderPhase {
@@ -420,6 +481,7 @@ mod tests {
             name: Some(name.to_owned()),
             capsule: CapsuleAsset::Pending,
             progress: None,
+            genre: None,
         }
     }
 
@@ -441,6 +503,8 @@ mod tests {
             hovered_card: None,
             hovered_bar_slice: None,
             hovered_card_tier: None,
+            status_filter: GameStatusFilter::default(),
+            genre_filter: HashSet::new(),
         }
     }
 
@@ -452,6 +516,7 @@ mod tests {
             name: Some("TestGame".to_owned()),
             capsule,
             progress,
+            genre: None,
         }
     }
 
@@ -556,6 +621,7 @@ mod tests {
             name: Some(name.to_owned()),
             capsule: CapsuleAsset::Pending,
             progress: Some(ProgressData { earned, total }),
+            genre: None,
         }
     }
 
@@ -762,6 +828,7 @@ mod tests {
                     earned: 5,
                     total: 10,
                 }),
+                genre: None,
             },
             GameEntry {
                 app_id: 2,
@@ -770,6 +837,7 @@ mod tests {
                 name: Some("B".to_owned()),
                 capsule: CapsuleAsset::Unavailable,
                 progress: None,
+                genre: None,
             },
         ]);
         state.phase = ProfileViewPhase::Loaded;
@@ -794,6 +862,7 @@ mod tests {
                 earned: 5,
                 total: 10,
             }),
+            genre: None,
         }]);
         state.phase = ProfileViewPhase::Loaded;
         assert_eq!(state.loader_phase(None), LoaderPhase::Gamma);
@@ -875,5 +944,82 @@ mod tests {
             pinned.push(app_id);
         }
         assert_eq!(pinned, vec![420u32], "pin should be removed");
+    }
+
+    #[test]
+    fn visible_games_filters_by_status_completed() {
+        let mut state = make_state_with_games(vec![
+            make_entry_with_progress(100, "Alpha", 10, 10),
+            make_entry_with_progress(200, "Beta", 5, 10),
+            make_entry_with_progress(300, "Gamma", 0, 10),
+        ]);
+        state.status_filter = GameStatusFilter::Completed;
+
+        let visible = state.visible_games(&[]);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].app_id, 100, "only fully completed game returned");
+    }
+
+    #[test]
+    fn visible_games_filters_by_status_not_started_treats_missing_progress_as_not_started() {
+        let mut state = make_state_with_games(vec![
+            make_entry_with_progress(100, "Started", 3, 10),
+            make_entry_with_progress(200, "Zero", 0, 10),
+            make_entry(300, "NoData", None),
+        ]);
+        state.status_filter = GameStatusFilter::NotStarted;
+
+        let visible = state.visible_games(&[]);
+        assert_eq!(
+            visible.len(),
+            2,
+            "zero-progress and no-data games both qualify"
+        );
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
+        assert!(ids.contains(&200));
+        assert!(ids.contains(&300));
+    }
+
+    #[test]
+    fn visible_games_filters_by_genre_multi_select_intersection() {
+        let state = make_state_with_games(vec![
+            GameEntry {
+                app_id: 100,
+                change_number: 0,
+                last_played: None,
+                name: Some("Action Game".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+                genre: Some("Action".to_owned()),
+            },
+            GameEntry {
+                app_id: 200,
+                change_number: 0,
+                last_played: None,
+                name: Some("RPG Game".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+                genre: Some("RPG".to_owned()),
+            },
+            GameEntry {
+                app_id: 300,
+                change_number: 0,
+                last_played: None,
+                name: Some("Strategy Game".to_owned()),
+                capsule: CapsuleAsset::Pending,
+                progress: None,
+                genre: Some("Strategy".to_owned()),
+            },
+        ]);
+        let mut filtered = state;
+        filtered.genre_filter.insert("Action".to_owned());
+        filtered.genre_filter.insert("RPG".to_owned());
+
+        let visible = filtered.visible_games(&[]);
+        assert_eq!(visible.len(), 2, "only Action and RPG games returned");
+        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
+        assert!(ids.contains(&100));
+        assert!(ids.contains(&200));
+        assert!(!ids.contains(&300));
     }
 }

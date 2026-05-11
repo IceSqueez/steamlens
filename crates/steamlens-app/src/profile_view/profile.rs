@@ -889,6 +889,7 @@ mod tests {
             name: Some(format!("Game {app_id}")),
             capsule: CapsuleAsset::Unavailable,
             progress: Some(ProgressData { earned, total }),
+            genre: None,
         }
     }
 
@@ -1064,6 +1065,7 @@ mod tests {
                 name: None,
                 capsule: CapsuleAsset::Unavailable,
                 progress: None,
+                genre: None,
             },
             make_entry_with_progress(2, 10, 50),
         ];

@@ -1594,6 +1594,7 @@ mod tests {
                 name: Some("AlreadyHere".to_owned()),
                 capsule: CapsuleAsset::Pending,
                 progress: None,
+                genre: None,
             });
         }
         let cached = CachedLibrary {
@@ -1648,6 +1649,7 @@ mod tests {
             name: Some(name.to_owned()),
             capsule: CapsuleAsset::Pending,
             progress: None,
+            genre: None,
         }
     }
 
@@ -1782,6 +1784,7 @@ mod tests {
                 name: Some("Terraria".to_owned()),
                 capsule: CapsuleAsset::Pending,
                 progress: None,
+                genre: None,
             });
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             tx.send(ProgressResult {
@@ -1827,6 +1830,7 @@ mod tests {
             } else {
                 None
             },
+            genre: None,
         };
 
         let mut state = ProfileViewState::new();
@@ -2382,6 +2386,7 @@ mod tests {
             name: None,
             capsule: CapsuleAsset::Unavailable,
             progress: None,
+            genre: None,
         }
     }
 

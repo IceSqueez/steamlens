@@ -9,6 +9,13 @@ pub fn header_content<'a>(
     state: &'a types::ProfileViewState,
     _steam_running: Option<bool>,
 ) -> crate::screen::AppHeaderContent<'a> {
+    let genres = state.available_genres();
+    let category_filter = if genres.is_empty() {
+        None
+    } else {
+        Some(build_profile_genre_strip(state, genres))
+    };
+
     crate::screen::AppHeaderContent {
         search: Some(crate::screen::SearchConfig {
             placeholder: "Search games\u{2026}",
@@ -21,9 +28,60 @@ pub fn header_content<'a>(
             view::build_rescan_button(),
         ],
         leading: None,
-        status_filter: None,
-        category_filter: None,
+        status_filter: Some(build_profile_status_strip(state)),
+        category_filter,
     }
+}
+
+fn build_profile_status_strip(state: &types::ProfileViewState) -> crate::screen::FilterStrip<'_> {
+    use types::GameStatusFilter;
+    crate::screen::FilterStrip {
+        chips: vec![
+            crate::screen::FilterChip {
+                label: std::borrow::Cow::Borrowed("All"),
+                selected: state.status_filter == GameStatusFilter::All,
+                on_press: crate::Message::ProfileView(
+                    types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::All),
+                ),
+            },
+            crate::screen::FilterChip {
+                label: std::borrow::Cow::Borrowed("Started"),
+                selected: state.status_filter == GameStatusFilter::Started,
+                on_press: crate::Message::ProfileView(
+                    types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Started),
+                ),
+            },
+            crate::screen::FilterChip {
+                label: std::borrow::Cow::Borrowed("Completed"),
+                selected: state.status_filter == GameStatusFilter::Completed,
+                on_press: crate::Message::ProfileView(
+                    types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Completed),
+                ),
+            },
+            crate::screen::FilterChip {
+                label: std::borrow::Cow::Borrowed("Not started"),
+                selected: state.status_filter == GameStatusFilter::NotStarted,
+                on_press: crate::Message::ProfileView(
+                    types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::NotStarted),
+                ),
+            },
+        ],
+    }
+}
+
+fn build_profile_genre_strip<'a>(
+    state: &'a types::ProfileViewState,
+    genres: Vec<String>,
+) -> crate::screen::FilterStrip<'a> {
+    let chips = genres
+        .into_iter()
+        .map(|g| crate::screen::FilterChip {
+            label: std::borrow::Cow::Owned(g.clone()),
+            selected: state.genre_filter.contains(&g),
+            on_press: crate::Message::ProfileView(types::ProfileViewMessage::GenreFilterToggled(g)),
+        })
+        .collect();
+    crate::screen::FilterStrip { chips }
 }
 
 use iced::Task;
@@ -55,6 +113,7 @@ pub fn update(
                     name: None,
                     capsule: CapsuleAsset::Pending,
                     progress: None,
+                    genre: None,
                 })
                 .collect();
             state.capsule_handles.clear();
@@ -261,6 +320,20 @@ pub fn update(
         ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
 
         ProfileViewMessage::DrainProgressResults => drain_progress_results(state, ctx),
+
+        ProfileViewMessage::StatusFilterChanged(filter) => {
+            state.status_filter = filter;
+            (Task::none(), ProfileEvent::None)
+        }
+
+        ProfileViewMessage::GenreFilterToggled(genre) => {
+            if state.genre_filter.contains(&genre) {
+                state.genre_filter.remove(&genre);
+            } else {
+                state.genre_filter.insert(genre);
+            }
+            (Task::none(), ProfileEvent::None)
+        }
     }
 }
 
@@ -321,17 +394,26 @@ fn drain_progress_results(
                     game.name = Some(scanned_name.clone());
                 }
 
-                if let Some(game) = state.games.iter().find(|g| g.app_id == scan_app_id) {
-                    let entry = crate::build_cache_entry_from_scan(
-                        &data,
-                        scan_app_id,
-                        game.name.as_deref(),
-                        &ctx.steam_root,
-                        ctx.steamid3,
-                    );
-                    ctx.cached_entries.insert(scan_app_id, entry.clone());
-                    cache_entries.push(entry);
+                let game_name = state
+                    .games
+                    .iter()
+                    .find(|g| g.app_id == scan_app_id)
+                    .and_then(|g| g.name.as_deref().map(str::to_owned));
+
+                let entry = crate::build_cache_entry_from_scan(
+                    &data,
+                    scan_app_id,
+                    game_name.as_deref(),
+                    &ctx.steam_root,
+                    ctx.steamid3,
+                );
+
+                if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {
+                    game.genre.clone_from(&entry.genre);
                 }
+
+                ctx.cached_entries.insert(scan_app_id, entry.clone());
+                cache_entries.push(entry);
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
