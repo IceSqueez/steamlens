@@ -149,6 +149,7 @@ pub enum ProfileViewMessage {
     RetrySingleFailedScan(u32),
     StatusFilterChanged(GameStatusFilter),
     GenreFilterToggled(String),
+    GenreFilterCleared,
     SpinnerTick(f32),
     ProgressFetched {
         app_id: u32,
@@ -232,6 +233,7 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
             ProfileViewMessage::StatusFilterChanged(f2) => write!(f, "StatusFilterChanged({f2:?})"),
             ProfileViewMessage::GenreFilterToggled(g) => write!(f, "GenreFilterToggled({g:?})"),
+            ProfileViewMessage::GenreFilterCleared => write!(f, "GenreFilterCleared"),
         }
     }
 }

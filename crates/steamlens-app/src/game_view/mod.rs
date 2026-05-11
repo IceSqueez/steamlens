@@ -126,6 +126,20 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
             .into(),
     );
 
+    if !state.rarity_tier_set.is_empty() || state.include_hidden {
+        let clear_label = text("Clear").size(11).color(hidden_color);
+        chips.push(
+            pill(clear_label, hidden_color)
+                .radius(TIER_PILL_RADIUS)
+                .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+                .selected(false)
+                .on_press(crate::Message::GameView(
+                    GameViewMessage::RarityFilterCleared,
+                ))
+                .into(),
+        );
+    }
+
     row(chips).spacing(6).align_y(Alignment::Center).into()
 }
 
@@ -167,6 +181,7 @@ pub enum GameViewMessage {
     FilterChanged(AchievementFilter),
     RarityTierToggled(RarityTier),
     HiddenPillToggled,
+    RarityFilterCleared,
     AchievementSortChanged(AchievementSort),
     SearchChanged(String),
     TabChanged(ActiveTab),
@@ -514,6 +529,15 @@ pub fn update(
             let _ = ctx.update_settings(|s| {
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
+            });
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::RarityFilterCleared => {
+            state.rarity_tier_set.clear();
+            state.include_hidden = false;
+            let _ = ctx.update_settings(|s| {
+                s.manager.rarity_tiers = Vec::new();
+                s.manager.include_hidden = false;
             });
             (Task::none(), GameViewEvent::None)
         }
