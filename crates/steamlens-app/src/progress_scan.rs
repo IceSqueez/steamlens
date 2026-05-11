@@ -125,45 +125,12 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
-    let exe = std::env::current_exe().map_err(|e| {
+    let (mut child, _job_guard) = spawn_worker_child(app_id).await.map_err(|e| {
         (
             Box::new(e) as Box<dyn std::error::Error + Send>,
             String::new(),
         )
     })?;
-
-    let mut child = Command::new(&exe)
-        .arg("--worker")
-        .arg(app_id.to_string())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| {
-            (
-                Box::new(e) as Box<dyn std::error::Error + Send>,
-                String::new(),
-            )
-        })?;
-
-    let _job_guard = match child.id() {
-        Some(pid) => steamlens_core::associate_kill_on_parent_exit(pid).map_err(|e| {
-            let _ = child.start_kill();
-            (
-                Box::new(e) as Box<dyn std::error::Error + Send>,
-                String::new(),
-            )
-        })?,
-        None => {
-            let _ = child.start_kill();
-            return Err((
-                Box::new(std::io::Error::other("spawned worker has no pid"))
-                    as Box<dyn std::error::Error + Send>,
-                String::new(),
-            ));
-        }
-    };
 
     let stderr_pipe = child.stderr.take();
     let stderr_task = tokio::spawn(async move {
@@ -410,6 +377,29 @@ async fn read_percentages_skipping_async(
             _ => continue,
         }
     }
+}
+
+async fn spawn_worker_child(
+    app_id: u32,
+) -> Result<(Child, steamlens_core::ChildLifetimeGuard), std::io::Error> {
+    let exe = std::env::current_exe()?;
+    let mut child = Command::new(&exe)
+        .arg("--worker")
+        .arg(app_id.to_string())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+
+    let pid = child
+        .id()
+        .ok_or_else(|| std::io::Error::other("spawned worker has no pid"))?;
+    let job_guard = steamlens_core::associate_kill_on_parent_exit(pid).inspect_err(|_| {
+        let _ = child.start_kill();
+    })?;
+
+    Ok((child, job_guard))
 }
 
 #[cfg(test)]
