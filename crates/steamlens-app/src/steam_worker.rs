@@ -466,7 +466,7 @@ async fn bridge_loop(
 ) {
     let connect_timeout = timeouts::STEAM_CONNECT;
 
-    let (mut child, mut stdin, mut stdout, mut _job_guard) = loop {
+    let (mut child, mut stdin, mut stdout, mut _job_guard, mut stderr_task) = loop {
         let Some(req) = req_rx.recv().await else {
             return;
         };
@@ -512,6 +512,8 @@ async fn bridge_loop(
                 )
             }
         }
+        stderr_task.abort();
+        let _ = stderr_task.await;
         kill_child(&mut child).await;
         return;
     }
@@ -523,6 +525,8 @@ async fn bridge_loop(
         let Some(req) = req_rx.recv().await else {
             let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
             let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
+            stderr_task.abort();
+            let _ = stderr_task.await;
             return;
         };
 
@@ -530,13 +534,16 @@ async fn bridge_loop(
             SteamRequest::ConnectWithApp(new_app_id) => {
                 let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
                 let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
+                stderr_task.abort();
+                let _ = stderr_task.await;
 
                 match spawn_worker_child(new_app_id).await {
-                    Ok((new_child, new_stdin, new_stdout, new_job_guard)) => {
+                    Ok((new_child, new_stdin, new_stdout, new_job_guard, new_stderr_task)) => {
                         child = new_child;
                         stdin = new_stdin;
                         stdout = new_stdout;
                         _job_guard = new_job_guard;
+                        stderr_task = new_stderr_task;
 
                         if let Err(e) =
                             await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await
@@ -557,6 +564,8 @@ async fn bridge_loop(
                                     ),
                                 ),
                             }
+                            stderr_task.abort();
+                            let _ = stderr_task.await;
                             kill_child(&mut child).await;
                             return;
                         }
@@ -576,6 +585,8 @@ async fn bridge_loop(
                 )
                 .await;
                 let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
+                stderr_task.abort();
+                let _ = stderr_task.await;
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
             }
@@ -595,6 +606,7 @@ async fn spawn_worker_child(
         ChildStdin,
         ChildStdout,
         steamlens_core::ChildLifetimeGuard,
+        tokio::task::JoinHandle<()>,
     ),
     std::io::Error,
 > {
@@ -604,7 +616,8 @@ async fn spawn_worker_child(
         .arg(app_id.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
         .spawn()?;
 
     let pid = child
@@ -620,7 +633,19 @@ async fn spawn_worker_child(
     let stdout = child.stdout.take().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
     })?;
-    Ok((child, stdin, stdout, job_guard))
+    let stderr = child.stderr.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stderr missing")
+    })?;
+
+    let stderr_task = tokio::spawn(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            crate::log!("worker[app_id={app_id}] stderr: {line}");
+        }
+    });
+
+    Ok((child, stdin, stdout, job_guard, stderr_task))
 }
 
 #[cfg(test)]
