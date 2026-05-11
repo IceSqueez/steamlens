@@ -406,11 +406,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 ProfileEvent::DrainedProgress {
                     cache_entries,
+                    summary_entries,
                     no_ach_entries,
                 } => {
                     let mut tasks: Vec<Task<Message>> = vec![extra];
                     for entry in cache_entries {
                         tasks.push(cache::commands::write_game_cache(entry));
+                    }
+                    for summary in summary_entries {
+                        tasks.push(cache::commands::write_game_summary(summary));
                     }
                     for (app_id, cn) in no_ach_entries {
                         app.context.no_ach_cache.insert(app_id, cn);
