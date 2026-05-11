@@ -152,7 +152,6 @@ pub enum AchievementSort {
     UnlockChance,
     RarityAndName,
     Name,
-    Rarity,
 }
 
 impl AchievementSort {
@@ -161,7 +160,6 @@ impl AchievementSort {
             AchievementSort::UnlockChance => "Unlock Chance",
             AchievementSort::RarityAndName => "Rarity & Name",
             AchievementSort::Name => "Name",
-            AchievementSort::Rarity => "Rarity",
         }
     }
 
@@ -170,7 +168,6 @@ impl AchievementSort {
             AchievementSort::UnlockChance => "UC",
             AchievementSort::RarityAndName => "R&N",
             AchievementSort::Name => "A\u{2013}Z",
-            AchievementSort::Rarity => "R",
         }
     }
 
@@ -179,7 +176,6 @@ impl AchievementSort {
             AchievementSort::UnlockChance => "Sort by unlock chance (rarest first)",
             AchievementSort::RarityAndName => "Sort by rarity tier, then name",
             AchievementSort::Name => "Sort by name (A to Z)",
-            AchievementSort::Rarity => "Sort by rarity tier",
         }
     }
 
@@ -187,7 +183,6 @@ impl AchievementSort {
         AchievementSort::UnlockChance,
         AchievementSort::RarityAndName,
         AchievementSort::Name,
-        AchievementSort::Rarity,
     ];
 }
 
@@ -361,14 +356,6 @@ fn sort_for_display<'a>(
                         .display_name
                         .to_lowercase()
                         .cmp(&b.data.display_name.to_lowercase())
-                })
-            });
-        }
-        AchievementSort::Rarity => {
-            sorted.sort_by(|a, b| {
-                display_group(a).cmp(&display_group(b)).then_with(|| {
-                    tier_rank(tier_map.get(&a.data.id).copied())
-                        .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
                 })
             });
         }
@@ -686,43 +673,6 @@ mod rarity_tests {
         );
         assert_eq!(ids[0], "has_data");
         assert_eq!(ids[1], "no_data", "None rarity goes to end");
-    }
-
-    #[test]
-    fn sort_by_rarity_ignores_name() {
-        let rows: Vec<AchievementRow> = (0..10)
-            .map(|i| make_appeared(&format!("a{i}"), Some(i as f32 * 10.0)))
-            .collect();
-        let map = compute_tier_map(&rows);
-        let common_count = map.values().filter(|&&t| t == RarityTier::Common).count();
-
-        let ids = visible_achievement_ids(
-            &rows,
-            AchievementFilter::All,
-            "",
-            AchievementSort::Rarity,
-            &std::collections::HashSet::new(),
-            false,
-        );
-        assert_eq!(ids.len(), 10);
-
-        for (pos, id) in ids.iter().enumerate().take(common_count) {
-            let tier = map.get(*id).copied();
-            assert_eq!(
-                tier,
-                Some(RarityTier::Common),
-                "position {pos} should be Common (tier_rank=0 sorts first), got {:?}",
-                tier
-            );
-        }
-
-        let common_idx_end = ids.len() - 1;
-        let tier_last = map.get(ids[common_idx_end]).copied();
-        assert_eq!(
-            tier_last,
-            Some(RarityTier::Legendary),
-            "last position should be Legendary (tier_rank=4 sorts last)"
-        );
     }
 
     #[test]
