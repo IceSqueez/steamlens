@@ -484,10 +484,7 @@ pub fn visible_achievement_ids<'a>(
                 return false;
             }
             let is_spoiler = row.is_spoiler_hidden();
-            if is_spoiler
-                && !include_hidden
-                && !matches!(filter, AchievementFilter::All | AchievementFilter::Hidden)
-            {
+            if is_spoiler && !include_hidden && filter != AchievementFilter::Hidden {
                 return false;
             }
             let filter_ok = match filter {
@@ -502,13 +499,15 @@ pub fn visible_achievement_ids<'a>(
                 || row.data.id.to_lowercase().contains(&query);
             let rarity_ok = if rarity_tier_set.is_empty() {
                 true
-            } else if is_spoiler {
-                false
             } else {
-                match tier_map.get(&row.data.id).copied() {
-                    Some(tier) => rarity_tier_set.contains(&tier),
-                    None => false,
-                }
+                let tier_match = !is_spoiler
+                    && match tier_map.get(&row.data.id).copied() {
+                        Some(tier) => rarity_tier_set.contains(&tier),
+                        None => false,
+                    };
+                let hidden_match =
+                    is_spoiler && (include_hidden || filter == AchievementFilter::Hidden);
+                tier_match || hidden_match
             };
             filter_ok && search_ok && rarity_ok
         })
@@ -956,7 +955,7 @@ mod rarity_tests {
     }
 
     #[test]
-    fn filter_all_includes_spoiler() {
+    fn filter_all_excludes_spoilers_when_include_hidden_off() {
         let rows = vec![
             make_appeared("regular", None),
             make_hidden_row("spoiler", false, false, None),
@@ -970,8 +969,8 @@ mod rarity_tests {
             false,
         );
         assert!(
-            ids.contains(&"spoiler"),
-            "All filter must include spoiler-hidden rows"
+            !ids.contains(&"spoiler"),
+            "include_hidden=false must hide spoilers under AchievementFilter::All"
         );
     }
 
@@ -998,7 +997,7 @@ mod rarity_tests {
     }
 
     #[test]
-    fn rarity_filter_all_includes_spoiler() {
+    fn spoilers_hidden_by_default_under_status_all() {
         let rows = vec![
             make_appeared("a0", Some(1.0)),
             make_appeared("a1", Some(2.0)),
@@ -1014,8 +1013,70 @@ mod rarity_tests {
             false,
         );
         assert!(
+            !ids.contains(&"hidden_legendary"),
+            "include_hidden=false must hide spoiler rows even under AchievementFilter::All"
+        );
+    }
+
+    #[test]
+    fn hidden_toggle_reveals_spoilers_under_status_all() {
+        let rows = vec![
+            make_appeared("a0", Some(1.0)),
+            make_hidden_row("hidden_legendary", false, false, Some(0.5)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert!(
             ids.contains(&"hidden_legendary"),
-            "RarityFilter::All + AchievementFilter::All must include spoiler-hidden rows"
+            "include_hidden=true must surface spoiler rows"
+        );
+    }
+
+    #[test]
+    fn hidden_toggle_unions_with_tier_selection() {
+        let rows = vec![
+            make_appeared("a0", Some(1.0)),
+            make_appeared("a1", Some(2.0)),
+            make_appeared("a2", Some(3.0)),
+            make_hidden_row("hidden_row", false, false, Some(0.5)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            &std::collections::HashSet::from([RarityTier::Legendary]),
+            true,
+        );
+        assert!(
+            ids.contains(&"hidden_row"),
+            "include_hidden=true must union spoilers with tier-selected rows"
+        );
+    }
+
+    #[test]
+    fn status_hidden_overrides_include_hidden_off() {
+        let rows = vec![
+            make_appeared("a0", Some(1.0)),
+            make_hidden_row("hidden_row", false, false, Some(0.5)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Hidden,
+            "",
+            AchievementSort::Name,
+            &std::collections::HashSet::new(),
+            false,
+        );
+        assert!(
+            ids.contains(&"hidden_row"),
+            "explicit AchievementFilter::Hidden must show spoilers regardless of include_hidden"
         );
     }
 

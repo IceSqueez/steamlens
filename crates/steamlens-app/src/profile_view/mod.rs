@@ -121,7 +121,7 @@ fn build_profile_genre_strip<'a>(
     const GENRE_PILL_PAD_V: u32 = 4;
 
     let neutral = crate::theme::C_TEXT_MUTED;
-    let chips: Vec<iced::Element<'_, crate::Message>> = genres
+    let mut chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()
         .map(|g| {
             let label = text(g.clone()).size(11).color(neutral);
@@ -135,6 +135,20 @@ fn build_profile_genre_strip<'a>(
                 .into()
         })
         .collect();
+
+    if !state.genre_filter.is_empty() {
+        let clear_label = text("Clear").size(11).color(neutral);
+        chips.push(
+            pill(clear_label, neutral)
+                .radius(GENRE_PILL_RADIUS)
+                .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
+                .selected(false)
+                .on_press(crate::Message::ProfileView(
+                    types::ProfileViewMessage::GenreFilterCleared,
+                ))
+                .into(),
+        );
+    }
 
     row(chips).spacing(6).align_y(Alignment::Center).into()
 }
@@ -395,6 +409,11 @@ pub fn update(
             } else {
                 state.genre_filter.insert(genre);
             }
+            (Task::none(), ProfileEvent::None)
+        }
+
+        ProfileViewMessage::GenreFilterCleared => {
+            state.genre_filter.clear();
             (Task::none(), ProfileEvent::None)
         }
     }
