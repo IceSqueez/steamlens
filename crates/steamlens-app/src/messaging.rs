@@ -57,6 +57,7 @@ pub struct Banner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
+    #[allow(dead_code, reason = "available for future success-feedback toasts")]
     Success,
     Info,
     Error,
