@@ -1,6 +1,13 @@
+use std::sync::LazyLock;
+
 use iced::widget::Id as WidgetId;
-use iced::widget::{Space, button, column, container, row, text, text_input};
+use iced::widget::{Space, button, column, container, image as img_widget, row, text, text_input};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
+
+static HEADER_ICON: LazyLock<iced::widget::image::Handle> = LazyLock::new(|| {
+    const BYTES: &[u8] = include_bytes!("../../../assets/icon-48.png");
+    iced::widget::image::Handle::from_bytes(BYTES.to_vec())
+});
 
 use crate::ui::theme::{palette, theme_from_iced};
 
@@ -56,13 +63,19 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
     let mut top_row = row![].spacing(12).align_y(Alignment::Center);
 
     {
-        let title_el = container(text("SteamLens").size(22).style(|t: &iced::Theme| {
+        let brand_icon = img_widget(HEADER_ICON.clone())
+            .width(Length::Fixed(26.0))
+            .height(Length::Fixed(26.0));
+        let title_text = text("SteamLens").size(22).style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             iced::widget::text::Style {
                 color: Some(p.accent),
             }
-        }));
-        top_row = top_row.push(title_el);
+        });
+        let brand_row = row![brand_icon, title_text]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        top_row = top_row.push(brand_row);
     }
 
     if let Some(cfg) = content.search {
