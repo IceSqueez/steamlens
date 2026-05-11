@@ -2,7 +2,9 @@ use core::marker::PhantomData;
 use std::ffi::CString;
 
 use crate::error::SteamError;
-use crate::ffi::interfaces::{HSteamPipe, HSteamUser, ISteamClient018, ISteamUser012};
+use crate::ffi::interfaces::{
+    HSteamPipe, HSteamUser, ISteamClient018, ISteamUser012, ISteamUser023,
+};
 use crate::ffi::loader;
 use crate::ffi::opaque::{self, RawInterface};
 
@@ -187,6 +189,30 @@ impl SteamConnection {
             };
             if raw.is_null() { None } else { Some(raw) }
         };
+
+        if let Some(u023) = steam_user_023 {
+            // SAFETY:
+            // - `u023` was returned by ISteamClient::GetISteamUser("SteamUser023") above,
+            //   using valid `pipe` and `user` handles produced by connect_to_global_user
+            //   (both checked non-zero before this point).
+            // - vtable slot 1 (`b_logged_on`) verified against Steamworks.NET isteamuser.h
+            //   (see STEAM_NOTES.md → Vtable Offset Verifications).
+            // - Called on the same thread that created the pipe; SteamConnection is `!Send`
+            //   via `PhantomData<*const ()>`. SysV-x64 ABI: `this` in RDI, bool in AL.
+            let logged_on = unsafe {
+                let vtbl = opaque::vtable::<ISteamUser023>(u023);
+                ((*vtbl).b_logged_on)(u023)
+            };
+            eprintln!("steamlens: BLoggedOn = {logged_on}");
+            if !logged_on {
+                unsafe {
+                    let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+                    ((*vtbl).release_user)(steam_client, pipe, user);
+                    ((*vtbl).release_steam_pipe)(steam_client, pipe);
+                }
+                return Err(SteamError::NotLoggedIn);
+            }
+        }
 
         Ok(SteamConnection {
             steam_client,

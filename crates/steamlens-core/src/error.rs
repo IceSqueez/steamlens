@@ -11,6 +11,9 @@ pub enum SteamError {
     #[error("Steam client is not running. Please start Steam and try again.")]
     SteamNotRunning,
 
+    #[error("Steam is running but no user is signed in")]
+    NotLoggedIn,
+
     #[error(
         "Could not locate steamclient.so. Searched: {}",
         format_paths(.searched)

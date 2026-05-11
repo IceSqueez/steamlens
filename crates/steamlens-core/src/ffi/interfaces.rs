@@ -116,7 +116,7 @@ pub struct ISteamUser012 {
 #[repr(C)]
 pub struct ISteamUser023 {
     _reserved_00_get_h_steam_user: usize,
-    _reserved_01_b_logged_on: usize,
+    pub b_logged_on: unsafe extern "C" fn(this: *mut c_void) -> bool,
     _reserved_02_get_steam_id: usize,
     _reserved_03_initiate_game_connection_deprecated: usize,
     _reserved_04_terminate_game_connection_deprecated: usize,

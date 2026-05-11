@@ -68,6 +68,14 @@ async fn probe_main() -> i32 {
     crate::log!("probe: connect…");
     let client = match steamlens_core::connect(0) {
         Ok(c) => c,
+        Err(steamlens_core::SteamError::NotLoggedIn) => {
+            let _ = write_response(&WorkerResponse::Error {
+                kind: WorkerErrorKind::NotLoggedIn,
+                message: steamlens_core::SteamError::NotLoggedIn.to_string(),
+            })
+            .await;
+            return 1;
+        }
         Err(e) => {
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::Connect,

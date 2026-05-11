@@ -13,6 +13,7 @@ pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WorkerErrorKind {
     Connect,
+    NotLoggedIn,
     RequestUserStats,
     UserStatsReceived,
     PollCallbacks,
@@ -29,6 +30,7 @@ impl WorkerErrorKind {
     pub fn tag(self) -> &'static str {
         match self {
             Self::Connect => "connect",
+            Self::NotLoggedIn => "not_logged_in",
             Self::RequestUserStats => "request_user_stats",
             Self::UserStatsReceived => "user_stats_received",
             Self::PollCallbacks => "poll_callbacks",
@@ -228,6 +230,7 @@ mod tests {
     fn all_error_kinds() -> Vec<WorkerErrorKind> {
         vec![
             WorkerErrorKind::Connect,
+            WorkerErrorKind::NotLoggedIn,
             WorkerErrorKind::RequestUserStats,
             WorkerErrorKind::UserStatsReceived,
             WorkerErrorKind::PollCallbacks,
