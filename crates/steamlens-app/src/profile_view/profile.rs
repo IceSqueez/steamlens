@@ -823,7 +823,8 @@ fn build_closest_row<'a>(
         .color(C_TEXT_PRIMARY)
         .wrapping(text::Wrapping::None);
 
-    let left_label = text(format!("{} of {}", entry.earned, entry.total))
+    let remaining = entry.total.saturating_sub(entry.earned);
+    let left_label = text(format!("{} of {} left", remaining, entry.total))
         .size(11)
         .color(C_TEXT_MUTED);
 
