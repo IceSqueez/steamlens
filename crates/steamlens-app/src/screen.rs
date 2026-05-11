@@ -150,11 +150,7 @@ fn build_strip_divider() -> Element<'static, crate::Message> {
 }
 
 fn build_filter_strip(strip: FilterStrip<'_>) -> Element<'_, crate::Message> {
-    let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
-    for filter in strip.buttons {
-        items.push(build_filter_button(filter));
-    }
-    row(items)
+    row(strip.buttons.into_iter().map(build_filter_button))
         .spacing(FILTER_SPACING)
         .align_y(Alignment::Center)
         .into()
