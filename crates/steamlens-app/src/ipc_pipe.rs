@@ -3,7 +3,7 @@ use steamlens_core::ipc::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub async fn write_command<W: AsyncWrite + Unpin>(
+pub(crate) async fn write_command<W: AsyncWrite + Unpin>(
     writer: &mut W,
     cmd: &WorkerCommand,
 ) -> std::io::Result<()> {
@@ -13,7 +13,7 @@ pub async fn write_command<W: AsyncWrite + Unpin>(
     writer.flush().await
 }
 
-pub async fn read_response<R: AsyncRead + Unpin>(reader: &mut R) -> Option<WorkerResponse> {
+pub(crate) async fn read_response<R: AsyncRead + Unpin>(reader: &mut R) -> Option<WorkerResponse> {
     let mut header = [0u8; 4];
     reader.read_exact(&mut header).await.ok()?;
     let len = parse_header(header).ok()?;
