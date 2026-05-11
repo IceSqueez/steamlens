@@ -308,13 +308,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             };
 
             let is_scan_complete = matches!(msg, ProfileViewMessage::ScanComplete(_));
-            let is_scan_failed = matches!(msg, ProfileViewMessage::ScanFailed(_));
-            let scan_failed_reason = if let ProfileViewMessage::ScanFailed(ref r) = msg {
-                let is_first = pv_state.failed_app_ids.len() == 1;
-                if is_first { Some(r.clone()) } else { None }
-            } else {
-                None
-            };
+            let is_scan_failed = matches!(msg, ProfileViewMessage::ScanFailed { .. });
+            let scan_failed_details =
+                if let ProfileViewMessage::ScanFailed { app_id, ref reason } = msg {
+                    Some((app_id, reason.clone()))
+                } else {
+                    None
+                };
             let enumerated_games = if let ProfileViewMessage::ScanComplete(ref v) = msg {
                 Some(v.clone())
             } else {
@@ -363,10 +363,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                 Task::batch(tasks)
             } else if is_scan_failed {
-                if let Some(reason) = scan_failed_reason {
-                    app.context
-                        .messaging
-                        .push_banner(BannerSeverity::Warning, reason, None, true);
+                if let Some((app_id, reason)) = scan_failed_details {
+                    let action = messaging::ToastAction {
+                        label: "Retry".to_owned(),
+                        on_press: crate::Message::ProfileView(
+                            crate::profile_view::types::ProfileViewMessage::RetrySingleFailedScan(
+                                app_id,
+                            ),
+                        ),
+                    };
+                    app.context.messaging.push_toast_with_action(
+                        messaging::ToastKind::Error,
+                        format!("Failed to load app {app_id}"),
+                        Some(reason),
+                        action,
+                    );
                 }
                 task
             } else {

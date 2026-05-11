@@ -63,11 +63,18 @@ pub enum ToastKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct ToastAction {
+    pub label: String,
+    pub on_press: crate::Message,
+}
+
+#[derive(Debug, Clone)]
 pub struct Toast {
     pub id: u32,
     pub kind: ToastKind,
     pub title: String,
     pub body: Option<String>,
+    pub action: Option<ToastAction>,
     created_at: Instant,
     pub hovered: bool,
 }
@@ -174,9 +181,33 @@ impl MessagingCenter {
             kind,
             title: title.into(),
             body,
+            action: None,
             created_at: Instant::now(),
             hovered: false,
         });
+    }
+
+    pub fn push_toast_with_action(
+        &mut self,
+        kind: ToastKind,
+        title: impl Into<String>,
+        body: Option<String>,
+        action: ToastAction,
+    ) -> u32 {
+        if self.toasts.len() >= MAX_VISIBLE_TOASTS {
+            self.toasts.remove(0);
+        }
+        let id = self.alloc_id();
+        self.toasts.push(Toast {
+            id,
+            kind,
+            title: title.into(),
+            body,
+            action: Some(action),
+            created_at: Instant::now(),
+            hovered: false,
+        });
+        id
     }
 
     pub fn dismiss_toast(&mut self, id: u32) {
@@ -549,6 +580,38 @@ fn toast_card<'a>(toast: &'a Toast) -> Element<'a, crate::Message> {
         card_col = card_col.push(text(body.as_str()).size(12).color(C_TEXT_MUTED));
     }
 
+    if let Some(action) = &toast.action {
+        let action_msg = action.on_press.clone();
+        let action_btn = button(text(action.label.as_str()).size(12).color(accent_color))
+            .on_press(action_msg)
+            .padding(Padding::default().left(10).right(10).top(4).bottom(4))
+            .style(move |_: &iced::Theme, status| {
+                let hovered = matches!(
+                    status,
+                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+                );
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(Color {
+                        a: if hovered { 0.25 } else { 0.15 },
+                        ..accent_color
+                    })),
+                    border: iced::Border {
+                        color: Color {
+                            a: 0.50,
+                            ..accent_color
+                        },
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    text_color: accent_color,
+                    ..iced::widget::button::Style::default()
+                }
+            });
+        let action_row = row![iced::widget::Space::new().width(Length::Fill), action_btn]
+            .align_y(iced::Alignment::Center);
+        card_col = card_col.push(action_row);
+    }
+
     if auto_dismiss {
         card_col = card_col.push(progress_bar);
     }
@@ -687,6 +750,7 @@ mod tests {
             kind: ToastKind::Info,
             title: "old".to_owned(),
             body: None,
+            action: None,
             created_at: Instant::now() - Duration::from_secs(10),
             hovered: false,
         });
@@ -702,6 +766,7 @@ mod tests {
             kind: ToastKind::Error,
             title: "boom".to_owned(),
             body: None,
+            action: None,
             created_at: Instant::now() - Duration::from_secs(60),
             hovered: false,
         });
@@ -717,6 +782,7 @@ mod tests {
             kind: ToastKind::Info,
             title: "hover me".to_owned(),
             body: None,
+            action: None,
             created_at: Instant::now() - Duration::from_secs(10),
             hovered: true,
         });
@@ -747,5 +813,22 @@ mod tests {
             label: "Loading".to_owned(),
         };
         let _ = FooterStatus::Offline { cached_games: 42 };
+    }
+
+    #[test]
+    fn push_toast_with_action_carries_action() {
+        let mut mc = MessagingCenter::new();
+        mc.push_toast_with_action(
+            ToastKind::Error,
+            "Failed to load app 570",
+            Some("Scan failed for app 570".to_owned()),
+            ToastAction {
+                label: "Retry".to_owned(),
+                on_press: crate::Message::ToastTick,
+            },
+        );
+        assert_eq!(mc.toasts.len(), 1);
+        let action = mc.toasts[0].action.as_ref().unwrap();
+        assert_eq!(action.label, "Retry");
     }
 }
