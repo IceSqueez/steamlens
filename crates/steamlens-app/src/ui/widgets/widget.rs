@@ -25,9 +25,22 @@ pub const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 const RARITY_CARD_MAX_WIDTH: f32 = 124.0;
 const RARITY_CARD_GAP: f32 = 16.0;
 const RARITY_CARDS_MAX_WIDTH: f32 = RARITY_CARD_MAX_WIDTH * 5.0 + RARITY_CARD_GAP * 4.0;
+const RARITY_CARD_HEIGHT: f32 = 64.0;
+const RARITY_CARD_SHORT_THRESHOLD: f32 = 95.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
 const WIDGET_ROW_HEIGHT: f32 = 320.0;
+
+fn short_rarity_label_str(label: &str) -> &'static str {
+    match label {
+        "COMMON" => "COM",
+        "UNCOMMON" => "UNC",
+        "RARE" => "RARE",
+        "MYTHICAL" => "MYTH",
+        "LEGENDARY" => "LEG",
+        _ => "",
+    }
+}
 
 pub fn rarity_color(tier: RarityTier) -> Color {
     match tier {
@@ -185,28 +198,38 @@ pub fn count_card<'a, M: 'a + Clone>(
     count: u32,
     pct: f64,
 ) -> Element<'a, M> {
-    let stripe = container(iced::widget::Space::new())
-        .width(Length::Fixed(3.0))
-        .height(Length::Fill)
-        .style(move |_: &iced::Theme| container::Style {
-            background: Some(Background::Color(accent)),
-            ..container::Style::default()
-        });
+    let body = iced::widget::responsive(move |size| {
+        let display_label: &'static str = if size.width < RARITY_CARD_SHORT_THRESHOLD {
+            short_rarity_label_str(label)
+        } else {
+            label
+        };
 
-    let number = text(format_thousands(count)).size(18).color(accent);
-    let pct_text = text(format!("{pct:.1}%"))
-        .size(10)
-        .color(Color { a: 0.75, ..accent });
-    let label_text = text(label).size(11).color(C_TEXT_MUTED);
+        let stripe = container(iced::widget::Space::new())
+            .width(Length::Fixed(3.0))
+            .height(Length::Fill)
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(Background::Color(accent)),
+                ..container::Style::default()
+            });
 
-    let info_col = column![number, label_text, pct_text]
-        .spacing(2)
-        .padding(Padding::default().left(8).right(6).top(6).bottom(6));
+        let number = text(format_thousands(count)).size(18).color(accent);
+        let pct_text = text(format!("{pct:.1}%"))
+            .size(10)
+            .color(Color { a: 0.75, ..accent });
+        let label_text = text(display_label).size(11).color(C_TEXT_MUTED);
 
-    let card_inner = row![stripe, info_col];
+        let info_col = column![number, label_text, pct_text]
+            .spacing(2)
+            .padding(Padding::default().left(8).right(6).top(6).bottom(6));
 
-    container(card_inner)
+        row![stripe, info_col].into()
+    });
+
+    container(body)
         .width(Length::Fill)
+        .height(Length::Fixed(RARITY_CARD_HEIGHT))
+        .clip(true)
         .style(move |_: &iced::Theme| container::Style {
             background: Some(Background::Color(Color { a: 0.08, ..accent })),
             border: Border {
