@@ -596,12 +596,22 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             return task;
                         };
                         let app_id = gv_state.app_id;
-                        let entry = build_game_view_cache_entry(
+                        let mut entry = build_game_view_cache_entry(
                             gv_state,
                             app_id,
                             &app.context.steam_root,
                             app.context.steamid3,
                         );
+                        if let Some(existing) = app.context.cached_entries.get(&app_id) {
+                            if entry.genre.is_none() {
+                                entry.genre = existing.genre.clone();
+                            }
+                            if entry.tier_breakdown.is_empty()
+                                && !existing.tier_breakdown.is_empty()
+                            {
+                                entry.tier_breakdown = existing.tier_breakdown.clone();
+                            }
+                        }
                         app.context.cached_entries.insert(app_id, entry.clone());
                         cache::commands::write_game_cache(entry)
                     };
