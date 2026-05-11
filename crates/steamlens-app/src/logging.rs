@@ -7,9 +7,15 @@ use tracing::Level;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Truncates `steamlens.log` on every call; installs a panic hook; sets the global subscriber.
+/// Host process only. Truncates `steamlens.log` and opens it as the writer.
 pub fn init() -> io::Result<()> {
     init_with_path(&crate::paths::log_path())
+}
+
+/// Subprocess only. Writes to stderr instead of touching the host's log file —
+/// the host pipes worker stderr and forwards each line into its own writer.
+pub fn init_worker() -> io::Result<()> {
+    install_subscriber(std::io::stderr)
 }
 
 pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
@@ -23,8 +29,13 @@ pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
         .truncate(true)
         .open(path)?;
 
-    let writer = Mutex::new(file);
+    install_subscriber(Mutex::new(file))
+}
 
+fn install_subscriber<W>(writer: W) -> io::Result<()>
+where
+    W: for<'w> tracing_subscriber::fmt::MakeWriter<'w> + Send + Sync + 'static,
+{
     let filter = Targets::new()
         .with_target("steamlens_app", Level::TRACE)
         .with_target("steamlens_core", Level::TRACE)

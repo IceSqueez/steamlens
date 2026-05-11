@@ -1444,12 +1444,20 @@ fn theme(_app: &App) -> iced::Theme {
 }
 
 fn main() -> iced::Result {
-    if let Err(e) = crate::logging::init() {
+    let args: Vec<String> = std::env::args().collect();
+    let is_subprocess =
+        args.len() >= 2 && (args[1] == "--probe" || args[1].starts_with("--worker"));
+
+    let init_result = if is_subprocess {
+        crate::logging::init_worker()
+    } else {
+        crate::logging::init()
+    };
+    if let Err(e) = init_result {
         eprintln!("[steamlens] FATAL: logging init failed: {e}");
         std::process::exit(1);
     }
 
-    let args: Vec<String> = std::env::args().collect();
     if args.len() == 2 && args[1] == "--probe" {
         worker::run_probe();
     }
