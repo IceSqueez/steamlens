@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc as async_mpsc;
 
 use steamlens_core::AchievementIcon;
-use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse, encode_frame};
+use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
 
 use crate::game_view::types::ResetScope;
 use crate::ipc_pipe;
@@ -140,20 +139,13 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
     }
 }
 
-async fn write_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> bool {
-    let Ok(framed) = encode_frame(cmd) else {
-        return false;
-    };
-    stdin.write_all(&framed).await.is_ok() && stdin.flush().await.is_ok()
-}
-
 async fn round_trip(
     stdin: &mut ChildStdin,
     stdout: &mut ChildStdout,
     cmd: &WorkerCommand,
     timeout: Duration,
 ) -> Option<WorkerResponse> {
-    if !write_command(stdin, cmd).await {
+    if ipc_pipe::write_command(stdin, cmd).await.is_err() {
         return None;
     }
     tokio::time::timeout(timeout, ipc_pipe::read_response(stdout))
@@ -526,14 +518,14 @@ async fn bridge_loop(
         drain_responses(&mut stdout, &rep_tx, timeouts::ICON_DRAIN_MS).await;
 
         let Some(req) = req_rx.recv().await else {
-            let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+            let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
             let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
             return;
         };
 
         match req {
             SteamRequest::ConnectWithApp(new_app_id) => {
-                let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+                let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
                 let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
 
                 match spawn_worker_child(new_app_id).await {
@@ -570,7 +562,7 @@ async fn bridge_loop(
             }
 
             SteamRequest::Disconnect => {
-                let _ = write_command(&mut stdin, &WorkerCommand::Shutdown).await;
+                let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
                 let _ = tokio::time::timeout(
                     timeouts::CHILD_DRAIN,
                     ipc_pipe::read_response(&mut stdout),
