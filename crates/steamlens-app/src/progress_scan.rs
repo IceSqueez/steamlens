@@ -122,6 +122,8 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
     }
 }
 
+/// `(err, diag)` — `err` is `io::Error` for spawn failures or `WorkerProtocolError`
+/// for in-session failures. `diag` is the worker's captured stderr + exit status.
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
@@ -166,10 +168,8 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
 
     match result {
         Err(_) => Err((
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "worker timed out",
-            )) as Box<dyn std::error::Error + Send>,
+            Box::new(crate::worker_subprocess::WorkerProtocolError::Timeout)
+                as Box<dyn std::error::Error + Send>,
             diag,
         )),
         Ok(Err(e)) => Err((Box::new(e) as Box<dyn std::error::Error + Send>, diag)),
@@ -221,53 +221,50 @@ fn signal_name(sig: i32) -> &'static str {
     }
 }
 
-async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, std::io::Error> {
-    let mut stdin = child.stdin.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdin missing")
-    })?;
-    let mut stdout = child.stdout.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
-    })?;
+async fn run_full_scan_protocol(
+    child: &mut Child,
+) -> Result<ScannedGameData, crate::worker_subprocess::WorkerProtocolError> {
+    use crate::worker_subprocess::WorkerProtocolError;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or(WorkerProtocolError::UnexpectedEof)?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or(WorkerProtocolError::UnexpectedEof)?;
 
     let connected = tokio::time::timeout(
         timeouts::STEAM_CONNECT,
         ipc_pipe::read_response(&mut stdout),
     )
     .await
-    .map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "timed out waiting for SteamConnected",
-        )
-    })?
-    .ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::UnexpectedEof,
-            "worker closed before SteamConnected",
-        )
-    })?;
+    .map_err(|_| WorkerProtocolError::Timeout)?
+    .ok_or(WorkerProtocolError::UnexpectedEof)?;
 
     let app_name = match connected {
         WorkerResponse::SteamConnected { app_name, .. } => app_name,
-        WorkerResponse::Error { message, .. } => {
-            return Err(std::io::Error::other(message));
+        WorkerResponse::Error { kind, message } => {
+            return Err(WorkerProtocolError::WorkerError { kind, message });
         }
         _ => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "unexpected first message from worker",
-            ));
+            return Err(WorkerProtocolError::UnexpectedMessage);
         }
     };
 
-    ipc_pipe::write_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly).await?;
+    ipc_pipe::write_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly)
+        .await
+        .map_err(WorkerProtocolError::Write)?;
     let (achievements, stats, genre) =
         read_card_only_skipping_async(&mut stdout, timeouts::COLD_SCAN_LOAD).await?;
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
     } else {
-        ipc_pipe::write_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
+        ipc_pipe::write_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages)
+            .await
+            .map_err(WorkerProtocolError::Write)?;
         read_percentages_skipping_async(&mut stdout, timeouts::GLOBAL_PERCENTAGES).await
     };
 
@@ -285,30 +282,22 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
 async fn read_card_only_skipping_async(
     stdout: &mut ChildStdout,
     total_timeout: Duration,
-) -> Result<(Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>), std::io::Error> {
+) -> Result<
+    (Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>),
+    crate::worker_subprocess::WorkerProtocolError,
+> {
+    use crate::worker_subprocess::WorkerProtocolError;
+
     let deadline = tokio::time::Instant::now() + total_timeout;
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "timed out waiting for CardOnlyAchievements",
-            ));
+            return Err(WorkerProtocolError::Timeout);
         }
         let frame = tokio::time::timeout(remaining, ipc_pipe::read_response(stdout))
             .await
-            .map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "timed out waiting for CardOnlyAchievements",
-                )
-            })?
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "worker closed before CardOnlyAchievements",
-                )
-            })?;
+            .map_err(|_| WorkerProtocolError::Timeout)?
+            .ok_or(WorkerProtocolError::UnexpectedEof)?;
         match frame {
             WorkerResponse::CardOnlyAchievements {
                 shm_path,
@@ -317,10 +306,9 @@ async fn read_card_only_skipping_async(
                 let path = std::path::PathBuf::from(&shm_path);
                 let payload: CardOnlyPayload = steamlens_core::read_payload(&path, region_bytes)
                     .map_err(|e| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("CardOnlyAchievements shm read: {e}"),
-                        )
+                        WorkerProtocolError::Decode(std::io::Error::other(format!(
+                            "CardOnlyAchievements shm read: {e}"
+                        )))
                     })?;
                 return Ok((payload.achievements, Vec::new(), None));
             }
@@ -335,8 +323,8 @@ async fn read_card_only_skipping_async(
                 steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
                 continue;
             }
-            WorkerResponse::Error { message, .. } => {
-                return Err(std::io::Error::other(message));
+            WorkerResponse::Error { kind, message } => {
+                return Err(WorkerProtocolError::WorkerError { kind, message });
             }
             _ => continue,
         }

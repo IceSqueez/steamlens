@@ -18,6 +18,7 @@ mod theme;
 mod timeouts;
 mod ui;
 mod worker;
+mod worker_subprocess;
 
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
