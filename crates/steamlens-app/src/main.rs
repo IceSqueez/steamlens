@@ -27,7 +27,7 @@ use iced::keyboard;
 use iced::widget::{button, center, column, container, row, text};
 use iced::{Color, Element, Subscription, Task};
 
-use app_context::{AnimationState, AppContext};
+use app_context::{AnimationState, AppContext, ConnectivityState};
 use cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewEvent, GameViewMessage, GameViewState};
 use messaging::{BannerSeverity, FooterStatus, MessagingCenter, ToastKind};
@@ -35,13 +35,30 @@ use profile_view::types::ProfileEvent;
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
 use steam_worker::{SteamReply, SteamRequest, SteamWorker};
-use steamlens_core::{ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
+use steamlens_core::{ProbeError, ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 #[derive(Debug)]
 enum Screen {
     ProfileView(Box<ProfileViewState>),
     SteamNotRunning { reason: String },
     GameView(Box<GameViewState>),
+}
+
+#[derive(Debug, Clone)]
+enum ProbeFailure {
+    SteamNotRunning,
+    NotLoggedIn,
+    Other(String),
+}
+
+impl From<ProbeError> for ProbeFailure {
+    fn from(e: ProbeError) -> Self {
+        match e {
+            ProbeError::SteamNotRunning => ProbeFailure::SteamNotRunning,
+            ProbeError::NotLoggedIn => ProbeFailure::NotLoggedIn,
+            other => ProbeFailure::Other(other.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +70,7 @@ enum Message {
     PollWorker,
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
-    ProbeResult(Result<ProbedProfile, String>),
+    ProbeResult(Result<ProbedProfile, ProbeFailure>),
     RetrySteamConnect,
     ProfileCacheLoaded(Option<CachedProfile>),
     LibraryCacheLoaded(Option<CachedLibrary>),
@@ -95,8 +112,8 @@ struct App {
     context: AppContext,
     screen: Screen,
     splash_min_elapsed: bool,
-    splash_scan_done: bool,
-    splash_probe_done: bool,
+    library_cache_resolved: bool,
+    probe_done: bool,
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
@@ -131,7 +148,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         steamid3,
         user_profile,
         profile_avatar_handle,
-        steam_running: None,
+        connectivity: ConnectivityState::default(),
         steam_level: None,
         no_ach_cache: cache::NoAchievementsCache::new(),
         animation: AnimationState {
@@ -143,8 +160,8 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         context,
         screen: Screen::ProfileView(Box::new(pv_state)),
         splash_min_elapsed: false,
-        splash_scan_done: false,
-        splash_probe_done: false,
+        library_cache_resolved: false,
+        probe_done: false,
     };
 
     (
@@ -308,7 +325,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let task = task.map(Message::ProfileView);
 
             let extra = if is_scan_complete {
-                app.splash_scan_done = true;
+                app.library_cache_resolved = true;
+                crate::log!("library_cache_resolved = true (ScanComplete)");
                 let games = enumerated_games.unwrap_or_default();
                 let steam_root = app.context.steam_root.clone();
                 let steamid3 = app.context.steamid3;
@@ -518,8 +536,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::RetrySteamConnect => {
-            app.context.steam_running = None;
-            app.splash_scan_done = false;
+            app.context.connectivity = ConnectivityState::default();
+            app.library_cache_resolved = false;
             app.context
                 .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
@@ -532,10 +550,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ProbeResult(result) => {
-            app.splash_probe_done = true;
+            app.probe_done = true;
             match result {
                 Ok(p) => {
-                    app.context.steam_running = Some(true);
+                    app.context.connectivity.steam_running = Some(true);
+                    app.context.connectivity.user_logged_in = Some(true);
                     app.context
                         .messaging
                         .dismiss_all_banners_by_severity(BannerSeverity::Warning);
@@ -572,7 +591,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     tasks.push(cache::commands::write_profile_cache(cached));
 
                     if !p.game_summaries.is_empty() {
-                        app.splash_scan_done = true;
                         let no_ach = &app.context.no_ach_cache;
                         let filtered: Vec<_> = p
                             .game_summaries
@@ -594,11 +612,63 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     Task::batch(tasks)
                 }
-                Err(e) => {
-                    app.context.steam_running = Some(false);
+                Err(ProbeFailure::NotLoggedIn) => {
+                    app.context.connectivity.steam_running = Some(true);
+                    app.context.connectivity.user_logged_in = Some(false);
                     app.context.steam_level = None;
-                    app.splash_scan_done = true;
-                    crate::log!("probe failed: {e}");
+                    crate::log!("probe: connectivity.user_logged_in = false");
+
+                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
+                        pv.games.len()
+                    } else {
+                        0
+                    };
+                    app.context.messaging.footer = FooterStatus::Offline {
+                        cached_games: cached_count,
+                    };
+                    app.context.messaging.push_banner(
+                        BannerSeverity::Warning,
+                        "Steam is running but the user is not signed in \u{2014} showing cached data",
+                        Some(messaging::BannerAction {
+                            label: "Retry",
+                            message: Message::RetrySteamConnect,
+                        }),
+                        false,
+                    );
+
+                    cache::commands::load_profile_cache()
+                }
+                Err(ProbeFailure::SteamNotRunning) => {
+                    app.context.connectivity.steam_running = Some(false);
+                    app.context.connectivity.user_logged_in = None;
+                    app.context.steam_level = None;
+                    crate::log!("probe: steam_running = false");
+
+                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
+                        pv.games.len()
+                    } else {
+                        0
+                    };
+                    app.context.messaging.footer = FooterStatus::Offline {
+                        cached_games: cached_count,
+                    };
+                    app.context.messaging.push_banner(
+                        BannerSeverity::Warning,
+                        "Steam is not running \u{2014} showing cached data",
+                        Some(messaging::BannerAction {
+                            label: "Retry",
+                            message: Message::RetrySteamConnect,
+                        }),
+                        false,
+                    );
+
+                    cache::commands::load_profile_cache()
+                }
+                Err(ProbeFailure::Other(reason)) => {
+                    app.context.connectivity.steam_running = None;
+                    app.context.connectivity.user_logged_in = None;
+                    app.context.steam_level = None;
+                    crate::log!("probe failed: {reason}");
 
                     let cached_count = if let Screen::ProfileView(pv) = &app.screen {
                         pv.games.len()
@@ -627,7 +697,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let Some(cached) = maybe else {
                 return Task::none();
             };
-            if app.context.user_profile.is_some() && app.context.steam_running != Some(false) {
+            if app.context.user_profile.is_some()
+                && app.context.connectivity.steam_running != Some(false)
+                && app.context.connectivity.user_logged_in != Some(false)
+            {
                 return Task::none();
             }
             app.context.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
@@ -675,7 +748,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 pv_state.library_name_map = name_map;
             }
-            if app.context.steam_running == Some(false) {
+            if app.context.connectivity.steam_running == Some(false) {
                 app.context.messaging.push_banner(
                     BannerSeverity::Info,
                     "Showing cached library \u{2014} connect Steam to refresh",
@@ -683,6 +756,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     true,
                 );
             }
+            app.library_cache_resolved = true;
+            crate::log!("library_cache_resolved = true (LibraryCacheLoaded)");
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
             )))
@@ -1100,7 +1175,7 @@ fn view(app: &App) -> Element<'_, Message> {
 
     let header: Option<Element<'_, Message>> = match &app.screen {
         Screen::ProfileView(pv_state) => Some(crate::screen::render_app_header(
-            profile_view::header_content(pv_state, app.context.steam_running),
+            profile_view::header_content(pv_state, app.context.connectivity.steam_running),
         )),
         Screen::GameView(state) => Some(crate::screen::render_app_header(
             game_view::header_content(state),
@@ -1157,7 +1232,7 @@ fn view(app: &App) -> Element<'_, Message> {
     let with_messaging =
         messaging::wrap_with_messaging(screen_content, &app.context.messaging, failed_count);
 
-    if app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done {
+    if app.splash_min_elapsed && app.library_cache_resolved && app.probe_done {
         with_messaging
     } else {
         splash_view()
@@ -1242,7 +1317,8 @@ fn subscription(app: &App) -> Subscription<Message> {
 
     let screen_sub: Subscription<Message> = match &app.screen {
         Screen::ProfileView(state) => {
-            profile_view::subscription(state, app.context.steam_running).map(Message::ProfileView)
+            profile_view::subscription(state, app.context.connectivity.steam_running)
+                .map(Message::ProfileView)
         }
         Screen::GameView(state) => game_view::subscription(state).map(Message::GameView),
         Screen::SteamNotRunning { .. } => Subscription::none(),
@@ -1325,7 +1401,10 @@ mod tests {
                     steamid3: 0,
                     user_profile: None,
                     profile_avatar_handle: None,
-                    steam_running: Some(true),
+                    connectivity: ConnectivityState {
+                        steam_running: Some(true),
+                        user_logged_in: Some(true),
+                    },
                     steam_level: None,
                     no_ach_cache: cache::NoAchievementsCache::new(),
                     animation: AnimationState {
@@ -1336,8 +1415,8 @@ mod tests {
                     reason: String::new(),
                 },
                 splash_min_elapsed: true,
-                splash_scan_done: true,
-                splash_probe_done: true,
+                library_cache_resolved: true,
+                probe_done: true,
             }
         }
     }
@@ -1384,9 +1463,9 @@ mod tests {
         let mut app = make_app_not_running("");
         app.screen = Screen::ProfileView(Box::new(ProfileViewState::new()));
         app.splash_min_elapsed = false;
-        app.splash_scan_done = false;
-        app.splash_probe_done = false;
-        app.context.steam_running = None;
+        app.library_cache_resolved = false;
+        app.probe_done = false;
+        app.context.connectivity = ConnectivityState::default();
         app.context.user_profile = None;
         app.context.profile_avatar_handle = None;
         app
@@ -1404,8 +1483,9 @@ mod tests {
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
-        assert_eq!(app.context.steam_running, Some(true));
-        assert!(app.splash_probe_done);
+        assert_eq!(app.context.connectivity.steam_running, Some(true));
+        assert_eq!(app.context.connectivity.user_logged_in, Some(true));
+        assert!(app.probe_done);
         let profile = app
             .context
             .user_profile
@@ -1433,11 +1513,11 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProbeResult(Err("Steam is not running".to_owned())),
+            Message::ProbeResult(Err(ProbeFailure::SteamNotRunning)),
         );
 
-        assert_eq!(app.context.steam_running, Some(false));
-        assert!(app.splash_probe_done);
+        assert_eq!(app.context.connectivity.steam_running, Some(false));
+        assert!(app.probe_done);
         let profile = app
             .context
             .user_profile
@@ -1455,10 +1535,13 @@ mod tests {
             "precondition: no prior profile"
         );
 
-        let _t = update(&mut app, Message::ProbeResult(Err("timeout".to_owned())));
+        let _t = update(
+            &mut app,
+            Message::ProbeResult(Err(ProbeFailure::Other("timeout".to_owned()))),
+        );
 
-        assert_eq!(app.context.steam_running, Some(false));
-        assert!(app.splash_probe_done);
+        assert_eq!(app.context.connectivity.steam_running, None);
+        assert!(app.probe_done);
         assert!(
             app.context.user_profile.is_none(),
             "no profile should remain None on probe error without disk fallback"
@@ -1466,7 +1549,7 @@ mod tests {
     }
 
     fn splash_visible(app: &App) -> bool {
-        !(app.splash_min_elapsed && app.splash_scan_done && app.splash_probe_done)
+        !(app.splash_min_elapsed && app.library_cache_resolved && app.probe_done)
     }
 
     #[test]
@@ -1477,34 +1560,84 @@ mod tests {
         app.splash_min_elapsed = true;
         assert!(splash_visible(&app), "only min-elapsed → splash visible");
 
-        app.splash_scan_done = true;
+        app.library_cache_resolved = true;
         assert!(
             splash_visible(&app),
-            "min+scan but no probe → splash visible"
+            "min+library but no probe → splash visible"
         );
 
-        app.splash_probe_done = true;
+        app.probe_done = true;
         assert!(!splash_visible(&app), "all three done → splash hidden");
     }
 
     #[test]
-    fn splash_hidden_only_after_probe_resolves() {
+    fn splash_hidden_only_after_library_cache_and_probe_both_resolve() {
         let mut app = make_app_probing();
         app.splash_min_elapsed = true;
-        app.splash_scan_done = true;
+        app.library_cache_resolved = true;
         assert!(splash_visible(&app), "missing probe → still visible");
 
         let _t = update(
             &mut app,
-            Message::ProbeResult(Err("Steam is not running".to_owned())),
+            Message::ProbeResult(Err(ProbeFailure::SteamNotRunning)),
         );
-        assert!(!splash_visible(&app), "probe-Err counts as resolved");
+        assert!(
+            app.probe_done,
+            "probe_done must be set immediately on ProbeResult"
+        );
+        assert!(
+            !splash_visible(&app),
+            "splash must dismiss when all three signals are present (library already resolved)"
+        );
+    }
+
+    #[test]
+    fn splash_does_not_dismiss_on_probe_failure_until_library_cache_loaded() {
+        let mut app = make_app_probing();
+        app.splash_min_elapsed = true;
+
+        let _t = update(
+            &mut app,
+            Message::ProbeResult(Err(ProbeFailure::SteamNotRunning)),
+        );
+
+        assert!(app.probe_done, "probe_done must be set on ProbeResult(Err)");
+        assert!(
+            !app.library_cache_resolved,
+            "library_cache_resolved must NOT be set synchronously on probe failure"
+        );
+        assert!(
+            splash_visible(&app),
+            "splash must remain visible until library cache lands"
+        );
+
+        let cached = CachedLibrary {
+            schema_version: 3,
+            games: vec![CachedLibraryEntry {
+                app_id: 105600,
+                change_number: 0,
+                last_played: None,
+                name: "Terraria".to_owned(),
+                achievement_count: 88,
+            }],
+            cached_at: 0,
+        };
+        let _t2 = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+
+        assert!(
+            app.library_cache_resolved,
+            "library_cache_resolved must be set after LibraryCacheLoaded"
+        );
+        assert!(
+            !splash_visible(&app),
+            "splash must dismiss after all three signals"
+        );
     }
 
     #[test]
     fn profile_cache_loaded_populates_when_user_profile_is_none() {
         let mut app = make_app_probing();
-        app.context.steam_running = Some(false);
+        app.context.connectivity.steam_running = Some(false);
         let cached = CachedProfile {
             schema_version: 2,
             steam_id: 76561198000000042,
@@ -1531,7 +1664,7 @@ mod tests {
     #[test]
     fn profile_cache_loaded_skipped_when_probe_succeeded_first() {
         let mut app = make_app_probing();
-        app.context.steam_running = Some(true);
+        app.context.connectivity.steam_running = Some(true);
         app.context.user_profile = Some(UserProfile {
             steam_id: 1,
             persona_name: "LiveFromProbe".to_owned(),
@@ -1558,16 +1691,16 @@ mod tests {
     #[test]
     fn profile_cache_loaded_none_is_noop() {
         let mut app = make_app_probing();
-        app.context.steam_running = Some(false);
+        app.context.connectivity.steam_running = Some(false);
         let _t = update(&mut app, Message::ProfileCacheLoaded(None));
         assert!(app.context.user_profile.is_none());
-        assert_eq!(app.context.steam_running, Some(false));
+        assert_eq!(app.context.connectivity.steam_running, Some(false));
     }
 
     #[test]
     fn library_cache_loaded_some_dispatches_scan_complete_when_games_empty() {
         let mut app = make_app_probing();
-        app.context.steam_running = Some(false);
+        app.context.connectivity.steam_running = Some(false);
         let cached = CachedLibrary {
             schema_version: 3,
             games: vec![CachedLibraryEntry {
@@ -1642,7 +1775,7 @@ mod tests {
             &mut app,
             Message::PersistentCacheWritten("profile", Err("disk full".to_owned())),
         );
-        assert_eq!(app.context.steam_running, None);
+        assert_eq!(app.context.connectivity.steam_running, None);
     }
 
     fn make_game_entry_for_scan(app_id: u32, name: &str) -> crate::profile_view::types::GameEntry {
@@ -1913,15 +2046,20 @@ mod tests {
     }
 
     #[test]
-    fn retry_steam_connect_resets_steam_running() {
+    fn retry_steam_connect_resets_connectivity() {
         let mut app = make_app_probing();
-        app.context.steam_running = Some(false);
+        app.context.connectivity.steam_running = Some(false);
+        app.context.connectivity.user_logged_in = Some(false);
 
         let _t = update(&mut app, Message::RetrySteamConnect);
 
         assert_eq!(
-            app.context.steam_running, None,
-            "AppContext.steam_running reset to None during re-probe"
+            app.context.connectivity.steam_running, None,
+            "connectivity.steam_running reset to None during re-probe"
+        );
+        assert_eq!(
+            app.context.connectivity.user_logged_in, None,
+            "connectivity.user_logged_in reset to None during re-probe"
         );
     }
 

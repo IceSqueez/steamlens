@@ -301,7 +301,7 @@ pub fn update(
 
             state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
 
-            let steam_running = ctx.steam_running;
+            let steam_running = ctx.connectivity.steam_running;
             if let types::LoaderPhase::Gamma = state.loader_phase(steam_running) {
                 if state.loader_hiding_since.is_none() {
                     state.loader_hiding_since = Some(Instant::now());

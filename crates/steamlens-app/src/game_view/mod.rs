@@ -695,7 +695,7 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_context::{AnimationState, AppContext};
+    use crate::app_context::{AnimationState, AppContext, ConnectivityState};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
@@ -716,7 +716,10 @@ mod tests {
             steamid3: 0,
             user_profile: None,
             profile_avatar_handle: None,
-            steam_running: Some(true),
+            connectivity: ConnectivityState {
+                steam_running: Some(true),
+                user_logged_in: Some(true),
+            },
             steam_level: None,
             no_ach_cache: crate::cache::NoAchievementsCache::new(),
             animation: AnimationState {

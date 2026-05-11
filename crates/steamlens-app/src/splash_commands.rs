@@ -1,5 +1,6 @@
 use iced::Task;
 
+use crate::ProbeFailure;
 use crate::timeouts;
 
 pub fn min_splash_wait() -> Task<crate::Message> {
@@ -14,7 +15,7 @@ pub fn probe_steam_boot() -> Task<crate::Message> {
         async {
             steamlens_core::probe_steam(timeouts::PROBE_STEAM_BOOT)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(ProbeFailure::from)
         },
         crate::Message::ProbeResult,
     )
@@ -25,7 +26,7 @@ pub fn probe_steam_reconnect() -> Task<crate::Message> {
         async {
             steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(ProbeFailure::from)
         },
         crate::Message::ProbeResult,
     )
