@@ -124,7 +124,7 @@ fn compute_tier_map_from_cached(achievements: &[CachedAchievement]) -> HashMap<S
     map
 }
 
-pub fn top5_closest_to_complete(
+pub fn top6_closest_to_complete(
     games: &[GameEntry],
     cached_entries: &HashMap<u32, GameCacheEntry>,
 ) -> Vec<TopEntry> {
@@ -160,7 +160,7 @@ pub fn top5_closest_to_complete(
 
     candidates
         .into_iter()
-        .take(5)
+        .take(6)
         .map(|(app_id, game_name, ratio, earned, total, _)| TopEntry {
             app_id,
             game_name,
@@ -175,7 +175,7 @@ pub struct ProfileWidgetParams<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
     pub avatar_handle: Option<&'a iced::widget::image::Handle>,
     pub summary: WidgetSummary,
-    pub top5: Vec<TopEntry>,
+    pub top6: Vec<TopEntry>,
     pub games_count: usize,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
@@ -195,7 +195,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, Profil
         params.steam_level,
     );
     let right_col = build_right_column(
-        params.top5,
+        params.top6,
         params.capsule_handles,
         params.capsule_size,
         params.skeleton_phase,
@@ -295,14 +295,14 @@ fn build_avatar<'a>(
 }
 
 fn build_right_column<'a>(
-    top5: Vec<TopEntry>,
+    top6: Vec<TopEntry>,
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
 ) -> Element<'a, ProfileViewMessage> {
     let header = text("CLOSEST TO 100%").size(11).color(C_TEXT_MUTED);
 
-    if top5.is_empty() {
+    if top6.is_empty() {
         return column![
             header,
             text("Nothing to recommend yet").size(12).color(C_TEXT_DIM),
@@ -313,7 +313,7 @@ fn build_right_column<'a>(
 
     let mut rows_col = column![header].spacing(6);
 
-    for entry in top5 {
+    for entry in top6 {
         rows_col = rows_col.push(build_closest_row(
             entry,
             capsule_handles,
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn top5_order_by_ratio_descending() {
+    fn top6_order_by_ratio_descending() {
         let games = vec![
             make_entry_with_progress(1, 10, 100),
             make_entry_with_progress(2, 80, 100),
@@ -421,22 +421,24 @@ mod tests {
             make_entry_with_progress(4, 95, 100),
             make_entry_with_progress(5, 30, 100),
             make_entry_with_progress(6, 70, 100),
+            make_entry_with_progress(7, 5, 100),
         ];
-        let cached: HashMap<u32, GameCacheEntry> = (1u32..=6)
+        let cached: HashMap<u32, GameCacheEntry> = (1u32..=7)
             .map(|id| (id, make_cache_entry(id, 0, 0, 0)))
             .collect();
 
-        let top5 = top5_closest_to_complete(&games, &cached);
-        assert_eq!(top5.len(), 5);
-        assert_eq!(top5[0].app_id, 4);
-        assert_eq!(top5[1].app_id, 2);
-        assert_eq!(top5[2].app_id, 6);
-        assert_eq!(top5[3].app_id, 3);
-        assert_eq!(top5[4].app_id, 5);
+        let top6 = top6_closest_to_complete(&games, &cached);
+        assert_eq!(top6.len(), 6);
+        assert_eq!(top6[0].app_id, 4);
+        assert_eq!(top6[1].app_id, 2);
+        assert_eq!(top6[2].app_id, 6);
+        assert_eq!(top6[3].app_id, 3);
+        assert_eq!(top6[4].app_id, 5);
+        assert_eq!(top6[5].app_id, 1);
     }
 
     #[test]
-    fn top5_excludes_complete_games() {
+    fn top6_excludes_complete_games() {
         let games = vec![
             make_entry_with_progress(1, 100, 100),
             make_entry_with_progress(2, 50, 100),
@@ -444,9 +446,9 @@ mod tests {
         let cached: HashMap<u32, GameCacheEntry> = (1u32..=2)
             .map(|id| (id, make_cache_entry(id, 0, 0, 0)))
             .collect();
-        let top5 = top5_closest_to_complete(&games, &cached);
-        assert_eq!(top5.len(), 1);
-        assert_eq!(top5[0].app_id, 2);
+        let top6 = top6_closest_to_complete(&games, &cached);
+        assert_eq!(top6.len(), 1);
+        assert_eq!(top6[0].app_id, 2);
     }
 
     #[test]
