@@ -1437,6 +1437,9 @@ fn main() -> iced::Result {
     let window_w = loaded.ui.window_width;
     let window_h = loaded.ui.window_height;
 
+    const WINDOW_ICON_BYTES: &[u8] = include_bytes!("../../../assets/icon-256.png");
+    let window_icon = iced::window::icon::from_file_data(WINDOW_ICON_BYTES, None).ok();
+
     iced::application(move || boot_with_settings(loaded.clone()), update, view)
         .title("SteamLens")
         .theme(theme)
@@ -1444,6 +1447,7 @@ fn main() -> iced::Result {
         .window(iced::window::Settings {
             size: iced::Size::new(window_w.max(896.0), window_h.max(504.0)),
             min_size: Some(iced::Size::new(896.0, 504.0)),
+            icon: window_icon,
             ..iced::window::Settings::default()
         })
         .run()
