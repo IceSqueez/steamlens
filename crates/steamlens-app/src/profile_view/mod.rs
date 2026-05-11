@@ -253,13 +253,14 @@ pub fn update(
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
             }
-            let with_prog = state.games.iter().filter(|g| g.progress.is_some()).count();
-            let total_games = state.games.len();
-            ctx.messaging.footer = FooterStatus::Scanning {
-                current: with_prog,
-                total: total_games,
-                label: "Loading achievements\u{2026}".to_owned(),
-            };
+            if let FooterStatus::Scanning {
+                current,
+                total: footer_total,
+                ..
+            } = &mut ctx.messaging.footer
+            {
+                *current = (*current + 1).min(*footer_total);
+            }
             (Task::none(), ProfileEvent::None)
         }
 

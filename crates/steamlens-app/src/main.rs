@@ -418,6 +418,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 invalidation_count: _,
             } = result;
 
+            let hit_count = hits.len();
             app.context.pending_hit_queue.extend(hits);
 
             if let Screen::ProfileView(pv_state) = &mut app.screen
@@ -425,13 +426,18 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             {
                 let total = pv_state.games.len();
                 app.context.messaging.footer = FooterStatus::Scanning {
-                    current: 0,
+                    current: hit_count,
                     total,
                     label: "Loading achievements\u{2026}".to_owned(),
                 };
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
                 pv_state.progress_scanner = Some(scanner);
+            } else if dirty.is_empty() && hit_count > 0 {
+                app.context.messaging.footer = FooterStatus::Connected {
+                    games: hit_count,
+                    last_sync: Some(std::time::Instant::now()),
+                };
             }
 
             if schema_bumped > 0 {
@@ -461,6 +467,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         earned: entry.progress.earned,
                         total: entry.progress.total,
                     });
+                    game.genre = entry.genre.clone();
                 }
                 app.context.cached_entries.insert(hit.app_id, entry);
             }
@@ -2785,5 +2792,136 @@ mod tests {
             !has_active_skeletons(&app),
             "SteamNotRunning screen must not trigger skeletons"
         );
+    }
+
+    fn make_app_with_n_games(n: u32) -> App {
+        let mut pv_state = ProfileViewState::new();
+        for i in 1..=n {
+            pv_state.games.push(make_game_entry(i, 0));
+        }
+        App {
+            screen: Screen::ProfileView(Box::new(pv_state)),
+            ..App::default()
+        }
+    }
+
+    fn make_classify_result(hit_ids: &[u32], dirty_ids: &[u32]) -> ClassifyResult {
+        use cache::CacheHit;
+        use cache::types::{CURRENT_SCHEMA_VERSION, CachedProgress, GameCacheEntry};
+        let hits = hit_ids
+            .iter()
+            .map(|&app_id| CacheHit {
+                app_id,
+                entry: GameCacheEntry {
+                    schema_version: CURRENT_SCHEMA_VERSION,
+                    app_id,
+                    name: format!("Game {app_id}"),
+                    steam_last_played: 0,
+                    cached_at: 1_000,
+                    achievements: vec![],
+                    stats: vec![],
+                    progress: CachedProgress {
+                        earned: 1,
+                        total: 10,
+                    },
+                    tier_breakdown: vec![],
+                    genre: None,
+                },
+            })
+            .collect();
+        ClassifyResult {
+            hits,
+            dirty: dirty_ids.to_vec(),
+            schema_bumped: 0,
+            invalidation_count: dirty_ids.len() as u32,
+        }
+    }
+
+    #[test]
+    fn cache_classified_initializes_footer_with_hit_count() {
+        let hit_ids: Vec<u32> = (1..=295).collect();
+        let dirty_ids: Vec<u32> = (296..=300).collect();
+        let mut app = make_app_with_n_games(300);
+        let result = make_classify_result(&hit_ids, &dirty_ids);
+        let _t = update(&mut app, Message::CacheClassified(result));
+        match &app.context.messaging.footer {
+            FooterStatus::Scanning { current, total, .. } => {
+                assert_eq!(*current, 295, "footer current must equal hit count");
+                assert_eq!(*total, 300, "footer total must equal total game count");
+            }
+            other => panic!("expected Scanning footer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cache_classified_all_valid_sets_connected_footer() {
+        let hit_ids: Vec<u32> = (1..=300).collect();
+        let mut app = make_app_with_n_games(300);
+        let result = make_classify_result(&hit_ids, &[]);
+        let _t = update(&mut app, Message::CacheClassified(result));
+        match &app.context.messaging.footer {
+            FooterStatus::Connected { games, .. } => {
+                assert_eq!(
+                    *games, 300,
+                    "all-valid path must report 300 games in Connected footer"
+                );
+            }
+            other => panic!("expected Connected footer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn progress_fetched_increments_footer_current() {
+        use progress_scan::ProgressData;
+
+        let mut app = make_app_with_n_games(300);
+        app.context.messaging.footer = FooterStatus::Scanning {
+            current: 295,
+            total: 300,
+            label: "Loading achievements\u{2026}".to_owned(),
+        };
+        if let Screen::ProfileView(pv) = &mut app.screen {
+            pv.games[0].progress = Some(ProgressData {
+                earned: 0,
+                total: 10,
+            });
+        }
+
+        let _t = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::ProgressFetched {
+                app_id: 2,
+                earned: 3,
+                total: 10,
+            }),
+        );
+        match &app.context.messaging.footer {
+            FooterStatus::Scanning { current, total, .. } => {
+                assert_eq!(
+                    *current, 296,
+                    "first ProgressFetched must increment current to 296"
+                );
+                assert_eq!(*total, 300);
+            }
+            other => panic!("expected Scanning footer after first ProgressFetched, got {other:?}"),
+        }
+
+        let _t2 = update(
+            &mut app,
+            Message::ProfileView(ProfileViewMessage::ProgressFetched {
+                app_id: 3,
+                earned: 5,
+                total: 10,
+            }),
+        );
+        match &app.context.messaging.footer {
+            FooterStatus::Scanning { current, .. } => {
+                assert_eq!(
+                    *current, 297,
+                    "second ProgressFetched must increment current to 297"
+                );
+            }
+            other => panic!("expected Scanning footer after second ProgressFetched, got {other:?}"),
+        }
     }
 }
