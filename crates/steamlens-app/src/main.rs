@@ -286,11 +286,32 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         seed_game_view_from_cache(&mut state, cached);
     }
 
+    let capsule_task = Task::perform(
+        capsule_cache::fetch_capsule(app_id, capsule_cache::CapsuleSize::Portrait),
+        move |result| match result {
+            Ok((size, pixels)) => {
+                let handle = iced::widget::image::Handle::from_rgba(
+                    pixels.width,
+                    pixels.height,
+                    pixels.rgba,
+                );
+                Message::GameView(GameViewMessage::CapsuleLoaded {
+                    app_id,
+                    size,
+                    handle,
+                    width: pixels.width,
+                    height: pixels.height,
+                })
+            }
+            Err((size, _)) => Message::GameView(GameViewMessage::CapsuleFailed { app_id, size }),
+        },
+    );
+
     app.context.worker = Some(worker);
     app.context.worker_rx = Some(rx);
     app.screen = Screen::GameView(Box::new(state));
 
-    Task::none()
+    capsule_task
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {

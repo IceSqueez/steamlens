@@ -69,6 +69,7 @@ fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
         CapsuleSize::Small => (120.0, 45.0),
         CapsuleSize::Medium => (231.0, 87.0),
         CapsuleSize::Large => (460.0, 215.0),
+        CapsuleSize::Portrait => (160.0, 240.0),
     }
 }
 

@@ -108,7 +108,7 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
         app_id: state.app_id,
         game_name: state.game_name.as_str(),
         achievements: state.achievements.as_slice(),
-        capsule_handles: &state.prev_profile_state.capsule_handles,
+        capsule_handles: &state.capsule_handles,
         skeleton_phase,
     });
     let tabs = tab_bar_widget(state);
