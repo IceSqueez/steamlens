@@ -24,7 +24,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use iced::keyboard;
-use iced::widget::{button, center, column, container, row, text};
+use iced::widget::{column, container, text};
 use iced::{Color, Element, Subscription, Task};
 
 use app_context::{AnimationState, AppContext, ConnectivityState};
@@ -40,7 +40,6 @@ use steamlens_core::{ProbeError, ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserPr
 #[derive(Debug)]
 enum Screen {
     ProfileView(Box<ProfileViewState>),
-    SteamNotRunning { reason: String },
     GameView(Box<GameViewState>),
 }
 
@@ -63,7 +62,6 @@ impl From<ProbeError> for ProbeFailure {
 
 #[derive(Debug, Clone)]
 enum Message {
-    Exit,
     GoBack,
     ProfileView(ProfileViewMessage),
     GameView(GameViewMessage),
@@ -188,10 +186,26 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
 
     for reply in replies {
         if let SteamReply::ConnectFailed(reason) = &reply {
-            app.screen = Screen::SteamNotRunning {
-                reason: reason.clone(),
-            };
+            crate::log!("worker: connect failed: {reason}");
+            if matches!(app.screen, Screen::GameView(_)) {
+                go_back_to_profile(app);
+            }
             disconnect_worker(app);
+            app.context.connectivity.steam_running = Some(false);
+            let already_warned = app.context.messaging.banners.iter().any(|b| {
+                b.severity == BannerSeverity::Warning && b.body.starts_with("Steam is not running")
+            });
+            if !already_warned {
+                app.context.messaging.push_banner(
+                    BannerSeverity::Warning,
+                    "Steam is not running \u{2014} reconnect to load achievements",
+                    Some(messaging::BannerAction {
+                        label: "Reconnect",
+                        message: Message::RetrySteamConnect,
+                    }),
+                    false,
+                );
+            }
             return Task::none();
         }
 
@@ -241,15 +255,6 @@ fn go_back_to_profile(app: &mut App) {
     }
 }
 
-fn return_to_profile_view(app: &mut App) {
-    disconnect_worker(app);
-    let pv_state = ProfileViewState::new();
-    let (worker, rx) = SteamWorker::spawn();
-    app.context.worker = Some(worker);
-    app.context.worker_rx = Some(rx);
-    app.screen = Screen::ProfileView(Box::new(pv_state));
-}
-
 fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     let prev = if let Screen::ProfileView(pv_state) = std::mem::replace(
         &mut app.screen,
@@ -290,14 +295,8 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
-        Message::Exit => iced::exit(),
-
         Message::GoBack => match &app.screen {
             Screen::GameView(_) => update(app, Message::GameView(GameViewMessage::RequestGoBack)),
-            Screen::SteamNotRunning { .. } => {
-                return_to_profile_view(app);
-                Task::none()
-            }
             _ => Task::none(),
         },
 
@@ -952,7 +951,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Screen::GameView(_) => {
                 iced::widget::operation::focus(game_view::achievement_search_id())
             }
-            _ => Task::none(),
         },
 
         Message::GlobalSearchChanged(query) => match &mut app.screen {
@@ -983,7 +981,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     GameViewEvent::None => task,
                 }
             }
-            _ => Task::none(),
         },
 
         Message::GlobalSortChanged(sort) => {
@@ -1273,7 +1270,6 @@ fn view(app: &App) -> Element<'_, Message> {
         Screen::GameView(state) => Some(crate::screen::render_app_header(
             game_view::header_content(state),
         )),
-        Screen::SteamNotRunning { .. } => None,
     };
 
     let body: Element<'_, Message> = match &app.screen {
@@ -1288,22 +1284,6 @@ fn view(app: &App) -> Element<'_, Message> {
             };
             crate::screen::compose_screen(profile_view::render(pv_state, props))
                 .map(Message::ProfileView)
-        }
-
-        Screen::SteamNotRunning { reason } => {
-            let content: Element<'_, Message> = column![
-                text("Steam is not running").size(28),
-                text("Start the Steam client and try again.").size(16),
-                text(reason.as_str()).size(14),
-                row![
-                    button(text("Back")).on_press(Message::GoBack),
-                    button(text("Exit")).on_press(Message::Exit),
-                ]
-                .spacing(8),
-            ]
-            .spacing(16)
-            .into();
-            center(content).into()
         }
 
         Screen::GameView(state) => {
@@ -1369,7 +1349,6 @@ fn has_active_skeletons(app: &App) -> bool {
                 | game_view::GameViewPhase::WaitingStats
                 | game_view::GameViewPhase::LoadingData
         ),
-        _ => false,
     }
 }
 
@@ -1418,7 +1397,6 @@ fn subscription(app: &App) -> Subscription<Message> {
                 .map(Message::ProfileView)
         }
         Screen::GameView(state) => game_view::subscription(state).map(Message::GameView),
-        Screen::SteamNotRunning { .. } => Subscription::none(),
     };
 
     Subscription::batch([
@@ -1516,31 +1494,12 @@ mod tests {
                         skeleton_phase: 0.0,
                     },
                 },
-                screen: Screen::SteamNotRunning {
-                    reason: String::new(),
-                },
+                screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
                 splash_min_elapsed: true,
                 library_cache_resolved: true,
                 cache_classified: true,
                 probe_done: true,
             }
-        }
-    }
-
-    fn make_app_not_running(reason: &str) -> App {
-        App {
-            screen: Screen::SteamNotRunning {
-                reason: reason.to_owned(),
-            },
-            ..App::default()
-        }
-    }
-
-    fn screen_name(app: &App) -> &'static str {
-        match app.screen {
-            Screen::ProfileView(_) => "ProfileView",
-            Screen::SteamNotRunning { .. } => "SteamNotRunning",
-            Screen::GameView(_) => "GameView",
         }
     }
 
@@ -1554,28 +1513,20 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn go_back_from_not_running_returns_to_profile_view() {
-        let mut app = make_app_not_running("pipe closed");
-        let _task = update(&mut app, Message::GoBack);
-        assert!(
-            matches!(app.screen, Screen::ProfileView(_)),
-            "expected ProfileView after GoBack, got {}",
-            screen_name(&app)
-        );
-    }
-
     fn make_app_probing() -> App {
-        let mut app = make_app_not_running("");
-        app.screen = Screen::ProfileView(Box::new(ProfileViewState::new()));
-        app.splash_min_elapsed = false;
-        app.library_cache_resolved = false;
-        app.cache_classified = false;
-        app.probe_done = false;
-        app.context.connectivity = ConnectivityState::default();
-        app.context.user_profile = None;
-        app.context.profile_avatar_handle = None;
-        app
+        App {
+            screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
+            splash_min_elapsed: false,
+            library_cache_resolved: false,
+            cache_classified: false,
+            probe_done: false,
+            context: AppContext {
+                connectivity: ConnectivityState::default(),
+                user_profile: None,
+                profile_avatar_handle: None,
+                ..App::default().context
+            },
+        }
     }
 
     #[test]
@@ -2905,15 +2856,6 @@ mod tests {
         assert!(
             !has_active_skeletons(&app),
             "Ready phase must NOT activate skeleton subscription"
-        );
-    }
-
-    #[test]
-    fn has_active_skeletons_false_for_not_running_screen() {
-        let app = make_app_not_running("Steam not running");
-        assert!(
-            !has_active_skeletons(&app),
-            "SteamNotRunning screen must not trigger skeletons"
         );
     }
 
