@@ -1,9 +1,12 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::cache::types::{
     CURRENT_SCHEMA_VERSION, GameAchievementsCache, GameCacheEntry, GameSummaryCache,
     SUMMARY_SCHEMA_VERSION,
 };
+
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheIoError {
@@ -13,8 +16,10 @@ pub enum CacheIoError {
     Serialize(String),
 }
 
-/// `<path>.tmp` is fsync'd then renamed over `path` (atomic on POSIX;
-/// same-filesystem `.tmp` avoids cross-mount surprises).
+/// Writes `bytes` to a per-call unique `<path>.tmp.<pid>.<seq>` file, fsyncs,
+/// then renames over `path`. Atomic on POSIX. Unique tmp names allow concurrent
+/// writers to the same target without ENOENT racing on the rename step;
+/// last-writer-wins semantics for the final file.
 pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -132,8 +137,10 @@ pub async fn write_game_achievements(entry: &GameAchievementsCache) -> Result<()
 }
 
 fn tmp_path_for(path: &Path) -> PathBuf {
+    let pid = std::process::id();
+    let seq = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut s = path.as_os_str().to_owned();
-    s.push(".tmp");
+    s.push(format!(".tmp.{pid}.{seq}"));
     PathBuf::from(s)
 }
 
@@ -187,6 +194,14 @@ mod tests {
         }
     }
 
+    fn count_tmp_leftovers(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .expect("readdir")
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp."))
+            .count()
+    }
+
     #[tokio::test]
     async fn atomic_write_creates_file_with_expected_bytes() {
         let dir = tempfile::TempDir::new().expect("tempdir");
@@ -198,8 +213,11 @@ mod tests {
         let read_back = std::fs::read(&target).expect("read");
         assert_eq!(read_back, payload);
 
-        let tmp = dir.path().join("test.bin.tmp");
-        assert!(!tmp.exists(), ".tmp file must not remain after rename");
+        assert_eq!(
+            count_tmp_leftovers(dir.path()),
+            0,
+            "no .tmp.* files must remain after rename"
+        );
     }
 
     #[tokio::test]
@@ -213,8 +231,46 @@ mod tests {
         let read_back = std::fs::read(&target).expect("read");
         assert_eq!(read_back, b"new content");
 
-        let tmp = dir.path().join("overwrite.bin.tmp");
-        assert!(!tmp.exists(), ".tmp file must not remain");
+        assert_eq!(
+            count_tmp_leftovers(dir.path()),
+            0,
+            "no .tmp.* files must remain"
+        );
+    }
+
+    #[tokio::test]
+    async fn atomic_write_concurrent_to_same_target_does_not_race() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let target = dir.path().join("contended.bin");
+
+        let mut tasks = Vec::new();
+        for i in 0u8..16 {
+            let path = target.clone();
+            tasks.push(tokio::spawn(async move {
+                let payload = vec![i; 64];
+                atomic_write(&path, &payload).await
+            }));
+        }
+
+        for t in tasks {
+            t.await
+                .expect("join")
+                .expect("each concurrent write must succeed");
+        }
+
+        let final_bytes = std::fs::read(&target).expect("final read");
+        assert_eq!(final_bytes.len(), 64, "final file size must be 64 bytes");
+        let marker = final_bytes[0];
+        assert!(
+            final_bytes.iter().all(|&b| b == marker),
+            "final file must be one writer's full payload, not a mix"
+        );
+
+        assert_eq!(
+            count_tmp_leftovers(dir.path()),
+            0,
+            "no .tmp.* leftovers from concurrent writes"
+        );
     }
 
     #[tokio::test]
