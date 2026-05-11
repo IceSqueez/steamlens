@@ -3,6 +3,10 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 
+use tracing::Level;
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::layer::SubscriberExt;
+
 /// Truncates `steamlens.log` on every call; installs a panic hook; sets the global subscriber.
 pub fn init() -> io::Result<()> {
     init_with_path(&crate::paths::log_path())
@@ -21,13 +25,20 @@ pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
 
     let writer = Mutex::new(file);
 
-    let subscriber = tracing_subscriber::fmt()
+    let filter = Targets::new()
+        .with_target("steamlens_app", Level::TRACE)
+        .with_target("steamlens_core", Level::TRACE)
+        .with_target("steamlens_vdf", Level::TRACE)
+        .with_target("panic", Level::ERROR)
+        .with_default(LevelFilter::OFF);
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_ansi(false)
         .with_target(true)
-        .with_level(true)
-        .with_max_level(tracing::Level::TRACE)
-        .finish();
+        .with_level(true);
+
+    let subscriber = tracing_subscriber::registry().with(fmt_layer).with(filter);
 
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|_| io::Error::other("logging already initialized"))?;
