@@ -45,7 +45,6 @@ fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::Filte
         (AchievementFilter::All, "All"),
         (AchievementFilter::Unlocked, "Unlocked"),
         (AchievementFilter::Locked, "Locked"),
-        (AchievementFilter::Hidden, "Hidden"),
     ]
     .into_iter()
     .map(|(f, label)| crate::screen::FilterButton {
