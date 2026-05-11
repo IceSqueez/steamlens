@@ -396,6 +396,7 @@ fn drain_progress_results(
     };
 
     let mut cache_entries: Vec<crate::cache::GameCacheEntry> = Vec::new();
+    let mut summary_entries: Vec<crate::cache::types::GameSummaryCache> = Vec::new();
     let mut no_ach_events: Vec<(u32, u32)> = Vec::new();
     let mut tasks: Vec<Task<ProfileViewMessage>> = Vec::new();
 
@@ -459,6 +460,23 @@ fn drain_progress_results(
                     game.genre.clone_from(&entry.genre);
                 }
 
+                let change_number = state
+                    .games
+                    .iter()
+                    .find(|g| g.app_id == scan_app_id)
+                    .map(|g| g.change_number)
+                    .unwrap_or(0);
+                summary_entries.push(crate::cache::types::GameSummaryCache {
+                    schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
+                    app_id: scan_app_id,
+                    name: entry.name.clone(),
+                    cached_change_number: change_number,
+                    cached_at: entry.cached_at,
+                    progress: entry.progress,
+                    tier_breakdown: entry.tier_breakdown.clone(),
+                    genre: entry.genre.clone(),
+                });
+
                 ctx.cached_entries.insert(scan_app_id, entry.clone());
                 cache_entries.push(entry);
             }
@@ -481,6 +499,7 @@ fn drain_progress_results(
     } else {
         ProfileEvent::DrainedProgress {
             cache_entries,
+            summary_entries,
             no_ach_entries: no_ach_events,
         }
     };

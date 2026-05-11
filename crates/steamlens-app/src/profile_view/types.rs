@@ -179,6 +179,7 @@ pub enum ProfileEvent {
     RequestRescan,
     DrainedProgress {
         cache_entries: Vec<crate::cache::GameCacheEntry>,
+        summary_entries: Vec<crate::cache::types::GameSummaryCache>,
         no_ach_entries: Vec<(u32, u32)>,
     },
 }
