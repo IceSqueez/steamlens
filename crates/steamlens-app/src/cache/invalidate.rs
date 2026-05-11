@@ -7,6 +7,8 @@ use crate::cache::CacheHit;
 use crate::cache::store::load_game_summary_from_path;
 use crate::paths::cache_dir;
 
+const LP_RACE_GRACE_SECS: u64 = 30;
+
 #[derive(Debug, Clone, Default)]
 pub struct ClassifyResult {
     pub hits: Vec<CacheHit>,
@@ -84,11 +86,12 @@ pub(crate) async fn classify_games_with_root(
         }
 
         if let Some(lp) = game.last_played
-            && (lp as u64) > summary.cached_at
+            && (lp as u64) > summary.cached_at + LP_RACE_GRACE_SECS
         {
             crate::log!(
-                "invalidate app_id={app_id} reason={:?}",
-                InvalidationReason::LastPlayed
+                "invalidate app_id={app_id} reason={:?} lp={lp} cached_at={} grace={LP_RACE_GRACE_SECS}s",
+                InvalidationReason::LastPlayed,
+                summary.cached_at
             );
             result.dirty.push(app_id);
             result.invalidation_count += 1;
