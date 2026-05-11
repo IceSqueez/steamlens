@@ -46,9 +46,7 @@ impl Cached for NoAchievementsCache {
 }
 
 pub fn cache_path() -> PathBuf {
-    crate::settings::steamlens_root()
-        .join("cache")
-        .join("no_achievements.json")
+    crate::paths::no_achievements_path()
 }
 
 pub async fn load() -> NoAchievementsCache {

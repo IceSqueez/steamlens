@@ -25,8 +25,7 @@ pub use ipc::{
 };
 pub use library::GameSummary;
 pub use paths::{
-    appcache_stats_dir, steam_install_root_candidates, steamclient_lib_candidates,
-    steamlens_cache_dir, steamlens_root, user_data_dir,
+    appcache_stats_dir, steam_install_root_candidates, steamclient_lib_candidates, user_data_dir,
 };
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit};

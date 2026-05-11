@@ -1,35 +1,9 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::{AchievementFilter, AchievementSort, RarityTier};
 use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
-
-/// Falls back to the process working directory when the home env var
-/// is absent — keeps boot infallible on unusual system configurations.
-pub fn steamlens_root() -> PathBuf {
-    #[cfg(not(target_os = "windows"))]
-    let home = std::env::var("HOME").unwrap_or_default();
-
-    #[cfg(target_os = "windows")]
-    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| {
-        let drive = std::env::var("HOMEDRIVE").unwrap_or_default();
-        let path = std::env::var("HOMEPATH").unwrap_or_default();
-        format!("{drive}{path}")
-    });
-
-    if home.is_empty() {
-        PathBuf::from(".steamlens")
-    } else {
-        PathBuf::from(home).join(".steamlens")
-    }
-}
-
-pub fn settings_path() -> PathBuf {
-    steamlens_root().join("settings.toml")
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UiSettings {
@@ -156,13 +130,13 @@ impl Default for Settings {
 pub async fn write_settings(s: &Settings) -> Result<(), crate::cache::store::CacheIoError> {
     let text = toml::to_string_pretty(s)
         .map_err(|e| crate::cache::store::CacheIoError::Serialize(e.to_string()))?;
-    crate::cache::store::atomic_write(&settings_path(), text.as_bytes()).await
+    crate::cache::store::atomic_write(&crate::paths::settings_path(), text.as_bytes()).await
 }
 
 /// Returns `Settings::default()` on any error (missing file, TOML parse
 /// failure, schema mismatch, path-is-a-directory). Logs and never panics.
 pub fn load_settings() -> Settings {
-    let path = settings_path();
+    let path = crate::paths::settings_path();
 
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,

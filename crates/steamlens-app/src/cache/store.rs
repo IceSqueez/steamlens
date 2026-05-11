@@ -32,8 +32,7 @@ pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError>
 }
 
 fn game_cache_path(app_id: u32) -> PathBuf {
-    crate::settings::steamlens_root()
-        .join("cache")
+    crate::paths::cache_dir()
         .join("games")
         .join(format!("{app_id}.json"))
 }
