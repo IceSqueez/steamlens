@@ -5,7 +5,7 @@ use crate::game_view::types::RarityTier;
 pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub const SUMMARY_SCHEMA_VERSION: u32 = 4;
+pub const SUMMARY_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameCacheEntry {

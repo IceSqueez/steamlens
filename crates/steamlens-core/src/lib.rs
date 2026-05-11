@@ -1,6 +1,7 @@
 mod client;
 mod error;
 mod ffi;
+pub mod genre;
 pub mod ipc;
 pub mod library;
 pub mod paths;
@@ -15,6 +16,7 @@ mod user_stats;
 
 pub use client::{Client, Image, connect};
 pub use error::{LibraryError, SteamError};
+pub use genre::primary_genre_name;
 pub use ipc::shm::{
     ShmError, ShmReader, ShmWriter, read_payload, sweep_orphans, unlink_at, write_payload,
 };

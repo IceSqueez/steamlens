@@ -1,0 +1,56 @@
+pub fn primary_genre_name(id: &str) -> Option<&'static str> {
+    match id {
+        "1" => Some("Action"),
+        "2" => Some("Strategy"),
+        "3" => Some("RPG"),
+        "4" => Some("Casual"),
+        "9" => Some("Racing"),
+        "18" => Some("Sports"),
+        "23" => Some("Indie"),
+        "25" => Some("Adventure"),
+        "28" => Some("Simulation"),
+        "29" => Some("Massively Multiplayer"),
+        "37" => Some("Free to Play"),
+        "50" => Some("Accounting"),
+        "51" => Some("Animation & Modeling"),
+        "52" => Some("Audio Production"),
+        "53" => Some("Design & Illustration"),
+        "54" => Some("Education"),
+        "55" => Some("Photo Editing"),
+        "56" => Some("Software Training"),
+        "57" => Some("Utilities"),
+        "58" => Some("Video Production"),
+        "59" => Some("Web Publishing"),
+        "60" => Some("Game Development"),
+        "70" => Some("Early Access"),
+        "71" => Some("Sexual Content"),
+        "72" => Some("Nudity"),
+        "73" => Some("Violent"),
+        "74" => Some("Gore"),
+        "81" => Some("Documentary"),
+        "84" => Some("Tutorial"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_ids_map_to_canonical_names() {
+        assert_eq!(primary_genre_name("1"), Some("Action"));
+        assert_eq!(primary_genre_name("3"), Some("RPG"));
+        assert_eq!(primary_genre_name("23"), Some("Indie"));
+        assert_eq!(primary_genre_name("25"), Some("Adventure"));
+        assert_eq!(primary_genre_name("37"), Some("Free to Play"));
+        assert_eq!(primary_genre_name("84"), Some("Tutorial"));
+    }
+
+    #[test]
+    fn unknown_id_returns_none() {
+        assert_eq!(primary_genre_name("999"), None);
+        assert_eq!(primary_genre_name(""), None);
+        assert_eq!(primary_genre_name("Action"), None);
+    }
+}
