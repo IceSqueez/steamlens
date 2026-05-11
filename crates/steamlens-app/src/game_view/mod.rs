@@ -259,6 +259,9 @@ pub struct GameViewState {
     pub error_message: String,
 
     pub prev_profile_state: Box<ProfileViewState>,
+
+    pub pending_icons: HashMap<String, steamlens_core::AchievementIcon>,
+    pub pending_rarity_percent: Option<HashMap<String, f32>>,
 }
 
 impl GameViewState {
@@ -287,6 +290,8 @@ impl GameViewState {
             rare_glow_phase: 0.0,
             error_message: String::new(),
             prev_profile_state: Box::new(ProfileViewState::new()),
+            pending_icons: HashMap::new(),
+            pending_rarity_percent: None,
         }
     }
 
@@ -357,15 +362,25 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                     existing_icons.insert(row.data.id, icon);
                 }
             }
+            let pending_icons = std::mem::take(&mut state.pending_icons);
+            let pending_pct = state.pending_rarity_percent.take();
             state.achievements = achievements
                 .into_iter()
                 .map(|mut data| {
                     if data.icon.is_none() {
-                        data.icon = existing_icons.remove(&data.id);
+                        data.icon = pending_icons
+                            .get(&data.id)
+                            .cloned()
+                            .or_else(|| existing_icons.remove(&data.id));
                     }
                     let mut row = AchievementRow::from(data);
                     if prev_revealed.contains(&row.data.id) {
                         row.revealed = true;
+                    }
+                    if let Some(map) = &pending_pct
+                        && let Some(&pct) = map.get(&row.data.id)
+                    {
+                        row.rarity_percent = Some(pct);
                     }
                     row
                 })
@@ -435,15 +450,22 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         SteamReply::IconUpdated { name, icon } => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
                 row.data.icon = Some(icon);
+            } else {
+                state.pending_icons.insert(name, icon);
             }
             Task::none()
         }
         SteamReply::Disconnected => Task::none(),
         SteamReply::GlobalPercentagesReady(map) => {
-            for row in &mut state.achievements {
-                if let Some(&pct) = map.get(&row.data.id) {
-                    row.rarity_percent = Some(pct);
+            if state.achievements.is_empty() {
+                state.pending_rarity_percent = Some(map);
+            } else {
+                for row in &mut state.achievements {
+                    if let Some(&pct) = map.get(&row.data.id) {
+                        row.rarity_percent = Some(pct);
+                    }
                 }
+                state.tier_breakdown = compute_tier_breakdown(&state.achievements);
             }
             Task::none()
         }
