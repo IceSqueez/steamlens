@@ -49,10 +49,30 @@ pub fn cache_path() -> PathBuf {
     crate::paths::no_achievements_path()
 }
 
-pub async fn load() -> NoAchievementsCache {
-    crate::cache::cached::load::<NoAchievementsCache>()
-        .await
-        .unwrap_or_else(NoAchievementsCache::new)
+pub fn load_blocking() -> NoAchievementsCache {
+    let path = cache_path();
+    let Ok(bytes) = std::fs::read(&path) else {
+        return NoAchievementsCache::new();
+    };
+    let parsed: NoAchievementsCache = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::log!(
+                "no_achievements cache: parse error at {}: {e}",
+                path.display()
+            );
+            return NoAchievementsCache::new();
+        }
+    };
+    if parsed.schema_version != CURRENT_NO_ACHIEVEMENTS_SCHEMA {
+        crate::log!(
+            "no_achievements cache: schema {} != expected {}; treating as miss",
+            parsed.schema_version,
+            CURRENT_NO_ACHIEVEMENTS_SCHEMA
+        );
+        return NoAchievementsCache::new();
+    }
+    parsed
 }
 
 pub async fn write(cache: &NoAchievementsCache) -> Result<(), CacheIoError> {

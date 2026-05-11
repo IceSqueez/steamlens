@@ -8,7 +8,8 @@ pub mod types;
 
 pub use invalidate::{ClassifyResult, classify_games};
 pub use no_achievements::{
-    NoAchievementsCache, load as load_no_achievements_cache, write as write_no_achievements_cache,
+    NoAchievementsCache, load_blocking as load_no_achievements_cache_blocking,
+    write as write_no_achievements_cache,
 };
 pub use persistent::{
     CachedLibrary, CachedLibraryEntry, CachedProfile, load_library_cache, load_profile_cache,

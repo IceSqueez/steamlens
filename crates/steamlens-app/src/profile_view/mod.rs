@@ -265,6 +265,7 @@ pub fn update(
         }
 
         ProfileViewMessage::ProgressScanDone => {
+            types::sort_games_in_place(&mut state.games, state.sort, &ctx.settings.library.pinned);
             ctx.messaging.footer = FooterStatus::Connected {
                 games: state.games.len(),
                 last_sync: Some(std::time::Instant::now()),
@@ -424,6 +425,14 @@ fn drain_progress_results(
                     if let Some(cn) = change_number {
                         ctx.no_ach_cache.insert(scan_app_id, cn);
                         no_ach_events.push((scan_app_id, cn));
+                    }
+                    if let FooterStatus::Scanning {
+                        current,
+                        total: footer_total,
+                        ..
+                    } = &mut ctx.messaging.footer
+                    {
+                        *current = (*current + 1).min(*footer_total);
                     }
                     continue;
                 }
