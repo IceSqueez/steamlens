@@ -75,29 +75,29 @@ pub fn header_content<'a>(
 fn build_profile_status_strip(state: &types::ProfileViewState) -> crate::screen::FilterStrip<'_> {
     use types::GameStatusFilter;
     crate::screen::FilterStrip {
-        chips: vec![
-            crate::screen::FilterChip {
+        buttons: vec![
+            crate::screen::FilterButton {
                 label: std::borrow::Cow::Borrowed("All"),
                 selected: state.status_filter == GameStatusFilter::All,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::All),
                 ),
             },
-            crate::screen::FilterChip {
+            crate::screen::FilterButton {
                 label: std::borrow::Cow::Borrowed("Started"),
                 selected: state.status_filter == GameStatusFilter::Started,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Started),
                 ),
             },
-            crate::screen::FilterChip {
+            crate::screen::FilterButton {
                 label: std::borrow::Cow::Borrowed("Completed"),
                 selected: state.status_filter == GameStatusFilter::Completed,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Completed),
                 ),
             },
-            crate::screen::FilterChip {
+            crate::screen::FilterButton {
                 label: std::borrow::Cow::Borrowed("Not started"),
                 selected: state.status_filter == GameStatusFilter::NotStarted,
                 on_press: crate::Message::ProfileView(
@@ -112,15 +112,15 @@ fn build_profile_genre_strip<'a>(
     state: &'a types::ProfileViewState,
     genres: Vec<String>,
 ) -> crate::screen::FilterStrip<'a> {
-    let chips = genres
+    let buttons = genres
         .into_iter()
-        .map(|g| crate::screen::FilterChip {
+        .map(|g| crate::screen::FilterButton {
             label: std::borrow::Cow::Owned(g.clone()),
             selected: state.genre_filter.contains(&g),
             on_press: crate::Message::ProfileView(types::ProfileViewMessage::GenreFilterToggled(g)),
         })
         .collect();
-    crate::screen::FilterStrip { chips }
+    crate::screen::FilterStrip { buttons }
 }
 
 use iced::Task;

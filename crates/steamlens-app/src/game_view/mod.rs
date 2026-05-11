@@ -41,27 +41,27 @@ pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderC
 
 fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
     use types::AchievementFilter;
-    let chips = [
+    let buttons = [
         (AchievementFilter::All, "All"),
         (AchievementFilter::Unlocked, "Unlocked"),
         (AchievementFilter::Locked, "Locked"),
         (AchievementFilter::Hidden, "Hidden"),
     ]
     .into_iter()
-    .map(|(f, label)| crate::screen::FilterChip {
+    .map(|(f, label)| crate::screen::FilterButton {
         label: std::borrow::Cow::Borrowed(label),
         selected: state.filter == f,
         on_press: crate::Message::GameView(GameViewMessage::FilterChanged(f)),
     })
     .collect();
 
-    crate::screen::FilterStrip { chips }
+    crate::screen::FilterStrip { buttons }
 }
 
 fn build_rarity_tier_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
     use types::RarityTier;
 
-    let tier_chips = [
+    let tier_buttons = [
         (RarityTier::Common, "Common"),
         (RarityTier::Uncommon, "Uncommon"),
         (RarityTier::Rare, "Rare"),
@@ -69,21 +69,21 @@ fn build_rarity_tier_strip(state: &GameViewState) -> crate::screen::FilterStrip<
         (RarityTier::Legendary, "Legendary"),
     ]
     .into_iter()
-    .map(|(tier, label)| crate::screen::FilterChip {
+    .map(|(tier, label)| crate::screen::FilterButton {
         label: std::borrow::Cow::Borrowed(label),
         selected: state.rarity_tier_set.contains(&tier),
         on_press: crate::Message::GameView(GameViewMessage::RarityTierToggled(tier)),
     });
 
-    let hidden_chip = crate::screen::FilterChip {
+    let hidden_button = crate::screen::FilterButton {
         label: std::borrow::Cow::Borrowed("Hidden"),
         selected: state.include_hidden,
         on_press: crate::Message::GameView(GameViewMessage::HiddenPillToggled),
     };
 
-    let chips = tier_chips.chain(std::iter::once(hidden_chip)).collect();
+    let buttons = tier_buttons.chain(std::iter::once(hidden_button)).collect();
 
-    crate::screen::FilterStrip { chips }
+    crate::screen::FilterStrip { buttons }
 }
 
 use std::collections::{HashSet, VecDeque};
