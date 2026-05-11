@@ -1,7 +1,7 @@
 use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
-    space, span, stack, text, text_input, tooltip,
+    space, span, stack, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -13,8 +13,8 @@ pub fn achievement_search_id() -> WidgetId {
 }
 
 use super::types::{
-    AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope,
-    StatRow, compute_tier_map, visible_achievement_ids,
+    AchievementRow, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope, StatRow,
+    compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::theme::{
@@ -24,7 +24,6 @@ use crate::theme::{
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
-use crate::ui::widgets::tooltip_box::tooltip_box;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
@@ -163,68 +162,6 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
         body,
         footer: Some(footer_bar(state)),
     })
-}
-
-pub(crate) fn build_game_sort_segment(state: &GameViewState) -> Element<'_, crate::Message> {
-    let label = text("SORT").size(11).color(C_TEXT_MUTED);
-    let divider_el = || {
-        container(space())
-            .width(Length::Fixed(1.0))
-            .height(Length::Fixed(20.0))
-            .style(|_theme| container::Style {
-                background: Some(iced::Background::Color(C_BORDER)),
-                ..container::Style::default()
-            })
-    };
-
-    let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
-    let last_idx = AchievementSort::ALL.len() - 1;
-    for (i, &s) in AchievementSort::ALL.iter().enumerate() {
-        let active = state.achievement_sort == s;
-        let btn = button(text(s.short_label()).size(12).color(if active {
-            C_ACCENT
-        } else {
-            C_TEXT_MUTED
-        }))
-        .on_press(crate::Message::GameSortChanged(s))
-        .padding(Padding::default().left(10).right(10).top(5).bottom(5))
-        .style(move |_theme, _status| button::Style {
-            background: Some(iced::Background::Color(if active {
-                Color {
-                    a: 0.15,
-                    ..C_ACCENT
-                }
-            } else {
-                Color::TRANSPARENT
-            })),
-            border: iced::Border::default(),
-            ..button::Style::default()
-        });
-
-        let with_tooltip: Element<'_, crate::Message> =
-            tooltip_box(btn, s.tooltip(), tooltip::Position::Bottom);
-
-        items.push(with_tooltip);
-        if i < last_idx {
-            items.push(divider_el().into());
-        }
-    }
-
-    let segment =
-        container(row(items).align_y(Alignment::Center)).style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    row![label, segment]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into()
 }
 
 pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {

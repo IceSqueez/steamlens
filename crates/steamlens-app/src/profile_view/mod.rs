@@ -9,6 +9,11 @@ pub fn header_content<'a>(
     state: &'a types::ProfileViewState,
     _steam_running: Option<bool>,
 ) -> crate::screen::AppHeaderContent<'a> {
+    use crate::capsule_cache::CapsuleSize;
+    use crate::screen::{SegmentItem, SegmentedControlConfig};
+    use std::borrow::Cow;
+    use types::LibrarySort;
+
     let genres = state.available_genres();
     let category_filter = if genres.is_empty() {
         None
@@ -16,17 +21,51 @@ pub fn header_content<'a>(
         Some(build_profile_genre_strip(state, genres))
     };
 
+    let sort_items: Vec<SegmentItem<'_>> = [
+        LibrarySort::NameAsc,
+        LibrarySort::LastPlayed,
+        LibrarySort::Completion,
+    ]
+    .into_iter()
+    .map(|s| SegmentItem {
+        label: Cow::Borrowed(s.short_label()),
+        tooltip: Some(s.tooltip()),
+        selected: state.sort == s,
+        on_press: crate::Message::GlobalSortChanged(s),
+    })
+    .collect();
+
+    let size_items: Vec<SegmentItem<'_>> = [
+        (CapsuleSize::Small, "S"),
+        (CapsuleSize::Medium, "M"),
+        (CapsuleSize::Large, "L"),
+    ]
+    .into_iter()
+    .map(|(sz, lbl)| SegmentItem {
+        label: Cow::Borrowed(lbl),
+        tooltip: None,
+        selected: state.capsule_size == sz,
+        on_press: crate::Message::GlobalCapsuleSizeChanged(sz),
+    })
+    .collect();
+
     crate::screen::AppHeaderContent {
         search: Some(crate::screen::SearchConfig {
             placeholder: "Search games\u{2026}",
             value: &state.search,
             id: view::library_search_id(),
         }),
-        screen_actions: vec![
-            view::build_sort_segment(state.sort),
-            view::build_size_segment(state.capsule_size),
-            view::build_rescan_button(),
+        segments: vec![
+            SegmentedControlConfig {
+                label: Some("SORT"),
+                items: sort_items,
+            },
+            SegmentedControlConfig {
+                label: Some("SIZE"),
+                items: size_items,
+            },
         ],
+        screen_actions: vec![view::build_rescan_button()],
         leading: None,
         status_filter: Some(build_profile_status_strip(state)),
         category_filter,
