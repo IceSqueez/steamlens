@@ -449,7 +449,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.context.messaging.footer = FooterStatus::Scanning {
                     current: hit_count,
                     total,
-                    label: "Loading achievements\u{2026}".to_owned(),
+                    label: "Loading games\u{2026}".to_owned(),
                 };
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
@@ -3022,7 +3022,7 @@ mod tests {
         app.context.messaging.footer = FooterStatus::Scanning {
             current: 295,
             total: 300,
-            label: "Loading achievements\u{2026}".to_owned(),
+            label: "Loading games\u{2026}".to_owned(),
         };
         if let Screen::ProfileView(pv) = &mut app.screen {
             pv.games[0].progress = Some(ProgressData {
