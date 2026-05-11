@@ -141,10 +141,7 @@ pub fn load_settings() -> Settings {
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!(
-                "[steamlens] settings: could not read {}: {e}",
-                path.display()
-            );
+            crate::log!("settings: could not read {}: {e}", path.display());
             return Settings::default();
         }
     };
@@ -152,7 +149,7 @@ pub fn load_settings() -> Settings {
     let text = match std::str::from_utf8(&bytes) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[steamlens] settings: file is not valid UTF-8: {e}");
+            crate::log!("settings: file is not valid UTF-8: {e}");
             return Settings::default();
         }
     };
@@ -160,15 +157,16 @@ pub fn load_settings() -> Settings {
     let parsed: Settings = match toml::from_str(text) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[steamlens] settings: TOML parse error: {e}");
+            crate::log!("settings: TOML parse error: {e}");
             return Settings::default();
         }
     };
 
     if parsed.schema_version != CURRENT_SETTINGS_VERSION {
-        eprintln!(
-            "[steamlens] settings: schema version {} does not match expected {}; using defaults",
-            parsed.schema_version, CURRENT_SETTINGS_VERSION
+        crate::log!(
+            "settings: schema version {} does not match expected {}; using defaults",
+            parsed.schema_version,
+            CURRENT_SETTINGS_VERSION
         );
         return Settings::default();
     }

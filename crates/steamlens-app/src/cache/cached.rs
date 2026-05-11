@@ -25,16 +25,12 @@ pub(crate) async fn load_from_path<T: Cached>(path: &Path) -> Option<T> {
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: T = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            eprintln!(
-                "[steamlens] {} cache: parse error at {}: {e}",
-                T::NAME,
-                path.display()
-            );
+            crate::log!("{} cache: parse error at {}: {e}", T::NAME, path.display());
         })
         .ok()?;
     if entry.schema_version() != T::CURRENT_SCHEMA {
-        eprintln!(
-            "[steamlens] {} cache: schema {} != expected {}; treating as miss",
+        crate::log!(
+            "{} cache: schema {} != expected {}; treating as miss",
             T::NAME,
             entry.schema_version(),
             T::CURRENT_SCHEMA

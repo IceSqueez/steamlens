@@ -182,5 +182,4 @@ mod tests {
         let p = appcache_stats_dir(&root);
         assert_eq!(p, PathBuf::from("/opt/steam/appcache/stats"));
     }
-
 }
