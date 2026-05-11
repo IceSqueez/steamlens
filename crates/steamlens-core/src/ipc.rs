@@ -502,6 +502,7 @@ mod tests {
                     is_achieved: false,
                 },
             ],
+            genre: Some("Action".to_owned()),
         };
 
         let bytes = postcard::to_allocvec(&payload).expect("serialize");
@@ -512,16 +513,19 @@ mod tests {
         assert!(restored.achievements[0].is_achieved);
         assert_eq!(restored.achievements[1].id, "ACH_HUNDRED");
         assert!(!restored.achievements[1].is_achieved);
+        assert_eq!(restored.genre.as_deref(), Some("Action"));
     }
 
     #[test]
     fn card_only_payload_roundtrip_empty() {
         let payload = types::CardOnlyPayload {
             achievements: Vec::new(),
+            genre: None,
         };
         let bytes = postcard::to_allocvec(&payload).expect("serialize");
         let restored: types::CardOnlyPayload = postcard::from_bytes(&bytes).expect("decode");
         assert!(restored.achievements.is_empty());
+        assert!(restored.genre.is_none());
     }
 
     #[test]

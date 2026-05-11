@@ -287,7 +287,7 @@ async fn read_card_only_skipping_async(
                             "CardOnlyAchievements shm read: {e}"
                         )))
                     })?;
-                return Ok((payload.achievements, Vec::new(), None));
+                return Ok((payload.achievements, Vec::new(), payload.genre));
             }
             WorkerResponse::IconUpdated { shm_path, .. } => {
                 steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
