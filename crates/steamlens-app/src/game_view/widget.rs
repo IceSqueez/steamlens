@@ -98,7 +98,7 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
     let inner_col = build_left_column(params.app_id, params.game_name, &summary);
     let left_content: Element<'a, GameViewMessage> = row![capsule_el, inner_col]
         .spacing(16)
-        .align_y(Alignment::Start)
+        .align_y(Alignment::Center)
         .into();
     let right_col = build_right_column(top5);
     widget_panel(left_content, right_col)
@@ -116,12 +116,14 @@ fn build_left_column<'a>(
 
     column![
         header_row,
+        iced::widget::Space::new().height(Length::Fill),
         breakdown_row::<GameViewMessage>(summary),
         bar,
         rarity_cards::<GameViewMessage>(summary),
         cards_separator::<GameViewMessage>(summary),
     ]
     .spacing(10)
+    .height(Length::Fill)
     .into()
 }
 
