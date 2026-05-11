@@ -65,7 +65,7 @@ pub fn run(app_id: u32) -> ! {
 
 async fn probe_main() -> i32 {
     let t0 = std::time::Instant::now();
-    eprintln!("[probe] connect…");
+    crate::log!("probe: connect…");
     let client = match steamlens_core::connect(0) {
         Ok(c) => c,
         Err(e) => {
@@ -77,7 +77,7 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
-    eprintln!("[probe] connected in {:?}", t0.elapsed());
+    crate::log!("probe: connected in {:?}", t0.elapsed());
 
     let steam_id = client.steam_id();
 
@@ -92,11 +92,11 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
-    eprintln!("[probe] persona+steamid in {:?}", t0.elapsed());
+    crate::log!("probe: persona+steamid in {:?}", t0.elapsed());
 
     let avatar_png = encode_avatar_png(&client);
-    eprintln!(
-        "[probe] avatar in {:?} ({} bytes)",
+    crate::log!(
+        "probe: avatar in {:?} ({} bytes)",
         t0.elapsed(),
         avatar_png.as_ref().map(|v| v.len()).unwrap_or(0)
     );
@@ -107,19 +107,19 @@ async fn probe_main() -> i32 {
     let games = match client.enumerate_owned_games(true) {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("[probe] enumerate_owned_games failed: {e}");
+            crate::log!("probe: enumerate_owned_games failed: {e}");
             Vec::new()
         }
     };
-    eprintln!(
-        "[probe] enumerate_owned_games: {} games in {:?} (total {:?})",
+    crate::log!(
+        "probe: enumerate_owned_games: {} games in {:?} (total {:?})",
         games.len(),
         t_enum.elapsed(),
         t0.elapsed()
     );
 
     let steam_level = client.get_player_steam_level();
-    eprintln!("[probe] steam level: {:?}", steam_level);
+    crate::log!("probe: steam level: {:?}", steam_level);
 
     let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
@@ -148,12 +148,12 @@ fn encode_avatar_png(client: &steamlens_core::Client) -> Option<Vec<u8>> {
 
 async fn worker_main(app_id: u32) -> i32 {
     let t0 = std::time::Instant::now();
-    eprintln!("[worker app_id={app_id}] connect…");
+    crate::log!("worker app_id={app_id}: connect…");
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!(
-                "[worker app_id={app_id}] connect failed in {:?}: {e}",
+            crate::log!(
+                "worker app_id={app_id}: connect failed in {:?}: {e}",
                 t0.elapsed()
             );
             let _ = write_response(&WorkerResponse::Error {
@@ -164,14 +164,14 @@ async fn worker_main(app_id: u32) -> i32 {
             return 1;
         }
     };
-    eprintln!("[worker app_id={app_id}] connected in {:?}", t0.elapsed());
+    crate::log!("worker app_id={app_id}: connected in {:?}", t0.elapsed());
 
     let connected = WorkerResponse::SteamConnected {
         steam_id: client.steam_id(),
         app_name: client.app_name(),
     };
     if write_response(&connected).await.is_err() {
-        eprintln!("[worker app_id={app_id}] write SteamConnected failed");
+        crate::log!("worker app_id={app_id}: write SteamConnected failed");
         return 1;
     }
 
@@ -612,8 +612,8 @@ async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<
                     if *user_steam_id != expected_user {
                         continue;
                     }
-                    eprintln!(
-                        "[worker] UserStatsReceived: result={} game={}",
+                    crate::log!(
+                        "worker: UserStatsReceived: result={} game={}",
                         result.raw(),
                         game_id,
                     );
@@ -669,8 +669,8 @@ async fn wait_for_stats_received_card_only(
                     if *user_steam_id != expected_user {
                         continue;
                     }
-                    eprintln!(
-                        "[worker] UserStatsReceived (card-only): result={} game={}",
+                    crate::log!(
+                        "worker: UserStatsReceived (card-only): result={} game={}",
                         result.raw(),
                         game_id,
                     );
@@ -901,7 +901,7 @@ async fn write_response(msg: &WorkerResponse) -> Result<(), WorkerError> {
     let framed = match encode_frame(msg) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[worker] write_response: encode_frame failed: {e}");
+            crate::log!("worker: write_response: encode_frame failed: {e}");
             return Err(WorkerError::Frame(e));
         }
     };

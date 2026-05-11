@@ -41,16 +41,14 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameCacheEntry = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            eprintln!(
-                "[steamlens] cache: JSON parse error at {}: {e}",
-                path.display()
-            );
+            crate::log!("cache: JSON parse error at {}: {e}", path.display());
         })
         .ok()?;
     if entry.schema_version != CURRENT_SCHEMA_VERSION {
-        eprintln!(
-            "[steamlens] cache: schema version {} != expected {}; treating as cache miss",
-            entry.schema_version, CURRENT_SCHEMA_VERSION
+        crate::log!(
+            "cache: schema version {} != expected {}; treating as cache miss",
+            entry.schema_version,
+            CURRENT_SCHEMA_VERSION
         );
         return None;
     }

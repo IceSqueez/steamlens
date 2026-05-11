@@ -4,6 +4,7 @@ mod capsule_cache;
 mod capsule_commands;
 mod game_view;
 mod ipc_pipe;
+mod logging;
 mod messaging;
 mod paths;
 mod profile_view;
@@ -282,8 +283,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::ProfileView(msg) => {
             let Screen::ProfileView(pv_state) = &mut app.screen else {
                 #[cfg(debug_assertions)]
-                eprintln!(
-                    "[steamlens] dropped stale ProfileView message: {msg:?} (current screen: not ProfileView)"
+                crate::log!(
+                    "dropped stale ProfileView message: {msg:?} (current screen: not ProfileView)"
                 );
                 return Task::none();
             };
@@ -448,7 +449,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::CacheWritten { app_id, result } => {
             if let Err(e) = result {
-                eprintln!("[steamlens] cache: write failed for app {app_id}: {e}");
+                crate::log!("cache: write failed for app {app_id}: {e}");
             }
             Task::none()
         }
@@ -456,9 +457,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::GameView(m) => {
             let Screen::GameView(state) = &mut app.screen else {
                 #[cfg(debug_assertions)]
-                eprintln!(
-                    "[steamlens] dropped stale GameView message: {m:?} (current screen: not GameView)"
-                );
+                crate::log!("dropped stale GameView message: {m:?} (current screen: not GameView)");
                 return Task::none();
             };
 
@@ -503,7 +502,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::SettingsWritten(result) => {
             if let Err(e) = result {
-                eprintln!("[steamlens] settings: write error: {e}");
+                crate::log!("settings: write error: {e}");
                 app.context
                     .messaging
                     .push_toast(ToastKind::Error, "Could not save settings", None);
@@ -597,7 +596,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_running = Some(false);
                     app.context.steam_level = None;
                     app.splash_scan_done = true;
-                    eprintln!("[steamlens] probe failed: {e}");
+                    crate::log!("probe failed: {e}");
 
                     let cached_count = if let Screen::ProfileView(pv) = &app.screen {
                         pv.games.len()
@@ -694,14 +693,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::NoAchCacheWritten(result) => {
             if let Err(e) = result {
-                eprintln!("[steamlens] no_achievements cache: write failed: {e}");
+                crate::log!("no_achievements cache: write failed: {e}");
             }
             Task::none()
         }
 
         Message::PersistentCacheWritten(label, result) => {
             if let Err(e) = result {
-                eprintln!("[steamlens] {label} cache: write failed: {e}");
+                crate::log!("{label} cache: write failed: {e}");
                 app.context.messaging.push_banner(
                     BannerSeverity::Error,
                     format!("Cache write failed ({label}): {e}"),
@@ -1263,25 +1262,30 @@ fn theme(_app: &App) -> iced::Theme {
 }
 
 fn main() -> iced::Result {
+    if let Err(e) = crate::logging::init() {
+        eprintln!("[steamlens] FATAL: logging init failed: {e}");
+        std::process::exit(1);
+    }
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() == 2 && args[1] == "--probe" {
         worker::run_probe();
     }
     if args.len() == 3 && args[1] == "--worker" {
         let app_id: u32 = args[2].parse().unwrap_or_else(|_| {
-            eprintln!("steamlens-app: invalid app_id: {}", args[2]);
+            crate::log!("invalid app_id: {}", args[2]);
             std::process::exit(2);
         });
         worker::run(app_id);
     }
     if args.len() >= 2 && args[1].starts_with("--worker") {
-        eprintln!("usage: steamlens-app --worker <app_id>");
+        crate::log!("usage: steamlens-app --worker <app_id>");
         std::process::exit(2);
     }
 
     let swept = steamlens_core::sweep_orphans();
     if swept > 0 {
-        eprintln!("[steamlens] swept {swept} orphan shm region(s) at startup");
+        crate::log!("swept {swept} orphan shm region(s) at startup");
     }
 
     let loaded = settings::load_settings();

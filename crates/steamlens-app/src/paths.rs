@@ -32,6 +32,10 @@ pub fn capsules_dir() -> PathBuf {
     steamlens_root().join("capsules")
 }
 
+pub fn log_path() -> PathBuf {
+    steamlens_root().join("steamlens.log")
+}
+
 pub fn no_achievements_path() -> PathBuf {
     cache_dir().join("no_achievements.json")
 }

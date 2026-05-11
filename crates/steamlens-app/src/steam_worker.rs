@@ -295,7 +295,7 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         } => match read_shm::<AchievementIcon>("IconUpdated", &shm_path, region_bytes) {
             Ok(icon) => reply(rep_tx, SteamReply::IconUpdated { name, icon }),
             Err(msg) => {
-                eprintln!("[steamlens] icon shm read failed for {name}: {msg}");
+                crate::log!("icon shm read failed for {name}: {msg}");
             }
         },
         WorkerResponse::GlobalPercentagesReady {

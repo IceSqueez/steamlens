@@ -110,10 +110,10 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
         },
         Err((err, diag)) => {
             if diag.is_empty() {
-                eprintln!("[steamlens] progress_scan: app_id={app_id} failed: {err}");
+                crate::log!("progress_scan: app_id={app_id} failed: {err}");
             } else {
-                eprintln!(
-                    "[steamlens] progress_scan: app_id={app_id} failed: {err}\n--- worker diagnostics ---\n{}--- end diagnostics ---",
+                crate::log!(
+                    "progress_scan: app_id={app_id} failed: {err}\n--- worker diagnostics ---\n{}--- end diagnostics ---",
                     diag
                 );
             }
