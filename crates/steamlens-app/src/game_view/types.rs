@@ -128,7 +128,6 @@ pub enum AchievementFilter {
     All,
     Unlocked,
     Locked,
-    Hidden,
 }
 
 impl AchievementFilter {
@@ -137,7 +136,6 @@ impl AchievementFilter {
             AchievementFilter::All => "All",
             AchievementFilter::Unlocked => "Unlocked",
             AchievementFilter::Locked => "Locked",
-            AchievementFilter::Hidden => "Hidden",
         }
     }
 }
@@ -488,7 +486,6 @@ pub fn visible_achievement_ids<'a>(
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
                 AchievementFilter::Locked => !row.data.is_achieved,
-                AchievementFilter::Hidden => is_spoiler,
             };
             let search_ok = query.is_empty()
                 || row.data.display_name.to_lowercase().contains(&query)
@@ -925,50 +922,6 @@ mod rarity_tests {
     }
 
     #[test]
-    fn filter_hidden_shows_only_spoilers() {
-        let rows = vec![
-            make_appeared("regular_locked", None),
-            make_appeared("regular_unlocked", None),
-            make_hidden_row("spoiler", false, false, None),
-            make_hidden_row("earned_secret", true, false, None),
-        ];
-        let mut rows_with_unlocked = rows;
-        rows_with_unlocked[1].data.is_achieved = true;
-
-        let ids = visible_achievement_ids(
-            &rows_with_unlocked,
-            AchievementFilter::Hidden,
-            "",
-            AchievementSort::Name,
-            &std::collections::HashSet::new(),
-            false,
-        );
-        assert_eq!(
-            ids.len(),
-            1,
-            "only spoiler row must appear under Hidden filter"
-        );
-        assert!(ids.contains(&"spoiler"));
-    }
-
-    #[test]
-    fn filter_hidden_excludes_revealed_secret() {
-        let rows = vec![make_hidden_row("revealed", false, true, None)];
-        let ids = visible_achievement_ids(
-            &rows,
-            AchievementFilter::Hidden,
-            "",
-            AchievementSort::Name,
-            &std::collections::HashSet::new(),
-            false,
-        );
-        assert!(
-            ids.is_empty(),
-            "revealed hidden achievement is no longer a spoiler — must not appear under Hidden"
-        );
-    }
-
-    #[test]
     fn default_state_shows_spoilers_under_status_all() {
         let rows = vec![
             make_appeared("regular", None),
@@ -1078,23 +1031,6 @@ mod rarity_tests {
             !ids.contains(&"non_legendary_common"),
             "Non-legendary, non-spoiler row must be excluded from Legendary + Hidden union"
         );
-    }
-
-    #[test]
-    fn status_hidden_filters_to_spoilers_without_pills() {
-        let rows = vec![
-            make_appeared("a0", Some(1.0)),
-            make_hidden_row("hidden_row", false, false, Some(0.5)),
-        ];
-        let ids = visible_achievement_ids(
-            &rows,
-            AchievementFilter::Hidden,
-            "",
-            AchievementSort::Name,
-            &std::collections::HashSet::new(),
-            false,
-        );
-        assert_eq!(ids, vec!["hidden_row"]);
     }
 
     #[test]
