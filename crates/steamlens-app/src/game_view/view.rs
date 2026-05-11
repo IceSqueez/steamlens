@@ -102,11 +102,22 @@ fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
 }
 
 fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
+    use crate::game_view::widget::{GameWidgetParams, game_widget};
+
+    let game_widget_el = game_widget(GameWidgetParams {
+        app_id: state.app_id,
+        game_name: state.game_name.as_str(),
+        achievements: state.achievements.as_slice(),
+        capsule_handles: &state.prev_profile_state.capsule_handles,
+        skeleton_phase,
+    });
     let tabs = tab_bar_widget(state);
     let top_block: Element<'_, GameViewMessage> = if let Some(b) = &state.banner {
-        column![tabs, banner_widget(b)].spacing(0).into()
+        column![game_widget_el, tabs, banner_widget(b)]
+            .spacing(0)
+            .into()
     } else {
-        tabs
+        column![game_widget_el, tabs].spacing(0).into()
     };
 
     let body = match state.active_tab {

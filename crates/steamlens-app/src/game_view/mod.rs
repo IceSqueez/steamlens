@@ -1,5 +1,6 @@
 pub mod types;
 mod view;
+pub mod widget;
 
 pub use view::GameViewProps;
 pub use view::achievement_search_id;

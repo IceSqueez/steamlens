@@ -1,6 +1,6 @@
-pub mod profile;
 pub mod types;
 mod view;
+pub mod widget;
 
 pub use view::ProfileViewProps;
 pub use view::library_search_id;

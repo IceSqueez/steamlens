@@ -14,17 +14,17 @@ use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_
 use crate::ui::widgets::skeleton::skeleton_box;
 
 use super::ProfileViewState;
-use super::profile::{
-    C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
-};
-use super::profile::{
+use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase};
+use super::widget::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
 };
-use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase};
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
+use crate::ui::widgets::widget::{
+    C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
+};
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;

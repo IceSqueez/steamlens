@@ -6,3 +6,4 @@ pub mod skeleton;
 pub mod status_bar;
 pub mod toast;
 pub mod tooltip_box;
+pub mod widget;
