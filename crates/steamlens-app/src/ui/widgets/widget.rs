@@ -25,7 +25,7 @@ pub const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 const RARITY_CARD_MAX_WIDTH: f32 = 124.0;
 const RARITY_CARD_GAP: f32 = 16.0;
 const RARITY_CARDS_MAX_WIDTH: f32 = RARITY_CARD_MAX_WIDTH * 5.0 + RARITY_CARD_GAP * 4.0;
-const RARITY_CARD_HEIGHT: f32 = 64.0;
+const RARITY_CARD_HEIGHT: f32 = 75.0;
 const RARITY_CARD_SHORT_THRESHOLD: f32 = 95.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
@@ -223,7 +223,10 @@ pub fn count_card<'a, M: 'a + Clone>(
             .spacing(2)
             .padding(Padding::default().left(8).right(6).top(6).bottom(6));
 
-        row![stripe, info_col].into()
+        row![stripe, info_col]
+            .height(Length::Fill)
+            .align_y(Alignment::Center)
+            .into()
     });
 
     container(body)
