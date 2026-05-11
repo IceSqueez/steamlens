@@ -387,7 +387,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
         }
 
         WorkerCommand::LoadAchievementsAndStatsCardOnly => {
-            let resp = load_achievements_card_only(client).await;
+            let resp = load_achievements_card_only(client, app_id).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -591,9 +591,10 @@ fn shm_response_for_card_only(payload: steamlens_core::CardOnlyPayload) -> Worke
     }
 }
 
-async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
+async fn load_achievements_card_only(client: &Client, app_id: u32) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
+    let genre = client.get_app_data(app_id, c"common/primary_genre");
 
     let t0 = std::time::Instant::now();
     crate::log!("worker: request_user_stats start");
@@ -627,6 +628,7 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
     if num == 0 {
         return shm_response_for_card_only(steamlens_core::CardOnlyPayload {
             achievements: Vec::new(),
+            genre,
         });
     }
 
@@ -642,7 +644,10 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
         achievements.push(steamlens_core::CardOnlyAchievement { id, is_achieved });
     }
 
-    shm_response_for_card_only(steamlens_core::CardOnlyPayload { achievements })
+    shm_response_for_card_only(steamlens_core::CardOnlyPayload {
+        achievements,
+        genre,
+    })
 }
 
 async fn quick_achievement_count(client: &Client) -> WorkerResponse {
@@ -764,6 +769,7 @@ async fn wait_for_stats_received_card_only(
                         return Some(shm_response_for_card_only(
                             steamlens_core::CardOnlyPayload {
                                 achievements: Vec::new(),
+                                genre: None,
                             },
                         ));
                     }

@@ -61,6 +61,7 @@ pub struct CardOnlyAchievement {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CardOnlyPayload {
     pub achievements: Vec<CardOnlyAchievement>,
+    pub genre: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
