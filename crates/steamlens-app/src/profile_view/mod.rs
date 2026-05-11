@@ -113,8 +113,8 @@ fn build_profile_genre_strip<'a>(
     genres: Vec<String>,
 ) -> iced::Element<'a, crate::Message> {
     use crate::ui::widgets::pill::pill;
-    use iced::Alignment;
-    use iced::widget::{row, text};
+    use iced::widget::{Space, row, text};
+    use iced::{Alignment, Length};
 
     const GENRE_PILL_RADIUS: f32 = 14.0;
     const GENRE_PILL_PAD_H: u32 = 9;
@@ -137,6 +137,7 @@ fn build_profile_genre_strip<'a>(
         .collect();
 
     if !state.genre_filter.is_empty() {
+        chips.push(Space::new().width(Length::Fill).into());
         let clear_label = text("Clear").size(11).color(neutral);
         chips.push(
             pill(clear_label, neutral)
@@ -150,7 +151,11 @@ fn build_profile_genre_strip<'a>(
         );
     }
 
-    row(chips).spacing(6).align_y(Alignment::Center).into()
+    row(chips)
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 use iced::Task;

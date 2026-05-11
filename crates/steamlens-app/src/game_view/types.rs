@@ -484,20 +484,18 @@ pub fn visible_achievement_ids<'a>(
                 return false;
             }
             let is_spoiler = row.is_spoiler_hidden();
-            if is_spoiler && !include_hidden && filter != AchievementFilter::Hidden {
-                return false;
-            }
             let filter_ok = match filter {
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
-                AchievementFilter::Locked => !row.data.is_achieved && !is_spoiler,
+                AchievementFilter::Locked => !row.data.is_achieved,
                 AchievementFilter::Hidden => is_spoiler,
             };
             let search_ok = query.is_empty()
                 || row.data.display_name.to_lowercase().contains(&query)
                 || row.data.description.to_lowercase().contains(&query)
                 || row.data.id.to_lowercase().contains(&query);
-            let rarity_ok = if rarity_tier_set.is_empty() {
+            let any_pill_selected = !rarity_tier_set.is_empty() || include_hidden;
+            let rarity_ok = if !any_pill_selected {
                 true
             } else {
                 let tier_match = !is_spoiler
@@ -505,8 +503,7 @@ pub fn visible_achievement_ids<'a>(
                         Some(tier) => rarity_tier_set.contains(&tier),
                         None => false,
                     };
-                let hidden_match =
-                    is_spoiler && (include_hidden || filter == AchievementFilter::Hidden);
+                let hidden_match = is_spoiler && include_hidden;
                 tier_match || hidden_match
             };
             filter_ok && search_ok && rarity_ok
@@ -865,7 +862,7 @@ mod rarity_tests {
     }
 
     #[test]
-    fn filter_locked_excludes_spoiler_hidden() {
+    fn filter_locked_default_includes_spoiler() {
         let rows = vec![
             make_appeared("regular_locked", None),
             make_hidden_row("spoiler", false, false, None),
@@ -888,9 +885,26 @@ mod rarity_tests {
             "revealed hidden (no longer spoiler) must appear under Locked filter"
         );
         assert!(
-            !ids.contains(&"spoiler"),
-            "spoiler-hidden row must be excluded from Locked filter"
+            ids.contains(&"spoiler"),
+            "no pills selected = Locked filter includes spoiler-locked rows by default"
         );
+    }
+
+    #[test]
+    fn filter_locked_with_only_hidden_pill_keeps_just_spoilers() {
+        let rows = vec![
+            make_appeared("regular_locked", None),
+            make_hidden_row("spoiler", false, false, None),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::Locked,
+            "",
+            AchievementSort::Name,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert_eq!(ids, vec!["spoiler"]);
     }
 
     #[test]
@@ -955,7 +969,7 @@ mod rarity_tests {
     }
 
     #[test]
-    fn filter_all_excludes_spoilers_when_include_hidden_off() {
+    fn default_state_shows_spoilers_under_status_all() {
         let rows = vec![
             make_appeared("regular", None),
             make_hidden_row("spoiler", false, false, None),
@@ -969,8 +983,8 @@ mod rarity_tests {
             false,
         );
         assert!(
-            !ids.contains(&"spoiler"),
-            "include_hidden=false must hide spoilers under AchievementFilter::All"
+            ids.contains(&"spoiler"),
+            "no pills selected = show everything, including spoilers"
         );
     }
 
@@ -997,7 +1011,7 @@ mod rarity_tests {
     }
 
     #[test]
-    fn spoilers_hidden_by_default_under_status_all() {
+    fn no_pills_selected_shows_all_including_spoilers() {
         let rows = vec![
             make_appeared("a0", Some(1.0)),
             make_appeared("a1", Some(2.0)),
@@ -1012,14 +1026,15 @@ mod rarity_tests {
             &std::collections::HashSet::new(),
             false,
         );
+        assert_eq!(ids.len(), 4);
         assert!(
-            !ids.contains(&"hidden_legendary"),
-            "include_hidden=false must hide spoiler rows even under AchievementFilter::All"
+            ids.contains(&"hidden_legendary"),
+            "no pills selected = default show-all includes spoilers"
         );
     }
 
     #[test]
-    fn hidden_toggle_reveals_spoilers_under_status_all() {
+    fn only_hidden_pill_filters_to_spoilers_only() {
         let rows = vec![
             make_appeared("a0", Some(1.0)),
             make_hidden_row("hidden_legendary", false, false, Some(0.5)),
@@ -1032,19 +1047,16 @@ mod rarity_tests {
             &std::collections::HashSet::new(),
             true,
         );
-        assert!(
-            ids.contains(&"hidden_legendary"),
-            "include_hidden=true must surface spoiler rows"
-        );
+        assert_eq!(ids, vec!["hidden_legendary"]);
     }
 
     #[test]
-    fn hidden_toggle_unions_with_tier_selection() {
+    fn tier_and_hidden_pills_show_union() {
         let rows = vec![
-            make_appeared("a0", Some(1.0)),
-            make_appeared("a1", Some(2.0)),
-            make_appeared("a2", Some(3.0)),
-            make_hidden_row("hidden_row", false, false, Some(0.5)),
+            make_appeared("non_legendary_common", Some(80.0)),
+            make_appeared("legendary_a", Some(1.0)),
+            make_appeared("legendary_b", Some(2.0)),
+            make_hidden_row("hidden_row", false, false, Some(60.0)),
         ];
         let ids = visible_achievement_ids(
             &rows,
@@ -1056,12 +1068,20 @@ mod rarity_tests {
         );
         assert!(
             ids.contains(&"hidden_row"),
-            "include_hidden=true must union spoilers with tier-selected rows"
+            "Hidden pill must surface spoiler even when it does not sit in the chosen tier"
+        );
+        assert!(
+            ids.contains(&"legendary_a") && ids.contains(&"legendary_b"),
+            "Legendary pill must surface non-spoiler legendaries"
+        );
+        assert!(
+            !ids.contains(&"non_legendary_common"),
+            "Non-legendary, non-spoiler row must be excluded from Legendary + Hidden union"
         );
     }
 
     #[test]
-    fn status_hidden_overrides_include_hidden_off() {
+    fn status_hidden_filters_to_spoilers_without_pills() {
         let rows = vec![
             make_appeared("a0", Some(1.0)),
             make_hidden_row("hidden_row", false, false, Some(0.5)),
@@ -1074,10 +1094,7 @@ mod rarity_tests {
             &std::collections::HashSet::new(),
             false,
         );
-        assert!(
-            ids.contains(&"hidden_row"),
-            "explicit AchievementFilter::Hidden must show spoilers regardless of include_hidden"
-        );
+        assert_eq!(ids, vec!["hidden_row"]);
     }
 
     #[test]
