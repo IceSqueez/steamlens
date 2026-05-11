@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
+use iced::border::Radius;
 use iced::widget::{button, column, container, mouse_area, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Vector};
 
@@ -31,8 +32,8 @@ impl Kind {
     fn glyph(self) -> &'static str {
         match self {
             Kind::Success => "\u{2713}",
-            Kind::Info => "\u{1F4CB}",
-            Kind::Error => "\u{26D4}",
+            Kind::Info => "i",
+            Kind::Error => "\u{2715}",
         }
     }
 }
@@ -115,7 +116,7 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
             content_row = content_row.push(link_button(label, msg));
         }
 
-        let card = container(content_row)
+        let inner = container(content_row)
             .width(Length::Fill)
             .padding(Padding::default().left(14).right(14).top(10).bottom(10))
             .style(move |_: &iced::Theme| container::Style {
@@ -123,7 +124,29 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
                 border: Border {
                     color: Color { a: 0.30, ..accent },
                     width: 1.0,
-                    radius: 6.0.into(),
+                    radius: Radius {
+                        top_left: 0.0,
+                        bottom_left: 0.0,
+                        top_right: 6.0,
+                        bottom_right: 6.0,
+                    },
+                },
+                ..container::Style::default()
+            });
+
+        let composed = container(inner)
+            .width(Length::Fill)
+            .padding(Padding::default().left(3))
+            .style(move |_: &iced::Theme| container::Style {
+                background: Some(Background::Color(accent)),
+                border: Border {
+                    radius: Radius {
+                        top_left: 6.0,
+                        bottom_left: 6.0,
+                        top_right: 6.0,
+                        bottom_right: 6.0,
+                    },
+                    ..Border::default()
                 },
                 shadow: Shadow {
                     color: Color::from_rgba(0.0, 0.0, 0.0, 0.40),
@@ -132,21 +155,6 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
                 },
                 ..container::Style::default()
             });
-
-        let stripe = container(iced::widget::Space::new())
-            .width(Length::Fixed(3.0))
-            .height(Length::Fill)
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(accent)),
-                border: Border {
-                    radius: 1.5.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
-            });
-
-        let composed =
-            container(row![stripe, card].spacing(0).align_y(Alignment::Center)).width(Length::Fill);
 
         match (t.on_hover_enter, t.on_hover_exit) {
             (Some(enter), Some(exit)) => mouse_area(composed).on_enter(enter).on_exit(exit).into(),

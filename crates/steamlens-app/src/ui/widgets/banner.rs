@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
+use iced::border::Radius;
 use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -8,6 +9,7 @@ use crate::theme::{C_ACCENT, C_TEXT_MUTED, C_TEXT_PRIMARY};
 
 const C_WARNING: Color = Color::from_rgb(0.941, 0.784, 0.478);
 const C_ERROR: Color = Color::from_rgb(0.863, 0.392, 0.392);
+const BANNER_SURFACE: Color = Color::from_rgb(0.165, 0.149, 0.220);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Severity {
@@ -28,9 +30,9 @@ impl Severity {
 
     fn glyph(self) -> &'static str {
         match self {
-            Severity::Info => "\u{2139}",
-            Severity::Warning => "\u{26A0}",
-            Severity::Error => "\u{26D4}",
+            Severity::Info => "i",
+            Severity::Warning => "!",
+            Severity::Error => "\u{2715}",
         }
     }
 
@@ -95,7 +97,6 @@ impl<'a, M: 'a + Clone> Banner<'a, M> {
 impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
     fn from(b: Banner<'a, M>) -> Self {
         let accent = b.severity.accent();
-        let bg = Color { a: 0.08, ..accent };
         let border_color = Color { a: 0.30, ..accent };
 
         let icon = text(b.severity.glyph()).size(14).color(accent);
@@ -122,33 +123,40 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
             content_row = content_row.push(dismiss_button(msg));
         }
 
-        let card = container(content_row)
+        let inner = container(content_row)
             .width(Length::Fill)
             .padding(Padding::default().left(14).right(14).top(10).bottom(10))
             .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(bg)),
+                background: Some(Background::Color(BANNER_SURFACE)),
                 border: Border {
                     color: border_color,
                     width: 1.0,
-                    radius: 6.0.into(),
+                    radius: Radius {
+                        top_left: 0.0,
+                        bottom_left: 0.0,
+                        top_right: 6.0,
+                        bottom_right: 6.0,
+                    },
                 },
                 ..container::Style::default()
             });
 
-        let stripe = container(iced::widget::Space::new())
-            .width(Length::Fixed(3.0))
-            .height(Length::Fill)
+        container(inner)
+            .width(Length::Fill)
+            .padding(Padding::default().left(3))
             .style(move |_: &iced::Theme| container::Style {
                 background: Some(Background::Color(accent)),
                 border: Border {
-                    radius: 1.5.into(),
+                    radius: Radius {
+                        top_left: 6.0,
+                        bottom_left: 6.0,
+                        top_right: 6.0,
+                        bottom_right: 6.0,
+                    },
                     ..Border::default()
                 },
                 ..container::Style::default()
-            });
-
-        container(row![stripe, card].spacing(0).align_y(Alignment::Center))
-            .width(Length::Fill)
+            })
             .into()
     }
 }
