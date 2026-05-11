@@ -34,6 +34,34 @@ pub enum WorkerSpawnError {
     StderrUnavailable,
 }
 
+#[allow(dead_code, reason = "callsites migrate in next chunk")]
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectivityError {
+    #[error("steam is not running")]
+    SteamNotRunning,
+    #[error("user is not signed in to steam")]
+    NotLoggedIn,
+}
+
+#[allow(dead_code, reason = "callsites migrate in next chunk")]
+#[derive(Debug, thiserror::Error)]
+pub enum SendCheckedError {
+    #[error(transparent)]
+    Connectivity(#[from] ConnectivityError),
+    #[error(transparent)]
+    Protocol(#[from] WorkerProtocolError),
+}
+
+fn preflight(steam_running: bool, user_logged_in: bool) -> Result<(), ConnectivityError> {
+    if !steam_running {
+        return Err(ConnectivityError::SteamNotRunning);
+    }
+    if !user_logged_in {
+        return Err(ConnectivityError::NotLoggedIn);
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum WorkerProtocolError {
     #[error("worker error: {kind:?}: {message}")]
@@ -135,6 +163,17 @@ impl WorkerHandle {
             .map_err(WorkerProtocolError::Write)
     }
 
+    #[allow(dead_code, reason = "callsites migrate in next chunk")]
+    pub async fn send_checked(
+        &mut self,
+        cmd: &steamlens_core::ipc::WorkerCommand,
+        steam_running: bool,
+        user_logged_in: bool,
+    ) -> Result<(), SendCheckedError> {
+        preflight(steam_running, user_logged_in).map_err(SendCheckedError::Connectivity)?;
+        self.send(cmd).await.map_err(SendCheckedError::Protocol)
+    }
+
     pub async fn recv(
         &mut self,
     ) -> Result<Option<steamlens_core::ipc::WorkerResponse>, WorkerProtocolError> {
@@ -194,6 +233,29 @@ async fn abort_task(task: Option<JoinHandle<Vec<u8>>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preflight_returns_steam_not_running_when_flag_false() {
+        let err = preflight(false, true).unwrap_err();
+        assert!(matches!(err, ConnectivityError::SteamNotRunning));
+    }
+
+    #[test]
+    fn preflight_returns_not_logged_in_when_flag_false() {
+        let err = preflight(true, false).unwrap_err();
+        assert!(matches!(err, ConnectivityError::NotLoggedIn));
+    }
+
+    #[test]
+    fn preflight_passes_when_both_true() {
+        assert!(preflight(true, true).is_ok());
+    }
+
+    #[test]
+    fn preflight_steam_not_running_takes_precedence_over_login() {
+        let err = preflight(false, false).unwrap_err();
+        assert!(matches!(err, ConnectivityError::SteamNotRunning));
+    }
 
     #[test]
     fn worker_protocol_error_display_includes_kind_and_message() {
