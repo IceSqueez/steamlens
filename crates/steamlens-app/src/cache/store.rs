@@ -40,6 +40,10 @@ fn game_cache_path(app_id: u32) -> PathBuf {
         .join(format!("{app_id}.json"))
 }
 
+#[allow(
+    dead_code,
+    reason = "retained for rollback safety per cache migration plan; classify uses load_game_summary_from_path"
+)]
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameCacheEntry = serde_json::from_slice(&bytes)
@@ -65,10 +69,8 @@ pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError
     atomic_write(&path, &bytes).await
 }
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
-    let path = crate::paths::game_summary_path(app_id);
-    let bytes = tokio::fs::read(&path).await.ok()?;
+pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSummaryCache> {
+    let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameSummaryCache = serde_json::from_slice(&bytes)
         .map_err(|e| {
             crate::log!("cache: summary JSON parse error at {}: {e}", path.display());
@@ -76,13 +78,19 @@ pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
         .ok()?;
     if entry.schema_version != LAYER_SCHEMA_VERSION {
         crate::log!(
-            "cache: summary schema version {} != expected {}; treating as cache miss",
+            "cache: summary schema version {} != expected {} at {}; treating as cache miss",
             entry.schema_version,
-            LAYER_SCHEMA_VERSION
+            LAYER_SCHEMA_VERSION,
+            path.display()
         );
         return None;
     }
     Some(entry)
+}
+
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
+pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
+    load_game_summary_from_path(&crate::paths::game_summary_path(app_id)).await
 }
 
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
