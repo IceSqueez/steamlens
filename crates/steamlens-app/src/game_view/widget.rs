@@ -8,7 +8,7 @@ use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 use crate::ui::widgets::widget::{
-    WidgetSummary, breakdown_label, cards_separator, closest_row, format_thousands, rarity_bar,
+    WidgetSummary, breakdown_row, cards_separator, closest_row, format_thousands, rarity_bar,
     rarity_cards, widget_panel,
 };
 
@@ -116,7 +116,7 @@ fn build_left_column<'a>(
 
     column![
         header_row,
-        breakdown_label::<GameViewMessage>(),
+        breakdown_row::<GameViewMessage>(summary),
         bar,
         rarity_cards::<GameViewMessage>(summary),
         cards_separator::<GameViewMessage>(summary),
@@ -148,46 +148,11 @@ fn build_game_header<'a>(
 
     let info = column![name_row, subtitle].spacing(2);
 
-    let earned = summary.earned_total;
-    let total = summary.achievement_total;
-    let pct = if total > 0 {
-        earned as f64 / total as f64 * 100.0
-    } else {
-        0.0
-    };
-
-    let earned_text = text(format_thousands(earned))
-        .size(16)
-        .color(C_TEXT_PRIMARY);
-    let total_text = text(format!("/ {}", format_thousands(total)))
-        .size(16)
-        .color(C_TEXT_DIM);
-    let pct_text = text(format!("{pct:.1}% unlocked")).size(12).color(C_ACCENT);
-
-    let counter_row = row![earned_text, total_text]
-        .spacing(6)
-        .align_y(Alignment::Center);
-
-    let earnings = column![counter_row, pct_text]
-        .spacing(4)
-        .align_x(Alignment::End);
-
-    let info_block = container(info)
-        .height(Length::Fill)
-        .align_y(Alignment::Start);
-    let earnings_block = container(earnings)
-        .height(Length::Fill)
-        .align_y(Alignment::End);
-
-    row![
-        info_block,
-        iced::widget::Space::new().width(Length::Fill),
-        earnings_block,
-    ]
-    .spacing(14)
-    .width(Length::Fill)
-    .height(Length::Fixed(HEADER_BLOCK_H))
-    .into()
+    container(info)
+        .width(Length::Fill)
+        .height(Length::Fixed(HEADER_BLOCK_H))
+        .align_y(Alignment::Start)
+        .into()
 }
 
 fn build_capsule<'a>(
