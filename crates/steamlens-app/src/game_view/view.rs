@@ -177,31 +177,42 @@ pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {
 }
 
 pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
-    button(text("\u{21BB} Reload").size(12).color(C_TEXT_MUTED))
-        .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
-        .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-        .style(|_theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: if hovered {
-                    Some(iced::Background::Color(C_HOVER))
-                } else {
-                    None
+    button(
+        container(text("\u{21BB}").size(16).color(C_ACCENT))
+            .width(Length::Fixed(32.0))
+            .height(Length::Fixed(32.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
+    .padding(0)
+    .style(|_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(iced::Background::Color(if hovered {
+                Color {
+                    a: 0.18,
+                    ..C_ACCENT
+                }
+            } else {
+                Color {
+                    a: 0.10,
+                    ..C_ACCENT
+                }
+            })),
+            border: iced::Border {
+                color: Color {
+                    a: if hovered { 0.55 } else { 0.40 },
+                    ..C_ACCENT
                 },
-                border: iced::Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                text_color: if hovered {
-                    C_TEXT_PRIMARY
-                } else {
-                    C_TEXT_MUTED
-                },
-                ..button::Style::default()
-            }
-        })
-        .into()
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            text_color: C_ACCENT,
+            ..button::Style::default()
+        }
+    })
+    .into()
 }
 
 fn tab_bar_widget(state: &GameViewState) -> Element<'_, GameViewMessage> {
