@@ -399,6 +399,7 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
 
 fn build_global_actions() -> Element<'static, crate::Message> {
     use crate::theme::{C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
+    use crate::ui::widgets::tooltip_box::tooltip_box;
 
     let make_icon_btn = |glyph: &'static str, toast_msg: &'static str| {
         button(
@@ -437,8 +438,16 @@ fn build_global_actions() -> Element<'static, crate::Message> {
     };
 
     row![
-        make_icon_btn("\u{2699}", "Settings \u{2014} coming soon"),
-        make_icon_btn("\u{24D8}", "About \u{2014} coming soon"),
+        tooltip_box(
+            make_icon_btn("\u{2699}", "Settings \u{2014} coming soon"),
+            "Settings",
+            iced::widget::tooltip::Position::Bottom,
+        ),
+        tooltip_box(
+            make_icon_btn("\u{24D8}", "About \u{2014} coming soon"),
+            "About",
+            iced::widget::tooltip::Position::Bottom,
+        ),
     ]
     .spacing(8)
     .align_y(Alignment::Center)

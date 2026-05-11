@@ -177,7 +177,9 @@ pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {
 }
 
 pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
-    button(
+    use crate::ui::widgets::tooltip_box::tooltip_box;
+
+    let btn = button(
         container(text("\u{21BB}").size(16).color(C_ACCENT))
             .width(Length::Fixed(32.0))
             .height(Length::Fixed(32.0))
@@ -211,8 +213,13 @@ pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
             text_color: C_ACCENT,
             ..button::Style::default()
         }
-    })
-    .into()
+    });
+
+    tooltip_box(
+        btn,
+        "Reload achievements & stats from Steam",
+        iced::widget::tooltip::Position::Bottom,
+    )
 }
 
 fn tab_bar_widget(state: &GameViewState) -> Element<'_, GameViewMessage> {
