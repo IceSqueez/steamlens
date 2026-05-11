@@ -456,6 +456,7 @@ fn build_global_actions() -> Element<'static, crate::Message> {
 
 pub struct ScreenContent<'a, M> {
     pub top: Option<Element<'a, M>>,
+    pub status_bar: Option<Element<'a, M>>,
     pub body: Element<'a, M>,
     pub footer: Option<Element<'a, M>>,
 }
@@ -465,6 +466,10 @@ pub fn compose_screen<'a, M: 'a>(content: ScreenContent<'a, M>) -> Element<'a, M
 
     if let Some(top) = content.top {
         col = col.push(top);
+    }
+
+    if let Some(status_bar) = content.status_bar {
+        col = col.push(status_bar);
     }
 
     col = col.push(
@@ -504,6 +509,7 @@ mod tests {
     fn compose_screen_minimal_content() {
         let content = ScreenContent::<()> {
             top: None,
+            status_bar: None,
             body: text("b").into(),
             footer: None,
         };
@@ -514,6 +520,7 @@ mod tests {
     fn compose_screen_full_content() {
         let content = ScreenContent::<()> {
             top: Some(text("t").into()),
+            status_bar: Some(text("s").into()),
             body: text("b").into(),
             footer: Some(text("f").into()),
         };

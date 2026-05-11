@@ -88,6 +88,7 @@ pub struct ProfileViewProps<'a> {
     pub skeleton_phase: f32,
     pub pinned: &'a [u32],
     pub steam_level: Option<u32>,
+    pub steam_running: Option<bool>,
 }
 
 pub fn render<'a>(
@@ -124,8 +125,45 @@ pub fn render<'a>(
 
     crate::screen::ScreenContent {
         top: Some(profile_section),
+        status_bar: profile_status_bar(state, props.steam_running),
         body,
         footer: None,
+    }
+}
+
+fn profile_status_bar(
+    state: &ProfileViewState,
+    steam_running: Option<bool>,
+) -> Option<Element<'_, ProfileViewMessage>> {
+    use crate::ui::widgets::status_bar::status_bar;
+
+    let total = state.games.len();
+
+    if steam_running == Some(false) {
+        if total == 0 {
+            return None;
+        }
+        return Some(status_bar::<ProfileViewMessage>().offline(total).into());
+    }
+
+    if total == 0 {
+        return None;
+    }
+
+    let scanned = state.games.iter().filter(|g| g.progress.is_some()).count();
+
+    if scanned < total {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .scanning("Scanning library", scanned, total)
+                .into(),
+        )
+    } else {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .connected(total, state.last_scan_completed_at)
+                .into(),
+        )
     }
 }
 

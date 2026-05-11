@@ -162,7 +162,6 @@ use iced::Task;
 
 use crate::app_context::AppContext;
 use crate::capsule_cache::CapsuleSize;
-use crate::messaging::FooterStatus;
 use crate::progress_scan::ProgressData;
 use types::{
     CapsuleAsset, GameEntry, ProfileEvent, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
@@ -288,23 +287,12 @@ pub fn update(
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
             }
-            if let FooterStatus::Scanning {
-                current,
-                total: footer_total,
-                ..
-            } = &mut ctx.messaging.footer
-            {
-                *current = (*current + 1).min(*footer_total);
-            }
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::ProgressScanDone => {
             types::sort_games_in_place(&mut state.games, state.sort, &ctx.settings.library.pinned);
-            ctx.messaging.footer = FooterStatus::Connected {
-                games: state.games.len(),
-                last_sync: Some(std::time::Instant::now()),
-            };
+            state.last_scan_completed_at = Some(std::time::Instant::now());
             state.progress_scanner = None;
             state.progress_rx = None;
             (Task::none(), ProfileEvent::None)
@@ -454,14 +442,6 @@ fn drain_progress_results(
                     if let Some(cn) = change_number {
                         ctx.no_ach_cache.insert(scan_app_id, cn);
                         no_ach_events.push((scan_app_id, cn));
-                    }
-                    if let FooterStatus::Scanning {
-                        current,
-                        total: footer_total,
-                        ..
-                    } = &mut ctx.messaging.footer
-                    {
-                        *current = (*current + 1).min(*footer_total);
                     }
                     continue;
                 }

@@ -116,9 +116,40 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
 
     compose_screen(ScreenContent {
         top: Some(top_block),
+        status_bar: game_status_bar(state),
         body,
         footer: Some(footer_bar(state)),
     })
+}
+
+fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>> {
+    use crate::game_view::GameViewPhase;
+    use crate::ui::widgets::status_bar::status_bar;
+
+    let total = state.achievements.len();
+    let appeared = state.achievements.iter().filter(|r| r.appeared).count();
+
+    match state.phase {
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
+            Some(
+                status_bar::<GameViewMessage>()
+                    .scanning("Loading achievements", appeared, total.max(1))
+                    .into(),
+            )
+        }
+        GameViewPhase::Ready | GameViewPhase::Saving | GameViewPhase::Resetting => {
+            if total == 0 {
+                None
+            } else {
+                Some(
+                    status_bar::<GameViewMessage>()
+                        .connected(total, None)
+                        .into(),
+                )
+            }
+        }
+        GameViewPhase::Error => None,
+    }
 }
 
 pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {

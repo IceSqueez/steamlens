@@ -159,6 +159,10 @@ pub enum ProfileViewMessage {
     LoaderPulseTick,
     CardHoverEnter(u32),
     CardHoverExit(u32),
+    #[allow(
+        dead_code,
+        reason = "re-wired when status_bar gets a Retry-Failed link"
+    )]
     RetryFailedScans,
     BarSliceHoverEnter(RarityTier),
     BarSliceHoverExit,
@@ -261,6 +265,7 @@ pub struct ProfileViewState {
     pub hovered_card_tier: Option<(u32, RarityTier)>,
     pub status_filter: GameStatusFilter,
     pub genre_filter: HashSet<String>,
+    pub last_scan_completed_at: Option<Instant>,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -295,6 +300,7 @@ impl ProfileViewState {
             hovered_card_tier: None,
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
+            last_scan_completed_at: None,
         }
     }
 
@@ -570,6 +576,7 @@ mod tests {
             hovered_card_tier: None,
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
+            last_scan_completed_at: None,
         }
     }
 
