@@ -1,18 +1,7 @@
 use std::time::{Duration, Instant};
 
-use iced::widget::{button, column, container, row, text};
-use iced::{Color, Element, Length, Padding};
-
-use crate::theme::{C_ACCENT, C_BORDER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
-
-const C_WARNING: Color = Color::from_rgb(0.878, 0.722, 0.376);
-const C_ERROR: Color = Color::from_rgb(0.863, 0.392, 0.392);
-const C_SUCCESS: Color = Color::from_rgb(0.314, 0.980, 0.482);
-
-const CONNECTED_DOT: Color = Color::from_rgb(0.427, 0.788, 0.498);
-const OFFLINE_DOT: Color = Color::from_rgb(0.941, 0.784, 0.478);
-const TOAST_INFO_BLUE: Color = Color::from_rgb(0.373, 0.643, 0.827);
-const TOAST_SURFACE: Color = Color::from_rgb(0.165, 0.149, 0.220);
+use iced::widget::{column, container};
+use iced::{Element, Length, Padding};
 
 const TOAST_LIFETIME: Duration = Duration::from_secs(4);
 const MAX_VISIBLE_TOASTS: usize = 3;
@@ -228,169 +217,42 @@ pub fn banner_stack<'a>(messaging: &'a MessagingCenter) -> Option<Element<'a, cr
     if messaging.banners.is_empty() {
         return None;
     }
-
-    let mut col = column![].spacing(0);
+    let mut col = column![]
+        .spacing(8)
+        .padding(Padding::default().left(12).right(12).top(8));
     for banner in &messaging.banners {
-        col = col.push(banner_strip(banner));
+        col = col.push(render_banner(banner));
     }
     Some(col.into())
 }
 
-fn banner_strip<'a>(banner: &'a Banner) -> Element<'a, crate::Message> {
-    let accent_color = match banner.severity {
-        BannerSeverity::Info => C_ACCENT,
-        BannerSeverity::Warning => C_WARNING,
-        BannerSeverity::Error => C_ERROR,
+fn render_banner(banner: &Banner) -> Element<'_, crate::Message> {
+    use crate::ui::widgets::banner::{Severity, banner as banner_widget};
+
+    let severity = match banner.severity {
+        BannerSeverity::Info => Severity::Info,
+        BannerSeverity::Warning => Severity::Warning,
+        BannerSeverity::Error => Severity::Error,
     };
 
-    let glyph = match banner.severity {
-        BannerSeverity::Info => "\u{2139}",
-        BannerSeverity::Warning => "\u{26A0}",
-        BannerSeverity::Error => "\u{26D4}",
-    };
-
-    let bg_color = Color {
-        a: 0.08,
-        ..accent_color
-    };
-    let border_color = Color {
-        a: 0.30,
-        ..accent_color
-    };
-
-    let icon = text(glyph).size(14).color(accent_color);
-
-    let (title_text, subtitle_text) = match banner.body.split_once('\n') {
+    let (title, text_line) = match banner.body.split_once('\n') {
         Some((title, rest)) => (title, Some(rest.trim_start())),
         None => (banner.body.as_str(), None),
     };
 
-    let text_col: Element<'_, crate::Message> = if let Some(sub) = subtitle_text {
-        column![
-            text(title_text).size(13).color(C_TEXT_PRIMARY),
-            text(sub).size(11).color(C_TEXT_MUTED),
-        ]
-        .spacing(2)
-        .into()
-    } else {
-        text(title_text).size(13).color(C_TEXT_PRIMARY).into()
-    };
-
-    let mut content_row = row![icon, text_col]
-        .spacing(12)
-        .align_y(iced::Alignment::Center);
-    content_row = content_row.push(iced::widget::Space::new().width(Length::Fill));
-
-    let filled = matches!(
-        banner.severity,
-        BannerSeverity::Warning | BannerSeverity::Error
-    );
+    let mut b = banner_widget::<crate::Message>()
+        .severity(severity)
+        .title(title);
+    if let Some(t) = text_line {
+        b = b.text(t);
+    }
     if let Some(action) = &banner.action {
-        let action_msg = action.message.clone();
-        content_row = content_row.push(banner_action_button(
-            action.label,
-            accent_color,
-            filled,
-            action_msg,
-        ));
+        b = b.action(action.label, action.message.clone());
     }
-
     if banner.dismissible {
-        let banner_id = banner.id;
-        content_row = content_row.push(banner_dismiss_button(banner_id));
+        b = b.on_dismiss(crate::Message::DismissBanner(banner.id));
     }
-
-    let card = container(content_row)
-        .width(Length::Fill)
-        .padding(Padding::default().left(14).right(14).top(10).bottom(10))
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(bg_color)),
-            border: iced::Border {
-                color: border_color,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..Default::default()
-        });
-
-    let stripe = container(iced::widget::Space::new())
-        .width(Length::Fixed(3.0))
-        .height(Length::Fill)
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(accent_color)),
-            border: iced::Border {
-                radius: 1.5.into(),
-                ..iced::Border::default()
-            },
-            ..Default::default()
-        });
-
-    container(
-        row![stripe, card]
-            .spacing(0)
-            .align_y(iced::Alignment::Center),
-    )
-    .width(Length::Fill)
-    .padding(Padding::default().left(12).right(12).top(8).bottom(0))
-    .into()
-}
-
-fn banner_action_button<'a>(
-    label: &'static str,
-    accent_color: Color,
-    filled: bool,
-    msg: crate::Message,
-) -> Element<'a, crate::Message> {
-    let (bg_idle, bg_hover) = if filled { (0.15, 0.25) } else { (0.0, 0.10) };
-    button(text(label).size(11).color(accent_color))
-        .on_press(msg)
-        .padding(Padding::default().left(12).right(12).top(4).bottom(4))
-        .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: if hovered { bg_hover } else { bg_idle },
-                    ..accent_color
-                })),
-                border: iced::Border {
-                    color: Color {
-                        a: 0.40,
-                        ..accent_color
-                    },
-                    width: 1.0,
-                    radius: 5.0.into(),
-                },
-                text_color: accent_color,
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
-}
-
-fn banner_dismiss_button<'a>(banner_id: u32) -> Element<'a, crate::Message> {
-    button(text("\u{2715}").size(11).color(C_TEXT_MUTED))
-        .on_press(crate::Message::DismissBanner(banner_id))
-        .padding(Padding::default().left(4).right(4).top(2).bottom(2))
-        .style(|_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(if hovered {
-                    Color::from_rgba(1.0, 1.0, 1.0, 0.06)
-                } else {
-                    Color::TRANSPARENT
-                })),
-                border: iced::Border::default(),
-                text_color: C_TEXT_MUTED,
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
+    b.into()
 }
 
 pub fn status_footer<'a>(
@@ -400,208 +262,34 @@ pub fn status_footer<'a>(
     if failed_count == 0 && footer_is_hidden(&messaging.footer) {
         return None;
     }
-
-    let mut left_row = row![].spacing(14).align_y(iced::Alignment::Center);
-    let mut right_action: Option<Element<'_, crate::Message>> = None;
-
+    use crate::ui::widgets::status_bar::status_bar;
+    let mut bar = status_bar::<crate::Message>();
     match &messaging.footer {
         FooterStatus::Connected { games, last_sync } => {
-            left_row = left_row.push(footer_status_cluster(
-                CONNECTED_DOT,
-                "Connected",
-                C_TEXT_MUTED,
-            ));
-            left_row = left_row.push(text(format!("{games} games")).size(11).color(C_TEXT_MUTED));
-            left_row = left_row.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
-            let sync_label = match last_sync {
-                Some(t) => {
-                    let secs = t.elapsed().as_secs();
-                    if secs < 60 {
-                        "Last sync just now".to_owned()
-                    } else {
-                        format!("Last sync {}m ago", secs / 60)
-                    }
-                }
-                None => "Last sync never".to_owned(),
-            };
-            left_row = left_row.push(text(sync_label).size(11).color(C_TEXT_MUTED));
+            bar = bar.connected(*games, *last_sync);
         }
-
         FooterStatus::Scanning {
             current,
             total,
             label,
         } => {
-            left_row = left_row.push(footer_scanning_cluster(label.as_str()));
-            if *total > 0 {
-                let ratio = (*current as f32 / *total as f32).clamp(0.0, 1.0);
-                left_row = left_row.push(scanning_progress_bar(ratio));
-                left_row = left_row.push(
-                    text(format!("{current} / {total}"))
-                        .size(11)
-                        .color(C_TEXT_MUTED),
-                );
-            }
+            bar = bar.scanning(label.clone(), *current, *total);
         }
-
         FooterStatus::Offline { cached_games } => {
-            left_row = left_row.push(footer_status_cluster(OFFLINE_DOT, "Offline", OFFLINE_DOT));
-            left_row = left_row.push(
-                text(format!("Cached: {cached_games} games"))
-                    .size(11)
-                    .color(C_TEXT_MUTED),
-            );
-            right_action = Some(footer_link_button(
-                "Reconnect",
-                C_ACCENT,
-                crate::Message::RetrySteamConnect,
-            ));
+            bar = bar
+                .offline(*cached_games)
+                .on_reconnect(crate::Message::RetrySteamConnect);
         }
     }
-
-    let mut footer_row = row![left_row.width(Length::Fill)]
-        .spacing(12)
-        .align_y(iced::Alignment::Center)
-        .width(Length::Fill);
-
     if failed_count > 0 {
-        let retry_label = format!("Retry ({failed_count})");
-        footer_row = footer_row.push(footer_link_button(
-            retry_label,
-            C_WARNING,
+        bar = bar.retry(
+            format!("Retry ({failed_count})"),
             crate::Message::ProfileView(
                 crate::profile_view::types::ProfileViewMessage::RetryFailedScans,
             ),
-        ));
-    } else if let Some(btn) = right_action {
-        footer_row = footer_row.push(btn);
+        );
     }
-
-    Some(
-        container(footer_row)
-            .width(Length::Fill)
-            .padding(Padding::default().left(14).right(14).top(8).bottom(8))
-            .style(|_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(C_SURFACE)),
-                border: iced::Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 0.0.into(),
-                },
-                ..Default::default()
-            })
-            .into(),
-    )
-}
-
-fn footer_status_cluster<'a>(
-    dot_color: Color,
-    label: &'a str,
-    label_color: Color,
-) -> Element<'a, crate::Message> {
-    let dot = container(iced::widget::Space::new())
-        .width(Length::Fixed(6.0))
-        .height(Length::Fixed(6.0))
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(dot_color)),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..iced::Border::default()
-            },
-            ..Default::default()
-        });
-    row![dot, text(label).size(11).color(label_color)]
-        .spacing(6)
-        .align_y(iced::Alignment::Center)
-        .into()
-}
-
-fn footer_scanning_cluster<'a>(label: &'a str) -> Element<'a, crate::Message> {
-    let spinner = container(iced::widget::Space::new())
-        .width(Length::Fixed(6.0))
-        .height(Length::Fixed(6.0))
-        .style(|_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(C_ACCENT)),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..iced::Border::default()
-            },
-            ..Default::default()
-        });
-    row![spinner, text(label).size(11).color(C_ACCENT)]
-        .spacing(6)
-        .align_y(iced::Alignment::Center)
-        .into()
-}
-
-fn scanning_progress_bar<'a>(ratio: f32) -> Element<'a, crate::Message> {
-    let portion_fill = ((ratio * 1000.0).round() as u16).clamp(1, 1000);
-    let portion_rest = 1000 - portion_fill;
-
-    let fill = container(iced::widget::Space::new())
-        .width(Length::FillPortion(portion_fill))
-        .height(Length::Fixed(3.0))
-        .style(|_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(C_ACCENT)),
-            border: iced::Border {
-                radius: 1.5.into(),
-                ..iced::Border::default()
-            },
-            ..Default::default()
-        });
-    let rest = container(iced::widget::Space::new())
-        .width(Length::FillPortion(portion_rest))
-        .height(Length::Fixed(3.0))
-        .style(|_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(Color::TRANSPARENT)),
-            ..Default::default()
-        });
-
-    container(
-        container(row![fill, rest].width(Length::Fill))
-            .width(Length::Fill)
-            .height(Length::Fixed(3.0))
-            .style(|_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(Color::from_rgba(
-                    0.16, 0.14, 0.22, 1.0,
-                ))),
-                border: iced::Border {
-                    radius: 1.5.into(),
-                    ..iced::Border::default()
-                },
-                ..Default::default()
-            }),
-    )
-    .width(Length::Fixed(200.0))
-    .into()
-}
-
-fn footer_link_button<'a>(
-    label: impl Into<String>,
-    color: Color,
-    msg: crate::Message,
-) -> Element<'a, crate::Message> {
-    let label = label.into();
-    button(text(label).size(11).color(color))
-        .on_press(msg)
-        .padding(0)
-        .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(Color::TRANSPARENT)),
-                border: iced::Border::default(),
-                text_color: if hovered {
-                    Color { a: 0.85, ..color }
-                } else {
-                    color
-                },
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
+    Some(bar.into())
 }
 
 fn footer_is_hidden(footer: &FooterStatus) -> bool {
@@ -613,13 +301,11 @@ fn footer_is_hidden(footer: &FooterStatus) -> bool {
 }
 
 pub fn toast_stack<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Message> {
-    let mut toast_col = column![].spacing(8).width(Length::Fixed(320.0));
-
+    let mut toast_col = column![].spacing(8).width(Length::Fixed(360.0));
     for toast in messaging.toasts.iter().rev().take(MAX_VISIBLE_TOASTS) {
-        toast_col = toast_col.push(toast_card(toast));
+        toast_col = toast_col.push(render_toast(toast));
     }
-
-    let overlay_col = column![
+    column![
         iced::widget::Space::new().height(Length::Fill),
         container(toast_col)
             .width(Length::Fill)
@@ -627,115 +313,31 @@ pub fn toast_stack<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Mes
     ]
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_x(iced::Alignment::End);
-
-    overlay_col.into()
+    .align_x(iced::Alignment::End)
+    .into()
 }
 
-fn toast_card<'a>(toast: &'a Toast) -> Element<'a, crate::Message> {
-    let (accent_color, kind_glyph) = match toast.kind {
-        ToastKind::Success => (C_SUCCESS, "\u{2713}"),
-        ToastKind::Info => (TOAST_INFO_BLUE, "\u{1F4CB}"),
-        ToastKind::Error => (C_ERROR, "\u{26D4}"),
+fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
+    use crate::ui::widgets::toast::{Kind, toast as toast_widget};
+    let kind = match toast.kind {
+        ToastKind::Success => Kind::Success,
+        ToastKind::Info => Kind::Info,
+        ToastKind::Error => Kind::Error,
     };
-
-    let icon = text(kind_glyph).size(14).color(accent_color);
-
-    let title = text(toast.title.as_str()).size(12).color(C_TEXT_PRIMARY);
-    let mut info_col = column![title].spacing(1);
+    let mut t = toast_widget::<crate::Message>()
+        .kind(kind)
+        .title(toast.title.clone())
+        .on_hover_enter(crate::Message::ToastHovered(toast.id, true))
+        .on_hover_exit(crate::Message::ToastHovered(toast.id, false));
     if let Some(body) = &toast.body {
-        info_col = info_col.push(text(body.as_str()).size(10).color(C_TEXT_MUTED));
+        t = t.body(body.clone());
     }
-
-    let mut content_row = row![icon, info_col.width(Length::Fill)]
-        .spacing(10)
-        .align_y(iced::Alignment::Center);
-
     if let Some(action) = &toast.action {
-        let action_msg = action.on_press.clone();
-        content_row = content_row.push(toast_link_button(
-            action.label.clone(),
-            C_TEXT_MUTED,
-            action_msg,
-        ));
+        t = t.action(action.label.clone(), action.on_press.clone());
     } else if matches!(toast.kind, ToastKind::Error) {
-        content_row = content_row.push(toast_link_button(
-            "Dismiss".to_owned(),
-            C_TEXT_MUTED,
-            crate::Message::DismissToast(toast.id),
-        ));
+        t = t.action("Dismiss", crate::Message::DismissToast(toast.id));
     }
-
-    let toast_id_enter = toast.id;
-    let toast_id_exit = toast.id;
-
-    let card = container(content_row)
-        .width(Length::Fill)
-        .padding(Padding::default().left(14).right(14).top(10).bottom(10))
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(TOAST_SURFACE)),
-            border: iced::Border {
-                color: Color {
-                    a: 0.30,
-                    ..accent_color
-                },
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            shadow: iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.40),
-                offset: iced::Vector::new(0.0, 4.0),
-                blur_radius: 12.0,
-            },
-            ..Default::default()
-        });
-
-    let stripe = container(iced::widget::Space::new())
-        .width(Length::Fixed(3.0))
-        .height(Length::Fill)
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(accent_color)),
-            border: iced::Border {
-                radius: 1.5.into(),
-                ..iced::Border::default()
-            },
-            ..Default::default()
-        });
-
-    let composed = container(
-        row![stripe, card]
-            .spacing(0)
-            .align_y(iced::Alignment::Center),
-    )
-    .width(Length::Fill);
-
-    iced::widget::mouse_area(composed)
-        .on_enter(crate::Message::ToastHovered(toast_id_enter, true))
-        .on_exit(crate::Message::ToastHovered(toast_id_exit, false))
-        .into()
-}
-
-fn toast_link_button<'a>(
-    label: String,
-    color: Color,
-    msg: crate::Message,
-) -> Element<'a, crate::Message> {
-    button(text(label).size(10).color(color))
-        .on_press(msg)
-        .padding(Padding::default().left(4).right(4).top(2).bottom(2))
-        .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(Color::TRANSPARENT)),
-                border: iced::Border::default(),
-                text_color: if hovered { C_TEXT_PRIMARY } else { color },
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
+    t.into()
 }
 
 pub fn wrap_with_messaging<'a>(
