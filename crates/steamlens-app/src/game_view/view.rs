@@ -110,6 +110,7 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
         achievements: state.achievements.as_slice(),
         capsule_handles: &state.capsule_handles,
         skeleton_phase,
+        hovered_bar_slice: state.hovered_bar_slice,
     });
     let tabs = tab_bar_widget(state);
     let top_block: Element<'_, GameViewMessage> = if let Some(b) = &state.banner {

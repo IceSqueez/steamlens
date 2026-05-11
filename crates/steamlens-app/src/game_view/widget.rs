@@ -88,6 +88,7 @@ pub struct GameWidgetParams<'a> {
     pub achievements: &'a [AchievementRow],
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub skeleton_phase: f32,
+    pub hovered_bar_slice: Option<RarityTier>,
 }
 
 pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMessage> {
@@ -95,7 +96,12 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
     let top5 = top5_easiest_to_unlock(params.achievements);
 
     let capsule_el = build_capsule(params.app_id, params.capsule_handles, params.skeleton_phase);
-    let inner_col = build_left_column(params.app_id, params.game_name, &summary);
+    let inner_col = build_left_column(
+        params.app_id,
+        params.game_name,
+        &summary,
+        params.hovered_bar_slice,
+    );
     let left_content: Element<'a, GameViewMessage> = row![capsule_el, inner_col]
         .spacing(16)
         .align_y(Alignment::Center)
@@ -110,9 +116,16 @@ fn build_left_column<'a>(
     app_id: u32,
     game_name: &'a str,
     summary: &WidgetSummary,
+    hovered_bar_slice: Option<RarityTier>,
 ) -> Element<'a, GameViewMessage> {
     let header_row = build_game_header(app_id, game_name, summary);
-    let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary).into();
+    let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary)
+        .hovered(hovered_bar_slice)
+        .on_hover(|tier| match tier {
+            Some(t) => GameViewMessage::BarSliceHoverEnter(t),
+            None => GameViewMessage::BarSliceHoverExit,
+        })
+        .into();
 
     column![
         header_row,

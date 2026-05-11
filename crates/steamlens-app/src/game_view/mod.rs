@@ -219,6 +219,8 @@ pub enum GameViewMessage {
         app_id: u32,
         size: crate::capsule_cache::CapsuleSize,
     },
+    BarSliceHoverEnter(RarityTier),
+    BarSliceHoverExit,
 }
 
 #[derive(Debug, Clone)]
@@ -278,6 +280,8 @@ pub struct GameViewState {
         (u32, crate::capsule_cache::CapsuleSize),
         crate::profile_view::types::StoredCapsule,
     >,
+
+    pub hovered_bar_slice: Option<RarityTier>,
 }
 
 impl GameViewState {
@@ -309,6 +313,7 @@ impl GameViewState {
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
             capsule_handles: HashMap::new(),
+            hovered_bar_slice: None,
         }
     }
 
@@ -830,6 +835,16 @@ pub fn update(
         }
         GameViewMessage::CapsuleFailed { app_id, size } => {
             crate::log!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
+            (Task::none(), GameViewEvent::None)
+        }
+
+        GameViewMessage::BarSliceHoverEnter(tier) => {
+            state.hovered_bar_slice = Some(tier);
+            (Task::none(), GameViewEvent::None)
+        }
+
+        GameViewMessage::BarSliceHoverExit => {
+            state.hovered_bar_slice = None;
             (Task::none(), GameViewEvent::None)
         }
     }

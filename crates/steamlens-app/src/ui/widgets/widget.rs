@@ -62,22 +62,6 @@ pub fn rarity_label(tier: RarityTier) -> &'static str {
     }
 }
 
-pub fn overall_tier_color(unlocked_pct: f32) -> Color {
-    if unlocked_pct >= 100.0 {
-        C_RARITY_LEGENDARY
-    } else if unlocked_pct >= 75.0 {
-        C_RARITY_MYTHICAL
-    } else if unlocked_pct >= 50.0 {
-        C_RARITY_RARE
-    } else if unlocked_pct >= 25.0 {
-        C_RARITY_UNCOMMON
-    } else if unlocked_pct > 0.0 {
-        C_RARITY_COMMON
-    } else {
-        C_TEXT_MUTED
-    }
-}
-
 pub fn tick_lit_at(unlocked_pct: f32, threshold: u8) -> bool {
     unlocked_pct > 0.0 && unlocked_pct >= threshold as f32
 }
@@ -298,15 +282,29 @@ pub fn cards_separator<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a
         .into()
 }
 
+fn tick_tier_color(threshold: u8) -> Color {
+    match threshold {
+        0 => C_RARITY_COMMON,
+        25 => C_RARITY_UNCOMMON,
+        50 => C_RARITY_RARE,
+        75 => C_RARITY_MYTHICAL,
+        100 => C_RARITY_LEGENDARY,
+        _ => C_TEXT_MUTED,
+    }
+}
+
 pub fn tick_marks<'a, M: 'a + Clone>(unlocked_pct: f32) -> Element<'a, M> {
     const THRESHOLDS: [u8; 5] = [0, 25, 50, 75, 100];
-    let lit_color = overall_tier_color(unlocked_pct);
 
     let mut ticks_row: iced::widget::Row<'a, M> = row![].spacing(0);
 
     for (i, threshold) in THRESHOLDS.iter().enumerate() {
         let lit = tick_lit_at(unlocked_pct, *threshold);
-        let tick_color = if lit { lit_color } else { C_TEXT_MUTED };
+        let tick_color = if lit {
+            tick_tier_color(*threshold)
+        } else {
+            C_TEXT_MUTED
+        };
 
         let dot = container(iced::widget::Space::new())
             .width(Length::Fixed(6.0))
@@ -585,12 +583,12 @@ mod tests {
     }
 
     #[test]
-    fn overall_tier_color_thresholds() {
-        assert_eq!(overall_tier_color(0.0), C_TEXT_MUTED);
-        assert_eq!(overall_tier_color(1.0), C_RARITY_COMMON);
-        assert_eq!(overall_tier_color(25.0), C_RARITY_UNCOMMON);
-        assert_eq!(overall_tier_color(50.0), C_RARITY_RARE);
-        assert_eq!(overall_tier_color(75.0), C_RARITY_MYTHICAL);
-        assert_eq!(overall_tier_color(100.0), C_RARITY_LEGENDARY);
+    fn tick_tier_color_thresholds() {
+        assert_eq!(tick_tier_color(0), C_RARITY_COMMON);
+        assert_eq!(tick_tier_color(25), C_RARITY_UNCOMMON);
+        assert_eq!(tick_tier_color(50), C_RARITY_RARE);
+        assert_eq!(tick_tier_color(75), C_RARITY_MYTHICAL);
+        assert_eq!(tick_tier_color(100), C_RARITY_LEGENDARY);
+        assert_eq!(tick_tier_color(42), C_TEXT_MUTED);
     }
 }
