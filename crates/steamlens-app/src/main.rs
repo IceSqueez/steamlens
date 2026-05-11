@@ -30,7 +30,7 @@ use iced::{Color, Element, Subscription, Task};
 use app_context::{AnimationState, AppContext, ConnectivityState};
 use cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewEvent, GameViewMessage, GameViewState};
-use messaging::{BannerSeverity, FooterStatus, MessagingCenter, ToastKind};
+use messaging::{BannerSeverity, MessagingCenter, ToastKind};
 use profile_view::types::ProfileEvent;
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
@@ -441,20 +441,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Screen::ProfileView(pv_state) = &mut app.screen
                 && !dirty.is_empty()
             {
-                let total = pv_state.games.len();
-                app.context.messaging.footer = FooterStatus::Scanning {
-                    current: hit_count,
-                    total,
-                    label: "Loading games\u{2026}".to_owned(),
-                };
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
                 pv_state.progress_scanner = Some(scanner);
-            } else if dirty.is_empty() && hit_count > 0 {
-                app.context.messaging.footer = FooterStatus::Connected {
-                    games: hit_count,
-                    last_sync: Some(std::time::Instant::now()),
-                };
+            } else if let Screen::ProfileView(pv_state) = &mut app.screen
+                && dirty.is_empty()
+                && hit_count > 0
+            {
+                pv_state.last_scan_completed_at = Some(std::time::Instant::now());
             }
 
             if invalidation_count > 0 {
@@ -645,11 +639,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.context
                 .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-            app.context.messaging.footer = FooterStatus::Scanning {
-                current: 0,
-                total: 0,
-                label: "Connecting to Steam\u{2026}".to_owned(),
-            };
             splash_commands::probe_steam_reconnect()
         }
 
@@ -709,11 +698,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         crate::log!(
                             "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
                         );
-                        app.context.messaging.footer = FooterStatus::Scanning {
-                            current: 0,
-                            total,
-                            label: "Discovering library\u{2026}".to_owned(),
-                        };
+                        let _ = total;
                         tasks.push(Task::done(Message::ProfileView(
                             ProfileViewMessage::ScanComplete(filtered),
                         )));
@@ -729,14 +714,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     crate::log!("probe: connectivity.user_logged_in = false");
 
-                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
-                        pv.games.len()
-                    } else {
-                        0
-                    };
-                    app.context.messaging.footer = FooterStatus::Offline {
-                        cached_games: cached_count,
-                    };
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
                         "Steam is running but the user is not signed in \u{2014} showing cached data",
@@ -755,14 +732,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     crate::log!("probe: steam_running = false");
 
-                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
-                        pv.games.len()
-                    } else {
-                        0
-                    };
-                    app.context.messaging.footer = FooterStatus::Offline {
-                        cached_games: cached_count,
-                    };
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
                         "Steam is not running \u{2014} showing cached data",
@@ -781,14 +750,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     crate::log!("probe failed: {reason}");
 
-                    let cached_count = if let Screen::ProfileView(pv) = &app.screen {
-                        pv.games.len()
-                    } else {
-                        0
-                    };
-                    app.context.messaging.footer = FooterStatus::Offline {
-                        cached_games: cached_count,
-                    };
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
                         "Steam is not running \u{2014} showing cached data",
@@ -1281,6 +1242,7 @@ fn view(app: &App) -> Element<'_, Message> {
                 skeleton_phase,
                 pinned: &app.context.settings.library.pinned,
                 steam_level: app.context.steam_level,
+                steam_running: app.context.connectivity.steam_running,
             };
             crate::screen::compose_screen(profile_view::render(pv_state, props))
                 .map(Message::ProfileView)
@@ -1292,25 +1254,26 @@ fn view(app: &App) -> Element<'_, Message> {
         }
     };
 
-    let screen_content: Element<'_, Message> = match header {
-        Some(h) => column![h, body].spacing(0).into(),
-        None => body,
-    };
+    let banner_slot = messaging::banner_stack(&app.context.messaging);
 
-    let failed_count = if let Screen::ProfileView(pv_state) = &app.screen {
-        pv_state.failed_app_ids.len()
-    } else {
-        0
-    };
-    let with_messaging =
-        messaging::wrap_with_messaging(screen_content, &app.context.messaging, failed_count);
+    let mut shell = column![].spacing(0);
+    if let Some(h) = header {
+        shell = shell.push(h);
+    }
+    if let Some(b) = banner_slot {
+        shell = shell.push(b);
+    }
+    shell = shell.push(body);
+    let shell: Element<'_, Message> = shell.into();
+
+    let with_toasts = messaging::wrap_with_toasts(shell, &app.context.messaging);
 
     if app.splash_min_elapsed
         && app.library_cache_resolved
         && app.cache_classified
         && app.probe_done
     {
-        with_messaging
+        with_toasts
     } else {
         splash_view()
     }
@@ -2903,90 +2866,18 @@ mod tests {
     }
 
     #[test]
-    fn cache_classified_initializes_footer_with_hit_count() {
-        let hit_ids: Vec<u32> = (1..=295).collect();
-        let dirty_ids: Vec<u32> = (296..=300).collect();
-        let mut app = make_app_with_n_games(300);
-        let result = make_classify_result(&hit_ids, &dirty_ids);
-        let _t = update(&mut app, Message::CacheClassified(result));
-        match &app.context.messaging.footer {
-            FooterStatus::Scanning { current, total, .. } => {
-                assert_eq!(*current, 295, "footer current must equal hit count");
-                assert_eq!(*total, 300, "footer total must equal total game count");
-            }
-            other => panic!("expected Scanning footer, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn cache_classified_all_valid_sets_connected_footer() {
+    fn cache_classified_all_valid_marks_last_scan_completed() {
         let hit_ids: Vec<u32> = (1..=300).collect();
         let mut app = make_app_with_n_games(300);
         let result = make_classify_result(&hit_ids, &[]);
         let _t = update(&mut app, Message::CacheClassified(result));
-        match &app.context.messaging.footer {
-            FooterStatus::Connected { games, .. } => {
-                assert_eq!(
-                    *games, 300,
-                    "all-valid path must report 300 games in Connected footer"
-                );
-            }
-            other => panic!("expected Connected footer, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn progress_fetched_increments_footer_current() {
-        use progress_scan::ProgressData;
-
-        let mut app = make_app_with_n_games(300);
-        app.context.messaging.footer = FooterStatus::Scanning {
-            current: 295,
-            total: 300,
-            label: "Loading games\u{2026}".to_owned(),
-        };
-        if let Screen::ProfileView(pv) = &mut app.screen {
-            pv.games[0].progress = Some(ProgressData {
-                earned: 0,
-                total: 10,
-            });
-        }
-
-        let _t = update(
-            &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressFetched {
-                app_id: 2,
-                earned: 3,
-                total: 10,
-            }),
-        );
-        match &app.context.messaging.footer {
-            FooterStatus::Scanning { current, total, .. } => {
-                assert_eq!(
-                    *current, 296,
-                    "first ProgressFetched must increment current to 296"
-                );
-                assert_eq!(*total, 300);
-            }
-            other => panic!("expected Scanning footer after first ProgressFetched, got {other:?}"),
-        }
-
-        let _t2 = update(
-            &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressFetched {
-                app_id: 3,
-                earned: 5,
-                total: 10,
-            }),
-        );
-        match &app.context.messaging.footer {
-            FooterStatus::Scanning { current, .. } => {
-                assert_eq!(
-                    *current, 297,
-                    "second ProgressFetched must increment current to 297"
-                );
-            }
-            other => panic!("expected Scanning footer after second ProgressFetched, got {other:?}"),
+        if let Screen::ProfileView(pv) = &app.screen {
+            assert!(
+                pv.last_scan_completed_at.is_some(),
+                "all-valid path must mark last_scan_completed_at"
+            );
+        } else {
+            panic!("expected ProfileView");
         }
     }
 }

@@ -75,26 +75,9 @@ impl Toast {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum FooterStatus {
-    Connected {
-        games: usize,
-        last_sync: Option<Instant>,
-    },
-    Scanning {
-        current: usize,
-        total: usize,
-        label: String,
-    },
-    Offline {
-        cached_games: usize,
-    },
-}
-
 pub struct MessagingCenter {
     pub banners: Vec<Banner>,
     pub toasts: Vec<Toast>,
-    pub footer: FooterStatus,
     next_id: u32,
 }
 
@@ -112,11 +95,6 @@ impl MessagingCenter {
         Self {
             banners: Vec::new(),
             toasts: Vec::new(),
-            footer: FooterStatus::Scanning {
-                current: 0,
-                total: 0,
-                label: "Starting up\u{2026}".to_owned(),
-            },
             next_id: 1,
         }
     }
@@ -255,51 +233,6 @@ fn render_banner(banner: &Banner) -> Element<'_, crate::Message> {
     b.into()
 }
 
-pub fn status_footer<'a>(
-    messaging: &'a MessagingCenter,
-    failed_count: usize,
-) -> Option<Element<'a, crate::Message>> {
-    if failed_count == 0 && footer_is_hidden(&messaging.footer) {
-        return None;
-    }
-    use crate::ui::widgets::status_bar::status_bar;
-    let mut bar = status_bar::<crate::Message>();
-    match &messaging.footer {
-        FooterStatus::Connected { games, last_sync } => {
-            bar = bar.connected(*games, *last_sync);
-        }
-        FooterStatus::Scanning {
-            current,
-            total,
-            label,
-        } => {
-            bar = bar.scanning(label.clone(), *current, *total);
-        }
-        FooterStatus::Offline { cached_games } => {
-            bar = bar
-                .offline(*cached_games)
-                .on_reconnect(crate::Message::RetrySteamConnect);
-        }
-    }
-    if failed_count > 0 {
-        bar = bar.retry(
-            format!("Retry ({failed_count})"),
-            crate::Message::ProfileView(
-                crate::profile_view::types::ProfileViewMessage::RetryFailedScans,
-            ),
-        );
-    }
-    Some(bar.into())
-}
-
-fn footer_is_hidden(footer: &FooterStatus) -> bool {
-    match footer {
-        FooterStatus::Connected { .. } => true,
-        FooterStatus::Scanning { current, total, .. } => *total > 0 && current >= total,
-        FooterStatus::Offline { .. } => false,
-    }
-}
-
 pub fn toast_stack<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Message> {
     let mut toast_col = column![].spacing(8).width(Length::Fixed(360.0));
     for toast in messaging.toasts.iter().rev().take(MAX_VISIBLE_TOASTS) {
@@ -340,30 +273,15 @@ fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
     t.into()
 }
 
-pub fn wrap_with_messaging<'a>(
+pub fn wrap_with_toasts<'a>(
     content: Element<'a, crate::Message>,
     messaging: &'a MessagingCenter,
-    failed_count: usize,
 ) -> Element<'a, crate::Message> {
-    let footer = status_footer(messaging, failed_count);
-
-    let mut col = column![]
-        .spacing(0)
-        .width(Length::Fill)
-        .height(Length::Fill);
-    if let Some(banners) = banner_stack(messaging) {
-        col = col.push(banners);
-    }
-    col = col.push(content);
-    if let Some(footer) = footer {
-        col = col.push(footer);
-    }
-
     if messaging.has_active_toasts() {
         let overlay = toast_stack(messaging);
-        iced::widget::stack![col, overlay].into()
+        iced::widget::stack![content, overlay].into()
     } else {
-        col.into()
+        content
     }
 }
 
@@ -493,20 +411,6 @@ mod tests {
         assert!(mc.toasts[0].hovered);
         mc.set_toast_hovered(id, false);
         assert!(!mc.toasts[0].hovered);
-    }
-
-    #[test]
-    fn footer_status_variants_construct() {
-        let _ = FooterStatus::Connected {
-            games: 100,
-            last_sync: None,
-        };
-        let _ = FooterStatus::Scanning {
-            current: 5,
-            total: 100,
-            label: "Loading".to_owned(),
-        };
-        let _ = FooterStatus::Offline { cached_games: 42 };
     }
 
     #[test]
