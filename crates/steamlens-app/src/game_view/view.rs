@@ -79,50 +79,7 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
 }
 
 fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
-    let phase_label = match state.phase {
-        GameViewPhase::Connecting => "Connecting to Steam...",
-        GameViewPhase::WaitingStats => "Requesting stats from Steam...",
-        GameViewPhase::LoadingData => "Loading achievements...",
-        _ => "Loading...",
-    };
-
-    let status_row = row![
-        text(spinner_frame(state.spinner_angle))
-            .size(16)
-            .color(C_PURPLE),
-        text(phase_label).size(13).color(C_MUTED),
-        space().width(Length::Fill),
-        button(text("Cancel").size(12))
-            .on_press(GameViewMessage::RequestGoBack)
-            .padding(Padding::default().left(12).right(12).top(4).bottom(4))
-            .style(|_theme, _status| button::Style {
-                background: None,
-                border: iced::Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                text_color: C_TEXT_MUTED,
-                ..button::Style::default()
-            }),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center)
-    .padding(Padding::default().left(16).right(16).top(8).bottom(8));
-
-    let status_bar = container(status_row)
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        });
-
-    let skeleton_grid = build_skeleton_ach_grid(state, skeleton_phase);
-
-    column![status_bar, skeleton_grid]
-        .spacing(0)
-        .height(Length::Fill)
-        .into()
+    build_skeleton_ach_grid(state, skeleton_phase)
 }
 
 fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
@@ -386,34 +343,9 @@ fn achievements_tab<'a>(
     let filtered_count = visible_ids.len();
 
     let mut col = column![].spacing(0).height(Length::Fill);
-    if let Some(indicator) = build_reveal_indicator(state) {
-        col = col.push(indicator);
-    }
     col = col.push(achievement_list(state, skeleton_phase));
     col = col.push(action_footer(state, filtered_count));
     col.into()
-}
-
-fn build_reveal_indicator(state: &GameViewState) -> Option<Element<'_, GameViewMessage>> {
-    if !state.has_pending_reveals() && !state.has_fading_cards() {
-        return None;
-    }
-    let total = state.achievements.len();
-    let appeared = state.achievements.iter().filter(|r| r.appeared).count();
-
-    let indicator_row = row![
-        text(spinner_frame(state.spinner_angle))
-            .size(13)
-            .color(C_MUTED),
-        text(format!("Loading {appeared} / {total} achievements…"))
-            .size(12)
-            .color(C_MUTED),
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center)
-    .padding(Padding::from([4u16, 16]));
-
-    Some(container(indicator_row).width(Length::Fill).into())
 }
 
 const ACH_CARD_GAP: f32 = 12.0;
