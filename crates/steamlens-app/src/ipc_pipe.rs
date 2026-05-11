@@ -1,5 +1,17 @@
-use steamlens_core::ipc::{WorkerResponse, decode_frame, parse_header};
-use tokio::io::{AsyncRead, AsyncReadExt};
+use steamlens_core::ipc::{
+    WorkerCommand, WorkerResponse, decode_frame, encode_frame, parse_header,
+};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+pub async fn write_command<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    cmd: &WorkerCommand,
+) -> std::io::Result<()> {
+    let framed = encode_frame(cmd)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+    writer.write_all(&framed).await?;
+    writer.flush().await
+}
 
 pub async fn read_response<R: AsyncRead + Unpin>(reader: &mut R) -> Option<WorkerResponse> {
     let mut header = [0u8; 4];
@@ -13,12 +25,29 @@ pub async fn read_response<R: AsyncRead + Unpin>(reader: &mut R) -> Option<Worke
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steamlens_core::ipc::{WorkerErrorKind, encode_frame};
+    use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, encode_frame};
     use tokio::io::AsyncWriteExt;
 
     async fn write_frame(writer: &mut (impl tokio::io::AsyncWrite + Unpin), resp: &WorkerResponse) {
         let bytes = encode_frame(resp).expect("encode");
         writer.write_all(&bytes).await.expect("write");
+    }
+
+    #[tokio::test]
+    async fn write_then_read_command_round_trip() {
+        let (mut tx, mut rx) = tokio::io::duplex(4096);
+        write_command(&mut tx, &WorkerCommand::Shutdown)
+            .await
+            .expect("write");
+        drop(tx);
+
+        let mut header = [0u8; 4];
+        rx.read_exact(&mut header).await.expect("read header");
+        let len = parse_header(header).expect("parse header");
+        let mut buf = vec![0u8; len];
+        rx.read_exact(&mut buf).await.expect("read payload");
+        let decoded = decode_frame::<WorkerCommand>(&buf).expect("decode");
+        assert!(matches!(decoded, WorkerCommand::Shutdown));
     }
 
     #[tokio::test]

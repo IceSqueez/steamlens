@@ -1,10 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::io::AsyncReadExt;
+use tokio::process::{Child, ChildStdout, Command};
 
-use steamlens_core::ipc::{WorkerCommand, WorkerResponse, encode_frame};
+use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
 use crate::ipc_pipe;
@@ -293,18 +293,18 @@ async fn run_full_scan_protocol(child: &mut Child) -> Result<ScannedGameData, st
         }
     };
 
-    send_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly).await?;
+    ipc_pipe::write_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly).await?;
     let (achievements, stats, genre) =
         read_card_only_skipping_async(&mut stdout, timeouts::COLD_SCAN_LOAD).await?;
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
     } else {
-        send_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
+        ipc_pipe::write_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages).await?;
         read_percentages_skipping_async(&mut stdout, timeouts::GLOBAL_PERCENTAGES).await
     };
 
-    let _ = send_command(&mut stdin, &WorkerCommand::Shutdown).await;
+    let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
 
     Ok(ScannedGameData {
         app_name,
@@ -410,13 +410,6 @@ async fn read_percentages_skipping_async(
             _ => continue,
         }
     }
-}
-
-async fn send_command(stdin: &mut ChildStdin, cmd: &WorkerCommand) -> Result<(), std::io::Error> {
-    let framed = encode_frame(cmd)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-    stdin.write_all(&framed).await?;
-    stdin.flush().await
 }
 
 #[cfg(test)]
