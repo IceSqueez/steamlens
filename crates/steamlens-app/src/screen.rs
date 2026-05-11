@@ -49,7 +49,7 @@ pub struct AppHeaderContent<'a> {
     pub screen_actions: Vec<Element<'a, crate::Message>>,
     pub leading: Option<Element<'a, crate::Message>>,
     pub status_filter: Option<FilterStrip<'a>>,
-    pub category_filter: Option<FilterStrip<'a>>,
+    pub category_filter: Option<Element<'a, crate::Message>>,
 }
 
 pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Message> {
@@ -101,13 +101,13 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
             prev_present = true;
         }
 
-        if let Some(strip) = content.category_filter {
+        if let Some(category) = content.category_filter {
             if prev_present {
                 second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
                 second = second.push(build_strip_divider());
                 second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
             }
-            second = second.push(build_filter_strip(strip));
+            second = second.push(category);
         }
 
         let second_row = second.width(Length::Fill);

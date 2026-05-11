@@ -554,7 +554,7 @@ fn action_footer<'a>(
         .into()
 }
 
-fn tier_color(tier: RarityTier) -> Color {
+pub(crate) fn tier_color(tier: RarityTier) -> Color {
     match tier {
         RarityTier::Common => C_GREEN,
         RarityTier::Uncommon => C_CYAN,
