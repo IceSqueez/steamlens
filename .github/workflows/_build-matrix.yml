@@ -27,22 +27,18 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset_name: windows-x64
-            suffix: .exe
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: linux-x64
-            suffix: ""
 
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: macos-arm64
-            suffix: ""
 
           - os: macos-26-intel
             target: x86_64-apple-darwin
             asset_name: macos-x64
-            suffix: ""
 
     steps:
       - uses: actions/checkout@v6
@@ -60,7 +56,11 @@ jobs:
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update -qq && sudo apt-get install -y libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config \
+            libfuse2 desktop-file-utils
 
       - name: Get Version
         id: get_version
@@ -73,13 +73,136 @@ jobs:
         shell: bash
         run: cargo build --release --locked --target ${{ matrix.target }} -p ${{ inputs.bin_name }}
 
-      - name: Rename binary
+      # ---------- Windows: ship the .exe (icon already embedded via build.rs / winresource) ----------
+      - name: Package Windows .exe
+        if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          SRC_PATH="target/${{ matrix.target }}/release/${{ inputs.bin_name }}${{ matrix.suffix }}"
-          NEW_NAME="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}${{ matrix.suffix }}"
-          mv "$SRC_PATH" "$NEW_NAME"
-          echo "ARTIFACT_PATH=$NEW_NAME" >> $GITHUB_ENV
+          SRC="target/${{ matrix.target }}/release/${{ inputs.bin_name }}.exe"
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.exe"
+          mv "$SRC" "$OUT"
+          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
+
+      # ---------- Linux: AppImage with hicolor icon set + top-level icon ----------
+      - name: Package Linux AppImage
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -L --fail -o appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+
+          APPDIR="AppDir"
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications"
+
+          for SZ in 16 32 48 64 128 256 512; do
+            mkdir -p "$APPDIR/usr/share/icons/hicolor/${SZ}x${SZ}/apps"
+            cp "assets/icon-${SZ}.png" \
+              "$APPDIR/usr/share/icons/hicolor/${SZ}x${SZ}/apps/steamlens.png"
+          done
+
+          # AppImage convention: icon + .desktop at AppDir root
+          cp assets/icon-256.png "$APPDIR/steamlens.png"
+
+          cat > "$APPDIR/steamlens.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=SteamLens
+          GenericName=Steam Achievement Manager
+          Comment=Inspect and modify Steam achievements and stats
+          Exec=steamlens-app
+          Icon=steamlens
+          Categories=Game;Utility;
+          Terminal=false
+          EOF
+          cp "$APPDIR/steamlens.desktop" "$APPDIR/usr/share/applications/steamlens.desktop"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="$HERE/usr/bin:$PATH"
+          exec "$HERE/usr/bin/steamlens-app" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          cp "target/${{ matrix.target }}/release/${{ inputs.bin_name }}" \
+             "$APPDIR/usr/bin/${{ inputs.bin_name }}"
+          chmod +x "$APPDIR/usr/bin/${{ inputs.bin_name }}"
+
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.AppImage"
+          ARCH=x86_64 ./appimagetool --no-appstream "$APPDIR" "$OUT"
+
+          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
+
+      # ---------- macOS: .app bundle wrapped in .dmg ----------
+      - name: Package macOS .dmg
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_NAME="SteamLens"
+          APP_BUNDLE="${APP_NAME}.app"
+          CONTENTS="${APP_BUNDLE}/Contents"
+          rm -rf "$APP_BUNDLE"
+          mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
+
+          cp "target/${{ matrix.target }}/release/${{ inputs.bin_name }}" \
+             "$CONTENTS/MacOS/${APP_NAME}"
+          chmod +x "$CONTENTS/MacOS/${APP_NAME}"
+
+          # Build .icns from per-size PNGs using Apple's iconutil
+          ICONSET="${APP_NAME}.iconset"
+          rm -rf "$ICONSET"
+          mkdir -p "$ICONSET"
+          cp assets/icon-16.png  "$ICONSET/icon_16x16.png"
+          cp assets/icon-32.png  "$ICONSET/icon_16x16@2x.png"
+          cp assets/icon-32.png  "$ICONSET/icon_32x32.png"
+          cp assets/icon-64.png  "$ICONSET/icon_32x32@2x.png"
+          cp assets/icon-128.png "$ICONSET/icon_128x128.png"
+          cp assets/icon-256.png "$ICONSET/icon_128x128@2x.png"
+          cp assets/icon-256.png "$ICONSET/icon_256x256.png"
+          cp assets/icon-512.png "$ICONSET/icon_256x256@2x.png"
+          cp assets/icon-512.png "$ICONSET/icon_512x512.png"
+          iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/${APP_NAME}.icns"
+
+          cat > "$CONTENTS/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleIconFile</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.icesqueez.steamlens</string>
+              <key>CFBundleName</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleDisplayName</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.dmg"
+          hdiutil create -volname "${APP_NAME}" -srcfolder "$APP_BUNDLE" \
+            -ov -format UDZO "$OUT"
+
+          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
