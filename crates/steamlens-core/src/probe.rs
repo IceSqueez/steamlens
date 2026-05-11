@@ -21,6 +21,9 @@ pub enum ProbeError {
     #[error("Steam is not running")]
     SteamNotRunning,
 
+    #[error("Steam is running but the user is not signed in")]
+    NotLoggedIn,
+
     #[error("probe timed out")]
     Timeout,
 
@@ -86,13 +89,11 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
                 steam_level: payload.steam_level,
             })
         }
-        WorkerResponse::Error { kind, message } => {
-            if kind == WorkerErrorKind::Connect {
-                Err(ProbeError::SteamNotRunning)
-            } else {
-                Err(ProbeError::Worker(message))
-            }
-        }
+        WorkerResponse::Error { kind, message } => match kind {
+            WorkerErrorKind::Connect => Err(ProbeError::SteamNotRunning),
+            WorkerErrorKind::NotLoggedIn => Err(ProbeError::NotLoggedIn),
+            _ => Err(ProbeError::Worker(message)),
+        },
         other => Err(ProbeError::Worker(format!(
             "unexpected response variant: {other:?}"
         ))),
@@ -153,6 +154,16 @@ mod tests {
     fn probe_error_display_not_running() {
         let e = ProbeError::SteamNotRunning;
         assert_eq!(e.to_string(), "Steam is not running");
+    }
+
+    #[test]
+    fn probe_error_not_logged_in_display() {
+        let e = ProbeError::NotLoggedIn;
+        let s = format!("{e}");
+        assert!(
+            s.to_lowercase().contains("logged in") || s.to_lowercase().contains("signed in"),
+            "NotLoggedIn display must mention login state, got: {s:?}"
+        );
     }
 
     #[test]

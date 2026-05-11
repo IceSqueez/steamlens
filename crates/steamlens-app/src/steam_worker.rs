@@ -123,7 +123,9 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
 
 fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
     match kind {
-        WorkerErrorKind::Connect => SteamReply::ConnectFailed(message),
+        WorkerErrorKind::Connect | WorkerErrorKind::NotLoggedIn => {
+            SteamReply::ConnectFailed(message)
+        }
         WorkerErrorKind::RequestUserStats
         | WorkerErrorKind::UserStatsReceived
         | WorkerErrorKind::PollCallbacks => SteamReply::LoadFailed(message),
