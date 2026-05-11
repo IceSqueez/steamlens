@@ -60,8 +60,8 @@ fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::Filte
 
 fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Message> {
     use crate::ui::widgets::pill::pill;
-    use iced::widget::{row, text};
-    use iced::{Alignment, Color};
+    use iced::widget::{Space, row, text};
+    use iced::{Alignment, Color, Length};
     use types::{RarityTier, compute_tier_map};
 
     const TIER_PILL_RADIUS: f32 = 14.0;
@@ -127,6 +127,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
     );
 
     if !state.rarity_tier_set.is_empty() || state.include_hidden {
+        chips.push(Space::new().width(Length::Fill).into());
         let clear_label = text("Clear").size(11).color(hidden_color);
         chips.push(
             pill(clear_label, hidden_color)
@@ -140,7 +141,11 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         );
     }
 
-    row(chips).spacing(6).align_y(Alignment::Center).into()
+    row(chips)
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 use std::collections::{HashSet, VecDeque};

@@ -2435,7 +2435,7 @@ mod tests {
             "",
             AchievementSort::RarityAndName,
             &std::collections::HashSet::new(),
-            true,
+            false,
         );
 
         assert_eq!(ids.len(), 5);
