@@ -58,32 +58,75 @@ fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::Filte
     crate::screen::FilterStrip { buttons }
 }
 
-fn build_rarity_tier_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
-    use types::RarityTier;
+fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Message> {
+    use crate::ui::widgets::pill::pill;
+    use iced::widget::{row, text};
+    use iced::{Alignment, Color};
+    use types::{RarityTier, compute_tier_map};
 
-    let tier_buttons = [
+    const TIER_PILL_RADIUS: f32 = 14.0;
+    const TIER_PILL_PAD_H: u32 = 9;
+    const TIER_PILL_PAD_V: u32 = 4;
+
+    let tier_map = compute_tier_map(&state.achievements);
+    let hidden_count = state
+        .achievements
+        .iter()
+        .filter(|r| r.is_spoiler_hidden())
+        .count();
+
+    let mut chips: Vec<iced::Element<'_, crate::Message>> = Vec::new();
+    for (tier, label) in [
         (RarityTier::Common, "Common"),
         (RarityTier::Uncommon, "Uncommon"),
         (RarityTier::Rare, "Rare"),
         (RarityTier::Mythical, "Mythical"),
         (RarityTier::Legendary, "Legendary"),
+    ] {
+        let count = tier_map.values().filter(|&&v| v == tier).count();
+        let color = view::tier_color(tier);
+        let inner = row![
+            text(label).size(11).color(color),
+            text(format!("{count}"))
+                .size(11)
+                .color(Color { a: 0.65, ..color }),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center);
+
+        chips.push(
+            pill(inner, color)
+                .with_dot(color)
+                .radius(TIER_PILL_RADIUS)
+                .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+                .selected(state.rarity_tier_set.contains(&tier))
+                .on_press(crate::Message::GameView(
+                    GameViewMessage::RarityTierToggled(tier),
+                ))
+                .into(),
+        );
+    }
+
+    let hidden_color = crate::theme::C_TEXT_MUTED;
+    let hidden_inner = row![
+        text("Hidden").size(11).color(hidden_color),
+        text(format!("{hidden_count}")).size(11).color(Color {
+            a: 0.65,
+            ..hidden_color
+        }),
     ]
-    .into_iter()
-    .map(|(tier, label)| crate::screen::FilterButton {
-        label: std::borrow::Cow::Borrowed(label),
-        selected: state.rarity_tier_set.contains(&tier),
-        on_press: crate::Message::GameView(GameViewMessage::RarityTierToggled(tier)),
-    });
+    .spacing(4)
+    .align_y(Alignment::Center);
+    chips.push(
+        pill(hidden_inner, hidden_color)
+            .radius(TIER_PILL_RADIUS)
+            .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+            .selected(state.include_hidden)
+            .on_press(crate::Message::GameView(GameViewMessage::HiddenPillToggled))
+            .into(),
+    );
 
-    let hidden_button = crate::screen::FilterButton {
-        label: std::borrow::Cow::Borrowed("Hidden"),
-        selected: state.include_hidden,
-        on_press: crate::Message::GameView(GameViewMessage::HiddenPillToggled),
-    };
-
-    let buttons = tier_buttons.chain(std::iter::once(hidden_button)).collect();
-
-    crate::screen::FilterStrip { buttons }
+    row(chips).spacing(6).align_y(Alignment::Center).into()
 }
 
 use std::collections::{HashSet, VecDeque};

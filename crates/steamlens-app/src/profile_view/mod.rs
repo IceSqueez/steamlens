@@ -111,16 +111,32 @@ fn build_profile_status_strip(state: &types::ProfileViewState) -> crate::screen:
 fn build_profile_genre_strip<'a>(
     state: &'a types::ProfileViewState,
     genres: Vec<String>,
-) -> crate::screen::FilterStrip<'a> {
-    let buttons = genres
+) -> iced::Element<'a, crate::Message> {
+    use crate::ui::widgets::pill::pill;
+    use iced::Alignment;
+    use iced::widget::{row, text};
+
+    const GENRE_PILL_RADIUS: f32 = 14.0;
+    const GENRE_PILL_PAD_H: u32 = 9;
+    const GENRE_PILL_PAD_V: u32 = 4;
+
+    let neutral = crate::theme::C_TEXT_MUTED;
+    let chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()
-        .map(|g| crate::screen::FilterButton {
-            label: std::borrow::Cow::Owned(g.clone()),
-            selected: state.genre_filter.contains(&g),
-            on_press: crate::Message::ProfileView(types::ProfileViewMessage::GenreFilterToggled(g)),
+        .map(|g| {
+            let label = text(g.clone()).size(11).color(neutral);
+            pill(label, neutral)
+                .radius(GENRE_PILL_RADIUS)
+                .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
+                .selected(state.genre_filter.contains(&g))
+                .on_press(crate::Message::ProfileView(
+                    types::ProfileViewMessage::GenreFilterToggled(g),
+                ))
+                .into()
         })
         .collect();
-    crate::screen::FilterStrip { buttons }
+
+    row(chips).spacing(6).align_y(Alignment::Center).into()
 }
 
 use iced::Task;
