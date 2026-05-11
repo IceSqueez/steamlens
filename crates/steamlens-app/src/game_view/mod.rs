@@ -464,8 +464,6 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::SearchChanged(q) => {
-            let query = q.clone();
-            let _ = ctx.update_settings(|s| s.manager.search = query);
             state.search_query = q;
             (Task::none(), GameViewEvent::None)
         }

@@ -170,8 +170,6 @@ pub fn update(
         ProfileViewMessage::ScanFailed(_) => (Task::none(), ProfileEvent::None),
 
         ProfileViewMessage::SearchChanged(query) => {
-            let q = query.clone();
-            let _ = ctx.update_settings(|s| s.library.search = q);
             state.search = query;
             (Task::none(), ProfileEvent::None)
         }

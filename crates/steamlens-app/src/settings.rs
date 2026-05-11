@@ -73,8 +73,6 @@ pub enum LibraryView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LibrarySettings {
-    #[serde(default)]
-    pub search: String,
     #[serde(default = "default_library_sort")]
     pub sort: LibrarySort,
     #[serde(default)]
@@ -90,7 +88,6 @@ fn default_library_sort() -> LibrarySort {
 impl Default for LibrarySettings {
     fn default() -> Self {
         Self {
-            search: String::new(),
             sort: default_library_sort(),
             view: LibraryView::default(),
             pinned: Vec::new(),
@@ -100,8 +97,6 @@ impl Default for LibrarySettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ManagerSettings {
-    #[serde(default)]
-    pub search: String,
     #[serde(default = "default_achievement_filter")]
     pub filter: AchievementFilter,
     #[serde(default = "default_achievement_sort")]
@@ -123,7 +118,6 @@ fn default_achievement_sort() -> AchievementSort {
 impl Default for ManagerSettings {
     fn default() -> Self {
         Self {
-            search: String::new(),
             filter: default_achievement_filter(),
             sort: default_achievement_sort(),
             rarity_tiers: Vec::new(),
@@ -273,13 +267,11 @@ mod tests {
                 theme: "dracula".to_owned(),
             },
             library: LibrarySettings {
-                search: "terra".to_owned(),
                 sort: LibrarySort::NameAsc,
                 view: LibraryView::Grid,
                 pinned: vec![570, 730],
             },
             manager: ManagerSettings {
-                search: String::new(),
                 filter: AchievementFilter::Locked,
                 sort: AchievementSort::Name,
                 rarity_tiers: vec![RarityTier::Legendary, RarityTier::Mythical],
