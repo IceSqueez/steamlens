@@ -13,8 +13,8 @@ pub fn achievement_search_id() -> WidgetId {
 }
 
 use super::types::{
-    AchievementFilter, AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp, RarityTier,
-    ResetScope, StatRow, compute_tier_map, visible_achievement_ids,
+    AchievementRow, AchievementSort, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope,
+    StatRow, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::theme::{
@@ -227,17 +227,16 @@ pub(crate) fn build_game_sort_segment(state: &GameViewState) -> Element<'_, crat
         .into()
 }
 
-pub(crate) fn build_game_back_row() -> Element<'static, crate::Message> {
-    let back_btn = button(text("\u{2039} Back").size(13).color(C_ACCENT))
+pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {
+    button(text("\u{2039} Back").size(13).color(C_ACCENT))
         .on_press(crate::Message::GoBack)
         .padding(Padding::from([0u16, 0]))
         .style(|_theme, _status| button::Style {
             background: None,
             border: iced::Border::default(),
             ..button::Style::default()
-        });
-
-    row![back_btn].spacing(0).align_y(Alignment::Center).into()
+        })
+        .into()
 }
 
 pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
@@ -431,9 +430,7 @@ fn achievements_tab<'a>(
     );
     let filtered_count = visible_ids.len();
 
-    let mut col = column![filter_row(state), tier_rail(state)]
-        .spacing(0)
-        .height(Length::Fill);
+    let mut col = column![].spacing(0).height(Length::Fill);
     if let Some(indicator) = build_reveal_indicator(state) {
         col = col.push(indicator);
     }
@@ -490,229 +487,6 @@ const ACH_CARD_DESCRIPTION_TEXT_SIZE: f32 = 11.0;
 const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
 const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
 const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
-
-fn filter_row(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let status_seg = status_segment(state.filter);
-
-    let inner = row![status_seg, space().width(Length::Fill)]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().left(16).right(16).top(8).bottom(8));
-
-    container(inner)
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        })
-        .into()
-}
-
-fn status_segment(current: AchievementFilter) -> Element<'static, GameViewMessage> {
-    let filters = [
-        AchievementFilter::All,
-        AchievementFilter::Unlocked,
-        AchievementFilter::Locked,
-    ];
-
-    let divider_el = || {
-        container(space())
-            .width(Length::Fixed(1.0))
-            .height(Length::Fixed(20.0))
-            .style(|_theme| container::Style {
-                background: Some(iced::Background::Color(C_BORDER)),
-                ..container::Style::default()
-            })
-    };
-
-    let mut items: Vec<Element<'static, GameViewMessage>> = Vec::new();
-    for (i, &f) in filters.iter().enumerate() {
-        let active = current == f;
-        let btn =
-            button(
-                text(f.label())
-                    .size(12)
-                    .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
-            )
-            .on_press(GameViewMessage::FilterChanged(f))
-            .padding(Padding::default().left(10).right(10).top(5).bottom(5))
-            .style(move |_theme, _status| button::Style {
-                background: Some(iced::Background::Color(if active {
-                    Color {
-                        a: 0.15,
-                        ..C_ACCENT
-                    }
-                } else {
-                    Color::TRANSPARENT
-                })),
-                border: iced::Border::default(),
-                ..button::Style::default()
-            });
-        items.push(btn.into());
-        if i < filters.len() - 1 {
-            items.push(divider_el().into());
-        }
-    }
-
-    container(row(items).align_y(Alignment::Center))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
-}
-
-fn tier_rail(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let tier_map = compute_tier_map(&state.achievements);
-    let all_tiers = [
-        RarityTier::Common,
-        RarityTier::Uncommon,
-        RarityTier::Rare,
-        RarityTier::Mythical,
-        RarityTier::Legendary,
-    ];
-
-    let hidden_count = state
-        .achievements
-        .iter()
-        .filter(|r| r.is_spoiler_hidden())
-        .count();
-
-    let tier_lbl = text("TIER").size(11).color(C_TEXT_MUTED);
-    let mut chips: Vec<Element<'_, GameViewMessage>> = vec![tier_lbl.into()];
-
-    for &tier in &all_tiers {
-        let count = tier_map.values().filter(|&&v| v == tier).count();
-        let color = tier_color(tier);
-        let active = state.rarity_tier_set.contains(&tier);
-        let bg_alpha: f32 = if active { 0.18 } else { 0.10 };
-        let border_alpha: f32 = if active { 0.40 } else { 0.20 };
-
-        let dot = container(space())
-            .width(Length::Fixed(6.0))
-            .height(Length::Fixed(6.0))
-            .style(move |_theme| container::Style {
-                background: Some(iced::Background::Color(color)),
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            });
-
-        let pill_inner = row![
-            dot,
-            text(tier.label()).size(11).color(color),
-            text(format!("{count}"))
-                .size(11)
-                .color(Color { a: 0.65, ..color }),
-        ]
-        .spacing(4)
-        .align_y(Alignment::Center);
-
-        let chip = button(pill_inner)
-            .on_press(GameViewMessage::RarityTierToggled(tier))
-            .padding(Padding::default().left(8).right(10).top(4).bottom(4))
-            .style(move |_theme, _status| button::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: bg_alpha,
-                    ..color
-                })),
-                border: iced::Border {
-                    color: Color {
-                        a: border_alpha,
-                        ..color
-                    },
-                    width: 1.0,
-                    radius: 14.0.into(),
-                },
-                text_color: color,
-                ..button::Style::default()
-            });
-
-        chips.push(chip.into());
-    }
-
-    let hidden_active = state.include_hidden;
-    let hidden_dot = container(space())
-        .width(Length::Fixed(6.0))
-        .height(Length::Fixed(6.0))
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                a: if hidden_active { 0.8 } else { 0.5 },
-                ..C_TEXT_DIM
-            })),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..iced::Border::default()
-            },
-            ..container::Style::default()
-        });
-
-    let hidden_inner = row![
-        hidden_dot,
-        text("Hidden").size(11).color(if hidden_active {
-            C_TEXT_MUTED
-        } else {
-            C_TEXT_DIM
-        }),
-        text(format!("{hidden_count}")).size(11).color(C_TEXT_DIM),
-    ]
-    .spacing(4)
-    .align_y(Alignment::Center);
-
-    let hidden_chip = button(hidden_inner)
-        .on_press(GameViewMessage::HiddenPillToggled)
-        .padding(Padding::default().left(8).right(10).top(4).bottom(4))
-        .style(move |_theme, _status| button::Style {
-            background: None,
-            border: iced::Border {
-                color: Color {
-                    a: if hidden_active { 0.6 } else { 0.35 },
-                    ..C_BORDER
-                },
-                width: 1.0,
-                radius: 14.0.into(),
-            },
-            text_color: C_TEXT_DIM,
-            ..button::Style::default()
-        });
-
-    chips.push(hidden_chip.into());
-    chips.push(space().width(Length::Fill).into());
-
-    let any_active = !state.rarity_tier_set.is_empty() || state.include_hidden;
-    if any_active {
-        let clear_btn = button(text("Clear").size(11).color(C_TEXT_DIM))
-            .on_press(GameViewMessage::RarityFilterCleared)
-            .padding(Padding::default().left(6).right(6).top(3).bottom(3))
-            .style(|_theme, _status| button::Style {
-                background: None,
-                border: iced::Border::default(),
-                text_color: C_TEXT_DIM,
-                ..button::Style::default()
-            });
-        chips.push(clear_btn.into());
-    }
-
-    let rail_row = row(chips)
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().left(16).right(16).top(6).bottom(6));
-
-    container(rail_row)
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        })
-        .into()
-}
 
 fn action_footer<'a>(
     state: &'a GameViewState,

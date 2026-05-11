@@ -17,8 +17,57 @@ pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderC
             view::build_game_sort_segment(state),
             view::build_game_reload_button(),
         ],
-        second_row: Some(view::build_game_back_row()),
+        leading: Some(view::build_back_leading()),
+        status_filter: Some(build_achievement_status_strip(state)),
+        category_filter: Some(build_rarity_tier_strip(state)),
     }
+}
+
+fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
+    use types::AchievementFilter;
+    let chips = [
+        (AchievementFilter::All, "All"),
+        (AchievementFilter::Unlocked, "Unlocked"),
+        (AchievementFilter::Locked, "Locked"),
+        (AchievementFilter::Hidden, "Hidden"),
+    ]
+    .into_iter()
+    .map(|(f, label)| crate::screen::FilterChip {
+        label: std::borrow::Cow::Borrowed(label),
+        selected: state.filter == f,
+        on_press: crate::Message::GameView(GameViewMessage::FilterChanged(f)),
+    })
+    .collect();
+
+    crate::screen::FilterStrip { chips }
+}
+
+fn build_rarity_tier_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
+    use types::RarityTier;
+
+    let tier_chips = [
+        (RarityTier::Common, "Common"),
+        (RarityTier::Uncommon, "Uncommon"),
+        (RarityTier::Rare, "Rare"),
+        (RarityTier::Mythical, "Mythical"),
+        (RarityTier::Legendary, "Legendary"),
+    ]
+    .into_iter()
+    .map(|(tier, label)| crate::screen::FilterChip {
+        label: std::borrow::Cow::Borrowed(label),
+        selected: state.rarity_tier_set.contains(&tier),
+        on_press: crate::Message::GameView(GameViewMessage::RarityTierToggled(tier)),
+    });
+
+    let hidden_chip = crate::screen::FilterChip {
+        label: std::borrow::Cow::Borrowed("Hidden"),
+        selected: state.include_hidden,
+        on_press: crate::Message::GameView(GameViewMessage::HiddenPillToggled),
+    };
+
+    let chips = tier_chips.chain(std::iter::once(hidden_chip)).collect();
+
+    crate::screen::FilterStrip { chips }
 }
 
 use std::collections::{HashSet, VecDeque};
@@ -43,7 +92,6 @@ pub enum GameViewMessage {
     StatEditCommitted(String),
     FilterChanged(AchievementFilter),
     RarityTierToggled(RarityTier),
-    RarityFilterCleared,
     HiddenPillToggled,
     AchievementSortChanged(AchievementSort),
     SearchChanged(String),
@@ -375,17 +423,6 @@ pub fn update(
             } else {
                 state.rarity_tier_set.insert(tier);
             }
-            let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
-            let include_hidden = state.include_hidden;
-            let _ = ctx.update_settings(|s| {
-                s.manager.rarity_tiers = tiers;
-                s.manager.include_hidden = include_hidden;
-            });
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::RarityFilterCleared => {
-            state.rarity_tier_set.clear();
-            state.include_hidden = false;
             let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
             let include_hidden = state.include_hidden;
             let _ = ctx.update_settings(|s| {

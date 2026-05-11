@@ -20,7 +20,9 @@ pub fn header_content<'a>(
             view::build_size_segment(state.capsule_size),
             view::build_rescan_button(),
         ],
-        second_row: None,
+        leading: None,
+        status_filter: None,
+        category_filter: None,
     }
 }
 
