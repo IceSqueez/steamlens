@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iced::widget::Id as WidgetId;
 use iced::widget::{
     button, column, container, image as img_widget, mouse_area, responsive, row, scrollable, stack,
-    text, tooltip,
+    text,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -22,12 +22,11 @@ use super::profile::{
 use super::profile::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
 };
-use super::types::{CapsuleAsset, GameEntry, LibrarySort, ProfileViewMessage, ProfileViewPhase};
+use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase};
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
-use crate::ui::widgets::tooltip_box::tooltip_box;
 
 const CARD_GAP: f32 = 12.0;
 const MIN_GAP: f32 = 12.0;
@@ -158,136 +157,6 @@ fn build_profile_section<'a>(
 
 pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
-}
-
-pub(crate) fn build_sort_segment(current: LibrarySort) -> Element<'static, crate::Message> {
-    let label = text("SORT").size(11).color(C_TEXT_MUTED);
-    let order = [
-        LibrarySort::NameAsc,
-        LibrarySort::LastPlayed,
-        LibrarySort::Completion,
-    ];
-    let items: Vec<(&'static str, Option<&'static str>, bool, crate::Message)> = order
-        .iter()
-        .map(|&s| {
-            (
-                s.short_label(),
-                Some(s.tooltip()),
-                current == s,
-                crate::Message::GlobalSortChanged(s),
-            )
-        })
-        .collect();
-    let segment = segment_row(&items);
-    row![label, segment]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into()
-}
-
-pub(crate) fn build_size_segment(current: CapsuleSize) -> Element<'static, crate::Message> {
-    let label = text("SIZE").size(11).color(C_TEXT_MUTED);
-    let segment = segment_row(&[
-        (
-            "S",
-            None,
-            current == CapsuleSize::Small,
-            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Small),
-        ),
-        (
-            "M",
-            None,
-            current == CapsuleSize::Medium,
-            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Medium),
-        ),
-        (
-            "L",
-            None,
-            current == CapsuleSize::Large,
-            crate::Message::GlobalCapsuleSizeChanged(CapsuleSize::Large),
-        ),
-    ]);
-    row![label, segment]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .into()
-}
-
-fn segment_row(
-    items: &[(&'static str, Option<&'static str>, bool, crate::Message)],
-) -> Element<'static, crate::Message> {
-    let mut r = row![].spacing(0).align_y(Alignment::Center);
-    let last_idx = items.len().saturating_sub(1);
-
-    for (idx, (label, hint, active, msg)) in items.iter().enumerate() {
-        let active = *active;
-        let msg = msg.clone();
-
-        let btn = button(
-            text(*label)
-                .size(12)
-                .color(if active { C_ACCENT } else { C_TEXT_MUTED }),
-        )
-        .on_press(msg)
-        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
-        .style(move |_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            let bg = if active {
-                Some(iced::Background::Color(Color {
-                    r: C_ACCENT.r,
-                    g: C_ACCENT.g,
-                    b: C_ACCENT.b,
-                    a: 0.15,
-                }))
-            } else if hovered {
-                Some(iced::Background::Color(C_HOVER))
-            } else {
-                Some(iced::Background::Color(Color::TRANSPARENT))
-            };
-            iced::widget::button::Style {
-                background: bg,
-                border: iced::Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                text_color: if active { C_ACCENT } else { C_TEXT_MUTED },
-                ..iced::widget::button::Style::default()
-            }
-        });
-
-        let item_el: Element<'static, crate::Message> = match hint {
-            Some(text_str) => tooltip_box(btn, *text_str, tooltip::Position::Bottom),
-            None => btn.into(),
-        };
-        r = r.push(item_el);
-
-        if idx < last_idx {
-            let divider = container(iced::widget::Space::new().width(1.0).height(20.0))
-                .width(Length::Fixed(1.0))
-                .height(Length::Fixed(20.0))
-                .style(|_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(C_BORDER)),
-                    ..container::Style::default()
-                });
-            r = r.push(divider);
-        }
-    }
-
-    container(r)
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
 }
 
 pub(crate) fn build_rescan_button() -> Element<'static, crate::Message> {

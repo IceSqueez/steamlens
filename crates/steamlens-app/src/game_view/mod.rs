@@ -7,16 +7,32 @@ pub use view::achievement_search_id;
 use std::collections::HashMap;
 
 pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
+    use crate::screen::{SegmentItem, SegmentedControlConfig};
+    use std::borrow::Cow;
+    use types::AchievementSort;
+
+    let sort_items: Vec<SegmentItem<'_>> = AchievementSort::ALL
+        .iter()
+        .copied()
+        .map(|s| SegmentItem {
+            label: Cow::Borrowed(s.short_label()),
+            tooltip: Some(s.tooltip()),
+            selected: state.achievement_sort == s,
+            on_press: crate::Message::GameSortChanged(s),
+        })
+        .collect();
+
     crate::screen::AppHeaderContent {
         search: Some(crate::screen::SearchConfig {
             placeholder: "Search achievements\u{2026}",
             value: state.search_query.as_str(),
             id: view::achievement_search_id(),
         }),
-        screen_actions: vec![
-            view::build_game_sort_segment(state),
-            view::build_game_reload_button(),
-        ],
+        segments: vec![SegmentedControlConfig {
+            label: Some("SORT"),
+            items: sort_items,
+        }],
+        screen_actions: vec![view::build_game_reload_button()],
         leading: Some(view::build_back_leading()),
         status_filter: Some(build_achievement_status_strip(state)),
         category_filter: Some(build_rarity_tier_strip(state)),
