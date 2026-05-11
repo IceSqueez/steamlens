@@ -13,6 +13,13 @@ pub struct AnimationState {
     pub skeleton_phase: f32,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConnectivityState {
+    pub steam_running: Option<bool>,
+    /// `None` covers both pre-probe AND "Steam not running" — we can't check login without a live pipe.
+    pub user_logged_in: Option<bool>,
+}
+
 pub struct AppContext {
     pub worker: Option<SteamWorker>,
     pub worker_rx: Option<mpsc::Receiver<SteamReply>>,
@@ -24,7 +31,7 @@ pub struct AppContext {
     pub steam_root: std::path::PathBuf,
     pub steamid3: u64,
     pub steam_level: Option<u32>,
-    pub steam_running: Option<bool>,
+    pub connectivity: ConnectivityState,
     pub user_profile: Option<steamlens_core::UserProfile>,
     pub profile_avatar_handle: Option<iced::widget::image::Handle>,
     pub no_ach_cache: cache::NoAchievementsCache,
