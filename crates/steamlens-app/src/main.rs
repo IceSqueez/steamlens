@@ -114,6 +114,7 @@ struct App {
     screen: Screen,
     splash_min_elapsed: bool,
     library_cache_resolved: bool,
+    cache_classified: bool,
     probe_done: bool,
 }
 
@@ -162,6 +163,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         screen: Screen::ProfileView(Box::new(pv_state)),
         splash_min_elapsed: false,
         library_cache_resolved: false,
+        cache_classified: false,
         probe_done: false,
     };
 
@@ -427,6 +429,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::CacheClassified(result) => {
+            app.cache_classified = true;
+            crate::log!("cache_classified = true (CacheClassified)");
+
             let ClassifyResult {
                 hits,
                 dirty,
@@ -635,6 +640,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RetrySteamConnect => {
             app.context.connectivity = ConnectivityState::default();
             app.library_cache_resolved = false;
+            app.cache_classified = false;
             app.context
                 .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
@@ -1340,7 +1346,11 @@ fn view(app: &App) -> Element<'_, Message> {
     let with_messaging =
         messaging::wrap_with_messaging(screen_content, &app.context.messaging, failed_count);
 
-    if app.splash_min_elapsed && app.library_cache_resolved && app.probe_done {
+    if app.splash_min_elapsed
+        && app.library_cache_resolved
+        && app.cache_classified
+        && app.probe_done
+    {
         with_messaging
     } else {
         splash_view()
@@ -1532,6 +1542,7 @@ mod tests {
                 },
                 splash_min_elapsed: true,
                 library_cache_resolved: true,
+                cache_classified: true,
                 probe_done: true,
             }
         }
@@ -1580,6 +1591,7 @@ mod tests {
         app.screen = Screen::ProfileView(Box::new(ProfileViewState::new()));
         app.splash_min_elapsed = false;
         app.library_cache_resolved = false;
+        app.cache_classified = false;
         app.probe_done = false;
         app.context.connectivity = ConnectivityState::default();
         app.context.user_profile = None;
@@ -1665,13 +1677,16 @@ mod tests {
     }
 
     fn splash_visible(app: &App) -> bool {
-        !(app.splash_min_elapsed && app.library_cache_resolved && app.probe_done)
+        !(app.splash_min_elapsed
+            && app.library_cache_resolved
+            && app.cache_classified
+            && app.probe_done)
     }
 
     #[test]
-    fn splash_stays_until_all_three_signals_arrive() {
+    fn splash_stays_until_all_four_signals_arrive() {
         let mut app = make_app_probing();
-        assert!(splash_visible(&app), "all three pending → splash visible");
+        assert!(splash_visible(&app), "all four pending → splash visible");
 
         app.splash_min_elapsed = true;
         assert!(splash_visible(&app), "only min-elapsed → splash visible");
@@ -1679,18 +1694,25 @@ mod tests {
         app.library_cache_resolved = true;
         assert!(
             splash_visible(&app),
-            "min+library but no probe → splash visible"
+            "min+library but no classify+probe → splash visible"
+        );
+
+        app.cache_classified = true;
+        assert!(
+            splash_visible(&app),
+            "min+library+classify but no probe → splash visible"
         );
 
         app.probe_done = true;
-        assert!(!splash_visible(&app), "all three done → splash hidden");
+        assert!(!splash_visible(&app), "all four done → splash hidden");
     }
 
     #[test]
-    fn splash_hidden_only_after_library_cache_and_probe_both_resolve() {
+    fn splash_hidden_only_after_library_cache_classify_and_probe_resolve() {
         let mut app = make_app_probing();
         app.splash_min_elapsed = true;
         app.library_cache_resolved = true;
+        app.cache_classified = true;
         assert!(splash_visible(&app), "missing probe → still visible");
 
         let _t = update(
@@ -1703,7 +1725,7 @@ mod tests {
         );
         assert!(
             !splash_visible(&app),
-            "splash must dismiss when all three signals are present (library already resolved)"
+            "splash must dismiss when all four signals are present"
         );
     }
 
@@ -1745,8 +1767,21 @@ mod tests {
             "library_cache_resolved must be set after LibraryCacheLoaded"
         );
         assert!(
+            splash_visible(&app),
+            "splash must remain visible until cache_classified resolves"
+        );
+
+        let _t3 = update(
+            &mut app,
+            Message::CacheClassified(crate::cache::ClassifyResult::default()),
+        );
+        assert!(
+            app.cache_classified,
+            "cache_classified must be set after CacheClassified"
+        );
+        assert!(
             !splash_visible(&app),
-            "splash must dismiss after all three signals"
+            "splash must dismiss after all four signals"
         );
     }
 
