@@ -238,9 +238,9 @@ fn build_left_column<'a>(
 
     column![
         header_section,
-        iced::widget::Space::new().height(Length::Fill),
         bar,
         rarity_cards::<ProfileViewMessage>(summary),
+        iced::widget::Space::new().height(Length::Fill),
         cards_separator::<ProfileViewMessage>(summary),
     ]
     .spacing(10)

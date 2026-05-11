@@ -116,10 +116,10 @@ fn build_left_column<'a>(
 
     column![
         header_row,
-        iced::widget::Space::new().height(Length::Fill),
         breakdown_row::<GameViewMessage>(summary),
         bar,
         rarity_cards::<GameViewMessage>(summary),
+        iced::widget::Space::new().height(Length::Fill),
         cards_separator::<GameViewMessage>(summary),
     ]
     .spacing(10)
