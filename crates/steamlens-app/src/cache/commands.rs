@@ -6,13 +6,6 @@ use crate::cache::types::GameSummaryCache;
 use crate::cache::{self, CachedLibrary, GameCacheEntry, NoAchievementsCache};
 use steamlens_core::GameSummary;
 
-pub fn load_no_ach_cache() -> Task<crate::Message> {
-    Task::perform(
-        cache::load_no_achievements_cache(),
-        crate::Message::NoAchCacheLoaded,
-    )
-}
-
 pub fn load_library_cache() -> Task<crate::Message> {
     Task::perform(
         async { cache::load_library_cache().await },
@@ -98,11 +91,6 @@ pub fn classify_games(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn load_no_ach_cache_builds() {
-        let _: Task<crate::Message> = load_no_ach_cache();
-    }
 
     #[test]
     fn load_library_cache_builds() {

@@ -89,7 +89,6 @@ enum Message {
     },
     SkeletonTick,
     FocusSearch,
-    NoAchCacheLoaded(cache::NoAchievementsCache),
     NoAchCacheWritten(Result<(), String>),
     GlobalSearchChanged(String),
     GlobalSortChanged(profile_view::types::LibrarySort),
@@ -152,11 +151,15 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         profile_avatar_handle,
         connectivity: ConnectivityState::default(),
         steam_level: None,
-        no_ach_cache: cache::NoAchievementsCache::new(),
+        no_ach_cache: cache::load_no_achievements_cache_blocking(),
         animation: AnimationState {
             skeleton_phase: 0.0,
         },
     };
+    crate::log!(
+        "no_ach: cache loaded with {} entries",
+        context.no_ach_cache.entries.len()
+    );
 
     let app = App {
         context,
@@ -172,7 +175,6 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         Task::batch([
             splash_commands::min_splash_wait(),
             splash_commands::probe_steam_boot(),
-            cache::commands::load_no_ach_cache(),
         ]),
     )
 }
@@ -697,6 +699,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let pkginfo_count = p.game_summaries.len();
                         crate::log!("packageinfo: {pkginfo_count} games after type-filter");
                         let no_ach = &app.context.no_ach_cache;
+                        let cache_entries = no_ach.entries.len();
                         let filtered: Vec<_> = p
                             .game_summaries
                             .into_iter()
@@ -705,7 +708,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let total = filtered.len();
                         let dropped = pkginfo_count - total;
                         crate::log!(
-                            "no_ach: filtered {dropped} games (change_number match); {total} remain for scan"
+                            "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
                         );
                         app.context.messaging.footer = FooterStatus::Scanning {
                             current: 0,
@@ -870,12 +873,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
             )))
-        }
-
-        Message::NoAchCacheLoaded(loaded) => {
-            crate::log!("no_ach: cache loaded with {} entries", loaded.entries.len());
-            app.context.no_ach_cache = loaded;
-            Task::none()
         }
 
         Message::NoAchCacheWritten(result) => {
