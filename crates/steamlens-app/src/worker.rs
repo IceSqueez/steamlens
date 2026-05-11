@@ -503,7 +503,9 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
         });
     }
 
-    let genre = client.get_app_data(app_id, c"common/primary_genre");
+    let genre = client
+        .get_app_data(app_id, c"common/primary_genre")
+        .and_then(|id| steamlens_core::primary_genre_name(&id).map(str::to_owned));
 
     shm_response_for_aas(steamlens_core::AchievementsAndStatsPayload {
         achievements,
@@ -594,7 +596,9 @@ fn shm_response_for_card_only(payload: steamlens_core::CardOnlyPayload) -> Worke
 async fn load_achievements_card_only(client: &Client, app_id: u32) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
-    let genre = client.get_app_data(app_id, c"common/primary_genre");
+    let genre = client
+        .get_app_data(app_id, c"common/primary_genre")
+        .and_then(|id| steamlens_core::primary_genre_name(&id).map(str::to_owned));
 
     let t0 = std::time::Instant::now();
     crate::log!("worker: request_user_stats start");
