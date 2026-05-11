@@ -17,7 +17,7 @@ use crate::ui::widgets::tooltip_box::tooltip_box;
 use super::ProfileViewState;
 use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase};
 use super::widget::{
-    ProfileWidgetParams, compute_profile_summary, profile_widget, top5_closest_to_complete,
+    ProfileWidgetParams, compute_profile_summary, profile_widget, top6_closest_to_complete,
 };
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::bar::{BarSegment, segmented_bar};
@@ -178,12 +178,12 @@ fn build_profile_section<'a>(
     steam_level: Option<u32>,
 ) -> Element<'a, ProfileViewMessage> {
     let summary = compute_profile_summary(cached_entries);
-    let top5 = top5_closest_to_complete(&state.games, cached_entries);
+    let top6 = top6_closest_to_complete(&state.games, cached_entries);
     profile_widget(ProfileWidgetParams {
         user_profile,
         avatar_handle,
         summary,
-        top5,
+        top6,
         games_count: state.games.len(),
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
