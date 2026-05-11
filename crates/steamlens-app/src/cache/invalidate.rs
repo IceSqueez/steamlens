@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use steamlens_core::GameSummary;
@@ -26,25 +27,48 @@ pub async fn classify_games(
     classify_games_with_root(game_summaries, &cache_root()).await
 }
 
+async fn scan_cached_app_ids(cache_root: &Path) -> HashSet<u32> {
+    let mut set = HashSet::new();
+    let Ok(mut entries) = tokio::fs::read_dir(cache_root).await else {
+        return set;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let Ok(app_id) = name.parse::<u32>() else {
+            continue;
+        };
+        set.insert(app_id);
+    }
+    set
+}
+
 pub(crate) async fn classify_games_with_root(
     game_summaries: &[GameSummary],
     cache_root: &Path,
 ) -> ClassifyResult {
     let mut result = ClassifyResult::default();
+    let mut no_cache_count: u32 = 0;
+
+    let cached_app_ids = scan_cached_app_ids(cache_root).await;
 
     for game in game_summaries {
         let app_id = game.app_id;
-        let summary_path = cache_root.join(app_id.to_string()).join("summary.json");
-        let summary_file_exists = tokio::fs::try_exists(&summary_path).await.unwrap_or(false);
 
+        if !cached_app_ids.contains(&app_id) {
+            no_cache_count += 1;
+            result.dirty.push(app_id);
+            continue;
+        }
+
+        let summary_path = cache_root.join(app_id.to_string()).join("summary.json");
         let Some(summary) = load_game_summary_from_path(&summary_path).await else {
-            let reason = if summary_file_exists {
-                result.schema_bumped += 1;
+            crate::log!(
+                "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::SchemaVersion
-            } else {
-                InvalidationReason::NoCache
-            };
-            crate::log!("invalidate app_id={app_id} reason={reason:?}");
+            );
+            result.schema_bumped += 1;
             result.dirty.push(app_id);
             continue;
         };
@@ -78,6 +102,10 @@ pub(crate) async fn classify_games_with_root(
         });
     }
 
+    if no_cache_count > 0 {
+        crate::log!("invalidate batch: {no_cache_count} games with reason=NoCache");
+    }
+
     crate::log!(
         "cache classify: {} hits, {} dirty, {} schema-bumped",
         result.hits.len(),
@@ -90,7 +118,6 @@ pub(crate) async fn classify_games_with_root(
 
 #[derive(Debug)]
 enum InvalidationReason {
-    NoCache,
     SchemaVersion,
     ChangeNumber,
     LastPlayed,
