@@ -531,7 +531,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .unwrap_or(0);
 
             let summary = crate::cache::types::GameSummaryCache {
-                schema_version: crate::cache::types::LAYER_SCHEMA_VERSION,
+                schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
                 app_id,
                 name,
                 cached_change_number: change_number,
@@ -675,6 +675,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     tasks.push(cache::commands::write_profile_cache(cached));
 
                     if !p.game_summaries.is_empty() {
+                        let pkginfo_count = p.game_summaries.len();
+                        crate::log!("packageinfo: {pkginfo_count} games after type-filter");
                         let no_ach = &app.context.no_ach_cache;
                         let filtered: Vec<_> = p
                             .game_summaries
@@ -682,6 +684,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
                             .collect();
                         let total = filtered.len();
+                        let dropped = pkginfo_count - total;
+                        crate::log!(
+                            "no_ach: filtered {dropped} games (change_number match); {total} remain for scan"
+                        );
                         app.context.messaging.footer = FooterStatus::Scanning {
                             current: 0,
                             total,
@@ -848,6 +854,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::NoAchCacheLoaded(loaded) => {
+            crate::log!("no_ach: cache loaded with {} entries", loaded.entries.len());
             app.context.no_ach_cache = loaded;
             Task::none()
         }

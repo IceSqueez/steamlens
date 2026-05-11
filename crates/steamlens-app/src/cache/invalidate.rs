@@ -38,12 +38,13 @@ pub(crate) async fn classify_games_with_root(
         let summary_file_exists = tokio::fs::try_exists(&summary_path).await.unwrap_or(false);
 
         let Some(summary) = load_game_summary_from_path(&summary_path).await else {
-            if summary_file_exists {
-                crate::log!(
-                    "cache classify: app_id={app_id} summary has bad schema → dirty (schema bump)"
-                );
+            let reason = if summary_file_exists {
                 result.schema_bumped += 1;
-            }
+                InvalidationReason::SchemaVersion
+            } else {
+                InvalidationReason::NoCache
+            };
+            crate::log!("invalidate app_id={app_id} reason={reason:?}");
             result.dirty.push(app_id);
             result.invalidation_count += 1;
             continue;
@@ -51,9 +52,8 @@ pub(crate) async fn classify_games_with_root(
 
         if summary.cached_change_number != game.change_number {
             crate::log!(
-                "cache classify: app_id={app_id} change_number changed ({} → {}) → dirty",
-                summary.cached_change_number,
-                game.change_number
+                "invalidate app_id={app_id} reason={:?}",
+                InvalidationReason::ChangeNumber
             );
             result.dirty.push(app_id);
             result.invalidation_count += 1;
@@ -64,9 +64,8 @@ pub(crate) async fn classify_games_with_root(
             && (lp as u64) > summary.cached_at
         {
             crate::log!(
-                "cache classify: app_id={app_id} played since cache ({} > {}) → dirty",
-                lp,
-                summary.cached_at
+                "invalidate app_id={app_id} reason={:?}",
+                InvalidationReason::LastPlayed
             );
             result.dirty.push(app_id);
             result.invalidation_count += 1;
@@ -80,13 +79,24 @@ pub(crate) async fn classify_games_with_root(
         });
     }
 
+    crate::log!(
+        "cache classify: {} hits, {} dirty, {} schema-bumped",
+        result.hits.len(),
+        result.dirty.len(),
+        result.schema_bumped
+    );
+
     result
 }
 
-/// Builds a `GameCacheEntry` from a Layer 1 summary. Achievement and stat
-/// vectors are intentionally empty; Layer 2 wiring populates them in a later
-/// migration chunk. Callers that only need name + progress see a complete
-/// picture; callers that need achievements must load Layer 2 separately.
+#[derive(Debug)]
+enum InvalidationReason {
+    NoCache,
+    SchemaVersion,
+    ChangeNumber,
+    LastPlayed,
+}
+
 fn synthesize_compat_entry(
     summary: crate::cache::types::GameSummaryCache,
 ) -> crate::cache::types::GameCacheEntry {
@@ -108,7 +118,7 @@ fn synthesize_compat_entry(
 mod tests {
     use super::*;
     use crate::cache::store::atomic_write;
-    use crate::cache::types::{CachedProgress, GameSummaryCache, LAYER_SCHEMA_VERSION};
+    use crate::cache::types::{CachedProgress, GameSummaryCache, SUMMARY_SCHEMA_VERSION};
 
     fn make_summary_input(app_id: u32, last_played: Option<u32>) -> GameSummary {
         GameSummary {
@@ -120,7 +130,7 @@ mod tests {
 
     fn make_summary(app_id: u32, cached_at: u64, change_number: u32) -> GameSummaryCache {
         GameSummaryCache {
-            schema_version: LAYER_SCHEMA_VERSION,
+            schema_version: SUMMARY_SCHEMA_VERSION,
             app_id,
             name: format!("Game {app_id}"),
             cached_change_number: change_number,

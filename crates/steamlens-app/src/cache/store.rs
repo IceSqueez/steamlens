@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cache::types::{
     CURRENT_SCHEMA_VERSION, GameAchievementsCache, GameCacheEntry, GameSummaryCache,
-    LAYER_SCHEMA_VERSION,
+    SUMMARY_SCHEMA_VERSION,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -76,11 +76,11 @@ pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSumma
             crate::log!("cache: summary JSON parse error at {}: {e}", path.display());
         })
         .ok()?;
-    if entry.schema_version != LAYER_SCHEMA_VERSION {
+    if entry.schema_version != SUMMARY_SCHEMA_VERSION {
         crate::log!(
             "cache: summary schema version {} != expected {} at {}; treating as cache miss",
             entry.schema_version,
-            LAYER_SCHEMA_VERSION,
+            SUMMARY_SCHEMA_VERSION,
             path.display()
         );
         return None;
@@ -112,11 +112,11 @@ pub async fn load_game_achievements(app_id: u32) -> Option<GameAchievementsCache
             );
         })
         .ok()?;
-    if entry.schema_version != LAYER_SCHEMA_VERSION {
+    if entry.schema_version != SUMMARY_SCHEMA_VERSION {
         crate::log!(
             "cache: achievements schema version {} != expected {}; treating as cache miss",
             entry.schema_version,
-            LAYER_SCHEMA_VERSION
+            SUMMARY_SCHEMA_VERSION
         );
         return None;
     }
@@ -335,7 +335,7 @@ mod tests {
     #[tokio::test]
     async fn game_summary_round_trip() {
         let summary = GameSummaryCache {
-            schema_version: LAYER_SCHEMA_VERSION,
+            schema_version: SUMMARY_SCHEMA_VERSION,
             app_id: 105600,
             name: "Terraria".to_owned(),
             cached_change_number: 42,
@@ -356,13 +356,13 @@ mod tests {
         assert_eq!(restored.progress.earned, 18);
         assert_eq!(restored.progress.total, 88);
         assert_eq!(restored.genre.as_deref(), Some("Action"));
-        assert_eq!(restored.schema_version, LAYER_SCHEMA_VERSION);
+        assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
     }
 
     #[tokio::test]
     async fn game_achievements_round_trip() {
         let achievements = GameAchievementsCache {
-            schema_version: LAYER_SCHEMA_VERSION,
+            schema_version: SUMMARY_SCHEMA_VERSION,
             app_id: 105600,
             cached_at: 1_746_360_000,
             achievements: vec![CachedAchievement {
@@ -391,7 +391,7 @@ mod tests {
         assert_eq!(restored.achievements[0].api_name, "KILL_BOSS");
         assert!(restored.achievements[0].earned);
         assert_eq!(restored.stats[0].value, CachedStatValue::Int(42));
-        assert_eq!(restored.schema_version, LAYER_SCHEMA_VERSION);
+        assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
     }
 
     #[tokio::test]
@@ -400,7 +400,7 @@ mod tests {
         let path = dir.path().join("summary.json");
 
         let summary = GameSummaryCache {
-            schema_version: LAYER_SCHEMA_VERSION,
+            schema_version: SUMMARY_SCHEMA_VERSION,
             app_id: 200,
             name: "Half-Life 2".to_owned(),
             cached_change_number: 7,
