@@ -1,10 +1,79 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.8] - 2026-05-11
+### ⚙️ Miscellaneous Tasks
+- *(app)* Cleanup
+
+### ⚡ Performance
+- *(app)* Tighten card-only scan timeouts and add worker dispatch diagnostics
+- *(app)* Replace per-app cache stat with single read_dir scan
+- *(app)* Gate splash on classify
+
+### 🐛 Bug Fixes
+- *(app)* Initialize footer scan counter with cache hit count
+- *(app)* Surface per-game scan failures as Error toasts with per-app retry
+- *(app)* Logs during cache pipeline steps with invalidation reason enum
+- *(app)* Warn on cache invalidation; info banner on schema bump
+- *(app)* Hardskip Spacewar (480) and restrict log to steamlens crates only
+- *(app)* Split host/worker logger init to eliminate log file race
+- *(app)* Isolate worker stdin reads in a task to survive interval-tick cancellation
+- *(app)* Persist GameSummaryCache during scan so subsequent runs hit cache
+- *(ui)* Fixed wrong processing text in status bar
+- *(app)* Use unique tmp filename in atomic_write to prevent concurrent-rename ENOENT
+- *(ui)* Eliminate no-ach cache load race; tighten scan progress & ordering
+- *(cache)* Add 30s grace window to last-played invalidation
+- *(cache)* Invalidates period decresed to 10s
+- *(genre)* Genre through worker payload
+- *(scan)* Map Steam primary_genre ID to canonical name
+- *(ui)* Clear-pill in filter strips; strict Hidden semantics in rarity filter
+- *(ui)* Hidden pill behaves as 6th rarity tier; align clear button to right
+- *(game-view)* Buffer icons and global percentages until achievements arrive
+- *(game-card)* Preserve genre and tier breakdown on GoBack cache write
+- *(game-view)* Preserve cache-seeded rarity_percent across AchievementsAndStats refresh
+- *(game-view)* Start-align rarity pill on achievement card
+- *(game-view)* Drop duplicate Hidden status filter
+- *(game-view)* Drop duplicate Rarity sort option
+- *(game-view)* Do not persist status filter across game opens
+- *(profile-view)* Remove Rescan button and wiring
+- *(game-view)* Polish Reload button as accent icon
+- *(ui)* Add tooltips to header icon buttons (Reload / Settings / About)
+- *(game-view)* Remove leftover loader banner and reveal-progress indicator
+- *(ui)* Hide status footer when scan completes
+- *(ui)* Replace SteamNotRunning full-screen with warning banner + reconnect
+- *(profile-view)* Show remaining-to-100% count in "Closest to 100%" row
+
+### 🚀 Features
+- *(app)* Introduce crate::logging and migrate all eprintln! callsites
+- *(app)* Implement full WorkerHandle API in worker_subprocess
+- *(app)* Add GameSummaryCache and GameAchievementsCache for two-layer cache
+- *(app)* Add path helpers for two-layer cache layout
+- *(app)* Add two-layer summary/achievements cache I/O
+- *(steam)* Activate BLoggedOn check on connect
+- *(app)* Feat(app): distinguish "not logged in" from "steam not running" probe states
+- *(app)* Add WorkerHandle::send_checked pre-flight API
+- *(app)* Add SteamWorker::send_checked and migrate game_view callsites
+- *(app)* Persist game summary on every achievements-loaded transition
+- *(app)* Float loaded games above skeletons in library sort
+
+### 🚜 Refactor
+- *(app)* Consolidate app paths into ~/.steamlens via paths.rs
+- *(app)* Swap hand-rolled file logger for tracing subscriber
+- *(app)* Hoist write_command into ipc_pipe, remove local send helpers
+- *(app)* Extract spawn_worker_child helper in progress_scan
+- *(app)* Unify ConnectError and scan error envelope under WorkerProtocolError
+- *(app)* Pipe and drain worker stderr; add kill_on_drop to spawn_worker_child
+- *(app)* Wire WorkerHandle to progress_scan
+- *(app)* Migrate bridge_loop to WorkerHandle
+- *(app)* Tighten ipc_pipe visibility to pub(crate)
+- *(app)* Switch cache classify to Layer 1 layout with change_number invalidation
+- *(ui)* Make pill widget the single source for chips and clickable filters
+
 ## [1.0.0-alpha.7] - 2026-05-11
 ### ⚙️ Miscellaneous Tasks
 - *(app)* Cleanup — remove dead code, prune comments
 - *(ui)* Simplify build_filter_strip with iterator chain
+- Release
 
 ### 🐛 Bug Fixes
 - *(ui)* Align skeleton padding, spacing, and alignment with real card layouts
@@ -16,6 +85,9 @@ All notable changes to this project will be documented in this file.
 - *(game)* Preserve achievement revealed state across AchievementsAndStats refresh
 - *(ui)* Stretch app header full-width on all views
 - *(ui)* Stop persisting search query across restarts
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-alpha.7
 
 ### 🚀 Features
 - *(widgets)* Add leaf primfeat(theme): introduce data-driven ThemePalette with Dark and Light variants
