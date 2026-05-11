@@ -16,9 +16,9 @@ use super::GameViewMessage;
 use super::types::{AchievementRow, RarityTier, compute_tier_map};
 use crate::profile_view::types::StoredCapsule;
 
-const CAPSULE_HEADER_W: f32 = 231.0;
-const CAPSULE_HEADER_H: f32 = 87.0;
-const CAPSULE_HEADER_RADIUS: f32 = 8.0;
+const CAPSULE_SLOT_W: f32 = 184.0;
+const CAPSULE_SLOT_H: f32 = 276.0;
+const CAPSULE_RADIUS: f32 = 10.0;
 const ACH_ICON_SIZE: f32 = 28.0;
 
 pub fn compute_game_summary(achievements: &[AchievementRow]) -> WidgetSummary {
@@ -94,25 +94,24 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
     let summary = compute_game_summary(params.achievements);
     let top5 = top5_easiest_to_unlock(params.achievements);
 
-    let left_col = build_left_column(
-        params.app_id,
-        params.game_name,
-        params.capsule_handles,
-        &summary,
-        params.skeleton_phase,
-    );
+    let capsule_el = build_capsule(params.app_id, params.capsule_handles, params.skeleton_phase);
+    let inner_col = build_left_column(params.app_id, params.game_name, &summary);
+    let left_content: Element<'a, GameViewMessage> = row![capsule_el, inner_col]
+        .spacing(16)
+        .align_y(Alignment::Start)
+        .into();
     let right_col = build_right_column(top5);
-    widget_panel(left_col, right_col)
+    widget_panel(left_content, right_col)
 }
+
+const HEADER_BLOCK_H: f32 = 64.0;
 
 fn build_left_column<'a>(
     app_id: u32,
     game_name: &'a str,
-    capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     summary: &WidgetSummary,
-    skeleton_phase: f32,
 ) -> Element<'a, GameViewMessage> {
-    let header_row = build_game_header(app_id, game_name, capsule_handles, summary, skeleton_phase);
+    let header_row = build_game_header(app_id, game_name, summary);
     let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary).into();
 
     column![
@@ -129,12 +128,8 @@ fn build_left_column<'a>(
 fn build_game_header<'a>(
     app_id: u32,
     game_name: &'a str,
-    capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     summary: &WidgetSummary,
-    skeleton_phase: f32,
 ) -> Element<'a, GameViewMessage> {
-    let capsule = build_capsule(app_id, capsule_handles, skeleton_phase);
-
     let name = text(game_name.to_owned()).size(15).color(C_TEXT_PRIMARY);
     let appid_pill = pill(
         text(format!("AppID {app_id}")).size(11).color(C_ACCENT),
@@ -185,14 +180,13 @@ fn build_game_header<'a>(
         .align_y(Alignment::End);
 
     row![
-        capsule,
         info_block,
         iced::widget::Space::new().width(Length::Fill),
         earnings_block,
     ]
     .spacing(14)
     .width(Length::Fill)
-    .height(Length::Fixed(CAPSULE_HEADER_H))
+    .height(Length::Fixed(HEADER_BLOCK_H))
     .into()
 }
 
@@ -201,17 +195,17 @@ fn build_capsule<'a>(
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     skeleton_phase: f32,
 ) -> Element<'a, GameViewMessage> {
-    if let Some(stored) = capsule_handles.get(&(app_id, CapsuleSize::Medium)) {
+    if let Some(stored) = capsule_handles.get(&(app_id, CapsuleSize::Portrait)) {
         return container(
             image_widget(stored.handle.clone())
-                .width(Length::Fixed(CAPSULE_HEADER_W))
-                .height(Length::Fixed(CAPSULE_HEADER_H)),
+                .width(Length::Fixed(CAPSULE_SLOT_W))
+                .height(Length::Fixed(CAPSULE_SLOT_H)),
         )
-        .width(Length::Fixed(CAPSULE_HEADER_W))
-        .height(Length::Fixed(CAPSULE_HEADER_H))
+        .width(Length::Fixed(CAPSULE_SLOT_W))
+        .height(Length::Fixed(CAPSULE_SLOT_H))
         .style(|_: &iced::Theme| container::Style {
             border: Border {
-                radius: CAPSULE_HEADER_RADIUS.into(),
+                radius: CAPSULE_RADIUS.into(),
                 ..Border::default()
             },
             ..container::Style::default()
@@ -219,9 +213,9 @@ fn build_capsule<'a>(
         .into();
     }
     skeleton_box(
-        CAPSULE_HEADER_W,
-        CAPSULE_HEADER_H,
-        CAPSULE_HEADER_RADIUS,
+        CAPSULE_SLOT_W,
+        CAPSULE_SLOT_H,
+        CAPSULE_RADIUS,
         skeleton_phase,
     )
 }

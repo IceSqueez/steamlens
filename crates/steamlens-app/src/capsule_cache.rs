@@ -26,6 +26,7 @@ pub enum CapsuleSize {
     #[default]
     Medium,
     Large,
+    Portrait,
 }
 
 impl std::fmt::Display for CapsuleSize {
@@ -34,6 +35,7 @@ impl std::fmt::Display for CapsuleSize {
             CapsuleSize::Small => write!(f, "Small"),
             CapsuleSize::Medium => write!(f, "Medium"),
             CapsuleSize::Large => write!(f, "Large"),
+            CapsuleSize::Portrait => write!(f, "Portrait"),
         }
     }
 }
@@ -58,6 +60,11 @@ fn fallback_chain(size: CapsuleSize) -> &'static [&'static str] {
             "capsule_231x87.jpg",
             "capsule_sm_120.jpg",
         ],
+        CapsuleSize::Portrait => &[
+            "library_600x900_2x.jpg",
+            "library_600x900.jpg",
+            "header.jpg",
+        ],
     }
 }
 
@@ -66,6 +73,7 @@ fn size_suffix(size: CapsuleSize) -> &'static str {
         CapsuleSize::Small => "small",
         CapsuleSize::Medium => "medium",
         CapsuleSize::Large => "large",
+        CapsuleSize::Portrait => "portrait",
     }
 }
 

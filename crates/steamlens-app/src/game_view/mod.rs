@@ -208,6 +208,17 @@ pub enum GameViewMessage {
     RareGlowTick,
     RequestGoBack,
     AchievementsFullyLoaded,
+    CapsuleLoaded {
+        app_id: u32,
+        size: crate::capsule_cache::CapsuleSize,
+        handle: iced::widget::image::Handle,
+        width: u32,
+        height: u32,
+    },
+    CapsuleFailed {
+        app_id: u32,
+        size: crate::capsule_cache::CapsuleSize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +273,11 @@ pub struct GameViewState {
 
     pub pending_icons: HashMap<String, steamlens_core::AchievementIcon>,
     pub pending_rarity_percent: Option<HashMap<String, f32>>,
+
+    pub capsule_handles: HashMap<
+        (u32, crate::capsule_cache::CapsuleSize),
+        crate::profile_view::types::StoredCapsule,
+    >,
 }
 
 impl GameViewState {
@@ -292,6 +308,7 @@ impl GameViewState {
             prev_profile_state: Box::new(ProfileViewState::new()),
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
+            capsule_handles: HashMap::new(),
         }
     }
 
@@ -794,6 +811,27 @@ pub fn update(
             },
         ),
         GameViewMessage::RequestGoBack => (Task::none(), GameViewEvent::GoBack),
+        GameViewMessage::CapsuleLoaded {
+            app_id,
+            size,
+            handle,
+            width,
+            height,
+        } => {
+            state.capsule_handles.insert(
+                (app_id, size),
+                crate::profile_view::types::StoredCapsule {
+                    handle,
+                    width,
+                    height,
+                },
+            );
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::CapsuleFailed { app_id, size } => {
+            crate::log!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
+            (Task::none(), GameViewEvent::None)
+        }
     }
 }
 
