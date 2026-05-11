@@ -267,7 +267,6 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     worker.send(SteamRequest::ConnectWithApp(app_id));
 
     let mut state = GameViewState::new(app_id).with_prev_profile(prev);
-    state.filter = app.context.settings.manager.filter;
     state.achievement_sort = app.context.settings.manager.sort;
     state.rarity_tier_set = app
         .context

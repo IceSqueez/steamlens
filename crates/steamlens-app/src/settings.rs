@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game_view::types::{AchievementFilter, AchievementSort, RarityTier};
+use crate::game_view::types::{AchievementSort, RarityTier};
 use crate::profile_view::types::LibrarySort;
 
 const CURRENT_SETTINGS_VERSION: u32 = 1;
@@ -71,18 +71,12 @@ impl Default for LibrarySettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ManagerSettings {
-    #[serde(default = "default_achievement_filter")]
-    pub filter: AchievementFilter,
     #[serde(default = "default_achievement_sort")]
     pub sort: AchievementSort,
     #[serde(default)]
     pub rarity_tiers: Vec<RarityTier>,
     #[serde(default)]
     pub include_hidden: bool,
-}
-
-fn default_achievement_filter() -> AchievementFilter {
-    AchievementFilter::All
 }
 
 fn default_achievement_sort() -> AchievementSort {
@@ -92,7 +86,6 @@ fn default_achievement_sort() -> AchievementSort {
 impl Default for ManagerSettings {
     fn default() -> Self {
         Self {
-            filter: default_achievement_filter(),
             sort: default_achievement_sort(),
             rarity_tiers: Vec::new(),
             include_hidden: false,
@@ -244,7 +237,6 @@ mod tests {
                 pinned: vec![570, 730],
             },
             manager: ManagerSettings {
-                filter: AchievementFilter::Locked,
                 sort: AchievementSort::Name,
                 rarity_tiers: vec![RarityTier::Legendary, RarityTier::Mythical],
                 include_hidden: true,
@@ -349,7 +341,7 @@ mod tests {
         let result = load_from_path(&tmp);
         assert_eq!(result.library.sort, LibrarySort::NameAsc);
         assert_eq!(result.ui.window_width, 1280.0);
-        assert_eq!(result.manager.filter, AchievementFilter::All);
+        assert_eq!(result.manager.sort, AchievementSort::UnlockChance);
         let _ = std::fs::remove_file(&tmp);
     }
 
