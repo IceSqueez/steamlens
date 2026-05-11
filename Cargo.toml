@@ -41,5 +41,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_Foundation",
 ] }
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3" }
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }
