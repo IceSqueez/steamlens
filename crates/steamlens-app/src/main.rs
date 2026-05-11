@@ -397,6 +397,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 hits,
                 dirty,
                 schema_bumped,
+                invalidation_count: _,
             } = result;
 
             app.context.pending_hit_queue.extend(hits);
