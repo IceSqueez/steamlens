@@ -13,7 +13,7 @@ A Steam achievement manager with rarity insights and library statistics.
 [![macOS](https://img.shields.io/badge/macOS-000000?logo=apple)](https://github.com/IceSqueez/steamlens/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-0078D6)](https://github.com/IceSqueez/steamlens/releases/latest)
 
-<!-- TODO: add screenshot here -->
+![Screenshot](./assets/Screenshot.png)
 
 ## Features
 
