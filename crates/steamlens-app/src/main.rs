@@ -5,6 +5,7 @@ mod capsule_commands;
 mod game_view;
 mod ipc_pipe;
 mod messaging;
+mod paths;
 mod profile_view;
 mod progress_scan;
 mod screen;

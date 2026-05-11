@@ -36,15 +36,11 @@ pub struct CachedLibrary {
 }
 
 fn profile_path() -> PathBuf {
-    crate::settings::steamlens_root()
-        .join("cache")
-        .join("profile.json")
+    crate::paths::cache_dir().join("profile.json")
 }
 
 fn library_path() -> PathBuf {
-    crate::settings::steamlens_root()
-        .join("cache")
-        .join("library.json")
+    crate::paths::cache_dir().join("library.json")
 }
 
 fn now_epoch() -> u64 {

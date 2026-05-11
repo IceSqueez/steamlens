@@ -33,14 +33,6 @@ pub fn steamclient_lib_candidates() -> Vec<PathBuf> {
         .collect()
 }
 
-pub fn steamlens_root() -> PathBuf {
-    dirs_base().join("steamlens")
-}
-
-pub fn steamlens_cache_dir() -> PathBuf {
-    steamlens_root().join("cache")
-}
-
 pub fn user_data_dir(steam_root: &Path, steamid3: u32) -> PathBuf {
     steam_root.join("userdata").join(steamid3.to_string())
 }
@@ -135,32 +127,6 @@ fn read_steam_root_from_registry() -> Option<PathBuf> {
     None
 }
 
-fn dirs_base() -> PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(xdg) = env::var_os("XDG_DATA_HOME") {
-            return PathBuf::from(xdg);
-        }
-        let home = env::var("HOME").unwrap_or_default();
-        PathBuf::from(home).join(".local").join("share")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = env::var("HOME").unwrap_or_default();
-        PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let appdata =
-            env::var("APPDATA").unwrap_or_else(|_| r"C:\Users\Default\AppData\Roaming".to_owned());
-        PathBuf::from(appdata)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    PathBuf::from(".")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,11 +183,4 @@ mod tests {
         assert_eq!(p, PathBuf::from("/opt/steam/appcache/stats"));
     }
 
-    #[test]
-    fn steamlens_root_and_cache_nested() {
-        let root = steamlens_root();
-        let cache = steamlens_cache_dir();
-        assert!(cache.starts_with(&root));
-        assert!(cache.to_string_lossy().ends_with("cache"));
-    }
 }

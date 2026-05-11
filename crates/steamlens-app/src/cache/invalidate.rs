@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use steamlens_core::GameSummary;
 
 use crate::cache::{CURRENT_SCHEMA_VERSION, CacheHit, store::load_game_cache_from_path};
-use crate::settings::steamlens_root;
+use crate::paths::cache_dir;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClassifyResult {
@@ -13,7 +13,7 @@ pub struct ClassifyResult {
 }
 
 fn cache_root() -> PathBuf {
-    steamlens_root().join("cache").join("games")
+    cache_dir().join("games")
 }
 
 pub async fn classify_games(

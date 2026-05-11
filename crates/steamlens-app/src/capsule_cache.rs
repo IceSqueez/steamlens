@@ -93,49 +93,8 @@ impl std::fmt::Display for CapsuleError {
     }
 }
 
-pub fn cache_dir() -> PathBuf {
-    #[cfg(target_os = "macos")]
-    {
-        dirs_base()
-            .join("Library")
-            .join("Caches")
-            .join("steamlens")
-            .join("capsules")
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs_base().join("steamlens").join("capsules")
-    }
-}
-
-fn dirs_base() -> PathBuf {
-    #[cfg(target_os = "macos")]
-    {
-        dirs_home()
-    }
-    #[cfg(windows)]
-    {
-        std::env::var("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| dirs_home())
-    }
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        std::env::var("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| dirs_home().join(".cache"))
-    }
-}
-
-fn dirs_home() -> PathBuf {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"))
-}
-
 fn cache_path(app_id: u32, size: CapsuleSize) -> PathBuf {
-    cache_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
+    crate::paths::capsules_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
 }
 
 fn decode_jpeg(bytes: &[u8]) -> Result<CapsulePixels, CapsuleError> {
