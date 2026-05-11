@@ -1,7 +1,4 @@
-#![expect(dead_code, reason = "WorkerHandle API has no callers until M2")]
-
 use std::process::ExitStatus;
-use std::time::Duration;
 
 use steamlens_core::ipc::WorkerErrorKind;
 use tokio::process::{Child, ChildStdin, ChildStdout};
@@ -10,13 +7,9 @@ use tokio::task::JoinHandle;
 /// Lifecycle mode for a spawned worker child.
 #[derive(Debug, Clone, Copy)]
 pub enum WorkerMode {
-    /// Long-lived interactive session. No whole-operation timeout.
-    /// Drainer task forwards each stderr line through `crate::log!`.
-    Interactive,
-
     /// Short-lived single-operation scan, kill-on-timeout.
-    /// Drainer task forwards each line AND captures into a buffer for `drain_stderr()`.
-    OneShot { timeout: Duration },
+    /// Drainer task forwards each stderr line AND captures into a buffer returned by `finish()`.
+    OneShot,
 }
 
 /// Error variants covering all failure modes during worker spawn.
@@ -73,23 +66,20 @@ pub enum WorkerProtocolError {
 
 /// Unified handle to a spawned `--worker <app_id>` child process.
 ///
-/// Both `drain_stderr` and `shutdown` consume `self` — callers may call exactly
-/// one of them per handle. `shutdown` is the normal teardown path; `drain_stderr`
-/// is for `OneShot` error-inspection paths where the caller wants the raw stderr
-/// bytes before discarding the handle.
+/// Call `finish` exactly once when done with the handle. `finish` is mode-aware:
+/// it either drains stderr (OneShot) or sends a graceful Shutdown command (Interactive)
+/// before returning the exit status and any captured stderr bytes.
 pub struct WorkerHandle {
     child: Child,
     stdin: ChildStdin,
     stdout: ChildStdout,
     stderr_task: Option<JoinHandle<Vec<u8>>>,
     _guard: steamlens_core::ChildLifetimeGuard,
-    mode: WorkerMode,
-    app_id: u32,
 }
 
 impl WorkerHandle {
     /// Spawn a `--worker <app_id>` child in the given mode.
-    pub async fn spawn(app_id: u32, mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
+    pub async fn spawn(app_id: u32, _mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
         let exe = std::env::current_exe().map_err(WorkerSpawnError::ExeNotFound)?;
         let mut child = tokio::process::Command::new(exe)
             .arg("--worker")
@@ -121,17 +111,14 @@ impl WorkerHandle {
             .take()
             .ok_or(WorkerSpawnError::StderrUnavailable)?;
 
-        let capture = matches!(mode, WorkerMode::OneShot { .. });
         let stderr_task = tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut buf = Vec::new();
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 crate::log!("worker[app_id={app_id}] stderr: {line}");
-                if capture {
-                    buf.extend_from_slice(line.as_bytes());
-                    buf.push(b'\n');
-                }
+                buf.extend_from_slice(line.as_bytes());
+                buf.push(b'\n');
             }
             buf
         });
@@ -142,8 +129,6 @@ impl WorkerHandle {
             stdout,
             stderr_task: Some(stderr_task),
             _guard: guard,
-            mode,
-            app_id,
         })
     }
 
@@ -167,61 +152,24 @@ impl WorkerHandle {
         Ok(crate::ipc_pipe::read_response(&mut self.stdout).await)
     }
 
-    /// Drain the stderr capture buffer (`OneShot` mode only).
+    /// Kills the child immediately and drains the stderr capture buffer within `STDERR_DRAIN`.
     ///
-    /// Kills the child so the drainer sees EOF, then waits up to `STDERR_DRAIN`.
-    /// Returns `None` in `Interactive` mode or if the drain times out.
-    pub async fn drain_stderr(mut self) -> Option<Vec<u8>> {
-        match self.mode {
-            WorkerMode::OneShot { .. } => {
-                let _ = self.child.start_kill();
-                let _ = tokio::time::timeout(crate::timeouts::CHILD_KILL, self.child.wait()).await;
-                let task = self.stderr_task.take()?;
-                tokio::time::timeout(crate::timeouts::STDERR_DRAIN, task)
-                    .await
-                    .ok()
-                    .and_then(|r| r.ok())
-            }
-            WorkerMode::Interactive => None,
-        }
-    }
-
-    /// Mode-aware shutdown. Consumes `self`.
-    ///
-    /// `Interactive`: sends `Shutdown`, waits `CHILD_DRAIN`, kills on timeout.
-    /// `OneShot`: kills immediately, waits `CHILD_KILL`.
-    pub async fn shutdown(mut self) -> Option<ExitStatus> {
-        match self.mode {
-            WorkerMode::Interactive => {
-                let _ = crate::ipc_pipe::write_command(
-                    &mut self.stdin,
-                    &steamlens_core::ipc::WorkerCommand::Shutdown,
-                )
-                .await;
-                if let Ok(Ok(status)) =
-                    tokio::time::timeout(crate::timeouts::CHILD_DRAIN, self.child.wait()).await
-                {
-                    self.abort_stderr_task().await;
-                    return Some(status);
-                }
-            }
-            WorkerMode::OneShot { .. } => {}
-        }
-
+    /// Returns `(Some(exit_status), Some(stderr_bytes))`. Exit status is `None` only if the
+    /// `CHILD_KILL` timeout elapsed before the child exited.
+    pub async fn finish(mut self) -> (Option<ExitStatus>, Option<Vec<u8>>) {
         let _ = self.child.start_kill();
         let status = tokio::time::timeout(crate::timeouts::CHILD_KILL, self.child.wait())
             .await
             .ok()
             .and_then(|r| r.ok());
-        self.abort_stderr_task().await;
-        status
-    }
-
-    async fn abort_stderr_task(&mut self) {
-        if let Some(task) = self.stderr_task.take() {
-            task.abort();
-            let _ = task.await;
-        }
+        let bytes = match self.stderr_task {
+            Some(task) => tokio::time::timeout(crate::timeouts::STDERR_DRAIN, task)
+                .await
+                .ok()
+                .and_then(|r| r.ok()),
+            None => None,
+        };
+        (status, bytes)
     }
 }
 
@@ -251,13 +199,9 @@ mod tests {
 
     #[test]
     fn worker_mode_variants_copy() {
-        let a = WorkerMode::Interactive;
-        let b = WorkerMode::OneShot {
-            timeout: Duration::from_secs(30),
-        };
+        let a = WorkerMode::OneShot;
         let _a2 = a;
-        let _b2 = b;
-        let _ = (a, b);
+        let _ = a;
     }
 
     #[test]
