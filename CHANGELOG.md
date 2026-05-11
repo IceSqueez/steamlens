@@ -1,6 +1,51 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.7] - 2026-05-11
+### ⚙️ Miscellaneous Tasks
+- *(app)* Cleanup — remove dead code, prune comments
+- *(ui)* Simplify build_filter_strip with iterator chain
+
+### 🐛 Bug Fixes
+- *(ui)* Align skeleton padding, spacing, and alignment with real card layouts
+- *(ui)* Match skeleton avatar radius, capsule centering, and tags Fill spacer to real layouts
+- *(game)* Missing icons on first game_view loading
+- *(app)* Message::GoBack on GameView routes through RequestGoBack to save cache
+- *(platform)* Fixes correct separator per platform
+- *(core)* Correct vdf_path typo blocking compilation
+- *(game)* Preserve achievement revealed state across AchievementsAndStats refresh
+- *(ui)* Stretch app header full-width on all views
+- *(ui)* Stop persisting search query across restarts
+
+### 🚀 Features
+- *(widgets)* Add leaf primfeat(theme): introduce data-driven ThemePalette with Dark and Light variants
+- *(widgets)* Add card builder and skeleton primitive
+- *(widgets)* Add segmented_bar widget; migrate game card tier bar
+- *(widgets)* Unify game card and profile widget bars on segmented_bar
+- *(widgets)* Add pill widget
+- *(widgets)* Add pill and tooltip_box widgets
+- *(ui)* Adds shell module
+- *(app)* Adds AppContext
+- *(ui)* Unified slot-based App-level header for ProfileView and GameView
+- *(ui)* Unify app header across views
+- *(ui)* Add status and genre filter chips to profile view header
+
+### 🚜 Refactor
+- *(views)* Migrate game card and achievement card chrome to widgets::card
+- *(ui)* Migrate game_view loaded states to ShellContent
+- *(app)* Absorb ui::shell into screen module
+- *(views)* Introduce ProfileViewProps and GameViewProps
+- *(views)* Adopt local message types with .map() at boundary
+- *(views)* Per-screen update functions with Out-Events
+- *(app)* Extract inline Task::perform into command builder modules
+- *(views)* Delegate per-screen subscriptions to screen modules
+- *(ui)* Consolidate skeleton; eliminate magic numbers in card placeholders
+- *(ui)* Align skeleton sizes with real widget dimensions
+- *(ui)* Build search input in shell from SearchConfig
+- *(ui)* Migrate game_view filter chrome into shell FilterStrip slots
+- *(ui)* Unify segmented controls into shell SegmentedControlConfig slot
+- *(ui)* Rename FilterChip to FilterButton to disambiguate from pill widget
+
 ## [1.0.0-alpha.6] - 2026-05-07
 ### ⚙️ Miscellaneous Tasks
 - *(settings)* Remove dead default_steam_root helper
@@ -15,11 +60,15 @@ All notable changes to this project will be documented in this file.
 - *(game_view)* Drop 11 dead message variants superseded by SteamReply
 - *(steam_worker)* Drop dead SteamReply variants and fields hidden by wholesale allow
 - *(app)* Refine wholesale dead_code allows on UI severity enums
+- Release
 
 ### ⚡ Performance
 - *(ffi)* Reduced FFI call during cold-scan per achievement
 - *(settings)* Gate SettingsFlushTick subscription on dirty state
 - *(capsule_cache)* Use shared reqwest::Client with timeouts
+
+### 🎨 Styling
+- *(fmt)* Fixes fmt erros
 
 ### 🐛 Bug Fixes
 - *(worker)* Async-aware sleep in worker, typed Steam ID parse, named EResult constants
@@ -28,6 +77,10 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(readme)* Refresh features, friendlier disclaimer, regrouped badges
+- *(release)* Release v1.0.0-alpha.6
+- *(readme)* Updates badges
+- *(readme)* Fixed badges spacing
+- *(readme)* Section reorder
 
 ### 🚀 Features
 - *(app)* Unified Ctrl+F focuses search across Profile and Game views
