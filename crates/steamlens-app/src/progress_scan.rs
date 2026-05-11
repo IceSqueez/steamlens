@@ -225,11 +225,18 @@ async fn run_full_scan_protocol(
         }
     };
 
+    let t_card = std::time::Instant::now();
+    crate::log!("scan: send LoadAchievementsAndStatsCardOnly");
     handle
         .send(&WorkerCommand::LoadAchievementsAndStatsCardOnly)
         .await?;
     let (achievements, stats, genre) =
         read_card_only_skipping_async(handle, timeouts::COLD_SCAN_LOAD).await?;
+    crate::log!(
+        "scan: CardOnly response in {:?} ({} achievements)",
+        t_card.elapsed(),
+        achievements.len()
+    );
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()

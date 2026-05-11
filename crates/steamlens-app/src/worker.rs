@@ -191,6 +191,8 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    crate::log!("worker app_id={app_id}: dispatch_loop ready");
+
     loop {
         tokio::select! {
             biased;
@@ -198,14 +200,22 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
             cmd = read_command(&mut stdin) => {
                 match cmd {
                     Err(e) => {
+                        crate::log!("worker app_id={app_id}: read_command err: {e}");
                         let _ = write_response(&WorkerResponse::Error {
                             kind: WorkerErrorKind::Generic,
                             message: e.to_string(),
                         }).await;
                         return 1;
                     }
-                    Ok(None) => return 0,
+                    Ok(None) => {
+                        crate::log!("worker app_id={app_id}: stdin EOF");
+                        return 0;
+                    }
                     Ok(Some(command)) => {
+                        crate::log!(
+                            "worker app_id={app_id}: cmd received: {}",
+                            command_label(&command)
+                        );
                         match handle_command(command, &client, app_id).await {
                             DispatchOutcome::Continue => {}
                             DispatchOutcome::Shutdown => return 0,
@@ -216,9 +226,33 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
             }
 
             _ = interval.tick() => {
-                poll_and_forward(&client).await;
+                if let Ok(callbacks) = client.poll_callbacks() {
+                    if !callbacks.is_empty() {
+                        crate::log!(
+                            "worker app_id={app_id}: tick — {} callbacks",
+                            callbacks.len()
+                        );
+                    }
+                    forward_icon_callbacks(callbacks, &client).await;
+                }
             }
         }
+    }
+}
+
+fn command_label(cmd: &WorkerCommand) -> &'static str {
+    match cmd {
+        WorkerCommand::LoadAchievementsAndStats => "LoadAchievementsAndStats",
+        WorkerCommand::LoadAchievementsAndStatsCardOnly => "LoadAchievementsAndStatsCardOnly",
+        WorkerCommand::QuickAchievementCount => "QuickAchievementCount",
+        WorkerCommand::StoreStats => "StoreStats",
+        WorkerCommand::ResetAllStats { .. } => "ResetAllStats",
+        WorkerCommand::RequestGlobalPercentages => "RequestGlobalPercentages",
+        WorkerCommand::SetAchievement(_) => "SetAchievement",
+        WorkerCommand::ClearAchievement(_) => "ClearAchievement",
+        WorkerCommand::SetStatInt { .. } => "SetStatInt",
+        WorkerCommand::SetStatFloat { .. } => "SetStatFloat",
+        WorkerCommand::Shutdown => "Shutdown",
     }
 }
 
@@ -538,16 +572,32 @@ async fn load_achievements_card_only(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     let steam_id = client.steam_id();
 
+    let t0 = std::time::Instant::now();
+    crate::log!("worker: request_user_stats start");
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
+        crate::log!(
+            "worker: request_user_stats failed in {:?}: {e}",
+            t0.elapsed()
+        );
         return WorkerResponse::Error {
             kind: WorkerErrorKind::RequestUserStats,
             message: e.to_string(),
         };
     }
+    crate::log!(
+        "worker: request_user_stats sent in {:?}; waiting for UserStatsReceived",
+        t0.elapsed()
+    );
 
+    let t_wait = std::time::Instant::now();
     if let Some(early) = wait_for_stats_received_card_only(client, steam_id).await {
+        crate::log!(
+            "worker: stats wait returned early (likely error/no-schema) in {:?}",
+            t_wait.elapsed()
+        );
         return early;
     }
+    crate::log!("worker: UserStatsReceived OK in {:?}", t_wait.elapsed());
 
     let num = stats_iface.num_achievements();
 
@@ -705,6 +755,10 @@ async fn wait_for_stats_received_card_only(
         }
 
         if std::time::Instant::now() >= deadline {
+            crate::log!(
+                "worker: wait_for_stats_received_card_only TIMEOUT after {:?} (no callback fired)",
+                timeouts::STAT_RECEIVED
+            );
             return Some(WorkerResponse::Error {
                 kind: WorkerErrorKind::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
