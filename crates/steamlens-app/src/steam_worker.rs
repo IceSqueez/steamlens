@@ -357,12 +357,7 @@ async fn kill_child(child: &mut Child) {
     let _ = tokio::time::timeout(timeouts::CHILD_KILL, child.wait()).await;
 }
 
-#[derive(Debug)]
-enum ConnectError {
-    WorkerError(WorkerErrorKind, String),
-    UnexpectedMessage,
-    Timeout,
-}
+type ConnectError = crate::worker_subprocess::WorkerProtocolError;
 
 async fn await_steam_connected(
     stdout: &mut ChildStdout,
@@ -375,7 +370,7 @@ async fn await_steam_connected(
             Ok(())
         }
         Ok(Some(WorkerResponse::Error { kind, message })) => {
-            Err(ConnectError::WorkerError(kind, message))
+            Err(ConnectError::WorkerError { kind, message })
         }
         Ok(_) => Err(ConnectError::UnexpectedMessage),
         Err(_) => Err(ConnectError::Timeout),
@@ -499,7 +494,9 @@ async fn bridge_loop(
 
     if let Err(e) = await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await {
         match e {
-            ConnectError::WorkerError(kind, msg) => reply(&rep_tx, error_reply(kind, msg)),
+            ConnectError::WorkerError { kind, message } => {
+                reply(&rep_tx, error_reply(kind, message))
+            }
             ConnectError::UnexpectedMessage => reply(
                 &rep_tx,
                 SteamReply::ConnectFailed("unexpected first message from worker".to_owned()),
@@ -508,6 +505,12 @@ async fn bridge_loop(
                 &rep_tx,
                 SteamReply::ConnectFailed("timed out waiting for SteamConnected".to_owned()),
             ),
+            ConnectError::UnexpectedEof | ConnectError::Decode(_) | ConnectError::Write(_) => {
+                reply(
+                    &rep_tx,
+                    SteamReply::ConnectFailed("protocol error".to_owned()),
+                )
+            }
         }
         kill_child(&mut child).await;
         return;
@@ -539,10 +542,14 @@ async fn bridge_loop(
                             await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await
                         {
                             match e {
-                                ConnectError::WorkerError(kind, msg) => {
-                                    reply(&rep_tx, error_reply(kind, msg))
+                                ConnectError::WorkerError { kind, message } => {
+                                    reply(&rep_tx, error_reply(kind, message))
                                 }
-                                ConnectError::UnexpectedMessage | ConnectError::Timeout => reply(
+                                ConnectError::UnexpectedMessage
+                                | ConnectError::Timeout
+                                | ConnectError::UnexpectedEof
+                                | ConnectError::Decode(_)
+                                | ConnectError::Write(_) => reply(
                                     &rep_tx,
                                     SteamReply::ConnectFailed(
                                         "timed out waiting for SteamConnected on reconnect"
