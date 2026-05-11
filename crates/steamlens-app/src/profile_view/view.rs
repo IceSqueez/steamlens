@@ -12,6 +12,7 @@ use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::widgets::skeleton::skeleton_box;
+use crate::ui::widgets::tooltip_box::tooltip_box;
 
 use super::ProfileViewState;
 use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase};
@@ -749,24 +750,50 @@ fn build_hover_overlay<'a>(
 }
 
 fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileViewMessage> {
-    let name_text = text(entry.name.as_deref().unwrap_or(""))
+    const NAME_CHAR_W_PX: f32 = 7.0;
+    const COUNTER_CHAR_W_PX: f32 = 6.5;
+    const ROW_SPACING_PX: f32 = 4.0;
+
+    let name_str = entry.name.as_deref().unwrap_or("");
+    let name_text = text(name_str)
         .size(12)
         .color(C_TEXT)
         .wrapping(text::Wrapping::None);
 
-    let counter: Element<'_, ProfileViewMessage> = match entry.progress.as_ref() {
-        Some(p) if p.total > 0 => text(format!("{} / {}", p.earned, p.total))
-            .size(11)
-            .color(C_MUTED)
-            .into(),
-        _ => iced::widget::Space::new().width(Length::Shrink).into(),
+    let counter_str: Option<String> = match entry.progress.as_ref() {
+        Some(p) if p.total > 0 => Some(format!("{} / {}", p.earned, p.total)),
+        _ => None,
+    };
+
+    let counter_w_estimate: f32 = counter_str
+        .as_ref()
+        .map(|s| s.chars().count() as f32 * COUNTER_CHAR_W_PX)
+        .unwrap_or(0.0);
+
+    let counter: Element<'_, ProfileViewMessage> = match &counter_str {
+        Some(s) => text(s.clone()).size(11).color(C_MUTED).into(),
+        None => iced::widget::Space::new().width(Length::Shrink).into(),
     };
 
     let name_clipped = container(name_text).width(Length::Fill).clip(true);
 
-    let inner = row![name_clipped, counter]
+    let available_for_name = card_w - 2.0 * CARD_H_PAD - counter_w_estimate - ROW_SPACING_PX;
+    let estimated_name_w = name_str.chars().count() as f32 * NAME_CHAR_W_PX;
+    let truncated = estimated_name_w > available_for_name;
+
+    let name_node: Element<'a, ProfileViewMessage> = if truncated && !name_str.is_empty() {
+        tooltip_box(
+            name_clipped,
+            name_str.to_owned(),
+            iced::widget::tooltip::Position::Top,
+        )
+    } else {
+        name_clipped.into()
+    };
+
+    let inner = row![name_node, counter]
         .align_y(Alignment::Center)
-        .spacing(4);
+        .spacing(ROW_SPACING_PX);
 
     container(inner)
         .width(Length::Fixed(card_w))
