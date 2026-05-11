@@ -4,11 +4,11 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
-const CHIP_PAD_X: f32 = 12.0;
-const CHIP_PAD_Y: f32 = 6.0;
-const CHIP_RADIUS: f32 = 6.0;
-const CHIP_SPACING: f32 = 6.0;
-const CHIP_DIVIDER_SPACING: f32 = 12.0;
+const FILTER_PAD_X: f32 = 12.0;
+const FILTER_PAD_Y: f32 = 6.0;
+const FILTER_RADIUS: f32 = 6.0;
+const FILTER_SPACING: f32 = 6.0;
+const STRIP_DIVIDER_SPACING: f32 = 12.0;
 
 const SEGMENT_PAD_X: f32 = 10.0;
 const SEGMENT_PAD_Y: f32 = 6.0;
@@ -21,14 +21,14 @@ pub struct SearchConfig<'a> {
     pub id: WidgetId,
 }
 
-pub struct FilterChip<'a> {
+pub struct FilterButton<'a> {
     pub label: std::borrow::Cow<'a, str>,
     pub selected: bool,
     pub on_press: crate::Message,
 }
 
 pub struct FilterStrip<'a> {
-    pub chips: Vec<FilterChip<'a>>,
+    pub buttons: Vec<FilterButton<'a>>,
 }
 
 pub struct SegmentItem<'a> {
@@ -95,7 +95,7 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
         if let Some(strip) = content.status_filter {
             if prev_present {
                 second = second.push(build_strip_divider());
-                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+                second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
             }
             second = second.push(build_filter_strip(strip));
             prev_present = true;
@@ -103,9 +103,9 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
 
         if let Some(strip) = content.category_filter {
             if prev_present {
-                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+                second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
                 second = second.push(build_strip_divider());
-                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+                second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
             }
             second = second.push(build_filter_strip(strip));
         }
@@ -151,18 +151,18 @@ fn build_strip_divider() -> Element<'static, crate::Message> {
 
 fn build_filter_strip(strip: FilterStrip<'_>) -> Element<'_, crate::Message> {
     let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
-    for chip in strip.chips {
-        items.push(build_chip(chip));
+    for filter in strip.buttons {
+        items.push(build_filter_button(filter));
     }
     row(items)
-        .spacing(CHIP_SPACING)
+        .spacing(FILTER_SPACING)
         .align_y(Alignment::Center)
         .into()
 }
 
-fn build_chip(chip: FilterChip<'_>) -> Element<'_, crate::Message> {
-    let selected = chip.selected;
-    let label_text = text(chip.label).size(12).style(move |t: &iced::Theme| {
+fn build_filter_button(cfg: FilterButton<'_>) -> Element<'_, crate::Message> {
+    let selected = cfg.selected;
+    let label_text = text(cfg.label).size(12).style(move |t: &iced::Theme| {
         let p = palette(theme_from_iced(t));
         iced::widget::text::Style {
             color: Some(if selected { p.accent } else { p.text_muted }),
@@ -170,13 +170,13 @@ fn build_chip(chip: FilterChip<'_>) -> Element<'_, crate::Message> {
     });
 
     button(label_text)
-        .on_press(chip.on_press)
+        .on_press(cfg.on_press)
         .padding(
             Padding::default()
-                .left(CHIP_PAD_X)
-                .right(CHIP_PAD_X)
-                .top(CHIP_PAD_Y)
-                .bottom(CHIP_PAD_Y),
+                .left(FILTER_PAD_X)
+                .right(FILTER_PAD_X)
+                .top(FILTER_PAD_Y)
+                .bottom(FILTER_PAD_Y),
         )
         .style(move |t: &iced::Theme, status| {
             let p = palette(theme_from_iced(t));
@@ -198,7 +198,7 @@ fn build_chip(chip: FilterChip<'_>) -> Element<'_, crate::Message> {
                 border: Border {
                     color: if selected { p.accent } else { p.border },
                     width: 1.0,
-                    radius: CHIP_RADIUS.into(),
+                    radius: FILTER_RADIUS.into(),
                 },
                 text_color: if selected {
                     p.accent
