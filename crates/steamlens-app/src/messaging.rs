@@ -344,7 +344,10 @@ fn banner_strip<'a>(banner: &'a Banner) -> Element<'a, crate::Message> {
 pub fn status_footer<'a>(
     messaging: &'a MessagingCenter,
     failed_count: usize,
-) -> Element<'a, crate::Message> {
+) -> Option<Element<'a, crate::Message>> {
+    if failed_count == 0 && footer_is_hidden(&messaging.footer) {
+        return None;
+    }
     let (dot_color, left_content, right_btn) = match &messaging.footer {
         FooterStatus::Connected { games, last_sync } => {
             let sync_text = if let Some(t) = last_sync {
@@ -465,19 +468,29 @@ pub fn status_footer<'a>(
         footer_row = footer_row.push(btn);
     }
 
-    container(footer_row)
-        .width(Length::Fill)
-        .padding(Padding::default().left(16).right(16).top(8).bottom(8))
-        .style(|_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            border: iced::Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        })
-        .into()
+    Some(
+        container(footer_row)
+            .width(Length::Fill)
+            .padding(Padding::default().left(16).right(16).top(8).bottom(8))
+            .style(|_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(C_SURFACE)),
+                border: iced::Border {
+                    color: C_BORDER,
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
+            .into(),
+    )
+}
+
+fn footer_is_hidden(footer: &FooterStatus) -> bool {
+    match footer {
+        FooterStatus::Connected { .. } => true,
+        FooterStatus::Scanning { current, total, .. } => *total > 0 && current >= total,
+        FooterStatus::Offline { .. } => false,
+    }
 }
 
 pub fn toast_stack<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Message> {
@@ -654,23 +667,23 @@ pub fn wrap_with_messaging<'a>(
 ) -> Element<'a, crate::Message> {
     let footer = status_footer(messaging, failed_count);
 
-    let col_with_footer = if let Some(banners) = banner_stack(messaging) {
-        column![banners, content, footer]
-            .spacing(0)
-            .width(Length::Fill)
-            .height(Length::Fill)
-    } else {
-        column![content, footer]
-            .spacing(0)
-            .width(Length::Fill)
-            .height(Length::Fill)
-    };
+    let mut col = column![]
+        .spacing(0)
+        .width(Length::Fill)
+        .height(Length::Fill);
+    if let Some(banners) = banner_stack(messaging) {
+        col = col.push(banners);
+    }
+    col = col.push(content);
+    if let Some(footer) = footer {
+        col = col.push(footer);
+    }
 
     if messaging.has_active_toasts() {
         let overlay = toast_stack(messaging);
-        iced::widget::stack![col_with_footer, overlay].into()
+        iced::widget::stack![col, overlay].into()
     } else {
-        col_with_footer.into()
+        col.into()
     }
 }
 
