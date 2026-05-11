@@ -4,16 +4,34 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
+const CHIP_PAD_X: f32 = 12.0;
+const CHIP_PAD_Y: f32 = 6.0;
+const CHIP_RADIUS: f32 = 6.0;
+const CHIP_SPACING: f32 = 6.0;
+const CHIP_DIVIDER_SPACING: f32 = 12.0;
+
 pub struct SearchConfig<'a> {
     pub placeholder: &'a str,
     pub value: &'a str,
     pub id: WidgetId,
 }
 
+pub struct FilterChip<'a> {
+    pub label: std::borrow::Cow<'a, str>,
+    pub selected: bool,
+    pub on_press: crate::Message,
+}
+
+pub struct FilterStrip<'a> {
+    pub chips: Vec<FilterChip<'a>>,
+}
+
 pub struct AppHeaderContent<'a> {
     pub search: Option<SearchConfig<'a>>,
     pub screen_actions: Vec<Element<'a, crate::Message>>,
-    pub second_row: Option<Element<'a, crate::Message>>,
+    pub leading: Option<Element<'a, crate::Message>>,
+    pub status_filter: Option<FilterStrip<'a>>,
+    pub category_filter: Option<FilterStrip<'a>>,
 }
 
 pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Message> {
@@ -40,9 +58,42 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
 
     let top_row = top_row.width(Length::Fill);
 
-    let inner: Element<'_, crate::Message> = match content.second_row {
-        Some(second) => column![top_row, second].spacing(8).into(),
-        None => top_row.into(),
+    let has_second_row = content.leading.is_some()
+        || content.status_filter.is_some()
+        || content.category_filter.is_some();
+
+    let inner: Element<'_, crate::Message> = if has_second_row {
+        let mut second = row![].spacing(0).align_y(Alignment::Center);
+        let mut prev_present = false;
+
+        if let Some(leading) = content.leading {
+            second = second.push(leading);
+            prev_present = true;
+        }
+
+        if let Some(strip) = content.status_filter {
+            if prev_present {
+                second = second.push(build_strip_divider());
+                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+            }
+            second = second.push(build_filter_strip(strip));
+            prev_present = true;
+        }
+
+        if let Some(strip) = content.category_filter {
+            if prev_present {
+                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+                second = second.push(build_strip_divider());
+                second = second.push(Space::new().width(Length::Fixed(CHIP_DIVIDER_SPACING)));
+            }
+            second = second.push(build_filter_strip(strip));
+        }
+
+        let second_row = second.width(Length::Fill);
+
+        column![top_row, second_row].spacing(8).into()
+    } else {
+        top_row.into()
     };
 
     container(inner)
@@ -58,6 +109,84 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
                     radius: 0.0.into(),
                 },
                 ..container::Style::default()
+            }
+        })
+        .into()
+}
+
+fn build_strip_divider() -> Element<'static, crate::Message> {
+    container(Space::new())
+        .width(Length::Fixed(1.0))
+        .height(Length::Fixed(20.0))
+        .style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            container::Style {
+                background: Some(Background::Color(p.border)),
+                ..container::Style::default()
+            }
+        })
+        .into()
+}
+
+fn build_filter_strip(strip: FilterStrip<'_>) -> Element<'_, crate::Message> {
+    let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
+    for chip in strip.chips {
+        items.push(build_chip(chip));
+    }
+    row(items)
+        .spacing(CHIP_SPACING)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+fn build_chip(chip: FilterChip<'_>) -> Element<'_, crate::Message> {
+    let selected = chip.selected;
+    let label_text = text(chip.label).size(12).style(move |t: &iced::Theme| {
+        let p = palette(theme_from_iced(t));
+        iced::widget::text::Style {
+            color: Some(if selected { p.accent } else { p.text_muted }),
+        }
+    });
+
+    button(label_text)
+        .on_press(chip.on_press)
+        .padding(
+            Padding::default()
+                .left(CHIP_PAD_X)
+                .right(CHIP_PAD_X)
+                .top(CHIP_PAD_Y)
+                .bottom(CHIP_PAD_Y),
+        )
+        .style(move |t: &iced::Theme, status| {
+            let p = palette(theme_from_iced(t));
+            let hovered = matches!(
+                status,
+                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+            );
+            iced::widget::button::Style {
+                background: Some(Background::Color(if selected {
+                    Color {
+                        a: 0.15,
+                        ..p.accent
+                    }
+                } else if hovered {
+                    p.hover
+                } else {
+                    Color::TRANSPARENT
+                })),
+                border: Border {
+                    color: if selected { p.accent } else { p.border },
+                    width: 1.0,
+                    radius: CHIP_RADIUS.into(),
+                },
+                text_color: if selected {
+                    p.accent
+                } else if hovered {
+                    p.text_primary
+                } else {
+                    p.text_muted
+                },
+                ..iced::widget::button::Style::default()
             }
         })
         .into()
