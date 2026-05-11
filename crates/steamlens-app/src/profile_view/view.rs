@@ -10,9 +10,7 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::theme::{
-    C_ACCENT, C_ACCENT_DARK, C_APP, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY,
-};
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::widgets::skeleton::skeleton_box;
 
 use super::ProfileViewState;
@@ -157,39 +155,6 @@ fn build_profile_section<'a>(
 
 pub fn library_search_id() -> WidgetId {
     WidgetId::new("library-search")
-}
-
-pub(crate) fn build_rescan_button() -> Element<'static, crate::Message> {
-    button(
-        row![
-            text("\u{21BB}").size(12).color(C_APP),
-            text("Rescan").size(12).color(C_APP),
-        ]
-        .spacing(5)
-        .align_y(Alignment::Center),
-    )
-    .on_press(crate::Message::GlobalRescanRequested)
-    .padding(Padding::default().left(14).right(14).top(7).bottom(7))
-    .style(|_: &iced::Theme, status| {
-        let hovered = matches!(
-            status,
-            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-        );
-        iced::widget::button::Style {
-            background: Some(iced::Background::Color(if hovered {
-                C_ACCENT_DARK
-            } else {
-                C_ACCENT
-            })),
-            border: iced::Border {
-                radius: 6.0.into(),
-                ..iced::Border::default()
-            },
-            text_color: C_APP,
-            ..iced::widget::button::Style::default()
-        }
-    })
-    .into()
 }
 
 fn build_grid<'a>(

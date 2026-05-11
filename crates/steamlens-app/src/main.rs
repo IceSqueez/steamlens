@@ -93,7 +93,6 @@ enum Message {
     GlobalSearchChanged(String),
     GlobalSortChanged(profile_view::types::LibrarySort),
     GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
-    GlobalRescanRequested,
     GlobalToast(String),
     GameSortChanged(game_view::types::AchievementSort),
     PersistGameSummary(u32),
@@ -403,9 +402,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         }
                     });
                     Task::batch([extra, pin_task])
-                }
-                ProfileEvent::RequestRescan => {
-                    Task::batch([extra, splash_commands::probe_steam_reconnect()])
                 }
                 ProfileEvent::DrainedProgress {
                     cache_entries,
@@ -997,24 +993,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::GlobalCapsuleSizeChanged(size) => {
             route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
         }
-
-        Message::GlobalRescanRequested => match &mut app.screen {
-            Screen::ProfileView(state) => {
-                let (task, event) = profile_view::update(
-                    state,
-                    ProfileViewMessage::RescanRequested,
-                    &mut app.context,
-                );
-                let task = task.map(Message::ProfileView);
-                if matches!(event, ProfileEvent::RequestRescan) {
-                    Task::batch([task, splash_commands::probe_steam_reconnect()])
-                } else {
-                    task
-                }
-            }
-            Screen::GameView(_) => splash_commands::probe_steam_reconnect(),
-            _ => Task::none(),
-        },
 
         Message::GlobalToast(msg) => {
             app.context.messaging.push_toast(ToastKind::Info, msg, None);
