@@ -101,6 +101,21 @@ use types::{
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
 
+fn surface_connectivity_error(
+    ctx: &mut crate::app_context::AppContext,
+    err: crate::worker_subprocess::ConnectivityError,
+) {
+    use crate::worker_subprocess::ConnectivityError as CE;
+    let msg = match err {
+        CE::SteamNotRunning => "Steam is not running — cannot send command",
+        CE::NotLoggedIn => "User is not signed in to Steam — cannot send command",
+    };
+    if !ctx.messaging.banners.iter().any(|b| b.body == msg) {
+        ctx.messaging
+            .push_banner(crate::messaging::BannerSeverity::Warning, msg, None, true);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum GameViewMessage {
     AchievementToggled(String),
@@ -526,8 +541,24 @@ pub fn update(
             state.reveal_queue.clear();
             state.banner = None;
             if let Some(w) = worker {
-                w.send(SteamRequest::RequestUserStats);
-                w.send(SteamRequest::RequestGlobalPercentages);
+                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
+                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
+                if let Err(e) = w.send_checked(
+                    SteamRequest::RequestUserStats,
+                    steam_running,
+                    user_logged_in,
+                ) {
+                    surface_connectivity_error(ctx, e);
+                    return (Task::none(), GameViewEvent::None);
+                }
+                if let Err(e) = w.send_checked(
+                    SteamRequest::RequestGlobalPercentages,
+                    steam_running,
+                    user_logged_in,
+                ) {
+                    surface_connectivity_error(ctx, e);
+                    return (Task::none(), GameViewEvent::None);
+                }
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -538,12 +569,22 @@ pub fn update(
             let payload = build_apply_payload(&state.achievements, &state.stats);
             state.phase = GameViewPhase::Saving;
             if let Some(w) = worker {
-                w.send(SteamRequest::ApplyChanges {
-                    achievements_to_set: payload.achievements_to_set,
-                    achievements_to_clear: payload.achievements_to_clear,
-                    stats_int: payload.stats_int,
-                    stats_float: payload.stats_float,
-                });
+                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
+                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
+                if let Err(e) = w.send_checked(
+                    SteamRequest::ApplyChanges {
+                        achievements_to_set: payload.achievements_to_set,
+                        achievements_to_clear: payload.achievements_to_clear,
+                        stats_int: payload.stats_int,
+                        stats_float: payload.stats_float,
+                    },
+                    steam_running,
+                    user_logged_in,
+                ) {
+                    surface_connectivity_error(ctx, e);
+                    state.phase = GameViewPhase::Ready;
+                    return (Task::none(), GameViewEvent::None);
+                }
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -566,9 +607,19 @@ pub fn update(
             state.reset_confirm_input.clear();
             state.phase = GameViewPhase::Resetting;
             if let Some(w) = worker {
-                w.send(SteamRequest::ResetAll {
-                    scope: state.reset_scope,
-                });
+                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
+                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
+                if let Err(e) = w.send_checked(
+                    SteamRequest::ResetAll {
+                        scope: state.reset_scope,
+                    },
+                    steam_running,
+                    user_logged_in,
+                ) {
+                    surface_connectivity_error(ctx, e);
+                    state.phase = GameViewPhase::Ready;
+                    return (Task::none(), GameViewEvent::None);
+                }
             }
             (Task::none(), GameViewEvent::None)
         }

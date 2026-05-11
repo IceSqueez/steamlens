@@ -69,6 +69,18 @@ impl SteamWorker {
     pub fn send(&self, req: SteamRequest) {
         let _ = self.request_tx.send(req);
     }
+
+    /// Sync because the underlying mpsc send is sync; pre-flight runs before any pipe touch.
+    pub fn send_checked(
+        &self,
+        req: SteamRequest,
+        steam_running: bool,
+        user_logged_in: bool,
+    ) -> Result<(), crate::worker_subprocess::ConnectivityError> {
+        crate::worker_subprocess::preflight(steam_running, user_logged_in)?;
+        let _ = self.request_tx.send(req);
+        Ok(())
+    }
 }
 
 fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
@@ -561,6 +573,18 @@ fn spawn_error_message(e: WorkerSpawnError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn send_checked_blocks_when_steam_not_running() {
+        let (worker, _rx) = SteamWorker::spawn();
+        let err = worker
+            .send_checked(SteamRequest::RequestUserStats, false, true)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            crate::worker_subprocess::ConnectivityError::SteamNotRunning
+        ));
+    }
 
     fn make_apply(
         set: &[&str],
