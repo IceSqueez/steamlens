@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use iced::widget::{column, container, image as image_widget, row, text};
-use iced::{Alignment, Border, Element, Length};
+use iced::{Alignment, Border, Color, Element, Length, Shadow, Vector};
 
 use crate::capsule_cache::CapsuleSize;
 use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
@@ -207,6 +207,11 @@ fn build_capsule<'a>(
             border: Border {
                 radius: CAPSULE_RADIUS.into(),
                 ..Border::default()
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+                offset: Vector::new(0.0, 6.0),
+                blur_radius: 18.0,
             },
             ..container::Style::default()
         })
