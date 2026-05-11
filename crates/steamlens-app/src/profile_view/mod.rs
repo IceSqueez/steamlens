@@ -112,6 +112,7 @@ fn build_profile_genre_strip<'a>(
     state: &'a types::ProfileViewState,
     genres: Vec<String>,
 ) -> iced::Element<'a, crate::Message> {
+    use crate::ui::genre_color::genre_color;
     use crate::ui::widgets::pill::pill;
     use iced::widget::{Space, row, text};
     use iced::{Alignment, Length};
@@ -124,8 +125,9 @@ fn build_profile_genre_strip<'a>(
     let mut chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()
         .map(|g| {
-            let label = text(g.clone()).size(11).color(neutral);
-            pill(label, neutral)
+            let tint = genre_color(&g);
+            let label = text(g.clone()).size(11).color(tint);
+            pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
                 .selected(state.genre_filter.contains(&g))

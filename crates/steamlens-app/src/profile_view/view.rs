@@ -836,8 +836,10 @@ fn build_tags_row<'a>(
         Some(p.into())
     });
 
-    let genre_tag: Option<Element<'_, ProfileViewMessage>> =
-        genre.map(|g| pill(text(g).size(11).color(C_TEXT_MUTED), C_TEXT_MUTED).into());
+    let genre_tag: Option<Element<'_, ProfileViewMessage>> = genre.map(|g| {
+        let tint = crate::ui::genre_color::genre_color(g);
+        pill(text(g).size(11).color(tint), tint).into()
+    });
 
     let mut left_tags: iced::widget::Row<'_, ProfileViewMessage> =
         row![].spacing(6).align_y(Alignment::Center);
