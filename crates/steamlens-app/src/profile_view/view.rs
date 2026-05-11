@@ -762,13 +762,11 @@ fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileV
         _ => iced::widget::Space::new().width(Length::Shrink).into(),
     };
 
-    let inner = row![
-        name_text,
-        iced::widget::Space::new().width(Length::Fill),
-        counter
-    ]
-    .align_y(Alignment::Center)
-    .spacing(4);
+    let name_clipped = container(name_text).width(Length::Fill).clip(true);
+
+    let inner = row![name_clipped, counter]
+        .align_y(Alignment::Center)
+        .spacing(4);
 
     container(inner)
         .width(Length::Fixed(card_w))
