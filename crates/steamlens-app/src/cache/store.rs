@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use crate::cache::types::{CURRENT_SCHEMA_VERSION, GameCacheEntry};
+use crate::cache::types::{
+    CURRENT_SCHEMA_VERSION, GameAchievementsCache, GameCacheEntry, GameSummaryCache,
+    LAYER_SCHEMA_VERSION,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheIoError {
@@ -59,6 +62,65 @@ pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError
     let bytes =
         serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     let path = game_cache_path(entry.app_id);
+    atomic_write(&path, &bytes).await
+}
+
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
+pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
+    let path = crate::paths::game_summary_path(app_id);
+    let bytes = tokio::fs::read(&path).await.ok()?;
+    let entry: GameSummaryCache = serde_json::from_slice(&bytes)
+        .map_err(|e| {
+            crate::log!("cache: summary JSON parse error at {}: {e}", path.display());
+        })
+        .ok()?;
+    if entry.schema_version != LAYER_SCHEMA_VERSION {
+        crate::log!(
+            "cache: summary schema version {} != expected {}; treating as cache miss",
+            entry.schema_version,
+            LAYER_SCHEMA_VERSION
+        );
+        return None;
+    }
+    Some(entry)
+}
+
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
+pub async fn write_game_summary(entry: &GameSummaryCache) -> Result<(), CacheIoError> {
+    let bytes =
+        serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
+    let path = crate::paths::game_summary_path(entry.app_id);
+    atomic_write(&path, &bytes).await
+}
+
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
+pub async fn load_game_achievements(app_id: u32) -> Option<GameAchievementsCache> {
+    let path = crate::paths::game_achievements_path(app_id);
+    let bytes = tokio::fs::read(&path).await.ok()?;
+    let entry: GameAchievementsCache = serde_json::from_slice(&bytes)
+        .map_err(|e| {
+            crate::log!(
+                "cache: achievements JSON parse error at {}: {e}",
+                path.display()
+            );
+        })
+        .ok()?;
+    if entry.schema_version != LAYER_SCHEMA_VERSION {
+        crate::log!(
+            "cache: achievements schema version {} != expected {}; treating as cache miss",
+            entry.schema_version,
+            LAYER_SCHEMA_VERSION
+        );
+        return None;
+    }
+    Some(entry)
+}
+
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
+pub async fn write_game_achievements(entry: &GameAchievementsCache) -> Result<(), CacheIoError> {
+    let bytes =
+        serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
+    let path = crate::paths::game_achievements_path(entry.app_id);
     atomic_write(&path, &bytes).await
 }
 
@@ -261,5 +323,95 @@ mod tests {
 
         let result = load_game_cache_from_path(&path).await;
         assert!(result.is_none(), "corrupted JSON must return None");
+    }
+
+    #[tokio::test]
+    async fn game_summary_round_trip() {
+        let summary = GameSummaryCache {
+            schema_version: LAYER_SCHEMA_VERSION,
+            app_id: 105600,
+            name: "Terraria".to_owned(),
+            cached_change_number: 42,
+            cached_at: 1_746_360_000,
+            progress: CachedProgress {
+                earned: 18,
+                total: 88,
+            },
+            tier_breakdown: Vec::new(),
+            genre: Some("Action".to_owned()),
+        };
+
+        let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");
+        let restored: GameSummaryCache = serde_json::from_slice(&bytes).expect("deserialize");
+
+        assert_eq!(restored.app_id, summary.app_id);
+        assert_eq!(restored.cached_change_number, 42);
+        assert_eq!(restored.progress.earned, 18);
+        assert_eq!(restored.progress.total, 88);
+        assert_eq!(restored.genre.as_deref(), Some("Action"));
+        assert_eq!(restored.schema_version, LAYER_SCHEMA_VERSION);
+    }
+
+    #[tokio::test]
+    async fn game_achievements_round_trip() {
+        let achievements = GameAchievementsCache {
+            schema_version: LAYER_SCHEMA_VERSION,
+            app_id: 105600,
+            cached_at: 1_746_360_000,
+            achievements: vec![CachedAchievement {
+                api_name: "KILL_BOSS".to_owned(),
+                display_name: "Miner for Fire".to_owned(),
+                description: "Defeat the Wall of Flesh.".to_owned(),
+                hidden: false,
+                icon_path: None,
+                icon_locked_path: None,
+                earned: true,
+                earned_at: Some(1_700_000_000),
+                global_percent: Some(18.5),
+            }],
+            stats: vec![CachedStat {
+                api_name: "NumDeaths".to_owned(),
+                display_name: "Deaths".to_owned(),
+                value: CachedStatValue::Int(42),
+            }],
+        };
+
+        let bytes = serde_json::to_vec_pretty(&achievements).expect("serialize");
+        let restored: GameAchievementsCache = serde_json::from_slice(&bytes).expect("deserialize");
+
+        assert_eq!(restored.app_id, achievements.app_id);
+        assert_eq!(restored.achievements.len(), 1);
+        assert_eq!(restored.achievements[0].api_name, "KILL_BOSS");
+        assert!(restored.achievements[0].earned);
+        assert_eq!(restored.stats[0].value, CachedStatValue::Int(42));
+        assert_eq!(restored.schema_version, LAYER_SCHEMA_VERSION);
+    }
+
+    #[tokio::test]
+    async fn write_and_load_game_summary_round_trip() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("summary.json");
+
+        let summary = GameSummaryCache {
+            schema_version: LAYER_SCHEMA_VERSION,
+            app_id: 200,
+            name: "Half-Life 2".to_owned(),
+            cached_change_number: 7,
+            cached_at: 1_746_000_000,
+            progress: CachedProgress {
+                earned: 10,
+                total: 33,
+            },
+            tier_breakdown: Vec::new(),
+            genre: None,
+        };
+
+        let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");
+        atomic_write(&path, &bytes).await.expect("write");
+
+        let read_back = std::fs::read(&path).expect("read");
+        let restored: GameSummaryCache = serde_json::from_slice(&read_back).expect("deserialize");
+        assert_eq!(restored.cached_change_number, 7);
+        assert_eq!(restored.progress.total, 33);
     }
 }

@@ -40,10 +40,7 @@ pub fn no_achievements_path() -> PathBuf {
     cache_dir().join("no_achievements.json")
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumers land in subsequent migration chunks")
-)]
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 pub fn game_summary_path(app_id: u32) -> PathBuf {
     cache_dir()
         .join("games")
@@ -51,10 +48,7 @@ pub fn game_summary_path(app_id: u32) -> PathBuf {
         .join("summary.json")
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumers land in subsequent migration chunks")
-)]
+#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 pub fn game_achievements_path(app_id: u32) -> PathBuf {
     cache_dir()
         .join("games")
