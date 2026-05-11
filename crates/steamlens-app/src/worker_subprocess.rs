@@ -34,7 +34,6 @@ pub enum WorkerSpawnError {
     StderrUnavailable,
 }
 
-#[allow(dead_code, reason = "callsites migrate in next chunk")]
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectivityError {
     #[error("steam is not running")]
@@ -43,7 +42,6 @@ pub enum ConnectivityError {
     NotLoggedIn,
 }
 
-#[allow(dead_code, reason = "callsites migrate in next chunk")]
 #[derive(Debug, thiserror::Error)]
 pub enum SendCheckedError {
     #[error(transparent)]
@@ -52,7 +50,10 @@ pub enum SendCheckedError {
     Protocol(#[from] WorkerProtocolError),
 }
 
-fn preflight(steam_running: bool, user_logged_in: bool) -> Result<(), ConnectivityError> {
+pub(crate) fn preflight(
+    steam_running: bool,
+    user_logged_in: bool,
+) -> Result<(), ConnectivityError> {
     if !steam_running {
         return Err(ConnectivityError::SteamNotRunning);
     }
