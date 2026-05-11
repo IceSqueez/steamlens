@@ -215,14 +215,18 @@ fn build_left_column<'a>(
     let avatar = build_avatar(avatar_handle, skeleton_phase);
     let info = build_profile_info(user_profile, games_count, steam_level);
 
-    let header_section = row![
-        avatar,
-        column![info, breakdown_row::<ProfileViewMessage>(summary)]
-            .spacing(10)
-            .width(Length::Fill),
+    let info_column = column![
+        info,
+        iced::widget::Space::new().height(Length::Fill),
+        breakdown_row::<ProfileViewMessage>(summary),
     ]
-    .spacing(14)
-    .align_y(Alignment::Start);
+    .spacing(4)
+    .width(Length::Fill)
+    .height(Length::Fixed(AVATAR_SIZE));
+
+    let header_section = row![avatar, info_column]
+        .spacing(14)
+        .align_y(Alignment::Start);
 
     let bar: Element<'a, ProfileViewMessage> = rarity_bar::<ProfileViewMessage>(*summary)
         .hovered(hovered_bar_slice)
@@ -234,11 +238,13 @@ fn build_left_column<'a>(
 
     column![
         header_section,
+        iced::widget::Space::new().height(Length::Fill),
         bar,
         rarity_cards::<ProfileViewMessage>(summary),
         cards_separator::<ProfileViewMessage>(summary),
     ]
     .spacing(10)
+    .height(Length::Fill)
     .into()
 }
 

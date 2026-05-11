@@ -29,7 +29,7 @@ const RARITY_CARD_HEIGHT: f32 = 64.0;
 const RARITY_CARD_SHORT_THRESHOLD: f32 = 95.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
-const WIDGET_ROW_HEIGHT: f32 = 320.0;
+const WIDGET_ROW_HEIGHT: f32 = 325.0;
 
 fn short_rarity_label_str(label: &str) -> &'static str {
     match label {
