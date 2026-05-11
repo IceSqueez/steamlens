@@ -1,13 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
-use tokio::io::AsyncReadExt;
-use tokio::process::{Child, ChildStdout, Command};
-
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
-use crate::ipc_pipe;
 use crate::timeouts;
 
 const MAX_CONCURRENT: usize = 1;
@@ -127,40 +123,28 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
-    let (mut child, _job_guard) = spawn_worker_child(app_id).await.map_err(|e| {
-        (
-            Box::new(e) as Box<dyn std::error::Error + Send>,
-            String::new(),
-        )
-    })?;
-
-    let stderr_pipe = child.stderr.take();
-    let stderr_task = tokio::spawn(async move {
-        let Some(mut stderr) = stderr_pipe else {
-            return Vec::new();
-        };
-        let mut buf = Vec::new();
-        let _ = stderr.read_to_end(&mut buf).await;
-        buf
-    });
+    use crate::worker_subprocess::{WorkerHandle, WorkerMode};
 
     let total_timeout =
         timeouts::STEAM_CONNECT + timeouts::COLD_SCAN_LOAD + timeouts::GLOBAL_PERCENTAGES;
-    let result = tokio::time::timeout(total_timeout, run_full_scan_protocol(&mut child)).await;
 
-    let _ = child.start_kill();
-    let exit_status = tokio::time::timeout(timeouts::CHILD_KILL, child.wait())
+    let mut handle = WorkerHandle::spawn(app_id, WorkerMode::OneShot)
         .await
-        .ok()
-        .and_then(|r| r.ok());
+        .map_err(|e| {
+            (
+                Box::new(e) as Box<dyn std::error::Error + Send>,
+                String::new(),
+            )
+        })?;
 
-    let stderr_bytes = tokio::time::timeout(timeouts::STDERR_DRAIN, stderr_task)
-        .await
-        .ok()
-        .and_then(|res| res.ok())
+    let result = tokio::time::timeout(total_timeout, run_full_scan_protocol(&mut handle)).await;
+
+    let (exit_status, stderr_bytes) = handle.finish().await;
+    let stderr_str = stderr_bytes
+        .as_deref()
+        .map(String::from_utf8_lossy)
+        .map(|s| s.into_owned())
         .unwrap_or_default();
-    let stderr_str = String::from_utf8_lossy(&stderr_bytes).into_owned();
-
     let mut diag = format!("worker {}\n", format_exit_status(exit_status.as_ref()));
     if !stderr_str.is_empty() {
         diag.push_str(&stderr_str);
@@ -222,26 +206,14 @@ fn signal_name(sig: i32) -> &'static str {
 }
 
 async fn run_full_scan_protocol(
-    child: &mut Child,
+    handle: &mut crate::worker_subprocess::WorkerHandle,
 ) -> Result<ScannedGameData, crate::worker_subprocess::WorkerProtocolError> {
     use crate::worker_subprocess::WorkerProtocolError;
 
-    let mut stdin = child
-        .stdin
-        .take()
+    let connected = tokio::time::timeout(timeouts::STEAM_CONNECT, handle.recv())
+        .await
+        .map_err(|_| WorkerProtocolError::Timeout)??
         .ok_or(WorkerProtocolError::UnexpectedEof)?;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or(WorkerProtocolError::UnexpectedEof)?;
-
-    let connected = tokio::time::timeout(
-        timeouts::STEAM_CONNECT,
-        ipc_pipe::read_response(&mut stdout),
-    )
-    .await
-    .map_err(|_| WorkerProtocolError::Timeout)?
-    .ok_or(WorkerProtocolError::UnexpectedEof)?;
 
     let app_name = match connected {
         WorkerResponse::SteamConnected { app_name, .. } => app_name,
@@ -253,22 +225,20 @@ async fn run_full_scan_protocol(
         }
     };
 
-    ipc_pipe::write_command(&mut stdin, &WorkerCommand::LoadAchievementsAndStatsCardOnly)
-        .await
-        .map_err(WorkerProtocolError::Write)?;
+    handle
+        .send(&WorkerCommand::LoadAchievementsAndStatsCardOnly)
+        .await?;
     let (achievements, stats, genre) =
-        read_card_only_skipping_async(&mut stdout, timeouts::COLD_SCAN_LOAD).await?;
+        read_card_only_skipping_async(handle, timeouts::COLD_SCAN_LOAD).await?;
 
     let global_percentages = if achievements.is_empty() {
         HashMap::new()
     } else {
-        ipc_pipe::write_command(&mut stdin, &WorkerCommand::RequestGlobalPercentages)
-            .await
-            .map_err(WorkerProtocolError::Write)?;
-        read_percentages_skipping_async(&mut stdout, timeouts::GLOBAL_PERCENTAGES).await
+        handle
+            .send(&WorkerCommand::RequestGlobalPercentages)
+            .await?;
+        read_percentages_skipping_async(handle, timeouts::GLOBAL_PERCENTAGES).await
     };
-
-    let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
 
     Ok(ScannedGameData {
         app_name,
@@ -280,7 +250,7 @@ async fn run_full_scan_protocol(
 }
 
 async fn read_card_only_skipping_async(
-    stdout: &mut ChildStdout,
+    handle: &mut crate::worker_subprocess::WorkerHandle,
     total_timeout: Duration,
 ) -> Result<
     (Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>),
@@ -294,9 +264,9 @@ async fn read_card_only_skipping_async(
         if remaining.is_zero() {
             return Err(WorkerProtocolError::Timeout);
         }
-        let frame = tokio::time::timeout(remaining, ipc_pipe::read_response(stdout))
+        let frame = tokio::time::timeout(remaining, handle.recv())
             .await
-            .map_err(|_| WorkerProtocolError::Timeout)?
+            .map_err(|_| WorkerProtocolError::Timeout)??
             .ok_or(WorkerProtocolError::UnexpectedEof)?;
         match frame {
             WorkerResponse::CardOnlyAchievements {
@@ -332,7 +302,7 @@ async fn read_card_only_skipping_async(
 }
 
 async fn read_percentages_skipping_async(
-    stdout: &mut ChildStdout,
+    handle: &mut crate::worker_subprocess::WorkerHandle,
     total_timeout: Duration,
 ) -> HashMap<String, f32> {
     let deadline = tokio::time::Instant::now() + total_timeout;
@@ -341,8 +311,8 @@ async fn read_percentages_skipping_async(
         if remaining.is_zero() {
             return HashMap::new();
         }
-        let frame = match tokio::time::timeout(remaining, ipc_pipe::read_response(stdout)).await {
-            Ok(Some(f)) => f,
+        let frame = match tokio::time::timeout(remaining, handle.recv()).await {
+            Ok(Ok(Some(f))) => f,
             _ => return HashMap::new(),
         };
         match frame {
@@ -365,29 +335,6 @@ async fn read_percentages_skipping_async(
             _ => continue,
         }
     }
-}
-
-async fn spawn_worker_child(
-    app_id: u32,
-) -> Result<(Child, steamlens_core::ChildLifetimeGuard), std::io::Error> {
-    let exe = std::env::current_exe()?;
-    let mut child = Command::new(&exe)
-        .arg("--worker")
-        .arg(app_id.to_string())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
-
-    let pid = child
-        .id()
-        .ok_or_else(|| std::io::Error::other("spawned worker has no pid"))?;
-    let job_guard = steamlens_core::associate_kill_on_parent_exit(pid).inspect_err(|_| {
-        let _ = child.start_kill();
-    })?;
-
-    Ok((child, job_guard))
 }
 
 #[cfg(test)]
