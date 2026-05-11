@@ -11,8 +11,8 @@ use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 use crate::ui::widgets::widget::{
-    WidgetSummary, breakdown_label, cards_separator, closest_row, format_thousands, rarity_bar,
-    rarity_cards, widget_panel,
+    WidgetSummary, breakdown_row, cards_separator, closest_row, rarity_bar, rarity_cards,
+    widget_panel,
 };
 
 use super::types::{GameEntry, ProfileViewMessage, StoredCapsule, TopEntry};
@@ -212,14 +212,18 @@ fn build_left_column<'a>(
     hovered_bar_slice: Option<RarityTier>,
     steam_level: Option<u32>,
 ) -> Element<'a, ProfileViewMessage> {
-    let header_row = build_profile_header(
-        user_profile,
-        avatar_handle,
-        summary,
-        games_count,
-        skeleton_phase,
-        steam_level,
-    );
+    let avatar = build_avatar(avatar_handle, skeleton_phase);
+    let info = build_profile_info(user_profile, games_count, steam_level);
+
+    let header_section = row![
+        avatar,
+        column![info, breakdown_row::<ProfileViewMessage>(summary)]
+            .spacing(10)
+            .width(Length::Fill),
+    ]
+    .spacing(14)
+    .align_y(Alignment::Start);
+
     let bar: Element<'a, ProfileViewMessage> = rarity_bar::<ProfileViewMessage>(*summary)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
@@ -229,8 +233,7 @@ fn build_left_column<'a>(
         .into();
 
     column![
-        header_row,
-        breakdown_label::<ProfileViewMessage>(),
+        header_section,
         bar,
         rarity_cards::<ProfileViewMessage>(summary),
         cards_separator::<ProfileViewMessage>(summary),
@@ -239,19 +242,14 @@ fn build_left_column<'a>(
     .into()
 }
 
-fn build_profile_header<'a>(
+fn build_profile_info<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
-    avatar_handle: Option<&'a iced::widget::image::Handle>,
-    summary: &WidgetSummary,
     games_count: usize,
-    skeleton_phase: f32,
     steam_level: Option<u32>,
 ) -> Element<'a, ProfileViewMessage> {
     let persona = user_profile
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
-
-    let avatar = build_avatar(avatar_handle, skeleton_phase);
 
     let nickname = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
 
@@ -269,50 +267,7 @@ fn build_profile_header<'a>(
         .size(12)
         .color(C_TEXT_MUTED);
 
-    let info = column![nickname_row, tracked_games].spacing(2);
-
-    let earned = summary.earned_total;
-    let total = summary.achievement_total;
-    let pct = if total > 0 {
-        earned as f64 / total as f64 * 100.0
-    } else {
-        0.0
-    };
-
-    let earned_text = text(format_thousands(earned))
-        .size(16)
-        .color(C_TEXT_PRIMARY);
-    let total_text = text(format!("/ {}", format_thousands(total)))
-        .size(16)
-        .color(C_TEXT_DIM);
-    let pct_text = text(format!("{pct:.1}% unlocked")).size(12).color(C_ACCENT);
-
-    let counter_row = row![earned_text, total_text]
-        .spacing(6)
-        .align_y(Alignment::Center);
-
-    let earnings = column![counter_row, pct_text]
-        .spacing(4)
-        .align_x(Alignment::End);
-
-    let info_block = container(info)
-        .height(Length::Fill)
-        .align_y(Alignment::Start);
-
-    let earnings_block = container(earnings)
-        .height(Length::Fill)
-        .align_y(Alignment::End);
-
-    row![
-        avatar,
-        info_block,
-        iced::widget::Space::new().width(Length::Fill),
-        earnings_block,
-    ]
-    .spacing(14)
-    .width(Length::Fill)
-    .height(Length::Fixed(AVATAR_SIZE))
-    .into()
+    column![nickname_row, tracked_games].spacing(2).into()
 }
 
 fn build_avatar<'a>(

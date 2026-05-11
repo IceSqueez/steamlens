@@ -140,6 +140,44 @@ pub fn breakdown_label<'a, M: 'a>() -> Element<'a, M> {
         .into()
 }
 
+pub fn earnings_row<'a, M: 'a>(summary: &WidgetSummary) -> Element<'a, M> {
+    let earned = summary.earned_total;
+    let total = summary.achievement_total;
+    let pct = if total > 0 {
+        earned as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    let earned_text = text(format_thousands(earned))
+        .size(20)
+        .color(C_TEXT_PRIMARY);
+    let total_text = text(format!("/ {}", format_thousands(total)))
+        .size(20)
+        .color(C_TEXT_DIM);
+    let pct_text = text(format!("{pct:.1}% unlocked")).size(12).color(C_ACCENT);
+
+    let counter_row = row![earned_text, total_text]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+    column![counter_row, pct_text]
+        .spacing(2)
+        .align_x(Alignment::End)
+        .into()
+}
+
+pub fn breakdown_row<'a, M: 'a>(summary: &WidgetSummary) -> Element<'a, M> {
+    row![
+        breakdown_label::<M>(),
+        iced::widget::Space::new().width(Length::Fill),
+        earnings_row::<M>(summary),
+    ]
+    .align_y(Alignment::End)
+    .width(Length::Fill)
+    .into()
+}
+
 pub fn count_card<'a, M: 'a + Clone>(
     accent: Color,
     label: &'static str,
