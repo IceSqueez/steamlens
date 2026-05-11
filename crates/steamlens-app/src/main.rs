@@ -427,7 +427,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 hits,
                 dirty,
                 schema_bumped,
-                invalidation_count: _,
+                invalidation_count,
             } = result;
 
             let hit_count = hits.len();
@@ -452,11 +452,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 };
             }
 
-            if schema_bumped > 0 {
+            if invalidation_count > 0 {
                 app.context.messaging.push_toast(
-                    ToastKind::Success,
-                    format!("Cache rebuilt: {} entries updated", schema_bumped),
+                    ToastKind::Info,
+                    format!("{invalidation_count} games refreshing (cache invalidated)"),
                     None,
+                );
+            }
+
+            if schema_bumped > 0 {
+                app.context.messaging.push_banner(
+                    BannerSeverity::Info,
+                    "Cache updated — your library is refreshing in the background.",
+                    None,
+                    true,
                 );
             }
             Task::none()

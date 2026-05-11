@@ -46,7 +46,6 @@ pub(crate) async fn classify_games_with_root(
             };
             crate::log!("invalidate app_id={app_id} reason={reason:?}");
             result.dirty.push(app_id);
-            result.invalidation_count += 1;
             continue;
         };
 
@@ -168,7 +167,10 @@ mod tests {
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![1]);
         assert_eq!(result.schema_bumped, 0);
-        assert_eq!(result.invalidation_count, 1);
+        assert_eq!(
+            result.invalidation_count, 0,
+            "no_cache is not user-visible invalidation"
+        );
     }
 
     #[tokio::test]
@@ -235,7 +237,10 @@ mod tests {
         assert!(result.hits.is_empty());
         assert_eq!(result.dirty, vec![6]);
         assert_eq!(result.schema_bumped, 1);
-        assert_eq!(result.invalidation_count, 1);
+        assert_eq!(
+            result.invalidation_count, 0,
+            "schema bump is surfaced via banner, not invalidation_count"
+        );
     }
 
     #[tokio::test]
@@ -256,7 +261,10 @@ mod tests {
             result.schema_bumped, 1,
             "schema_version=0 must increment schema_bumped like any other mismatch"
         );
-        assert_eq!(result.invalidation_count, 1);
+        assert_eq!(
+            result.invalidation_count, 0,
+            "schema bump is surfaced via banner, not invalidation_count"
+        );
     }
 
     #[tokio::test]
