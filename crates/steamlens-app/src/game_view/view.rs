@@ -1092,17 +1092,17 @@ fn achievement_card_widget<'a>(
             .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     } else {
-        let mut right_group: iced::widget::Row<'_, GameViewMessage> =
+        let mut bottom: iced::widget::Row<'_, GameViewMessage> =
             row![].spacing(6).align_y(Alignment::Center);
         if let Some(rb) = rarity_badge {
-            right_group = right_group.push(rb);
+            bottom = bottom.push(rb);
         }
-        right_group = right_group.push(badge);
+        bottom = bottom.push(space().width(Length::Fill));
+        bottom = bottom.push(badge);
 
-        container(right_group)
+        container(bottom)
             .width(Length::Fill)
-            .align_x(Alignment::End)
-            .padding(Padding::default().right(8).bottom(8))
+            .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     };
 
