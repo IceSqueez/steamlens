@@ -107,7 +107,6 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
 
     let mut pv_state = ProfileViewState::new();
     pv_state.sort = loaded_settings.library.sort;
-    pv_state.search = loaded_settings.library.search.clone();
 
     let (worker, rx) = SteamWorker::spawn();
 
@@ -254,7 +253,6 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         .copied()
         .collect();
     state.include_hidden = app.context.settings.manager.include_hidden;
-    state.search_query = app.context.settings.manager.search.clone();
 
     if let Some(cached) = app.context.cached_entries.get(&app_id) {
         seed_game_view_from_cache(&mut state, cached);
