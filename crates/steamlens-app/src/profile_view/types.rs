@@ -145,7 +145,6 @@ pub enum ProfileViewMessage {
         size: CapsuleSize,
     },
     GameSelected(u32),
-    RescanRequested,
     RetrySingleFailedScan(u32),
     StatusFilterChanged(GameStatusFilter),
     GenreFilterToggled(String),
@@ -177,7 +176,6 @@ pub enum ProfileEvent {
     None,
     OpenGame(u32),
     ToggleGamePin(u32),
-    RequestRescan,
     DrainedProgress {
         cache_entries: Vec<crate::cache::GameCacheEntry>,
         summary_entries: Vec<crate::cache::types::GameSummaryCache>,
@@ -208,7 +206,6 @@ impl std::fmt::Debug for ProfileViewMessage {
                 write!(f, "CapsuleFailed(app={app_id}, {size})")
             }
             ProfileViewMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
-            ProfileViewMessage::RescanRequested => write!(f, "RescanRequested"),
             ProfileViewMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
             ProfileViewMessage::ProgressFetched {
                 app_id,

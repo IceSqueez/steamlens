@@ -65,7 +65,7 @@ pub fn header_content<'a>(
                 items: size_items,
             },
         ],
-        screen_actions: vec![view::build_rescan_button()],
+        screen_actions: vec![],
         leading: None,
         status_filter: Some(build_profile_status_strip(state)),
         category_filter,
@@ -315,17 +315,6 @@ pub fn update(
                 return (Task::none(), ProfileEvent::None);
             }
             (Task::none(), ProfileEvent::OpenGame(app_id))
-        }
-
-        ProfileViewMessage::RescanRequested => {
-            state.phase = ProfileViewPhase::Scanning;
-            state.games.clear();
-            state.capsule_handles.clear();
-            state.progress_scanner = None;
-            state.progress_rx = None;
-            state.loader_pulse_phase = 0.0;
-            state.loader_hiding_since = None;
-            (Task::none(), ProfileEvent::RequestRescan)
         }
 
         ProfileViewMessage::SpinnerTick(_) => {
