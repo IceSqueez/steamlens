@@ -22,8 +22,9 @@ pub const C_RARITY_RARE: Color = Color::from_rgb(0.741, 0.576, 0.976);
 pub const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
 pub const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
-const RARITY_CARD_WIDTH: f32 = 95.0;
+const RARITY_CARD_MAX_WIDTH: f32 = 124.0;
 const RARITY_CARD_GAP: f32 = 16.0;
+const RARITY_CARDS_MAX_WIDTH: f32 = RARITY_CARD_MAX_WIDTH * 5.0 + RARITY_CARD_GAP * 4.0;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
 const WIDGET_ROW_HEIGHT: f32 = 320.0;
@@ -205,7 +206,7 @@ pub fn count_card<'a, M: 'a + Clone>(
     let card_inner = row![stripe, info_col];
 
     container(card_inner)
-        .width(Length::Fixed(RARITY_CARD_WIDTH))
+        .width(Length::Fill)
         .style(move |_: &iced::Theme| container::Style {
             background: Some(Background::Color(Color { a: 0.08, ..accent })),
             border: Border {
@@ -241,7 +242,11 @@ pub fn rarity_cards<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a, M
             pct,
         ));
     }
-    cards.into()
+
+    container(cards.width(Length::Fill))
+        .width(Length::Fill)
+        .max_width(RARITY_CARDS_MAX_WIDTH)
+        .into()
 }
 
 pub fn cards_separator<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a, M> {
