@@ -352,11 +352,15 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         } => {
             let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> =
                 HashMap::new();
+            let mut existing_rarity_pct: HashMap<String, f32> = HashMap::new();
             let mut prev_revealed: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
             for row in state.achievements.drain(..) {
                 if row.revealed {
                     prev_revealed.insert(row.data.id.clone());
+                }
+                if let Some(pct) = row.rarity_percent {
+                    existing_rarity_pct.insert(row.data.id.clone(), pct);
                 }
                 if let Some(icon) = row.data.icon {
                     existing_icons.insert(row.data.id, icon);
@@ -377,11 +381,10 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                     if prev_revealed.contains(&row.data.id) {
                         row.revealed = true;
                     }
-                    if let Some(map) = &pending_pct
-                        && let Some(&pct) = map.get(&row.data.id)
-                    {
-                        row.rarity_percent = Some(pct);
-                    }
+                    row.rarity_percent = pending_pct
+                        .as_ref()
+                        .and_then(|m| m.get(&row.data.id).copied())
+                        .or_else(|| existing_rarity_pct.get(&row.data.id).copied());
                     row
                 })
                 .collect();
