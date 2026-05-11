@@ -4,20 +4,12 @@ use steamlens_core::ipc::WorkerErrorKind;
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::task::JoinHandle;
 
-/// Lifecycle mode for a spawned worker child.
 #[derive(Debug, Clone, Copy)]
 pub enum WorkerMode {
-    /// Long-lived bidirectional session. `finish()` sends a graceful Shutdown command,
-    /// waits up to `CHILD_DRAIN` for the child to exit, then kills if still alive.
-    /// Stderr is forwarded to the log but not captured; `finish()` returns `None` for bytes.
     Interactive,
-
-    /// Short-lived single-operation scan, kill-on-timeout.
-    /// Drainer task forwards each stderr line AND captures into a buffer returned by `finish()`.
     OneShot,
 }
 
-/// Error variants covering all failure modes during worker spawn.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkerSpawnError {
     #[error("could not resolve current executable: {0}")]
@@ -38,13 +30,10 @@ pub enum WorkerSpawnError {
     #[error("child stdout pipe unavailable after spawn")]
     StdoutUnavailable,
 
-    /// Not in RFC-006 §Public API Surface; added because stderr is always piped
-    /// and a missing pipe is the same class of failure as missing stdin/stdout.
     #[error("child stderr pipe unavailable after spawn")]
     StderrUnavailable,
 }
 
-/// Typed error for in-session protocol failures across both interactive and one-shot scan paths.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkerProtocolError {
     #[error("worker error: {kind:?}: {message}")]
@@ -69,11 +58,7 @@ pub enum WorkerProtocolError {
     Write(std::io::Error),
 }
 
-/// Unified handle to a spawned `--worker <app_id>` child process.
-///
-/// Call `finish` exactly once when done with the handle. `finish` is mode-aware:
-/// it either drains stderr (OneShot) or sends a graceful Shutdown command (Interactive)
-/// before returning the exit status and any captured stderr bytes.
+/// Call `finish` exactly once to release the child; `Drop` alone will kill abruptly.
 pub struct WorkerHandle {
     child: Child,
     stdin: ChildStdin,
@@ -84,7 +69,6 @@ pub struct WorkerHandle {
 }
 
 impl WorkerHandle {
-    /// Spawn a `--worker <app_id>` child in the given mode.
     pub async fn spawn(app_id: u32, mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
         let exe = std::env::current_exe().map_err(WorkerSpawnError::ExeNotFound)?;
         let mut child = tokio::process::Command::new(exe)
@@ -142,7 +126,6 @@ impl WorkerHandle {
         })
     }
 
-    /// Send a command frame to the worker's stdin.
     pub async fn send(
         &mut self,
         cmd: &steamlens_core::ipc::WorkerCommand,
@@ -152,26 +135,14 @@ impl WorkerHandle {
             .map_err(WorkerProtocolError::Write)
     }
 
-    /// Read one response frame from the worker's stdout.
-    ///
-    /// Returns `None` on EOF or decode failure; callers that treat EOF as an error
-    /// should map `None` to `WorkerProtocolError::UnexpectedEof`.
     pub async fn recv(
         &mut self,
     ) -> Result<Option<steamlens_core::ipc::WorkerResponse>, WorkerProtocolError> {
         Ok(crate::ipc_pipe::read_response(&mut self.stdout).await)
     }
 
-    /// Terminates the child process and returns its exit status and any captured stderr bytes.
-    ///
-    /// **Interactive mode:** sends a graceful `Shutdown` command, waits up to `CHILD_DRAIN`
-    /// for the child to exit cleanly, then kills if it hasn't. Returns `(status, None)` —
-    /// stderr bytes are not captured in Interactive mode.
-    ///
-    /// **OneShot mode:** kills immediately, drains the stderr capture buffer within
-    /// `STDERR_DRAIN`. Returns `(status, Some(stderr_bytes))`.
-    ///
-    /// Exit status is `None` only if the kill timeout elapsed before the child exited.
+    /// Interactive: graceful Shutdown command, then kill on `CHILD_DRAIN` timeout. Returns `(status, None)`.
+    /// OneShot: immediate kill, drains stderr capture buffer. Returns `(status, Some(bytes))`.
     pub async fn finish(mut self) -> (Option<ExitStatus>, Option<Vec<u8>>) {
         match self.mode {
             WorkerMode::Interactive => {
@@ -222,14 +193,6 @@ async fn abort_task(task: Option<JoinHandle<Vec<u8>>>) {
 
 #[cfg(test)]
 mod tests {
-    // TODO(RFC-006 M3): a duplex-stream integration test for WorkerHandle send/recv/finish
-    // is deferred. tokio::process::Child is not constructable without a real subprocess,
-    // and ChildStdin/ChildStdout have no public constructors. Testing the protocol layer
-    // directly via ipc_pipe::write_command / ipc_pipe::read_response on a DuplexStream
-    // is already covered in steam_worker::tests (lines 766–828). Unblocking WorkerHandle
-    // itself would require mockall-style scaffolding or a trait abstraction over the I/O
-    // handles — deferred to the backlog.
-
     use super::*;
 
     #[test]

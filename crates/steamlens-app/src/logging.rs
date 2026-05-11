@@ -3,9 +3,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// Opens `steamlens.log` at the given path with truncation on every call,
-/// installs a panic hook that routes panic info through the tracing subscriber,
-/// and sets the process-global default subscriber. Call once at the top of `main()`.
+/// Truncates `steamlens.log` on every call; installs a panic hook; sets the global subscriber.
 pub fn init() -> io::Result<()> {
     init_with_path(&crate::paths::log_path())
 }
