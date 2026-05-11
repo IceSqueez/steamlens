@@ -187,7 +187,23 @@ async fn worker_main(app_id: u32) -> i32 {
 }
 
 async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
-    let mut stdin = tokio::io::stdin();
+    let (cmd_tx, mut cmd_rx) =
+        tokio::sync::mpsc::channel::<Result<Option<WorkerCommand>, WorkerError>>(1);
+
+    tokio::spawn(async move {
+        let mut stdin = tokio::io::stdin();
+        loop {
+            let result = read_command(&mut stdin).await;
+            let stop = matches!(result, Err(_) | Ok(None));
+            if cmd_tx.send(result).await.is_err() {
+                break;
+            }
+            if stop {
+                break;
+            }
+        }
+    });
+
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -197,7 +213,14 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
         tokio::select! {
             biased;
 
-            cmd = read_command(&mut stdin) => {
+            cmd = cmd_rx.recv() => {
+                let cmd = match cmd {
+                    Some(c) => c,
+                    None => {
+                        crate::log!("worker app_id={app_id}: stdin reader task ended");
+                        return 1;
+                    }
+                };
                 match cmd {
                     Err(e) => {
                         crate::log!("worker app_id={app_id}: read_command err: {e}");
