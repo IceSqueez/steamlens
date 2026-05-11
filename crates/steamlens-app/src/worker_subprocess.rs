@@ -7,6 +7,11 @@ use tokio::task::JoinHandle;
 /// Lifecycle mode for a spawned worker child.
 #[derive(Debug, Clone, Copy)]
 pub enum WorkerMode {
+    /// Long-lived bidirectional session. `finish()` sends a graceful Shutdown command,
+    /// waits up to `CHILD_DRAIN` for the child to exit, then kills if still alive.
+    /// Stderr is forwarded to the log but not captured; `finish()` returns `None` for bytes.
+    Interactive,
+
     /// Short-lived single-operation scan, kill-on-timeout.
     /// Drainer task forwards each stderr line AND captures into a buffer returned by `finish()`.
     OneShot,
@@ -75,11 +80,12 @@ pub struct WorkerHandle {
     stdout: ChildStdout,
     stderr_task: Option<JoinHandle<Vec<u8>>>,
     _guard: steamlens_core::ChildLifetimeGuard,
+    mode: WorkerMode,
 }
 
 impl WorkerHandle {
     /// Spawn a `--worker <app_id>` child in the given mode.
-    pub async fn spawn(app_id: u32, _mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
+    pub async fn spawn(app_id: u32, mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
         let exe = std::env::current_exe().map_err(WorkerSpawnError::ExeNotFound)?;
         let mut child = tokio::process::Command::new(exe)
             .arg("--worker")
@@ -111,14 +117,17 @@ impl WorkerHandle {
             .take()
             .ok_or(WorkerSpawnError::StderrUnavailable)?;
 
+        let capture = matches!(mode, WorkerMode::OneShot);
         let stderr_task = tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut buf = Vec::new();
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 crate::log!("worker[app_id={app_id}] stderr: {line}");
-                buf.extend_from_slice(line.as_bytes());
-                buf.push(b'\n');
+                if capture {
+                    buf.extend_from_slice(line.as_bytes());
+                    buf.push(b'\n');
+                }
             }
             buf
         });
@@ -129,6 +138,7 @@ impl WorkerHandle {
             stdout,
             stderr_task: Some(stderr_task),
             _guard: guard,
+            mode,
         })
     }
 
@@ -152,29 +162,74 @@ impl WorkerHandle {
         Ok(crate::ipc_pipe::read_response(&mut self.stdout).await)
     }
 
-    /// Kills the child immediately and drains the stderr capture buffer within `STDERR_DRAIN`.
+    /// Terminates the child process and returns its exit status and any captured stderr bytes.
     ///
-    /// Returns `(Some(exit_status), Some(stderr_bytes))`. Exit status is `None` only if the
-    /// `CHILD_KILL` timeout elapsed before the child exited.
+    /// **Interactive mode:** sends a graceful `Shutdown` command, waits up to `CHILD_DRAIN`
+    /// for the child to exit cleanly, then kills if it hasn't. Returns `(status, None)` —
+    /// stderr bytes are not captured in Interactive mode.
+    ///
+    /// **OneShot mode:** kills immediately, drains the stderr capture buffer within
+    /// `STDERR_DRAIN`. Returns `(status, Some(stderr_bytes))`.
+    ///
+    /// Exit status is `None` only if the kill timeout elapsed before the child exited.
     pub async fn finish(mut self) -> (Option<ExitStatus>, Option<Vec<u8>>) {
-        let _ = self.child.start_kill();
-        let status = tokio::time::timeout(crate::timeouts::CHILD_KILL, self.child.wait())
-            .await
-            .ok()
-            .and_then(|r| r.ok());
-        let bytes = match self.stderr_task {
-            Some(task) => tokio::time::timeout(crate::timeouts::STDERR_DRAIN, task)
-                .await
-                .ok()
-                .and_then(|r| r.ok()),
-            None => None,
-        };
-        (status, bytes)
+        match self.mode {
+            WorkerMode::Interactive => {
+                let _ = crate::ipc_pipe::write_command(
+                    &mut self.stdin,
+                    &steamlens_core::ipc::WorkerCommand::Shutdown,
+                )
+                .await;
+                if let Ok(Ok(status)) =
+                    tokio::time::timeout(crate::timeouts::CHILD_DRAIN, self.child.wait()).await
+                {
+                    abort_task(self.stderr_task).await;
+                    return (Some(status), None);
+                }
+                let _ = self.child.start_kill();
+                let status = tokio::time::timeout(crate::timeouts::CHILD_KILL, self.child.wait())
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
+                abort_task(self.stderr_task).await;
+                (status, None)
+            }
+            WorkerMode::OneShot => {
+                let _ = self.child.start_kill();
+                let status = tokio::time::timeout(crate::timeouts::CHILD_KILL, self.child.wait())
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
+                let bytes = match self.stderr_task {
+                    Some(task) => tokio::time::timeout(crate::timeouts::STDERR_DRAIN, task)
+                        .await
+                        .ok()
+                        .and_then(|r| r.ok()),
+                    None => None,
+                };
+                (status, bytes)
+            }
+        }
+    }
+}
+
+async fn abort_task(task: Option<JoinHandle<Vec<u8>>>) {
+    if let Some(t) = task {
+        t.abort();
+        let _ = t.await;
     }
 }
 
 #[cfg(test)]
 mod tests {
+    // TODO(RFC-006 M3): a duplex-stream integration test for WorkerHandle send/recv/finish
+    // is deferred. tokio::process::Child is not constructable without a real subprocess,
+    // and ChildStdin/ChildStdout have no public constructors. Testing the protocol layer
+    // directly via ipc_pipe::write_command / ipc_pipe::read_response on a DuplexStream
+    // is already covered in steam_worker::tests (lines 766–828). Unblocking WorkerHandle
+    // itself would require mockall-style scaffolding or a trait abstraction over the I/O
+    // handles — deferred to the backlog.
+
     use super::*;
 
     #[test]
@@ -202,6 +257,9 @@ mod tests {
         let a = WorkerMode::OneShot;
         let _a2 = a;
         let _ = a;
+        let b = WorkerMode::Interactive;
+        let _b2 = b;
+        let _ = b;
     }
 
     #[test]

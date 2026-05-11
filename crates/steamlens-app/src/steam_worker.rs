@@ -2,15 +2,14 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::mpsc as async_mpsc;
 
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
 
 use crate::game_view::types::ResetScope;
-use crate::ipc_pipe;
 use crate::timeouts;
+use crate::worker_subprocess::{WorkerHandle, WorkerMode, WorkerSpawnError};
 
 pub enum SteamRequest {
     ConnectWithApp(u32),
@@ -140,18 +139,17 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
 }
 
 async fn round_trip(
-    stdin: &mut ChildStdin,
-    stdout: &mut ChildStdout,
+    handle: &mut WorkerHandle,
     cmd: &WorkerCommand,
     timeout: Duration,
 ) -> Option<WorkerResponse> {
-    if ipc_pipe::write_command(stdin, cmd).await.is_err() {
+    if handle.send(cmd).await.is_err() {
         return None;
     }
-    tokio::time::timeout(timeout, ipc_pipe::read_response(stdout))
+    tokio::time::timeout(timeout, handle.recv())
         .await
         .ok()
-        .flatten()
+        .and_then(|inner| inner.ok().flatten())
 }
 
 async fn run_apply_sequence(
@@ -159,8 +157,7 @@ async fn run_apply_sequence(
     achievements_to_clear: Vec<String>,
     stats_int: HashMap<String, i32>,
     stats_float: HashMap<String, f32>,
-    stdin: &mut ChildStdin,
-    stdout: &mut ChildStdout,
+    handle: &mut WorkerHandle,
     rep_tx: &mpsc::Sender<SteamReply>,
 ) {
     let staging_timeout = timeouts::STAGING;
@@ -180,7 +177,7 @@ async fn run_apply_sequence(
     }
 
     for cmd in &staging_cmds {
-        match round_trip(stdin, stdout, cmd, staging_timeout).await {
+        match round_trip(handle, cmd, staging_timeout).await {
             Some(WorkerResponse::Ack) => {}
             Some(WorkerResponse::Error { kind, message }) => {
                 reply(rep_tx, error_reply(kind, message));
@@ -207,13 +204,12 @@ async fn run_apply_sequence(
     }
 
     let store_timeout = timeouts::LIVE_LOAD;
-    match round_trip(stdin, stdout, &WorkerCommand::StoreStats, store_timeout).await {
+    match round_trip(handle, &WorkerCommand::StoreStats, store_timeout).await {
         Some(WorkerResponse::Stored) => {
             reply(rep_tx, SteamReply::ChangesSaved);
             let load_timeout = timeouts::LIVE_LOAD;
             match round_trip(
-                stdin,
-                stdout,
+                handle,
                 &WorkerCommand::LoadAchievementsAndStats,
                 load_timeout,
             )
@@ -335,7 +331,7 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
 }
 
 async fn drain_responses(
-    stdout: &mut ChildStdout,
+    handle: &mut WorkerHandle,
     rep_tx: &mpsc::Sender<SteamReply>,
     drain_ms: u64,
 ) {
@@ -345,55 +341,44 @@ async fn drain_responses(
         if remaining.is_zero() {
             break;
         }
-        match tokio::time::timeout(remaining, ipc_pipe::read_response(stdout)).await {
-            Ok(Some(resp)) => handle_worker_response(resp, rep_tx),
+        match tokio::time::timeout(remaining, handle.recv()).await {
+            Ok(Ok(Some(resp))) => handle_worker_response(resp, rep_tx),
             _ => break,
         }
     }
 }
 
-async fn kill_child(child: &mut Child) {
-    let _ = child.start_kill();
-    let _ = tokio::time::timeout(timeouts::CHILD_KILL, child.wait()).await;
-}
-
 type ConnectError = crate::worker_subprocess::WorkerProtocolError;
 
 async fn await_steam_connected(
-    stdout: &mut ChildStdout,
+    handle: &mut WorkerHandle,
     timeout: Duration,
     rep_tx: &mpsc::Sender<SteamReply>,
 ) -> Result<(), ConnectError> {
-    match tokio::time::timeout(timeout, ipc_pipe::read_response(stdout)).await {
-        Ok(Some(WorkerResponse::SteamConnected { app_name, .. })) => {
+    match tokio::time::timeout(timeout, handle.recv()).await {
+        Ok(Ok(Some(WorkerResponse::SteamConnected { app_name, .. }))) => {
             reply(rep_tx, SteamReply::Connected { app_name });
             Ok(())
         }
-        Ok(Some(WorkerResponse::Error { kind, message })) => {
+        Ok(Ok(Some(WorkerResponse::Error { kind, message }))) => {
             Err(ConnectError::WorkerError { kind, message })
         }
-        Ok(_) => Err(ConnectError::UnexpectedMessage),
+        Ok(Ok(Some(_))) => Err(ConnectError::UnexpectedMessage),
+        Ok(Ok(None)) => Err(ConnectError::UnexpectedEof),
+        Ok(Err(e)) => Err(e),
         Err(_) => Err(ConnectError::Timeout),
     }
 }
 
 async fn handle_request(
     req: SteamRequest,
-    stdin: &mut ChildStdin,
-    stdout: &mut ChildStdout,
+    handle: &mut WorkerHandle,
     rep_tx: &mpsc::Sender<SteamReply>,
 ) {
     match req {
         SteamRequest::RequestUserStats => {
             let timeout = timeouts::LIVE_LOAD;
-            match round_trip(
-                stdin,
-                stdout,
-                &WorkerCommand::LoadAchievementsAndStats,
-                timeout,
-            )
-            .await
-            {
+            match round_trip(handle, &WorkerCommand::LoadAchievementsAndStats, timeout).await {
                 Some(resp) => handle_worker_response(resp, rep_tx),
                 None => reply(
                     rep_tx,
@@ -404,14 +389,7 @@ async fn handle_request(
 
         SteamRequest::RequestGlobalPercentages => {
             let timeout = timeouts::GLOBAL_PERCENTAGES;
-            match round_trip(
-                stdin,
-                stdout,
-                &WorkerCommand::RequestGlobalPercentages,
-                timeout,
-            )
-            .await
-            {
+            match round_trip(handle, &WorkerCommand::RequestGlobalPercentages, timeout).await {
                 Some(resp) => handle_worker_response(resp, rep_tx),
                 None => reply(rep_tx, SteamReply::GlobalPercentagesFailed),
             }
@@ -428,8 +406,7 @@ async fn handle_request(
                 achievements_to_clear,
                 stats_int,
                 stats_float,
-                stdin,
-                stdout,
+                handle,
                 rep_tx,
             )
             .await;
@@ -439,8 +416,7 @@ async fn handle_request(
             let include_achievements = scope == ResetScope::StatsAndAchievements;
             let timeout = timeouts::LIVE_LOAD;
             match round_trip(
-                stdin,
-                stdout,
+                handle,
                 &WorkerCommand::ResetAllStats {
                     include_achievements,
                 },
@@ -466,18 +442,20 @@ async fn bridge_loop(
 ) {
     let connect_timeout = timeouts::STEAM_CONNECT;
 
-    let (mut child, mut stdin, mut stdout, mut _job_guard, mut stderr_task) = loop {
+    let mut handle = loop {
         let Some(req) = req_rx.recv().await else {
             return;
         };
         match req {
-            SteamRequest::ConnectWithApp(app_id) => match spawn_worker_child(app_id).await {
-                Ok(tuple) => break tuple,
-                Err(e) => {
-                    reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
-                    continue;
+            SteamRequest::ConnectWithApp(app_id) => {
+                match WorkerHandle::spawn(app_id, WorkerMode::Interactive).await {
+                    Ok(h) => break h,
+                    Err(e) => {
+                        reply(&rep_tx, SteamReply::ConnectFailed(spawn_error_message(e)));
+                        continue;
+                    }
                 }
-            },
+            }
             SteamRequest::Disconnect => {
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
@@ -492,7 +470,7 @@ async fn bridge_loop(
         }
     };
 
-    if let Err(e) = await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await {
+    if let Err(e) = await_steam_connected(&mut handle, connect_timeout, &rep_tx).await {
         match e {
             ConnectError::WorkerError { kind, message } => {
                 reply(&rep_tx, error_reply(kind, message))
@@ -512,41 +490,27 @@ async fn bridge_loop(
                 )
             }
         }
-        stderr_task.abort();
-        let _ = stderr_task.await;
-        kill_child(&mut child).await;
+        let _ = handle.finish().await;
         return;
     }
 
     loop {
-        // Drain icon callbacks (≤50 ms) before blocking on the next request.
-        drain_responses(&mut stdout, &rep_tx, timeouts::ICON_DRAIN_MS).await;
+        drain_responses(&mut handle, &rep_tx, timeouts::ICON_DRAIN_MS).await;
 
         let Some(req) = req_rx.recv().await else {
-            let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-            let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
-            stderr_task.abort();
-            let _ = stderr_task.await;
+            let _ = handle.finish().await;
             return;
         };
 
         match req {
             SteamRequest::ConnectWithApp(new_app_id) => {
-                let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-                let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
-                stderr_task.abort();
-                let _ = stderr_task.await;
-
-                match spawn_worker_child(new_app_id).await {
-                    Ok((new_child, new_stdin, new_stdout, new_job_guard, new_stderr_task)) => {
-                        child = new_child;
-                        stdin = new_stdin;
-                        stdout = new_stdout;
-                        _job_guard = new_job_guard;
-                        stderr_task = new_stderr_task;
+                match WorkerHandle::spawn(new_app_id, WorkerMode::Interactive).await {
+                    Ok(new_handle) => {
+                        let old_handle = std::mem::replace(&mut handle, new_handle);
+                        let _ = old_handle.finish().await;
 
                         if let Err(e) =
-                            await_steam_connected(&mut stdout, connect_timeout, &rep_tx).await
+                            await_steam_connected(&mut handle, connect_timeout, &rep_tx).await
                         {
                             match e {
                                 ConnectError::WorkerError { kind, message } => {
@@ -564,88 +528,32 @@ async fn bridge_loop(
                                     ),
                                 ),
                             }
-                            stderr_task.abort();
-                            let _ = stderr_task.await;
-                            kill_child(&mut child).await;
+                            let _ = handle.finish().await;
                             return;
                         }
                     }
                     Err(e) => {
-                        reply(&rep_tx, SteamReply::ConnectFailed(e.to_string()));
+                        reply(&rep_tx, SteamReply::ConnectFailed(spawn_error_message(e)));
                         return;
                     }
                 }
             }
 
             SteamRequest::Disconnect => {
-                let _ = ipc_pipe::write_command(&mut stdin, &WorkerCommand::Shutdown).await;
-                let _ = tokio::time::timeout(
-                    timeouts::CHILD_DRAIN,
-                    ipc_pipe::read_response(&mut stdout),
-                )
-                .await;
-                let _ = tokio::time::timeout(timeouts::CHILD_DRAIN, child.wait()).await;
-                stderr_task.abort();
-                let _ = stderr_task.await;
+                let _ = handle.finish().await;
                 reply(&rep_tx, SteamReply::Disconnected);
                 return;
             }
 
             other => {
-                handle_request(other, &mut stdin, &mut stdout, &rep_tx).await;
+                handle_request(other, &mut handle, &rep_tx).await;
             }
         }
     }
 }
 
-async fn spawn_worker_child(
-    app_id: u32,
-) -> Result<
-    (
-        Child,
-        ChildStdin,
-        ChildStdout,
-        steamlens_core::ChildLifetimeGuard,
-        tokio::task::JoinHandle<()>,
-    ),
-    std::io::Error,
-> {
-    let exe = std::env::current_exe()?;
-    let mut child = Command::new(exe)
-        .arg("--worker")
-        .arg(app_id.to_string())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
-
-    let pid = child
-        .id()
-        .ok_or_else(|| std::io::Error::other("spawned worker has no pid"))?;
-    let job_guard = steamlens_core::associate_kill_on_parent_exit(pid).inspect_err(|_| {
-        let _ = child.start_kill();
-    })?;
-
-    let stdin = child.stdin.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdin missing")
-    })?;
-    let stdout = child.stdout.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stdout missing")
-    })?;
-    let stderr = child.stderr.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::BrokenPipe, "child stderr missing")
-    })?;
-
-    let stderr_task = tokio::spawn(async move {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            crate::log!("worker[app_id={app_id}] stderr: {line}");
-        }
-    });
-
-    Ok((child, stdin, stdout, job_guard, stderr_task))
+fn spawn_error_message(e: WorkerSpawnError) -> String {
+    e.to_string()
 }
 
 #[cfg(test)]
