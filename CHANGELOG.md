@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-beta.2] - 2026-05-12
+### 🐛 Bug Fixes
+- *(windows)* GUI subsystem on release; pipe probe stderr to host log
+- *(ui)* Horizontal scroll for genre pills; reserve space for global actions
+- *(ui)* Adaptive search bar width — fills available space up to 400px
+- *(ui)* Slightly change scrollbar width for more clear behavior
+
+### 🚀 Features
+- *(vdf)* Combined visibility + store-presence filter
+
+### 🚜 Refactor
+- *(ui)* Unify notification surfaces and remove ghost header divider
+
+### 🛠️ Build
+- *(build)* Enable thin LTO, single codegen unit, strip symbols for release
+
 ## [1.0.0-beta.1] - 2026-05-12
 ### Qstyle
 - *(fmt)* Apply workspace-wide rustfmt
@@ -8,6 +24,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 - *(app)* Updates actual screenshot
 - *(logging)* Default to INFO filter; STEAMLENS_LOG env override
+- Release
 
 ### ⚡ Performance
 - *(cache)* Batch no_achievements writes per drain to cut cold-scan IO
@@ -17,6 +34,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(readme)* Refresh feature list and add per-OS install instructions
+- *(release)* Release v1.0.0-beta.1
 
 ### 🚀 Features
 - *(scan)* Log aggregate cold-scan summary on completion
