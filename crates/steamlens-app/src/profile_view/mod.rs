@@ -116,7 +116,8 @@ fn build_profile_genre_strip<'a>(
 ) -> iced::Element<'a, crate::Message> {
     use crate::ui::genre_color::genre_color;
     use crate::ui::widgets::pill::pill;
-    use iced::widget::{Space, row, text};
+    use iced::widget::scrollable::{Direction, Scrollbar};
+    use iced::widget::{Space, row, scrollable, text};
     use iced::{Alignment, Length};
 
     const GENRE_PILL_RADIUS: f32 = 14.0;
@@ -125,7 +126,7 @@ fn build_profile_genre_strip<'a>(
 
     let neutral = crate::ui::theme::palette(crate::ui::theme::AppTheme::Dark).text_muted;
     let any_selected = !state.genre_filter.is_empty();
-    let mut chips: Vec<iced::Element<'_, crate::Message>> = genres
+    let chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()
         .map(|g| {
             let tint = genre_color(&g);
@@ -146,26 +147,35 @@ fn build_profile_genre_strip<'a>(
         })
         .collect();
 
-    if !state.genre_filter.is_empty() {
-        chips.push(Space::new().width(Length::Fill).into());
-        let clear_label = text("Clear").size(11).color(neutral);
-        chips.push(
-            pill(clear_label, neutral)
-                .radius(GENRE_PILL_RADIUS)
-                .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
-                .selected(false)
-                .on_press(crate::Message::ProfileView(
-                    types::ProfileViewMessage::GenreFilterCleared,
-                ))
-                .into(),
-        );
-    }
+    let pills_row = row(chips).spacing(6).align_y(Alignment::Center);
 
-    row(chips)
-        .spacing(6)
+    let scrollable_pills = scrollable(pills_row)
+        .direction(Direction::Horizontal(
+            Scrollbar::new().width(4).scroller_width(4).margin(0),
+        ))
+        .width(Length::Fill);
+
+    if !state.genre_filter.is_empty() {
+        let clear_label = text("Clear").size(11).color(neutral);
+        let clear_pill = pill(clear_label, neutral)
+            .radius(GENRE_PILL_RADIUS)
+            .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
+            .selected(false)
+            .on_press(crate::Message::ProfileView(
+                types::ProfileViewMessage::GenreFilterCleared,
+            ));
+        row![
+            scrollable_pills,
+            Space::new().width(Length::Fixed(8.0)),
+            clear_pill
+        ]
+        .spacing(0)
         .align_y(Alignment::Center)
         .width(Length::Fill)
         .into()
+    } else {
+        scrollable_pills.into()
+    }
 }
 
 use iced::Task;

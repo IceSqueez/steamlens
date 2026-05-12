@@ -389,7 +389,7 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
         .padding(Padding::default().left(0).right(8));
 
     container(inner_row)
-        .width(Length::Fixed(320.0))
+        .width(Length::Fixed(220.0))
         .style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             container::Style {
