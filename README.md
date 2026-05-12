@@ -5,13 +5,12 @@ A Steam achievement manager with rarity insights and library statistics.
 [![CI](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml/badge.svg)](https://github.com/IceSqueez/steamlens/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/IceSqueez/steamlens?include_prereleases)](https://github.com/IceSqueez/steamlens/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/IceSqueez/steamlens/total)](https://github.com/IceSqueez/steamlens/releases)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
-
-[![Rust 2024](https://img.shields.io/badge/rust-2024-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](https://github.com/IceSqueez/steamlens/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-000000?logo=apple)](https://github.com/IceSqueez/steamlens/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-0078D6)](https://github.com/IceSqueez/steamlens/releases/latest)
+
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 
 ![Screenshot](./assets/Screenshot.png)
 
