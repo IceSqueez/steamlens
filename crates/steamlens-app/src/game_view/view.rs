@@ -135,6 +135,18 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
         })
         .count();
 
+    if state.cache_only {
+        return if total == 0 {
+            None
+        } else {
+            Some(
+                status_bar::<GameViewMessage>()
+                    .connected(total, "achievements", None)
+                    .into(),
+            )
+        };
+    }
+
     match state.phase {
         GameViewPhase::Connecting | GameViewPhase::WaitingStats => Some(
             status_bar::<GameViewMessage>()
@@ -1029,7 +1041,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
         "Apply Changes".to_owned()
     };
 
-    let apply_enabled = dirty > 0 && !has_errors && !is_busy;
+    let apply_enabled = dirty > 0 && !has_errors && !is_busy && !state.cache_only;
     let apply_btn = if apply_enabled {
         button(text(apply_label).size(12))
             .on_press(GameViewMessage::ApplyClicked)
