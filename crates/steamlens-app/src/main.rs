@@ -1183,11 +1183,11 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
                 display_name: s.display_name.clone(),
                 value,
                 original_value: value,
-                max_value: None,
-                min_value: None,
-                default_value: None,
-                is_increment_only: false,
-                permission: 0,
+                max_value: s.max_value,
+                min_value: s.min_value,
+                default_value: s.default_value,
+                is_increment_only: s.is_increment_only,
+                permission: s.permission,
             };
             StatRow::from(data)
         })
@@ -1221,6 +1221,11 @@ pub(crate) fn build_cache_entry_from_scan(
                 api_name: s.id.clone(),
                 display_name: s.display_name.clone(),
                 value,
+                max_value: s.max_value,
+                min_value: s.min_value,
+                default_value: s.default_value,
+                is_increment_only: s.is_increment_only,
+                permission: s.permission,
             }
         })
         .collect();
@@ -1342,6 +1347,11 @@ fn build_game_view_cache_entry(
                 api_name: r.data.id.clone(),
                 display_name: r.data.display_name.clone(),
                 value,
+                max_value: r.data.max_value,
+                min_value: r.data.min_value,
+                default_value: r.data.default_value,
+                is_increment_only: r.data.is_increment_only,
+                permission: r.data.permission,
             }
         })
         .collect();
