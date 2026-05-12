@@ -152,7 +152,7 @@ fn profile_status_bar(
         return None;
     }
 
-    let scanned = state.games.iter().filter(|g| g.progress.is_some()).count();
+    let scanned = state.games.iter().filter(|g| g.is_hydrated()).count();
 
     if scanned < total {
         Some(
