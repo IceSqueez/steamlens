@@ -94,6 +94,9 @@ enum Message {
     GlobalToast(String),
     GameSortChanged(game_view::types::AchievementSort),
     PersistGameSummary(u32),
+    ShowAbout,
+    DismissAbout,
+    OpenUrl(String),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -112,6 +115,7 @@ struct App {
     library_cache_resolved: bool,
     cache_classified: bool,
     probe_done: bool,
+    about_open: bool,
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
@@ -165,6 +169,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         library_cache_resolved: false,
         cache_classified: false,
         probe_done: false,
+        about_open: false,
     };
 
     (
@@ -988,6 +993,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        Message::ShowAbout => {
+            app.about_open = true;
+            Task::none()
+        }
+
+        Message::DismissAbout => {
+            app.about_open = false;
+            Task::none()
+        }
+
+        Message::OpenUrl(url) => {
+            open_url_in_browser(&url);
+            Task::none()
+        }
+
         Message::GameSortChanged(sort) => {
             let Screen::GameView(state) = &mut app.screen else {
                 return Task::none();
@@ -1252,6 +1272,20 @@ fn build_game_view_cache_entry(
     }
 }
 
+fn open_url_in_browser(url: &str) {
+    #[cfg(target_os = "linux")]
+    let cmd = std::process::Command::new("xdg-open").arg(url).spawn();
+    #[cfg(target_os = "macos")]
+    let cmd = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let cmd = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    if let Err(e) = cmd {
+        crate::log!("failed to open url {url}: {e}");
+    }
+}
+
 fn view(app: &App) -> Element<'_, Message> {
     let skeleton_phase = app.context.animation.skeleton_phase;
 
@@ -1299,14 +1333,22 @@ fn view(app: &App) -> Element<'_, Message> {
 
     let with_toasts = messaging::wrap_with_toasts(shell, &app.context.messaging);
 
-    if app.splash_min_elapsed
+    let ready = app.splash_min_elapsed
         && app.library_cache_resolved
         && app.cache_classified
-        && app.probe_done
-    {
-        with_toasts
+        && app.probe_done;
+    let base = if ready { with_toasts } else { splash_view() };
+
+    if app.about_open {
+        let modal = ui::about_modal::about_modal(
+            Message::DismissAbout,
+            Message::OpenUrl("https://github.com/IceSqueez/steamlens".to_owned()),
+            Message::OpenUrl("https://github.com/IceSqueez/steamlens/issues".to_owned()),
+            Message::OpenUrl("https://github.com/IceSqueez/steamlens/releases".to_owned()),
+        );
+        iced::widget::stack![base, modal].into()
     } else {
-        splash_view()
+        base
     }
 }
 
@@ -1504,6 +1546,7 @@ mod tests {
                 library_cache_resolved: true,
                 cache_classified: true,
                 probe_done: true,
+                about_open: false,
             }
         }
     }
@@ -1525,6 +1568,7 @@ mod tests {
             library_cache_resolved: false,
             cache_classified: false,
             probe_done: false,
+            about_open: false,
             context: AppContext {
                 connectivity: ConnectivityState::default(),
                 user_profile: None,
