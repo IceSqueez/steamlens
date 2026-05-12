@@ -699,6 +699,7 @@ fn achievement_card_widget<'a>(
     let fg = crate::ui::theme::palette(app_theme).text_primary;
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
+    let is_hidden_meta = row.data.is_hidden;
 
     let icon_el: Element<'_, GameViewMessage> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
@@ -754,6 +755,35 @@ fn achievement_card_widget<'a>(
             ..container::Style::default()
         })
         .into()
+    };
+
+    let icon_el: Element<'_, GameViewMessage> = if is_hidden_meta && !spoiler_hidden {
+        let badge = container(text("H").size(11).color(C_LOCKED_DESC))
+            .width(Length::Fixed(18.0))
+            .height(Length::Fixed(18.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(Color {
+                    a: 0.85,
+                    ..palette(theme_from_iced(t)).surface
+                })),
+                border: Border {
+                    color: C_LOCKED_DESC,
+                    width: 1.0,
+                    radius: 9.0.into(),
+                },
+                ..container::Style::default()
+            });
+        let positioned = container(badge)
+            .width(Length::Fixed(ACH_CARD_ICON))
+            .height(Length::Fixed(ACH_CARD_ICON))
+            .align_x(Alignment::End)
+            .align_y(Alignment::Start)
+            .padding(Padding::default().top(2).right(2));
+        stack![icon_el, positioned].into()
+    } else {
+        icon_el
     };
 
     let display_name = if spoiler_hidden {
@@ -959,15 +989,6 @@ fn achievement_card_widget<'a>(
             row![].spacing(6).align_y(Alignment::Center);
         if let Some(rb) = rarity_badge {
             bottom = bottom.push(rb);
-        }
-        if row.data.is_hidden {
-            let hidden_text = text("Hidden")
-                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .color(Color {
-                    a: 0.95,
-                    ..C_LOCKED_DESC
-                });
-            bottom = bottom.push(pill(hidden_text, C_LOCKED_DESC));
         }
         bottom = bottom.push(space().width(Length::Fill));
         bottom = bottom.push(badge);
