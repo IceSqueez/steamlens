@@ -408,6 +408,7 @@ pub fn visible_achievement_ids<'a>(
                 return false;
             }
             let is_spoiler = row.is_spoiler_hidden();
+            let is_hidden_meta = row.data.is_hidden;
             let filter_ok = match filter {
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
@@ -426,7 +427,7 @@ pub fn visible_achievement_ids<'a>(
                         Some(tier) => rarity_tier_set.contains(&tier),
                         None => false,
                     };
-                let hidden_match = is_spoiler && include_hidden;
+                let hidden_match = is_hidden_meta && include_hidden;
                 tier_match || hidden_match
             };
             filter_ok && search_ok && rarity_ok

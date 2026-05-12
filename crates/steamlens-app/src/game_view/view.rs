@@ -960,6 +960,15 @@ fn achievement_card_widget<'a>(
         if let Some(rb) = rarity_badge {
             bottom = bottom.push(rb);
         }
+        if row.data.is_hidden {
+            let hidden_text = text("Hidden")
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .color(Color {
+                    a: 0.95,
+                    ..C_LOCKED_DESC
+                });
+            bottom = bottom.push(pill(hidden_text, C_LOCKED_DESC));
+        }
         bottom = bottom.push(space().width(Length::Fill));
         bottom = bottom.push(badge);
 
