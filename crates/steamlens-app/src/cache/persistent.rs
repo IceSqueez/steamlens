@@ -17,6 +17,8 @@ pub struct CachedProfile {
     pub avatar_png_bytes: Option<Vec<u8>>,
     pub steam_root: Option<PathBuf>,
     pub cached_at: u64,
+    #[serde(default)]
+    pub steam_level: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +96,7 @@ pub fn make_cached_profile(
     account_name: String,
     avatar_png_bytes: Option<Vec<u8>>,
     steam_root: Option<PathBuf>,
+    steam_level: Option<u32>,
 ) -> CachedProfile {
     CachedProfile {
         schema_version: CURRENT_PROFILE_SCHEMA,
@@ -103,6 +106,7 @@ pub fn make_cached_profile(
         avatar_png_bytes,
         steam_root,
         cached_at: now_epoch(),
+        steam_level,
     }
 }
 
@@ -129,6 +133,7 @@ mod tests {
             avatar_png_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
             steam_root: Some(PathBuf::from("/tmp/synthetic_steam_root")),
             cached_at: 1_777_926_953,
+            steam_level: None,
         }
     }
 
@@ -237,7 +242,7 @@ mod tests {
 
     #[test]
     fn make_cached_profile_sets_schema_and_timestamp() {
-        let p = make_cached_profile(1, "u".into(), "l".into(), None, None);
+        let p = make_cached_profile(1, "u".into(), "l".into(), None, None, None);
         assert_eq!(p.schema_version, CURRENT_PROFILE_SCHEMA);
         assert!(p.cached_at > 0, "cached_at must be set to a real epoch");
     }
