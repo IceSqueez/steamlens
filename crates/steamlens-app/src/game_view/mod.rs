@@ -191,6 +191,7 @@ pub enum GameViewMessage {
     StatsSearchChanged(String),
     StatsMaxAll,
     StatsResetAll,
+    StatsMaxSingle(String),
     StatsResetSingle(String),
     BulkAction(BulkOp),
     ReloadRequested,
@@ -631,6 +632,21 @@ pub fn update(
                 let new_value = match stat.data.value {
                     StatValue::Int(_) => StatValue::Int(default as i32),
                     StatValue::Float(_) => StatValue::Float(default as f32),
+                };
+                stat.data.value = new_value;
+                stat.edit_text = new_value.to_edit_string();
+                stat.is_dirty = new_value != stat.data.original_value;
+                stat.edit_error = None;
+            }
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::StatsMaxSingle(id) => {
+            if let Some(stat) = state.stats.iter_mut().find(|s| s.data.id == id)
+                && let Some(max) = stat.data.max_value
+            {
+                let new_value = match stat.data.value {
+                    StatValue::Int(_) => StatValue::Int(max as i32),
+                    StatValue::Float(_) => StatValue::Float(max as f32),
                 };
                 stat.data.value = new_value;
                 stat.edit_text = new_value.to_edit_string();

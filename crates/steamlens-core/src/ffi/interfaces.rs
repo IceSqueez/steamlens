@@ -149,14 +149,14 @@ pub type CreateInterfaceFn =
 /// load-bearing; positional dispatch by Steam.
 #[repr(C)]
 pub struct ISteamUserStats013 {
-    pub get_stat_float:
-        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: *mut f32) -> bool,
     pub get_stat_int:
         unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: *mut i32) -> bool,
-    pub set_stat_float:
-        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: f32) -> bool,
+    pub get_stat_float:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: *mut f32) -> bool,
     pub set_stat_int:
         unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: i32) -> bool,
+    pub set_stat_float:
+        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, data: f32) -> bool,
     _reserved_04_update_avg_rate_stat: usize,
     pub get_achievement:
         unsafe extern "C" fn(this: *mut c_void, name: *const c_char, achieved: *mut bool) -> bool,
@@ -184,17 +184,17 @@ pub struct ISteamUserStats013 {
     pub get_num_achievements: unsafe extern "C" fn(this: *mut c_void) -> u32,
     pub get_achievement_name: unsafe extern "C" fn(this: *mut c_void, index: u32) -> *const c_char,
     pub request_user_stats: unsafe extern "C" fn(this: *mut c_void, steam_id: u64) -> u64,
-    pub get_user_stat_float: unsafe extern "C" fn(
-        this: *mut c_void,
-        steam_id: u64,
-        name: *const c_char,
-        data: *mut f32,
-    ) -> bool,
     pub get_user_stat_int: unsafe extern "C" fn(
         this: *mut c_void,
         steam_id: u64,
         name: *const c_char,
         data: *mut i32,
+    ) -> bool,
+    pub get_user_stat_float: unsafe extern "C" fn(
+        this: *mut c_void,
+        steam_id: u64,
+        name: *const c_char,
+        data: *mut f32,
     ) -> bool,
     _reserved_18_get_user_achievement: usize,
     _reserved_19_get_user_achievement_and_unlock_time: usize,

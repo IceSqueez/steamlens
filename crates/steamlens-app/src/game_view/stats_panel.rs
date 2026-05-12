@@ -112,20 +112,24 @@ fn build_header<'a>(stats: &'a [StatRow]) -> Element<'a, GameViewMessage> {
 
     let left_col = column![title, subtitle].spacing(2);
 
-    let max_all_btn = action_button(
+    let any_capped = stats.iter().any(|s| s.data.max_value.is_some());
+
+    let cap_all_btn = action_button(
         SVG_CHECK.clone(),
-        "Max all",
+        "Cap all",
         C_GREEN,
         GameViewMessage::StatsMaxAll,
+        !any_capped,
     );
     let reset_all_btn = action_button(
         SVG_RESET.clone(),
         "Reset all",
         C_DANGER,
         GameViewMessage::StatsResetAll,
+        false,
     );
 
-    let action_row = row![max_all_btn, reset_all_btn]
+    let action_row = row![cap_all_btn, reset_all_btn]
         .spacing(6)
         .align_y(Alignment::Center);
 
@@ -139,38 +143,60 @@ fn action_button(
     label: &'static str,
     tint: Color,
     msg: GameViewMessage,
+    disabled: bool,
 ) -> Element<'static, GameViewMessage> {
+    let icon_color = if disabled { C_TEXT_DIM } else { tint };
     let icon_el = svg(icon)
         .width(Length::Fixed(11.0))
-        .height(Length::Fixed(11.0));
+        .height(Length::Fixed(11.0))
+        .style(move |_t: &iced::Theme, _status| iced::widget::svg::Style {
+            color: Some(icon_color),
+        });
 
-    let inner = row![icon_el, text(label).size(11).color(tint)]
+    let text_color = if disabled { C_TEXT_DIM } else { tint };
+    let inner = row![icon_el, text(label).size(11).color(text_color)]
         .spacing(5)
         .align_y(Alignment::Center);
 
-    button(inner)
-        .on_press(msg)
-        .padding(Padding::default().left(10).right(10).top(5).bottom(5))
-        .style(move |_t: &iced::Theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: Some(Background::Color(Color {
-                    a: if hovered { 0.20 } else { 0.12 },
+    let mut btn = button(inner).padding(Padding::default().left(10).right(10).top(5).bottom(5));
+    if !disabled {
+        btn = btn.on_press(msg);
+    }
+    btn.style(move |_t: &iced::Theme, status| {
+        let hovered =
+            !disabled && matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let bg_alpha = if disabled {
+            0.04
+        } else if hovered {
+            0.20
+        } else {
+            0.12
+        };
+        let border_alpha = if disabled {
+            0.18
+        } else if hovered {
+            0.55
+        } else {
+            0.35
+        };
+        button::Style {
+            background: Some(Background::Color(Color {
+                a: bg_alpha,
+                ..tint
+            })),
+            border: Border {
+                color: Color {
+                    a: border_alpha,
                     ..tint
-                })),
-                border: Border {
-                    color: Color {
-                        a: if hovered { 0.55 } else { 0.35 },
-                        ..tint
-                    },
-                    width: 1.0,
-                    radius: 5.0.into(),
                 },
-                text_color: tint,
-                ..button::Style::default()
-            }
-        })
-        .into()
+                width: 1.0,
+                radius: 5.0.into(),
+            },
+            text_color,
+            ..button::Style::default()
+        }
+    })
+    .into()
 }
 
 fn build_search_input(query: &str) -> Element<'_, GameViewMessage> {
@@ -273,9 +299,16 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     .spacing(0)
     .width(Length::Fill);
 
-    let reset_btn = reset_button(row_data);
+    let is_protected = row_data.data.permission != 0;
+    let show_max = row_data.data.max_value.is_some() && !maxed && !is_protected;
 
-    let inner = row![info_col, reset_btn]
+    let mut actions = row![].spacing(4).align_y(Alignment::Center);
+    if show_max {
+        actions = actions.push(max_button(row_data));
+    }
+    actions = actions.push(reset_button(row_data, maxed, is_protected));
+
+    let inner = row![info_col, actions]
         .spacing(10)
         .align_y(Alignment::Center);
 
@@ -339,21 +372,17 @@ fn build_progress_bar(
         .into()
 }
 
-fn reset_button(row_data: &StatRow) -> Element<'_, GameViewMessage> {
-    let default = row_data.data.default_value.unwrap_or(0);
-    let at_default = match row_data.data.value {
-        StatValue::Int(v) => v as i64 == default,
-        StatValue::Float(v) => (v as f64) == default as f64,
-    };
-    let is_protected = row_data.data.permission != 0;
-    let disabled = at_default || is_protected;
-
+fn neutral_row_button(
+    label: &'static str,
+    msg: GameViewMessage,
+    disabled: bool,
+) -> Element<'static, GameViewMessage> {
     let label_color = if disabled { C_TEXT_DIM } else { C_TEXT_MUTED };
-    let lbl = text("Reset").size(10).color(label_color);
+    let lbl = text(label).size(10).color(label_color);
 
     let mut btn = button(lbl).padding(Padding::default().left(7).right(7).top(3).bottom(3));
     if !disabled {
-        btn = btn.on_press(GameViewMessage::StatsResetSingle(row_data.data.id.clone()));
+        btn = btn.on_press(msg);
     }
 
     btn.style(move |_t: &iced::Theme, status| {
@@ -362,22 +391,55 @@ fn reset_button(row_data: &StatRow) -> Element<'_, GameViewMessage> {
         button::Style {
             background: if hovered {
                 Some(Background::Color(Color {
-                    a: 0.10,
+                    a: 0.20,
                     ..C_TEXT_MUTED
                 }))
             } else {
                 None
             },
             border: Border {
-                color: C_BORDER,
+                color: if hovered {
+                    Color {
+                        a: 0.60,
+                        ..C_TEXT_MUTED
+                    }
+                } else {
+                    C_BORDER
+                },
                 width: 1.0,
                 radius: 4.0.into(),
             },
-            text_color: label_color,
+            text_color: if hovered { C_TEXT_PRIMARY } else { label_color },
             ..button::Style::default()
         }
     })
     .into()
+}
+
+fn reset_button(
+    row_data: &StatRow,
+    _maxed: bool,
+    is_protected: bool,
+) -> Element<'static, GameViewMessage> {
+    let default = row_data.data.default_value.unwrap_or(0);
+    let at_default = match row_data.data.value {
+        StatValue::Int(v) => v as i64 == default,
+        StatValue::Float(v) => (v as f64) == default as f64,
+    };
+    let disabled = at_default || is_protected;
+    neutral_row_button(
+        "Reset",
+        GameViewMessage::StatsResetSingle(row_data.data.id.clone()),
+        disabled,
+    )
+}
+
+fn max_button(row_data: &StatRow) -> Element<'static, GameViewMessage> {
+    neutral_row_button(
+        "Max",
+        GameViewMessage::StatsMaxSingle(row_data.data.id.clone()),
+        false,
+    )
 }
 
 fn divider<M: 'static>() -> Element<'static, M> {
