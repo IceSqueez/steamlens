@@ -523,6 +523,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             };
 
             if !dirty.is_empty() && !steam_off {
+                pv_state.scan_target_count = dirty.len();
+                pv_state.scan_started_at = Some(std::time::Instant::now());
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
                 pv_state.progress_scanner = Some(scanner);
