@@ -38,7 +38,7 @@ pub enum ProbeError {
 /// from the child's stdout, then kills it. `timeout` bounds the total
 /// run (startup + pipe connect + avatar fetch).
 pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError> {
-    let exe = std::env::current_exe()?;
+    let exe = crate::process::current_exe_resilient()?;
 
     let mut child = Command::new(&exe)
         .arg("--probe")
