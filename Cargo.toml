@@ -46,3 +46,8 @@ tracing-subscriber = { version = "0.3" }
 semver = { version = "1.0" }
 steamlens-core = { path = "crates/steamlens-core" }
 steamlens-vdf = { path = "crates/steamlens-vdf" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
