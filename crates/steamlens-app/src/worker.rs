@@ -164,10 +164,7 @@ async fn worker_main(app_id: u32) -> i32 {
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(
-                "connect failed in {:?}: {e}",
-                t0.elapsed()
-            );
+            tracing::error!("connect failed in {:?}: {e}", t0.elapsed());
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::Connect,
                 message: e.to_string(),
@@ -602,10 +599,7 @@ async fn load_achievements_card_only(client: &Client, app_id: u32) -> WorkerResp
     let t0 = std::time::Instant::now();
     tracing::debug!("request_user_stats start");
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
-        tracing::error!(
-            "request_user_stats failed in {:?}: {e}",
-            t0.elapsed()
-        );
+        tracing::error!("request_user_stats failed in {:?}: {e}", t0.elapsed());
         return WorkerResponse::Error {
             kind: WorkerErrorKind::RequestUserStats,
             message: e.to_string(),
