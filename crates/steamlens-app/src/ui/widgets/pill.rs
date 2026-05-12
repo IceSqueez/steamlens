@@ -20,6 +20,7 @@ pub fn pill<'a, M: 'a>(content: impl Into<Element<'a, M>>, tint: Color) -> Pill<
         border_alpha: 0.40,
         shadow: None,
         dot: None,
+        reserve_dot_space: false,
         on_press: None,
         selected: None,
     }
@@ -35,6 +36,7 @@ pub struct Pill<'a, M> {
     border_alpha: f32,
     shadow: Option<Shadow>,
     dot: Option<Color>,
+    reserve_dot_space: bool,
     on_press: Option<M>,
     selected: Option<bool>,
 }
@@ -72,6 +74,11 @@ impl<'a, M: 'a> Pill<'a, M> {
 
     pub fn with_dot(mut self, dot_color: Color) -> Self {
         self.dot = Some(dot_color);
+        self
+    }
+
+    pub fn reserve_dot_space(mut self, reserve: bool) -> Self {
+        self.reserve_dot_space = reserve;
         self
     }
 
@@ -114,24 +121,32 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
             .top(p.pad_v)
             .bottom(p.pad_v);
 
-        let inner: Element<'a, M> = if let Some(dot_color) = p.dot {
-            let dot_widget = container(iced::widget::Space::new())
-                .width(Length::Fixed(6.0))
-                .height(Length::Fixed(6.0))
-                .style(move |_: &iced::Theme| container::Style {
-                    background: Some(Background::Color(dot_color)),
-                    border: Border {
-                        radius: 3.0.into(),
-                        ..Border::default()
-                    },
-                    ..container::Style::default()
-                });
-            iced::widget::row![dot_widget, p.content]
-                .spacing(5)
-                .align_y(Alignment::Center)
-                .into()
-        } else {
-            p.content
+        let inner: Element<'a, M> = match (p.dot, p.reserve_dot_space) {
+            (Some(dot_color), _) => {
+                let dot_widget = container(iced::widget::Space::new())
+                    .width(Length::Fixed(6.0))
+                    .height(Length::Fixed(6.0))
+                    .style(move |_: &iced::Theme| container::Style {
+                        background: Some(Background::Color(dot_color)),
+                        border: Border {
+                            radius: 3.0.into(),
+                            ..Border::default()
+                        },
+                        ..container::Style::default()
+                    });
+                iced::widget::row![dot_widget, p.content]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+                    .into()
+            }
+            (None, true) => iced::widget::row![
+                iced::widget::Space::new().width(Length::Fixed(6.0)),
+                p.content,
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .into(),
+            (None, false) => p.content,
         };
 
         if let Some(msg) = p.on_press {

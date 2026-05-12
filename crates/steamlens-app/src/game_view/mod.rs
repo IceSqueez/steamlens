@@ -101,6 +101,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         let mut p = pill(inner, color)
             .radius(TIER_PILL_RADIUS)
             .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+            .reserve_dot_space(true)
             .selected(is_selected)
             .on_press(crate::Message::GameView(
                 GameViewMessage::RarityTierToggled(tier),
@@ -124,6 +125,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
     let mut hidden_pill = pill(hidden_inner, hidden_color)
         .radius(TIER_PILL_RADIUS)
         .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+        .reserve_dot_space(true)
         .selected(state.include_hidden)
         .on_press(crate::Message::GameView(GameViewMessage::HiddenPillToggled));
     if !any_selected || state.include_hidden {

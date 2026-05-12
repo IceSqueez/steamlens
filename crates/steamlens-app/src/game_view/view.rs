@@ -16,7 +16,7 @@ use super::types::{
     AchievementRow, BannerKind, BulkOp, RarityTier, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
-use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_SECONDARY};
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED};
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
@@ -782,10 +782,8 @@ fn achievement_card_widget<'a>(
 
     let desc_color = if spoiler_hidden {
         Color { a: 0.5, ..C_MUTED }
-    } else if !effective {
-        C_LOCKED_DESC
     } else {
-        C_TEXT_SECONDARY
+        C_LOCKED_DESC
     };
 
     let desc_label: Element<'_, GameViewMessage> = if !spoiler_hidden && !search_query.is_empty() {

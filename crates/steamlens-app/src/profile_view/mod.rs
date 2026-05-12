@@ -132,6 +132,7 @@ fn build_profile_genre_strip<'a>(
             let mut p = pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
+                .reserve_dot_space(true)
                 .selected(is_selected)
                 .on_press(crate::Message::ProfileView(
                     types::ProfileViewMessage::GenreFilterToggled(g),
