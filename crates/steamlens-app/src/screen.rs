@@ -57,6 +57,7 @@ pub struct AppHeaderContent<'a> {
     pub leading: Option<Element<'a, crate::Message>>,
     pub status_filter: Option<FilterStrip<'a>>,
     pub category_filter: Option<Element<'a, crate::Message>>,
+    pub theme: crate::ui::theme::AppTheme,
 }
 
 pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Message> {
@@ -88,7 +89,7 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
     for action in content.screen_actions {
         top_row = top_row.push(action);
     }
-    top_row = top_row.push(build_global_actions());
+    top_row = top_row.push(build_global_actions(content.theme));
 
     let top_row = top_row.width(Length::Fill);
 
@@ -410,7 +411,9 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
         .into()
 }
 
-fn build_global_actions() -> Element<'static, crate::Message> {
+fn build_global_actions(
+    current_theme: crate::ui::theme::AppTheme,
+) -> Element<'static, crate::Message> {
     use crate::theme::{C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
     use crate::ui::widgets::tooltip_box::tooltip_box;
 
@@ -450,13 +453,15 @@ fn build_global_actions() -> Element<'static, crate::Message> {
         })
     };
 
+    let (theme_glyph, theme_tooltip) = match current_theme {
+        crate::ui::theme::AppTheme::Dark => ("\u{263C}", "Switch to light theme"),
+        crate::ui::theme::AppTheme::Light => ("\u{263E}", "Switch to dark theme"),
+    };
+
     row![
         tooltip_box(
-            make_icon_btn(
-                "\u{2699}",
-                crate::Message::GlobalToast("Settings \u{2014} coming soon".to_owned()),
-            ),
-            "Settings",
+            make_icon_btn(theme_glyph, crate::Message::ToggleTheme),
+            theme_tooltip,
             iced::widget::tooltip::Position::Bottom,
         ),
         tooltip_box(
@@ -570,6 +575,7 @@ mod tests {
             leading: None,
             status_filter: None,
             category_filter: None,
+            theme: crate::ui::theme::AppTheme::Dark,
         };
         let _: Element<'_, crate::Message> = render_app_header(content);
     }
@@ -587,6 +593,7 @@ mod tests {
             leading: None,
             status_filter: None,
             category_filter: None,
+            theme: crate::ui::theme::AppTheme::Dark,
         };
         let _: Element<'_, crate::Message> = render_app_header(content);
     }

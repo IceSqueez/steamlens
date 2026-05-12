@@ -91,13 +91,13 @@ enum Message {
     GlobalSearchChanged(String),
     GlobalSortChanged(profile_view::types::LibrarySort),
     GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
-    GlobalToast(String),
     GameSortChanged(game_view::types::AchievementSort),
     PersistGameSummary(u32),
     InvalidateGameCache(u32),
     ShowAbout,
     DismissAbout,
     OpenUrl(String),
+    ToggleTheme,
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -1087,11 +1087,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
         }
 
-        Message::GlobalToast(msg) => {
-            app.context.messaging.push_toast(ToastKind::Info, msg, None);
-            Task::none()
-        }
-
         Message::ShowAbout => {
             app.about_open = true;
             Task::none()
@@ -1104,6 +1099,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::OpenUrl(url) => {
             open_url_in_browser(&url);
+            Task::none()
+        }
+
+        Message::ToggleTheme => {
+            let new_theme = match app.context.settings.ui.theme {
+                crate::ui::theme::AppTheme::Dark => crate::ui::theme::AppTheme::Light,
+                crate::ui::theme::AppTheme::Light => crate::ui::theme::AppTheme::Dark,
+            };
+            let _ = app.context.update_settings(|s| s.ui.theme = new_theme);
             Task::none()
         }
 
@@ -1420,12 +1424,13 @@ fn open_url_in_browser(url: &str) {
 fn view(app: &App) -> Element<'_, Message> {
     let skeleton_phase = app.context.animation.skeleton_phase;
 
+    let theme = app.context.settings.ui.theme;
     let header: Option<Element<'_, Message>> = match &app.screen {
         Screen::ProfileView(pv_state) => Some(crate::screen::render_app_header(
-            profile_view::header_content(pv_state, app.context.connectivity.steam_running),
+            profile_view::header_content(pv_state, app.context.connectivity.steam_running, theme),
         )),
         Screen::GameView(state) => Some(crate::screen::render_app_header(
-            game_view::header_content(state),
+            game_view::header_content(state, theme),
         )),
     };
 
@@ -1586,8 +1591,8 @@ fn subscription(app: &App) -> Subscription<Message> {
     ])
 }
 
-fn theme(_app: &App) -> iced::Theme {
-    crate::theme::theme()
+fn theme(app: &App) -> iced::Theme {
+    app.context.settings.ui.theme.into()
 }
 
 fn main() -> iced::Result {
