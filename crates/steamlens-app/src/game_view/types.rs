@@ -74,54 +74,6 @@ impl From<StatData> for StatRow {
     }
 }
 
-impl StatRow {
-    pub fn validate_and_parse(&mut self) {
-        let trimmed = self.edit_text.trim();
-        match self.data.value {
-            StatValue::Int(_) => match trimmed.parse::<i32>() {
-                Ok(v) => {
-                    let original_int = match self.data.original_value {
-                        StatValue::Int(orig) => orig,
-                        StatValue::Float(orig) => orig as i32,
-                    };
-                    if self.data.is_increment_only && v < original_int {
-                        self.edit_error = Some(format!(
-                            "Increment-only: value cannot be less than {original_int}"
-                        ));
-                    } else {
-                        self.edit_error = None;
-                        self.data.value = StatValue::Int(v);
-                        self.is_dirty = v != original_int;
-                    }
-                }
-                Err(_) => {
-                    self.edit_error = Some("Must be a whole number".to_owned());
-                }
-            },
-            StatValue::Float(_) => match trimmed.parse::<f32>() {
-                Ok(v) => {
-                    let original_float = match self.data.original_value {
-                        StatValue::Float(orig) => orig,
-                        StatValue::Int(orig) => orig as f32,
-                    };
-                    if self.data.is_increment_only && v < original_float {
-                        self.edit_error = Some(format!(
-                            "Increment-only: value cannot be less than {original_float:.2}"
-                        ));
-                    } else {
-                        self.edit_error = None;
-                        self.data.value = StatValue::Float(v);
-                        self.is_dirty = (v - original_float).abs() > f32::EPSILON;
-                    }
-                }
-                Err(_) => {
-                    self.edit_error = Some("Must be a decimal number".to_owned());
-                }
-            },
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AchievementFilter {
@@ -190,12 +142,6 @@ impl std::fmt::Display for AchievementSort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ActiveTab {
-    Achievements,
-    Stats,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
