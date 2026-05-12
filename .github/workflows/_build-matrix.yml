@@ -198,6 +198,13 @@ jobs:
           </plist>
           EOF
 
+          # Ad-hoc sign the bundle so arm64 macOS does not flag it as "damaged".
+          # No Apple Developer ID — Gatekeeper still warns "unverified developer"
+          # and users need the README workaround, but the binary is now a valid
+          # signed Mach-O and `xattr -dr com.apple.quarantine` will let it run.
+          codesign --force --deep --sign - "$APP_BUNDLE"
+          codesign --verify --verbose "$APP_BUNDLE"
+
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.dmg"
           hdiutil create -volname "${APP_NAME}" -srcfolder "$APP_BUNDLE" \
             -ov -format UDZO "$OUT"
