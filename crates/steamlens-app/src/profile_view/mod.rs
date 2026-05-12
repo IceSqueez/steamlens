@@ -151,9 +151,10 @@ fn build_profile_genre_strip<'a>(
 
     let scrollable_pills = scrollable(pills_row)
         .direction(Direction::Horizontal(
-            Scrollbar::new().width(4).scroller_width(4).margin(0),
+            Scrollbar::new().width(2).scroller_width(2).margin(2),
         ))
-        .width(Length::Fill);
+        .width(Length::Fill)
+        .height(Length::Fixed(28.0));
 
     if !state.genre_filter.is_empty() {
         let clear_label = text("Clear").size(11).color(neutral);
