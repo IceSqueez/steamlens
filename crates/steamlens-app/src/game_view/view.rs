@@ -68,6 +68,8 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
             let base = loaded_view(state, skeleton_phase);
             if state.show_reset_modal {
                 stack![base, opaque(reset_modal(state))].into()
+            } else if state.show_apply_modal {
+                stack![base, opaque(apply_modal(state))].into()
             } else {
                 base
             }
@@ -1109,7 +1111,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let apply_enabled = dirty > 0 && !has_errors && !is_busy;
     let apply_btn = if apply_enabled {
         button(text(apply_label).size(13))
-            .on_press(GameViewMessage::ApplyChanges)
+            .on_press(GameViewMessage::ApplyClicked)
             .padding(Padding::from([8u16, 16]))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -1302,6 +1304,203 @@ fn reset_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
             .color(C_MUTED),
         scope_stats,
         scope_all,
+        warning_box,
+        confirm_gate,
+        button_row,
+    ]
+    .spacing(12)
+    .padding(Padding::from(24u16));
+
+    let modal_box = container(modal_inner)
+        .width(Length::Fixed(480.0))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(Color {
+                r: 0.18,
+                g: 0.19,
+                b: 0.24,
+                a: 1.0,
+            })),
+            border: iced::Border {
+                color: C_CURRENT_LINE,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        });
+
+    let backdrop = container(space())
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.6,
+            })),
+            ..container::Style::default()
+        });
+
+    let centered = container(modal_box)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center);
+
+    stack![backdrop, centered].into()
+}
+
+fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
+    let dirty = state.dirty_count();
+    let dirty_label = format!(
+        "You are about to commit {dirty} pending change{} to Steam.",
+        if dirty == 1 { "" } else { "s" }
+    );
+
+    let warning_box = container(
+        column![
+            text("\u{26A0} This writes directly to Steam")
+                .size(13)
+                .color(C_ORANGE),
+            text(
+                "Stats and achievements will be persisted via Steam's stats API \
+                 and become visible on your profile immediately. Use Cancel to \
+                 keep your changes staged locally without committing."
+            )
+            .size(12)
+            .color(Color { a: 0.90, ..C_FG }),
+        ]
+        .spacing(4),
+    )
+    .padding(Padding::from([8u16, 12]))
+    .style(|_theme| container::Style {
+        background: Some(iced::Background::Color(Color {
+            r: 1.0,
+            g: 0.722,
+            b: 0.424,
+            a: 0.08,
+        })),
+        border: iced::Border {
+            color: C_ORANGE,
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..container::Style::default()
+    });
+
+    let confirm_input_label = text("Type \"confirmed\" to apply:")
+        .size(12)
+        .color(C_MUTED);
+
+    let confirm_input = text_input("confirmed", &state.apply_confirm_input)
+        .on_input(GameViewMessage::ApplyConfirmInputChanged)
+        .on_submit(GameViewMessage::ApplyConfirmed)
+        .size(13)
+        .padding(Padding::from([6u16, 10]))
+        .style(|_theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(Color {
+                r: 0.12,
+                g: 0.13,
+                b: 0.17,
+                a: 1.0,
+            }),
+            border: iced::Border {
+                color: C_MUTED,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            icon: C_MUTED,
+            placeholder: Color { a: 0.3, ..C_MUTED },
+            value: C_FG,
+            selection: Color {
+                a: 0.35,
+                ..C_PURPLE
+            },
+        });
+
+    let confirm_gate = column![confirm_input_label, confirm_input].spacing(4);
+
+    let confirm_enabled = state.apply_confirm_matches();
+
+    let confirm_btn = {
+        let base = button(text("Apply Changes").size(13).color(if confirm_enabled {
+            Color::BLACK
+        } else {
+            Color {
+                a: 0.4,
+                ..Color::BLACK
+            }
+        }))
+        .padding(Padding::from([8u16, 16]))
+        .style(move |_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let bg = if !confirm_enabled {
+                Color {
+                    a: 0.30,
+                    ..C_PURPLE
+                }
+            } else if hovered {
+                Color {
+                    r: (C_PURPLE.r * 0.9 + 0.1).min(1.0),
+                    g: (C_PURPLE.g * 0.9 + 0.1).min(1.0),
+                    b: (C_PURPLE.b * 0.9 + 0.1).min(1.0),
+                    a: 1.0,
+                }
+            } else {
+                C_PURPLE
+            };
+            button::Style {
+                background: Some(iced::Background::Color(bg)),
+                border: dracula_border_radius(4.0),
+                text_color: Color::BLACK,
+                ..button::Style::default()
+            }
+        });
+        if confirm_enabled {
+            base.on_press(GameViewMessage::ApplyConfirmed)
+        } else {
+            base
+        }
+    };
+
+    let cancel_btn = button(text("Cancel").size(13).color(C_FG))
+        .on_press(GameViewMessage::ApplyCancelled)
+        .padding(Padding::from([8u16, 16]))
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(iced::Background::Color(if hovered {
+                    Color {
+                        r: (C_CURRENT_LINE.r * 0.85 + 0.18).min(1.0),
+                        g: (C_CURRENT_LINE.g * 0.85 + 0.18).min(1.0),
+                        b: (C_CURRENT_LINE.b * 0.85 + 0.18).min(1.0),
+                        a: 1.0,
+                    }
+                } else {
+                    C_CURRENT_LINE
+                })),
+                border: iced::Border {
+                    color: if hovered {
+                        Color { a: 0.40, ..C_MUTED }
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                text_color: C_FG,
+                ..button::Style::default()
+            }
+        });
+
+    let button_row = row![cancel_btn, space().width(Length::Fill), confirm_btn]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .padding(Padding::default().top(16));
+
+    let modal_inner = column![
+        text("\u{26A0}  Confirm Apply").size(16).color(C_FG),
+        text(dirty_label).size(13).color(C_MUTED),
         warning_box,
         confirm_gate,
         button_row,

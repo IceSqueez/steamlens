@@ -932,7 +932,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     && !state.has_stat_errors()
                 {
                     let (task, _event) =
-                        game_view::update(state, GameViewMessage::ApplyChanges, &mut app.context);
+                        game_view::update(state, GameViewMessage::ApplyClicked, &mut app.context);
                     return task.map(Message::GameView);
                 }
                 if modifiers.command() && c.as_str() == "f" {
