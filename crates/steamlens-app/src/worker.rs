@@ -269,7 +269,6 @@ fn command_label(cmd: &WorkerCommand) -> &'static str {
         WorkerCommand::LoadAchievementsAndStatsCardOnly => "LoadAchievementsAndStatsCardOnly",
         WorkerCommand::QuickAchievementCount => "QuickAchievementCount",
         WorkerCommand::StoreStats => "StoreStats",
-        WorkerCommand::ResetAllStats { .. } => "ResetAllStats",
         WorkerCommand::RequestGlobalPercentages => "RequestGlobalPercentages",
         WorkerCommand::SetAchievement(_) => "SetAchievement",
         WorkerCommand::ClearAchievement(_) => "ClearAchievement",
@@ -358,15 +357,6 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
 
         WorkerCommand::StoreStats => {
             let resp = store_stats_and_wait(client).await;
-            if write_response(&resp).await.is_err() {
-                return DispatchOutcome::Fatal;
-            }
-        }
-
-        WorkerCommand::ResetAllStats {
-            include_achievements,
-        } => {
-            let resp = reset_all_and_wait(client, include_achievements).await;
             if write_response(&resp).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
@@ -845,28 +835,6 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
             };
         }
         tokio::time::sleep(timeouts::POLL_INTERVAL).await;
-    }
-}
-
-async fn reset_all_and_wait(client: &Client, include_achievements: bool) -> WorkerResponse {
-    let stats_iface = client.user_stats();
-    if let Err(e) = stats_iface.reset_all_stats(include_achievements) {
-        return WorkerResponse::Error {
-            kind: WorkerErrorKind::ResetAllStats,
-            message: e.to_string(),
-        };
-    }
-    if let Err(e) = stats_iface.store_stats() {
-        return WorkerResponse::Error {
-            kind: WorkerErrorKind::StoreStats,
-            message: e.to_string(),
-        };
-    }
-    let result = wait_for_store_confirmed(client).await;
-    if matches!(result, WorkerResponse::Stored) {
-        WorkerResponse::ResetDone
-    } else {
-        result
     }
 }
 

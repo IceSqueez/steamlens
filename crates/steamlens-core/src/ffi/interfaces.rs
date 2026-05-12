@@ -198,7 +198,7 @@ pub struct ISteamUserStats013 {
     ) -> bool,
     _reserved_18_get_user_achievement: usize,
     _reserved_19_get_user_achievement_and_unlock_time: usize,
-    pub reset_all_stats: unsafe extern "C" fn(this: *mut c_void, achievements_too: bool) -> bool,
+    _reserved_20_reset_all_stats: usize,
     _reserved_21_find_or_create_leaderboard: usize,
     _reserved_22_find_leaderboard: usize,
     _reserved_23_get_leaderboard_name: usize,

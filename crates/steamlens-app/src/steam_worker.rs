@@ -7,7 +7,6 @@ use tokio::sync::mpsc as async_mpsc;
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
 
-use crate::game_view::types::ResetScope;
 use crate::timeouts;
 use crate::worker_subprocess::{WorkerHandle, WorkerMode, WorkerSpawnError};
 
@@ -20,9 +19,6 @@ pub enum SteamRequest {
         achievements_to_clear: Vec<String>,
         stats_int: HashMap<String, i32>,
         stats_float: HashMap<String, f32>,
-    },
-    ResetAll {
-        scope: ResetScope,
     },
     Disconnect,
 }
@@ -41,8 +37,6 @@ pub enum SteamReply {
     LoadFailed(String),
     ChangesSaved,
     SaveFailed(String),
-    ResetDone,
-    ResetFailed(String),
     IconUpdated {
         name: String,
         icon: AchievementIcon,
@@ -123,10 +117,6 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<WorkerCommand> {
             cmds
         }
 
-        SteamRequest::ResetAll { scope, .. } => vec![WorkerCommand::ResetAllStats {
-            include_achievements: *scope == ResetScope::StatsAndAchievements,
-        }],
-
         SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {
             vec![]
         }
@@ -144,7 +134,6 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
         WorkerErrorKind::StoreStats | WorkerErrorKind::UserStatsStored => {
             SteamReply::SaveFailed(message)
         }
-        WorkerErrorKind::ResetAllStats => SteamReply::ResetFailed(message),
         WorkerErrorKind::RequestGlobalPercentages
         | WorkerErrorKind::GlobalPercentagesReady
         | WorkerErrorKind::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed,
@@ -336,9 +325,6 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
         WorkerResponse::Stored => {
             reply(rep_tx, SteamReply::ChangesSaved);
         }
-        WorkerResponse::ResetDone => {
-            reply(rep_tx, SteamReply::ResetDone);
-        }
         WorkerResponse::AchievementCount {
             shm_path,
             region_bytes: _,
@@ -442,27 +428,6 @@ async fn handle_request(
                 rep_tx,
             )
             .await;
-        }
-
-        SteamRequest::ResetAll { scope, .. } => {
-            let include_achievements = scope == ResetScope::StatsAndAchievements;
-            let timeout = timeouts::LIVE_LOAD;
-            match round_trip(
-                handle,
-                &WorkerCommand::ResetAllStats {
-                    include_achievements,
-                },
-                timeout,
-                rep_tx,
-            )
-            .await
-            {
-                Some(resp) => handle_worker_response(resp, rep_tx),
-                None => reply(
-                    rep_tx,
-                    SteamReply::ResetFailed("timed out waiting for ResetAllStats".to_owned()),
-                ),
-            }
         }
 
         SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {}
@@ -647,42 +612,6 @@ mod tests {
         let cmds = translate_request(&SteamRequest::RequestGlobalPercentages);
         assert_eq!(cmds.len(), 1);
         assert!(matches!(cmds[0], WorkerCommand::RequestGlobalPercentages));
-    }
-
-    #[test]
-    fn translate_request_reset_stats_only() {
-        let req = SteamRequest::ResetAll {
-            scope: ResetScope::StatsOnly,
-        };
-        let cmds = translate_request(&req);
-        assert_eq!(cmds.len(), 1);
-        assert!(
-            matches!(
-                cmds[0],
-                WorkerCommand::ResetAllStats {
-                    include_achievements: false
-                }
-            ),
-            "StatsOnly must produce include_achievements=false"
-        );
-    }
-
-    #[test]
-    fn translate_request_reset_stats_and_achievements() {
-        let req = SteamRequest::ResetAll {
-            scope: ResetScope::StatsAndAchievements,
-        };
-        let cmds = translate_request(&req);
-        assert_eq!(cmds.len(), 1);
-        assert!(
-            matches!(
-                cmds[0],
-                WorkerCommand::ResetAllStats {
-                    include_achievements: true
-                }
-            ),
-            "StatsAndAchievements must produce include_achievements=true"
-        );
     }
 
     #[test]

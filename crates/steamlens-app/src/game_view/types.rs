@@ -145,13 +145,6 @@ impl std::fmt::Display for AchievementSort {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ResetScope {
-    Pending,
-    StatsOnly,
-    StatsAndAchievements,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BannerKind {
     Success,
     Warning,
