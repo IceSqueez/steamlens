@@ -1180,7 +1180,7 @@ pub(crate) fn build_cache_entry_from_scan(
     steam_root: &std::path::Path,
     steamid3: u64,
 ) -> GameCacheEntry {
-    use cache::types::{CachedProgress, CachedStat};
+    use cache::types::{CachedAchievement, CachedProgress, CachedStat};
     use game_view::compute_tier_breakdown;
     use game_view::types::{AchievementData, AchievementRow};
     use steamlens_core::{StatValue, read_last_played, read_playtime};
@@ -1242,13 +1242,29 @@ pub(crate) fn build_cache_entry_from_scan(
         .or_else(|| entry_name.map(|s| s.to_owned()))
         .unwrap_or_else(|| format!("App {app_id}"));
 
+    let achievements: Vec<CachedAchievement> = scanned
+        .achievements
+        .iter()
+        .map(|a| CachedAchievement {
+            api_name: a.id.clone(),
+            display_name: String::new(),
+            description: String::new(),
+            hidden: false,
+            icon_path: None,
+            icon_locked_path: None,
+            earned: a.is_achieved,
+            earned_at: None,
+            global_percent: scanned.global_percentages.get(&a.id).map(|p| *p as f64),
+        })
+        .collect();
+
     GameCacheEntry {
         schema_version: cache::CURRENT_SCHEMA_VERSION,
         app_id,
         name,
         steam_last_played,
         cached_at,
-        achievements: Vec::new(),
+        achievements,
         stats,
         progress: CachedProgress { earned, total },
         tier_breakdown,
