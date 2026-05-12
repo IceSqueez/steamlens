@@ -163,7 +163,7 @@ fn profile_status_bar(
     } else {
         Some(
             status_bar::<ProfileViewMessage>()
-                .connected(total, state.last_scan_completed_at)
+                .connected(total, "games", state.last_scan_completed_at)
                 .into(),
         )
     }

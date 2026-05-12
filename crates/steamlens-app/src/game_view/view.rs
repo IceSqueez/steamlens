@@ -139,23 +139,33 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
     use crate::ui::widgets::status_bar::status_bar;
 
     let total = state.achievements.len();
-    let appeared = state.achievements.iter().filter(|r| r.appeared).count();
+    let ready = state
+        .achievements
+        .iter()
+        .filter(|r| r.is_spoiler_hidden() || r.data.icon.is_some())
+        .count();
 
     match state.phase {
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
             Some(
                 status_bar::<GameViewMessage>()
-                    .scanning("Loading achievements", appeared, total.max(1))
+                    .scanning("Loading achievements", ready, total.max(1))
                     .into(),
             )
         }
         GameViewPhase::Ready | GameViewPhase::Saving | GameViewPhase::Resetting => {
             if total == 0 {
                 None
+            } else if ready < total {
+                Some(
+                    status_bar::<GameViewMessage>()
+                        .scanning("Loading achievement icons", ready, total)
+                        .into(),
+                )
             } else {
                 Some(
                     status_bar::<GameViewMessage>()
-                        .connected(total, None)
+                        .connected(total, "achievements", None)
                         .into(),
                 )
             }
@@ -672,14 +682,20 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, G
                 row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
-                r = r.push(achievement_card_widget(
-                    entry,
-                    ACH_CARD_WIDTH,
-                    query_owned.clone(),
-                    glow_pulse,
-                    tier,
-                    skeleton_phase,
-                ));
+                let is_ready = entry.is_spoiler_hidden() || entry.data.icon.is_some();
+                let card: Element<'_, GameViewMessage> = if is_ready {
+                    achievement_card_widget(
+                        entry,
+                        ACH_CARD_WIDTH,
+                        query_owned.clone(),
+                        glow_pulse,
+                        tier,
+                        skeleton_phase,
+                    )
+                } else {
+                    build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase)
+                };
+                r = r.push(card);
                 r = r.push(space().width(Length::Fixed(gap)));
             }
             let needed = cols - chunk.len();

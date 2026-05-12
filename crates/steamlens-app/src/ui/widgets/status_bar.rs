@@ -18,7 +18,8 @@ pub fn status_bar<'a, M: 'a + Clone>() -> StatusBar<'a, M> {
 enum Mode<'a> {
     Empty,
     Connected {
-        games: usize,
+        count: usize,
+        noun: Cow<'a, str>,
         last_sync: Option<Instant>,
     },
     Scanning {
@@ -50,8 +51,17 @@ impl<'a, M> Default for StatusBar<'a, M> {
 }
 
 impl<'a, M: 'a + Clone> StatusBar<'a, M> {
-    pub fn connected(mut self, games: usize, last_sync: Option<Instant>) -> Self {
-        self.mode = Mode::Connected { games, last_sync };
+    pub fn connected(
+        mut self,
+        count: usize,
+        noun: impl Into<Cow<'a, str>>,
+        last_sync: Option<Instant>,
+    ) -> Self {
+        self.mode = Mode::Connected {
+            count,
+            noun: noun.into(),
+            last_sync,
+        };
         self
     }
 
@@ -91,22 +101,23 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
 
         match b.mode {
             Mode::Empty => {}
-            Mode::Connected { games, last_sync } => {
+            Mode::Connected {
+                count,
+                noun,
+                last_sync,
+            } => {
                 left = left.push(cluster(CONNECTED_DOT, "Connected", C_TEXT_MUTED));
-                left = left.push(text(format!("{games} games")).size(11).color(C_TEXT_MUTED));
-                left = left.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
-                let sync_label = match last_sync {
-                    Some(t) => {
-                        let secs = t.elapsed().as_secs();
-                        if secs < 60 {
-                            "Last sync just now".to_owned()
-                        } else {
-                            format!("Last sync {}m ago", secs / 60)
-                        }
-                    }
-                    None => "Last sync never".to_owned(),
-                };
-                left = left.push(text(sync_label).size(11).color(C_TEXT_MUTED));
+                left = left.push(text(format!("{count} {noun}")).size(11).color(C_TEXT_MUTED));
+                if let Some(t) = last_sync {
+                    let secs = t.elapsed().as_secs();
+                    let sync_label = if secs < 60 {
+                        "Last sync just now".to_owned()
+                    } else {
+                        format!("Last sync {}m ago", secs / 60)
+                    };
+                    left = left.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
+                    left = left.push(text(sync_label).size(11).color(C_TEXT_MUTED));
+                }
             }
             Mode::Scanning {
                 label,
@@ -260,7 +271,7 @@ mod tests {
 
     #[test]
     fn connected_builds() {
-        let _: Element<'_, ()> = status_bar::<()>().connected(344, None).into();
+        let _: Element<'_, ()> = status_bar::<()>().connected(344, "games", None).into();
     }
 
     #[test]
