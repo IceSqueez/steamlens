@@ -492,6 +492,7 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, G
     let query_owned = state.search_query.clone();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
     let tier_map = compute_tier_map(&state.achievements);
+    let cache_only = state.cache_only;
 
     let grid = responsive(move |size| {
         let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
@@ -506,6 +507,7 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, G
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
                 let is_ready = entry.is_spoiler_hidden()
+                    || cache_only
                     || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
                 let card: Element<'_, GameViewMessage> = if is_ready {
                     achievement_card_widget(

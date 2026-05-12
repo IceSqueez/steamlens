@@ -45,6 +45,26 @@ fn game_cache_path(app_id: u32) -> PathBuf {
         .join(format!("{app_id}.json"))
 }
 
+pub fn load_game_cache_blocking(app_id: u32) -> Option<GameCacheEntry> {
+    let path = game_cache_path(app_id);
+    let bytes = std::fs::read(&path).ok()?;
+    let entry: GameCacheEntry = serde_json::from_slice(&bytes)
+        .map_err(|e| {
+            crate::log!("cache: JSON parse error at {}: {e}", path.display());
+        })
+        .ok()?;
+    if entry.schema_version != CURRENT_SCHEMA_VERSION {
+        crate::log!(
+            "cache: schema version {} != expected {} at {}; treating as cache miss",
+            entry.schema_version,
+            CURRENT_SCHEMA_VERSION,
+            path.display()
+        );
+        return None;
+    }
+    Some(entry)
+}
+
 #[allow(
     dead_code,
     reason = "retained for rollback safety per cache migration plan; classify uses load_game_summary_from_path"

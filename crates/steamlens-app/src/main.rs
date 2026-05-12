@@ -291,6 +291,19 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     }
 
     if steam_off {
+        if state.achievements.is_empty()
+            && let Some(full) = cache::store::load_game_cache_blocking(app_id)
+        {
+            state.expected_total = full.progress.total;
+            if state.genre.is_none() {
+                state.genre = full.genre.clone();
+            }
+            if state.playtime_minutes.is_none() {
+                state.playtime_minutes = full.playtime_minutes;
+            }
+            seed_game_view_from_cache(&mut state, &full);
+            app.context.cached_entries.insert(app_id, full);
+        }
         disconnect_worker(app);
         state.cache_only = true;
         state.phase = game_view::GameViewPhase::Ready;
