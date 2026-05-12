@@ -607,13 +607,61 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 "persist game summary: app_id={app_id} earned={earned} total={total} change_number={change_number}"
             );
 
-            Task::perform(
+            let mut full_entry = build_game_view_cache_entry(
+                gv_state,
+                app_id,
+                &app.context.steam_root,
+                app.context.steamid3,
+            );
+            if let Some(existing) = app.context.cached_entries.get(&app_id)
+                && full_entry.genre.is_none()
+            {
+                full_entry.genre = existing.genre.clone();
+            }
+            app.context
+                .cached_entries
+                .insert(app_id, full_entry.clone());
+
+            let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = gv_state
+                .achievements
+                .iter()
+                .filter_map(|r| {
+                    r.data
+                        .icon
+                        .as_ref()
+                        .map(|i| (r.data.id.clone(), i.clone()))
+                })
+                .collect();
+            let icons_task = Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        for (id, icon) in &icons_to_write {
+                            if let Err(e) = cache::icons::write_blocking(app_id, id, icon) {
+                                crate::log!(
+                                    "icon cache write failed app_id={app_id} ach={id}: {e}"
+                                );
+                            }
+                        }
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                },
+                move |result| Message::CacheWritten {
+                    app_id,
+                    result: result.map(|_| ()),
+                },
+            );
+
+            let summary_task = Task::perform(
                 async move { crate::cache::store::write_game_summary(&summary).await },
                 move |result| Message::CacheWritten {
                     app_id,
                     result: result.map_err(|e| e.to_string()),
                 },
-            )
+            );
+            let game_task = cache::commands::write_game_cache(full_entry);
+
+            Task::batch([summary_task, game_task, icons_task])
         }
 
         Message::InvalidateGameCache(app_id) => {
