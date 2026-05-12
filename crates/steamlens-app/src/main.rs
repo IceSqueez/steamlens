@@ -1327,12 +1327,17 @@ fn splash_view<'a>() -> Element<'a, Message> {
 fn has_active_skeletons(app: &App) -> bool {
     match &app.screen {
         Screen::ProfileView(pv) => pv.games.iter().any(|g| !g.is_hydrated()),
-        Screen::GameView(state) => matches!(
-            state.phase,
-            game_view::GameViewPhase::Connecting
-                | game_view::GameViewPhase::WaitingStats
-                | game_view::GameViewPhase::LoadingData
-        ),
+        Screen::GameView(state) => {
+            matches!(
+                state.phase,
+                game_view::GameViewPhase::Connecting
+                    | game_view::GameViewPhase::WaitingStats
+                    | game_view::GameViewPhase::LoadingData
+            ) || state
+                .achievements
+                .iter()
+                .any(|r| !r.is_spoiler_hidden() && r.data.icon.is_none())
+        }
     }
 }
 
