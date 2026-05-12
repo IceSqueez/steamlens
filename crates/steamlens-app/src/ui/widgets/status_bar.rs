@@ -5,7 +5,7 @@ use std::time::Instant;
 use iced::widget::{button, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
-use crate::theme::{C_ACCENT, C_BORDER, C_SURFACE, C_TEXT_MUTED};
+use crate::theme::{C_ACCENT, C_SURFACE, C_TEXT_MUTED};
 
 const CONNECTED_DOT: Color = Color::from_rgb(0.427, 0.788, 0.498);
 const OFFLINE_DOT: Color = Color::from_rgb(0.941, 0.784, 0.478);
@@ -156,18 +156,21 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
             footer_row = footer_row.push(link_button("Reconnect", C_ACCENT, msg));
         }
 
-        container(footer_row)
+        let inner = container(footer_row)
             .width(Length::Fill)
             .padding(Padding::default().left(14).right(14).top(8).bottom(8))
             .style(|_: &iced::Theme| container::Style {
                 background: Some(Background::Color(C_SURFACE)),
                 border: Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 0.0.into(),
+                    radius: 10.0.into(),
+                    ..Border::default()
                 },
                 ..container::Style::default()
-            })
+            });
+
+        container(inner)
+            .width(Length::Fill)
+            .padding(Padding::default().left(16).right(16).top(0).bottom(12))
             .into()
     }
 }
