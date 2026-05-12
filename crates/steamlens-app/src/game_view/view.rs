@@ -738,6 +738,8 @@ fn achievement_card_widget<'a>(
 
     let display_name = if spoiler_hidden {
         "Hidden Achievement".to_owned()
+    } else if row.data.display_name.is_empty() {
+        row.data.id.clone()
     } else {
         row.data.display_name.clone()
     };
