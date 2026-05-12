@@ -17,6 +17,7 @@ mod steam_worker;
 mod theme;
 mod timeouts;
 mod ui;
+mod update_check;
 mod worker;
 mod worker_subprocess;
 
@@ -98,6 +99,7 @@ enum Message {
     DismissAbout,
     OpenUrl(String),
     ToggleTheme,
+    UpdateCheckResult(Result<Option<update_check::UpdateInfo>, String>),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -178,6 +180,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         Task::batch([
             splash_commands::min_splash_wait(),
             splash_commands::probe_steam_boot(),
+            Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
         ]),
     )
 }
@@ -1108,6 +1111,31 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 crate::ui::theme::AppTheme::Light => crate::ui::theme::AppTheme::Dark,
             };
             let _ = app.context.update_settings(|s| s.ui.theme = new_theme);
+            Task::none()
+        }
+
+        Message::UpdateCheckResult(result) => {
+            match result {
+                Ok(Some(info)) => {
+                    let body = format!(
+                        "A new version {} is available \u{2014} click Download to get it.",
+                        info.latest
+                    );
+                    app.context.messaging.push_banner(
+                        BannerSeverity::Info,
+                        body,
+                        Some(messaging::BannerAction {
+                            label: "Download",
+                            message: Message::OpenUrl(info.html_url),
+                        }),
+                        true,
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    crate::log!("update_check: {e}");
+                }
+            }
             Task::none()
         }
 
