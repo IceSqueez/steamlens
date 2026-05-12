@@ -45,7 +45,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         .arg("--probe")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()?;
 
     let _job_guard =
@@ -55,6 +55,16 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         .stdout
         .take()
         .ok_or_else(|| io::Error::other("child stdout missing"))?;
+    let stderr = child.stderr.take();
+
+    let stderr_thread = stderr.map(|mut s| {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::with_capacity(2048);
+            let _ = s.read_to_end(&mut buf);
+            String::from_utf8_lossy(&buf).into_owned()
+        })
+    });
 
     let deadline = std::time::Instant::now() + timeout;
 
@@ -62,6 +72,29 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
 
     let _ = child.kill();
     let _ = child.wait();
+
+    if let Some(handle) = stderr_thread
+        && let Ok(text) = handle.join()
+    {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(rest) = trimmed.strip_prefix("ERROR ") {
+                tracing::error!(target: "probe", "{rest}");
+            } else if let Some(rest) = trimmed.strip_prefix("WARN ") {
+                tracing::warn!(target: "probe", "{rest}");
+            } else if let Some(rest) = trimmed.strip_prefix("DEBUG ") {
+                tracing::debug!(target: "probe", "{rest}");
+            } else if let Some(rest) = trimmed.strip_prefix("TRACE ") {
+                tracing::trace!(target: "probe", "{rest}");
+            } else {
+                let msg = trimmed.strip_prefix("INFO ").unwrap_or(trimmed);
+                tracing::info!(target: "probe", "{msg}");
+            }
+        }
+    }
 
     let payload = match result {
         Err(ProbeReadError::TimedOut) => return Err(ProbeError::Timeout),

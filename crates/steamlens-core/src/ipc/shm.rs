@@ -92,7 +92,7 @@ pub fn read_payload<T: serde::de::DeserializeOwned>(
     let result =
         postcard::from_bytes(reader.as_bytes()).map_err(|e| ShmError::Deserialize(e.to_string()));
     if let Err(unlink_err) = reader.unlink() {
-        eprintln!("[steamlens] shm unlink failed: {unlink_err}");
+        tracing::warn!("shm unlink failed: {unlink_err}");
     }
     result
 }

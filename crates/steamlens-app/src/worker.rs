@@ -65,10 +65,15 @@ pub fn run(app_id: u32) -> ! {
 
 async fn probe_main() -> i32 {
     let t0 = std::time::Instant::now();
-    tracing::debug!("probe: connect…");
+    let candidates: Vec<String> = steamlens_core::steamclient_lib_candidates()
+        .into_iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    tracing::info!(?candidates, "probe: steamclient.dll discovery candidates");
     let client = match steamlens_core::connect(0) {
         Ok(c) => c,
         Err(steamlens_core::SteamError::NotLoggedIn) => {
+            tracing::warn!("probe: Steam is running but no user is signed in");
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::NotLoggedIn,
                 message: steamlens_core::SteamError::NotLoggedIn.to_string(),
@@ -77,6 +82,7 @@ async fn probe_main() -> i32 {
             return 1;
         }
         Err(e) => {
+            tracing::error!("probe: connect failed: {e}");
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::Connect,
                 message: e.to_string(),

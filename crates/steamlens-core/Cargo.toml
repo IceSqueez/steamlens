@@ -18,6 +18,7 @@ serde = { workspace = true }
 steamlens-vdf = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = { workspace = true }
