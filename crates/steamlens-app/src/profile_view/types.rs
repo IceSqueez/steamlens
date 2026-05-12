@@ -266,6 +266,8 @@ pub struct ProfileViewState {
     pub status_filter: GameStatusFilter,
     pub genre_filter: HashSet<String>,
     pub last_scan_completed_at: Option<Instant>,
+    pub scan_started_at: Option<Instant>,
+    pub scan_target_count: usize,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -301,6 +303,8 @@ impl ProfileViewState {
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
             last_scan_completed_at: None,
+            scan_started_at: None,
+            scan_target_count: 0,
         }
     }
 
@@ -577,6 +581,8 @@ mod tests {
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
             last_scan_completed_at: None,
+            scan_started_at: None,
+            scan_target_count: 0,
         }
     }
 

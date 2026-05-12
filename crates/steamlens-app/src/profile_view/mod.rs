@@ -302,7 +302,18 @@ pub fn update(
 
         ProfileViewMessage::ProgressScanDone => {
             types::sort_games_in_place(&mut state.games, state.sort, &ctx.settings.library.pinned);
-            state.last_scan_completed_at = Some(std::time::Instant::now());
+            let now = std::time::Instant::now();
+            if let Some(started) = state.scan_started_at.take() {
+                let elapsed = now.duration_since(started);
+                let total = state.scan_target_count;
+                let failed = state.failed_app_ids.len();
+                let succeeded = total.saturating_sub(failed);
+                crate::log!(
+                    "scan: completed {total} apps in {elapsed:?} ({succeeded} ok, {failed} failed)"
+                );
+            }
+            state.scan_target_count = 0;
+            state.last_scan_completed_at = Some(now);
             state.progress_scanner = None;
             state.progress_rx = None;
             (Task::none(), ProfileEvent::None)

@@ -203,7 +203,6 @@ impl SteamConnection {
                 let vtbl = opaque::vtable::<ISteamUser023>(u023);
                 ((*vtbl).b_logged_on)(u023)
             };
-            eprintln!("steamlens: BLoggedOn = {logged_on}");
             if !logged_on {
                 unsafe {
                     let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
