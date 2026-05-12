@@ -52,7 +52,7 @@ const C_BUILT_WITH: Color = Color::from_rgb(
 );
 
 static ABOUT_ICON: LazyLock<iced::widget::image::Handle> = LazyLock::new(|| {
-    const BYTES: &[u8] = include_bytes!("../../../../assets/icon-256.png");
+    const BYTES: &[u8] = include_bytes!("../../../../assets/icon-128.png");
     iced::widget::image::Handle::from_bytes(BYTES.to_vec())
 });
 
