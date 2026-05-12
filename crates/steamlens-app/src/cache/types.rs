@@ -74,6 +74,16 @@ pub struct CachedStat {
     pub api_name: String,
     pub display_name: String,
     pub value: CachedStatValue,
+    #[serde(default)]
+    pub max_value: Option<u64>,
+    #[serde(default)]
+    pub min_value: Option<i64>,
+    #[serde(default)]
+    pub default_value: Option<i64>,
+    #[serde(default)]
+    pub is_increment_only: bool,
+    #[serde(default)]
+    pub permission: u32,
 }
 
 pub use steamlens_core::AchievementCountPayload as CachedProgress;

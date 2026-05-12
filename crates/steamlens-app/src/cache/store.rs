@@ -215,6 +215,11 @@ mod tests {
                 api_name: "NumDeaths".to_owned(),
                 display_name: "Deaths".to_owned(),
                 value: CachedStatValue::Int(42),
+                max_value: None,
+                min_value: None,
+                default_value: None,
+                is_increment_only: false,
+                permission: 0,
             }],
             progress: CachedProgress {
                 earned: 1,
@@ -469,6 +474,11 @@ mod tests {
                 api_name: "NumDeaths".to_owned(),
                 display_name: "Deaths".to_owned(),
                 value: CachedStatValue::Int(42),
+                max_value: None,
+                min_value: None,
+                default_value: None,
+                is_increment_only: false,
+                permission: 0,
             }],
         };
 
