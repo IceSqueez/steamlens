@@ -14,6 +14,7 @@ pub struct ProbedProfile {
     pub avatar_image: Option<Vec<u8>>,
     pub game_summaries: Vec<GameSummary>,
     pub steam_level: Option<u32>,
+    pub steam_root: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -87,6 +88,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
                 avatar_image: payload.avatar_png,
                 game_summaries: payload.game_summaries,
                 steam_level: payload.steam_level,
+                steam_root: payload.steam_root,
             })
         }
         WorkerResponse::Error { kind, message } => match kind {

@@ -785,13 +785,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         .as_ref()
                         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
-                    let steam_root_opt: Option<std::path::PathBuf> = None;
+                    if let Some(root) = p.steam_root.clone() {
+                        app.context.steam_root = root;
+                    }
+
                     let cached = cache::make_cached_profile(
                         p.steam_id,
                         p.persona_name.clone(),
                         account_name.clone(),
                         p.avatar_image.clone(),
-                        steam_root_opt,
+                        p.steam_root.clone(),
                         p.steam_level,
                     );
                     app.context.steam_level = p.steam_level;
@@ -1715,6 +1718,7 @@ mod tests {
             avatar_image: Some(vec![0x89, 0x50, 0x4E, 0x47]),
             game_summaries: vec![],
             steam_level: Some(17),
+            steam_root: None,
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
@@ -2340,6 +2344,7 @@ mod tests {
             avatar_image: None,
             game_summaries: vec![],
             steam_level: None,
+            steam_root: None,
         };
         let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
 
