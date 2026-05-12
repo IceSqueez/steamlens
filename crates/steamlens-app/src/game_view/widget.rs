@@ -26,7 +26,7 @@ static SVG_CLOCK: LazyLock<svg::Handle> = LazyLock::new(|| {
 
 static SVG_INVALIDATE: LazyLock<svg::Handle> = LazyLock::new(|| {
     svg::Handle::from_memory(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#bd93f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>"##
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#bd93f9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>"##
             .as_bytes()
             .to_vec(),
     )
@@ -177,12 +177,12 @@ fn build_invalidate_button<'a>(app_id: u32) -> Element<'a, GameViewMessage> {
     use crate::ui::widgets::tooltip_box::tooltip_box;
 
     let icon = svg(SVG_INVALIDATE.clone())
-        .width(Length::Fixed(14.0))
-        .height(Length::Fixed(14.0));
+        .width(Length::Fixed(18.0))
+        .height(Length::Fixed(18.0));
     let btn = button(
         container(icon)
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0))
+            .width(Length::Fixed(32.0))
+            .height(Length::Fixed(32.0))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
     )
