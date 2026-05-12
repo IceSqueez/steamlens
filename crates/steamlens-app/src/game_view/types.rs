@@ -119,7 +119,7 @@ impl AchievementSort {
         match self {
             AchievementSort::UnlockChance => "Unlock chance",
             AchievementSort::RarityAndName => "Rarity & name",
-            AchievementSort::Name => "A \u{2192} Z",
+            AchievementSort::Name => "A \u{2014} Z",
         }
     }
 

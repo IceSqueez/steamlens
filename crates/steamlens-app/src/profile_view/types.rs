@@ -98,9 +98,9 @@ pub enum LibrarySort {
 impl LibrarySort {
     pub fn short_label(&self) -> &'static str {
         match self {
-            LibrarySort::NameAsc => "A \u{2192} Z",
+            LibrarySort::NameAsc => "A \u{2014} Z",
             LibrarySort::LastPlayed => "Last played",
-            LibrarySort::Completion => "Completion %",
+            LibrarySort::Completion => "Completion",
         }
     }
 
@@ -754,9 +754,9 @@ mod tests {
 
     #[test]
     fn library_sort_short_label_and_tooltip() {
-        assert_eq!(LibrarySort::NameAsc.short_label(), "A \u{2192} Z");
+        assert_eq!(LibrarySort::NameAsc.short_label(), "A \u{2014} Z");
         assert_eq!(LibrarySort::LastPlayed.short_label(), "Last played");
-        assert_eq!(LibrarySort::Completion.short_label(), "Completion %");
+        assert_eq!(LibrarySort::Completion.short_label(), "Completion");
         assert!(!LibrarySort::Completion.tooltip().is_empty());
     }
 
