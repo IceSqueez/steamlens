@@ -77,4 +77,5 @@ pub struct ProbeResultPayload {
     pub avatar_png: Option<Vec<u8>>,
     pub game_summaries: Vec<crate::library::GameSummary>,
     pub steam_level: Option<u32>,
+    pub steam_root: Option<std::path::PathBuf>,
 }

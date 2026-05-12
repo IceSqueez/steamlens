@@ -562,6 +562,7 @@ mod tests {
                 last_played: Some(1_700_000_000),
             }],
             steam_level: Some(42),
+            steam_root: Some(std::path::PathBuf::from("/tmp/synthetic_steam")),
         };
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
@@ -584,6 +585,7 @@ mod tests {
             avatar_png: None,
             game_summaries: vec![],
             steam_level: None,
+            steam_root: None,
         };
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");

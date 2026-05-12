@@ -129,12 +129,16 @@ async fn probe_main() -> i32 {
     let steam_level = client.get_player_steam_level();
     crate::log!("probe: steam level: {:?}", steam_level);
 
+    let steam_root = client.steam_root().ok();
+    crate::log!("probe: steam_root: {:?}", steam_root);
+
     let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
         persona_name,
         avatar_png,
         game_summaries: games,
         steam_level,
+        steam_root,
     });
     if write_response(&resp).await.is_err() {
         return 1;
