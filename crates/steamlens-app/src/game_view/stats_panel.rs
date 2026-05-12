@@ -9,6 +9,7 @@ use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
 
 const C_GREEN: Color = Color::from_rgb(0.427, 0.788, 0.498);
 const C_DANGER: Color = Color::from_rgb(0.863, 0.392, 0.392);
+const C_DIRTY: Color = Color::from_rgb(0.945, 0.980, 0.549);
 const C_SEARCH_BG: Color = Color::from_rgb(
     0x2a as f32 / 255.0,
     0x26 as f32 / 255.0,
@@ -242,8 +243,9 @@ fn build_search_input(query: &str) -> Element<'_, GameViewMessage> {
 
 fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     let (current, maxed, has_progress) = current_max_pair(row_data);
+    let is_dirty = row_data.is_dirty;
 
-    let (name_color, value_color) = if !has_progress {
+    let (mut name_color, mut value_color) = if !has_progress {
         (C_TEXT_DIM, C_TEXT_DIM)
     } else if maxed {
         (C_TEXT_PRIMARY, C_GREEN)
@@ -257,30 +259,62 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
             ),
         )
     };
+    if is_dirty {
+        name_color = C_DIRTY;
+        value_color = C_DIRTY;
+    }
 
     let name_text = text(row_data.data.display_name.clone())
         .size(12)
         .color(name_color);
 
-    let name_block: Element<'_, GameViewMessage> = if maxed {
-        let badge = text("MAX").size(9).color(C_GREEN);
-        let badge_container = container(badge)
-            .padding(Padding::default().left(4).right(4).top(1).bottom(1))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(Background::Color(Color { a: 0.12, ..C_GREEN })),
-                border: Border {
-                    radius: 3.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
-            });
-        row![name_text, badge_container]
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .into()
+    let dirty_dot: Option<Element<'_, GameViewMessage>> = if is_dirty {
+        Some(
+            container(Space::new())
+                .width(Length::Fixed(6.0))
+                .height(Length::Fixed(6.0))
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(Background::Color(C_DIRTY)),
+                    border: Border {
+                        radius: 3.0.into(),
+                        ..Border::default()
+                    },
+                    ..container::Style::default()
+                })
+                .into(),
+        )
     } else {
-        name_text.into()
+        None
     };
+
+    let max_badge: Option<Element<'_, GameViewMessage>> = if maxed && !is_dirty {
+        let badge = text("MAX").size(9).color(C_GREEN);
+        Some(
+            container(badge)
+                .padding(Padding::default().left(4).right(4).top(1).bottom(1))
+                .style(|_: &iced::Theme| container::Style {
+                    background: Some(Background::Color(Color { a: 0.12, ..C_GREEN })),
+                    border: Border {
+                        radius: 3.0.into(),
+                        ..Border::default()
+                    },
+                    ..container::Style::default()
+                })
+                .into(),
+        )
+    } else {
+        None
+    };
+
+    let mut name_row = row![].spacing(6).align_y(Alignment::Center);
+    if let Some(dot) = dirty_dot {
+        name_row = name_row.push(dot);
+    }
+    name_row = name_row.push(name_text);
+    if let Some(badge) = max_badge {
+        name_row = name_row.push(badge);
+    }
+    let name_block: Element<'_, GameViewMessage> = name_row.into();
 
     let value_text = text(format_value(current, row_data.data.max_value, maxed))
         .size(10)
@@ -289,7 +323,7 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     let header_row =
         row![name_block, Space::new().width(Length::Fill), value_text,].align_y(Alignment::Center);
 
-    let progress_bar = build_progress_bar(current, row_data.data.max_value, maxed);
+    let progress_bar = build_progress_bar(current, row_data.data.max_value, maxed, is_dirty);
 
     let info_col = column![
         header_row,
@@ -300,11 +334,11 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     .width(Length::Fill);
 
     let is_protected = row_data.data.permission != 0;
-    let show_max = row_data.data.max_value.is_some() && !maxed && !is_protected;
+    let has_cap = row_data.data.max_value.is_some();
 
     let mut actions = row![].spacing(4).align_y(Alignment::Center);
-    if show_max {
-        actions = actions.push(max_button(row_data));
+    if has_cap {
+        actions = actions.push(max_button(row_data, maxed || is_protected));
     }
     actions = actions.push(reset_button(row_data, maxed, is_protected));
 
@@ -322,13 +356,20 @@ fn build_progress_bar(
     current: f64,
     max: Option<u64>,
     maxed: bool,
+    is_dirty: bool,
 ) -> Element<'static, GameViewMessage> {
     let ratio = match max {
         Some(m) if m > 0 => (current / m as f64).clamp(0.0, 1.0) as f32,
         _ => 0.0,
     };
 
-    let fill_color = if maxed { C_GREEN } else { C_ACCENT };
+    let fill_color = if is_dirty {
+        C_DIRTY
+    } else if maxed {
+        C_GREEN
+    } else {
+        C_ACCENT
+    };
 
     let portion_fill = ((ratio * 1000.0).round() as u16).clamp(0, 1000);
     let portion_rest = 1000u16.saturating_sub(portion_fill);
@@ -434,11 +475,11 @@ fn reset_button(
     )
 }
 
-fn max_button(row_data: &StatRow) -> Element<'static, GameViewMessage> {
+fn max_button(row_data: &StatRow, disabled: bool) -> Element<'static, GameViewMessage> {
     neutral_row_button(
         "Max",
         GameViewMessage::StatsMaxSingle(row_data.data.id.clone()),
-        false,
+        disabled,
     )
 }
 
