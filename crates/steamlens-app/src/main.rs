@@ -793,7 +793,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         BannerSeverity::Warning,
                         "Steam is running but the user is not signed in \u{2014} showing cached data",
                         Some(messaging::BannerAction {
-                            label: "Retry",
+                            label: "Reconnect",
                             message: Message::RetrySteamConnect,
                         }),
                         false,
@@ -814,7 +814,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         BannerSeverity::Warning,
                         "Steam is not running \u{2014} showing cached data",
                         Some(messaging::BannerAction {
-                            label: "Retry",
+                            label: "Reconnect",
                             message: Message::RetrySteamConnect,
                         }),
                         false,
