@@ -50,11 +50,11 @@ pub fn load_game_cache_blocking(app_id: u32) -> Option<GameCacheEntry> {
     let bytes = std::fs::read(&path).ok()?;
     let entry: GameCacheEntry = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            crate::log!("cache: JSON parse error at {}: {e}", path.display());
+            tracing::warn!("cache: JSON parse error at {}: {e}", path.display());
         })
         .ok()?;
     if entry.schema_version != CURRENT_SCHEMA_VERSION {
-        crate::log!(
+        tracing::warn!(
             "cache: schema version {} != expected {} at {}; treating as cache miss",
             entry.schema_version,
             CURRENT_SCHEMA_VERSION,
@@ -73,11 +73,11 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameCacheEntry = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            crate::log!("cache: JSON parse error at {}: {e}", path.display());
+            tracing::warn!("cache: JSON parse error at {}: {e}", path.display());
         })
         .ok()?;
     if entry.schema_version != CURRENT_SCHEMA_VERSION {
-        crate::log!(
+        tracing::warn!(
             "cache: schema version {} != expected {}; treating as cache miss",
             entry.schema_version,
             CURRENT_SCHEMA_VERSION
@@ -98,11 +98,11 @@ pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSumma
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameSummaryCache = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            crate::log!("cache: summary JSON parse error at {}: {e}", path.display());
+            tracing::warn!("cache: summary JSON parse error at {}: {e}", path.display());
         })
         .ok()?;
     if entry.schema_version != SUMMARY_SCHEMA_VERSION {
-        crate::log!(
+        tracing::warn!(
             "cache: summary schema version {} != expected {} at {}; treating as cache miss",
             entry.schema_version,
             SUMMARY_SCHEMA_VERSION,
@@ -142,14 +142,14 @@ pub async fn load_game_achievements(app_id: u32) -> Option<GameAchievementsCache
     let bytes = tokio::fs::read(&path).await.ok()?;
     let entry: GameAchievementsCache = serde_json::from_slice(&bytes)
         .map_err(|e| {
-            crate::log!(
+            tracing::warn!(
                 "cache: achievements JSON parse error at {}: {e}",
                 path.display()
             );
         })
         .ok()?;
     if entry.schema_version != SUMMARY_SCHEMA_VERSION {
-        crate::log!(
+        tracing::warn!(
             "cache: achievements schema version {} != expected {}; treating as cache miss",
             entry.schema_version,
             SUMMARY_SCHEMA_VERSION

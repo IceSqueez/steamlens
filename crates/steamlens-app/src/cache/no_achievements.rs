@@ -57,7 +57,7 @@ pub fn load_blocking() -> NoAchievementsCache {
     let parsed: NoAchievementsCache = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(e) => {
-            crate::log!(
+            tracing::warn!(
                 "no_achievements cache: parse error at {}: {e}",
                 path.display()
             );
@@ -65,7 +65,7 @@ pub fn load_blocking() -> NoAchievementsCache {
         }
     };
     if parsed.schema_version != CURRENT_NO_ACHIEVEMENTS_SCHEMA {
-        crate::log!(
+        tracing::warn!(
             "no_achievements cache: schema {} != expected {}; treating as miss",
             parsed.schema_version,
             CURRENT_NO_ACHIEVEMENTS_SCHEMA

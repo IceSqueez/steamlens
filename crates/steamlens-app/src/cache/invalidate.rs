@@ -66,7 +66,7 @@ pub(crate) async fn classify_games_with_root(
 
         let summary_path = cache_root.join(app_id.to_string()).join("summary.json");
         let Some(summary) = load_game_summary_from_path(&summary_path).await else {
-            crate::log!(
+            tracing::info!(
                 "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::SchemaVersion
             );
@@ -76,7 +76,7 @@ pub(crate) async fn classify_games_with_root(
         };
 
         if summary.cached_change_number != game.change_number {
-            crate::log!(
+            tracing::info!(
                 "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::ChangeNumber
             );
@@ -88,7 +88,7 @@ pub(crate) async fn classify_games_with_root(
         if let Some(lp) = game.last_played
             && (lp as u64) > summary.cached_at + LP_RACE_GRACE_SECS
         {
-            crate::log!(
+            tracing::warn!(
                 "invalidate app_id={app_id} reason={:?} lp={lp} cached_at={} grace={LP_RACE_GRACE_SECS}s",
                 InvalidationReason::LastPlayed,
                 summary.cached_at
@@ -106,10 +106,10 @@ pub(crate) async fn classify_games_with_root(
     }
 
     if no_cache_count > 0 {
-        crate::log!("invalidate batch: {no_cache_count} games with reason=NoCache");
+        tracing::info!("invalidate batch: {no_cache_count} games with reason=NoCache");
     }
 
-    crate::log!(
+    tracing::info!(
         "cache classify: {} hits, {} dirty, {} schema-bumped",
         result.hits.len(),
         result.dirty.len(),
