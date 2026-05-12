@@ -485,17 +485,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let hit_count = hits.len();
             app.context.pending_hit_queue.extend(hits);
 
+            let steam_off = app.context.connectivity.steam_running == Some(false);
+
             if let Screen::ProfileView(pv_state) = &mut app.screen
                 && !dirty.is_empty()
+                && !steam_off
             {
                 let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
                 pv_state.progress_rx = scanner.take_receiver();
                 pv_state.progress_scanner = Some(scanner);
-            } else if let Screen::ProfileView(pv_state) = &mut app.screen
-                && dirty.is_empty()
-                && hit_count > 0
-            {
-                pv_state.last_scan_completed_at = Some(std::time::Instant::now());
+            } else if let Screen::ProfileView(pv_state) = &mut app.screen {
+                if steam_off || dirty.is_empty() {
+                    pv_state.last_scan_completed_at = Some(std::time::Instant::now());
+                }
+                let _ = hit_count;
             }
 
             if invalidation_count > 0 {
