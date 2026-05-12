@@ -322,12 +322,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         },
 
         Message::ProfileView(msg) => {
-            let Screen::ProfileView(pv_state) = &mut app.screen else {
-                #[cfg(debug_assertions)]
-                crate::log!(
-                    "dropped stale ProfileView message: {msg:?} (current screen: not ProfileView)"
-                );
-                return Task::none();
+            let pv_state: &mut ProfileViewState = match &mut app.screen {
+                Screen::ProfileView(state) => state.as_mut(),
+                Screen::GameView(state) => state.prev_profile_state.as_mut(),
             };
 
             let is_scan_complete = matches!(msg, ProfileViewMessage::ScanComplete(_));
@@ -357,31 +354,33 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                 let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
 
-                if let Screen::ProfileView(pv_state) = &mut app.screen {
-                    if !pv_state.library_name_map.is_empty() {
-                        let name_map = std::mem::take(&mut pv_state.library_name_map);
-                        for game in &mut pv_state.games {
-                            if let Some(name) = name_map.get(&game.app_id) {
-                                game.name = Some(name.clone());
-                            }
+                let pv_state: &mut ProfileViewState = match &mut app.screen {
+                    Screen::ProfileView(state) => state.as_mut(),
+                    Screen::GameView(state) => state.prev_profile_state.as_mut(),
+                };
+                if !pv_state.library_name_map.is_empty() {
+                    let name_map = std::mem::take(&mut pv_state.library_name_map);
+                    for game in &mut pv_state.games {
+                        if let Some(name) = name_map.get(&game.app_id) {
+                            game.name = Some(name.clone());
                         }
                     }
-                    if !pv_state.games.is_empty() {
-                        let cached = cache::make_cached_library(
-                            pv_state
-                                .games
-                                .iter()
-                                .map(|g| CachedLibraryEntry {
-                                    app_id: g.app_id,
-                                    change_number: g.change_number,
-                                    last_played: g.last_played,
-                                    name: String::new(),
-                                    achievement_count: 0,
-                                })
-                                .collect(),
-                        );
-                        tasks.push(cache::commands::write_library_cache(cached));
-                    }
+                }
+                if !pv_state.games.is_empty() {
+                    let cached = cache::make_cached_library(
+                        pv_state
+                            .games
+                            .iter()
+                            .map(|g| CachedLibraryEntry {
+                                app_id: g.app_id,
+                                change_number: g.change_number,
+                                last_played: g.last_played,
+                                name: String::new(),
+                                achievement_count: 0,
+                            })
+                            .collect(),
+                    );
+                    tasks.push(cache::commands::write_library_cache(cached));
                 }
 
                 Task::batch(tasks)
@@ -1344,10 +1343,12 @@ fn has_active_skeletons(app: &App) -> bool {
                 game_view::GameViewPhase::Connecting
                     | game_view::GameViewPhase::WaitingStats
                     | game_view::GameViewPhase::LoadingData
-            ) || state
-                .achievements
-                .iter()
-                .any(|r| !r.is_spoiler_hidden() && r.data.icon.is_none())
+            ) || state.achievements.iter().any(|r| {
+                if r.is_spoiler_hidden() {
+                    return false;
+                }
+                r.data.icon.is_none() || r.rarity_percent.is_none()
+            })
         }
     }
 }

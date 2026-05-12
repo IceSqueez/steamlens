@@ -660,7 +660,8 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, G
                 row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for entry in chunk {
                 let tier = tier_map.get(&entry.data.id).copied();
-                let is_ready = entry.is_spoiler_hidden() || entry.data.icon.is_some();
+                let is_ready = entry.is_spoiler_hidden()
+                    || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
                 let card: Element<'_, GameViewMessage> = if is_ready {
                     achievement_card_widget(
                         entry,
