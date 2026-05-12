@@ -134,10 +134,16 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
     use crate::ui::widgets::status_bar::status_bar;
 
     let total = state.achievements.len();
+    let global_pct_done = state.global_percentages_done;
     let ready = state
         .achievements
         .iter()
-        .filter(|r| r.is_spoiler_hidden() || r.data.icon.is_some())
+        .filter(|r| {
+            if r.is_spoiler_hidden() {
+                return true;
+            }
+            r.data.icon.is_some() && (r.rarity_percent.is_some() || global_pct_done)
+        })
         .count();
 
     match state.phase {
