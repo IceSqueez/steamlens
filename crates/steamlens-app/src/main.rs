@@ -215,7 +215,8 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             continue;
         };
 
-        let t = game_view::handle_steam_reply(state, reply).map(Message::GameView);
+        let t =
+            game_view::handle_steam_reply(state, reply, &mut app.context).map(Message::GameView);
         tasks.push(t);
     }
 
@@ -244,6 +245,35 @@ fn looks_like_steam_died(reason: &str) -> bool {
         || r.contains("worker killed by signal")
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SteamUnavailable {
+    NotRunning,
+    NotLoggedIn,
+}
+
+fn surface_steam_unavailable(ctx: &mut crate::app_context::AppContext, state: SteamUnavailable) {
+    let body: &'static str = match state {
+        SteamUnavailable::NotRunning => "Steam is not running \u{2014} reconnect to load live data",
+        SteamUnavailable::NotLoggedIn => {
+            "Steam is running but no user is signed in \u{2014} showing cached data"
+        }
+    };
+    if ctx.messaging.banners.iter().any(|b| b.body == body) {
+        return;
+    }
+    ctx.messaging
+        .dismiss_all_banners_by_severity(BannerSeverity::Warning);
+    ctx.messaging.push_banner(
+        BannerSeverity::Warning,
+        body,
+        Some(messaging::BannerAction {
+            label: "Reconnect",
+            message: Message::RetrySteamConnect,
+        }),
+        false,
+    );
+}
+
 fn mark_steam_offline_and_warn(app: &mut App) {
     app.context.connectivity.steam_running = Some(false);
     if let Screen::ProfileView(pv_state) = &mut app.screen {
@@ -251,20 +281,7 @@ fn mark_steam_offline_and_warn(app: &mut App) {
         pv_state.progress_rx = None;
         pv_state.last_scan_completed_at = Some(std::time::Instant::now());
     }
-    let already_warned = app.context.messaging.banners.iter().any(|b| {
-        b.severity == BannerSeverity::Warning && b.body.starts_with("Steam is not running")
-    });
-    if !already_warned {
-        app.context.messaging.push_banner(
-            BannerSeverity::Warning,
-            "Steam is not running \u{2014} reconnect to load achievements",
-            Some(messaging::BannerAction {
-                label: "Reconnect",
-                message: Message::RetrySteamConnect,
-            }),
-            false,
-        );
-    }
+    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
 
 fn go_back_to_profile(app: &mut App) {
@@ -440,6 +457,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     if looks_like_steam_died(&reason) {
                         mark_steam_offline_and_warn(app);
                     } else {
+                        let name = app
+                            .context
+                            .cached_entries
+                            .get(&app_id)
+                            .map(|e| e.name.clone())
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| format!("app {app_id}"));
                         let action = messaging::ToastAction {
                             label: "Retry".to_owned(),
                             on_press: crate::Message::ProfileView(
@@ -450,7 +474,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         };
                         app.context.messaging.push_toast_with_action(
                             messaging::ToastKind::Error,
-                            format!("Failed to load app {app_id}"),
+                            format!("Failed to load {name}"),
                             Some(reason),
                             action,
                         );
@@ -542,11 +566,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
 
             if schema_bumped > 0 {
-                app.context.messaging.push_banner(
-                    BannerSeverity::Info,
-                    "Cache schema updated — your library is refreshing in the background.",
+                app.context.messaging.push_toast(
+                    ToastKind::Info,
+                    "Cache schema updated — refreshing library in the background".to_owned(),
                     None,
-                    true,
                 );
             }
             Task::none()
@@ -710,7 +733,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .unwrap_or_else(|| format!("App {app_id}"));
             app.context.cached_entries.remove(&app_id);
             app.context.messaging.push_toast(
-                ToastKind::Info,
+                ToastKind::Success,
                 format!("Cache cleared for {name}"),
                 None,
             );
@@ -858,15 +881,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe: connectivity.user_logged_in = false");
 
-                    app.context.messaging.push_banner(
-                        BannerSeverity::Warning,
-                        "Steam is running but the user is not signed in \u{2014} showing cached data",
-                        Some(messaging::BannerAction {
-                            label: "Reconnect",
-                            message: Message::RetrySteamConnect,
-                        }),
-                        false,
-                    );
+                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotLoggedIn);
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
@@ -879,15 +894,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe: steam_running = false");
 
-                    app.context.messaging.push_banner(
-                        BannerSeverity::Warning,
-                        "Steam is not running \u{2014} showing cached data",
-                        Some(messaging::BannerAction {
-                            label: "Reconnect",
-                            message: Message::RetrySteamConnect,
-                        }),
-                        false,
-                    );
+                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
@@ -900,15 +907,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe failed: {reason}");
 
-                    app.context.messaging.push_banner(
-                        BannerSeverity::Warning,
-                        "Steam is not running \u{2014} showing cached data",
-                        Some(messaging::BannerAction {
-                            label: "Retry",
-                            message: Message::RetrySteamConnect,
-                        }),
-                        false,
-                    );
+                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
@@ -992,11 +991,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::PersistentCacheWritten(label, result) => {
             if let Err(e) = result {
                 tracing::error!("{label} cache: write failed: {e}");
-                app.context.messaging.push_banner(
-                    BannerSeverity::Error,
+                app.context.messaging.push_toast(
+                    ToastKind::Error,
                     format!("Cache write failed ({label}): {e}"),
                     None,
-                    true,
                 );
             }
             Task::none()
@@ -1141,7 +1139,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             label: "Download",
                             message: Message::OpenUrl(info.html_url),
                         }),
-                        true,
+                        false,
                     );
                 }
                 Ok(None) => {}
@@ -2505,6 +2503,7 @@ mod tests {
             SteamReply::Connected {
                 app_name: Some("Terraria".to_owned()),
             },
+            &mut App::default().context,
         );
         assert_eq!(
             state.game_name, "Terraria",
@@ -2518,7 +2517,11 @@ mod tests {
         use steam_worker::SteamReply;
 
         let mut state = GameViewState::new(105600);
-        let _task = handle_steam_reply(&mut state, SteamReply::Connected { app_name: None });
+        let _task = handle_steam_reply(
+            &mut state,
+            SteamReply::Connected { app_name: None },
+            &mut App::default().context,
+        );
         assert_eq!(
             state.game_name, "App 105600",
             "game_name must remain fallback when app_name is None"
@@ -2738,7 +2741,11 @@ mod tests {
         map.insert("ACH_RARE".to_owned(), 4.0f32);
         map.insert("ACH_COMMON".to_owned(), 55.0f32);
 
-        let _task = handle_steam_reply(&mut state, SteamReply::GlobalPercentagesReady(map));
+        let _task = handle_steam_reply(
+            &mut state,
+            SteamReply::GlobalPercentagesReady(map),
+            &mut App::default().context,
+        );
 
         assert_eq!(
             state.achievements[0].rarity_percent,
@@ -2779,6 +2786,7 @@ mod tests {
                 achievements: vec![data],
                 stats: vec![],
             },
+            &mut App::default().context,
         );
 
         assert!(

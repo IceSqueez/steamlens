@@ -10,6 +10,10 @@ const MAX_VISIBLE_TOASTS: usize = 5;
 pub enum BannerSeverity {
     Info,
     Warning,
+    #[allow(
+        dead_code,
+        reason = "kept for future critical-state banners; Error now routes to toast"
+    )]
     Error,
 }
 

@@ -138,11 +138,6 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
             let p = palette(theme_from_iced(t));
             container::Style {
                 background: Some(Background::Color(p.surface)),
-                border: Border {
-                    color: p.border,
-                    width: 1.0,
-                    radius: 0.0.into(),
-                },
                 ..container::Style::default()
             }
         })
