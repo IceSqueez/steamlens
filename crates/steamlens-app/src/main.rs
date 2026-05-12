@@ -231,6 +231,16 @@ fn disconnect_worker(app: &mut App) {
     app.context.worker_rx = None;
 }
 
+fn looks_like_steam_died(reason: &str) -> bool {
+    let r = reason.to_lowercase();
+    r.contains("steam client is not running")
+        || r.contains("steam is not running")
+        || r.contains("timed out waiting for userstatsreceived")
+        || r.contains("connect:")
+        || r.contains("unexpectedeof")
+        || r.contains("worker killed by signal")
+}
+
 fn mark_steam_offline_and_warn(app: &mut App) {
     app.context.connectivity.steam_running = Some(false);
     if let Screen::ProfileView(pv_state) = &mut app.screen {
@@ -422,9 +432,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::batch(tasks)
             } else if is_scan_failed {
                 if let Some((app_id, reason)) = scan_failed_details {
-                    if reason.contains("Steam client is not running")
-                        || reason.contains("Steam is not running")
-                    {
+                    if looks_like_steam_died(&reason) {
                         mark_steam_offline_and_warn(app);
                     } else {
                         let action = messaging::ToastAction {
@@ -2180,6 +2188,7 @@ mod tests {
             tx.send(ProgressResult {
                 app_id: 105600,
                 data: None,
+                error: None,
             })
             .unwrap();
             drop(tx);
@@ -2762,6 +2771,7 @@ mod tests {
                 global_percentages: HashMap::new(),
                 genre: None,
             }),
+            error: None,
         })
         .expect("send result");
 
@@ -2813,6 +2823,7 @@ mod tests {
                 global_percentages: HashMap::new(),
                 genre: None,
             }),
+            error: None,
         })
         .expect("send result");
 
@@ -2853,8 +2864,12 @@ mod tests {
             ..App::default()
         };
 
-        tx.send(progress_scan::ProgressResult { app_id, data: None })
-            .expect("send result");
+        tx.send(progress_scan::ProgressResult {
+            app_id,
+            data: None,
+            error: None,
+        })
+        .expect("send result");
 
         let _t = update(
             &mut app,

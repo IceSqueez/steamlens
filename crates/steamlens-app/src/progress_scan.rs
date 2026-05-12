@@ -33,6 +33,7 @@ impl ScannedGameData {
 pub struct ProgressResult {
     pub app_id: u32,
     pub data: Option<ScannedGameData>,
+    pub error: Option<String>,
 }
 
 pub struct ProgressScanner {
@@ -83,7 +84,11 @@ impl ProgressScanner {
             let handle = tokio::spawn(async move {
                 let result = scan_one_app(app_id).await;
                 let _ = tx.send(result);
-                ProgressResult { app_id, data: None }
+                ProgressResult {
+                    app_id,
+                    data: None,
+                    error: None,
+                }
             });
             self.in_flight.push(handle);
         }
@@ -103,8 +108,10 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
         Ok(data) => ProgressResult {
             app_id,
             data: Some(data),
+            error: None,
         },
         Err((err, diag)) => {
+            let err_str = err.to_string();
             if diag.is_empty() {
                 crate::log!("progress_scan: app_id={app_id} failed: {err}");
             } else {
@@ -113,7 +120,11 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
                     diag
                 );
             }
-            ProgressResult { app_id, data: None }
+            ProgressResult {
+                app_id,
+                data: None,
+                error: Some(err_str),
+            }
         }
     }
 }
@@ -442,6 +453,7 @@ mod tests {
         let result = ProgressResult {
             app_id: 99,
             data: None,
+            error: None,
         };
         assert!(result.data.is_none(), "failure result must have None data");
     }
