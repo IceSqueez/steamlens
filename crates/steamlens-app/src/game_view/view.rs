@@ -133,7 +133,7 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
     use crate::game_view::GameViewPhase;
     use crate::ui::widgets::status_bar::status_bar;
 
-    let total = state.achievements.len();
+    let total = state.achievements.len().max(state.expected_total as usize);
     let ready = state
         .achievements
         .iter()
@@ -701,11 +701,11 @@ fn build_skeleton_ach_grid(
     state: &GameViewState,
     skeleton_phase: f32,
 ) -> Element<'_, GameViewMessage> {
-    let count = if state.achievements.is_empty() {
-        6
-    } else {
-        state.achievements.len()
-    };
+    let count = state
+        .achievements
+        .len()
+        .max(state.expected_total as usize)
+        .max(6);
 
     let grid = responsive(move |size| {
         let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
