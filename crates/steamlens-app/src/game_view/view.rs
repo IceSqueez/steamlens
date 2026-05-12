@@ -1,7 +1,7 @@
 use iced::widget::Id as WidgetId;
 use iced::widget::{
-    button, column, container, image, mouse_area, opaque, responsive, rich_text, row, scrollable,
-    space, span, stack, text, text_input,
+    button, column, container, image, opaque, responsive, rich_text, row, scrollable, space, span,
+    stack, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -13,13 +13,10 @@ pub fn achievement_search_id() -> WidgetId {
 }
 
 use super::types::{
-    AchievementRow, BannerKind, BulkOp, RarityTier, ResetScope, compute_tier_map,
-    visible_achievement_ids,
+    AchievementRow, BannerKind, BulkOp, RarityTier, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
-use crate::theme::{
-    C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_SECONDARY,
-};
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_SECONDARY};
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
@@ -52,23 +49,17 @@ pub struct GameViewProps {
 pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameViewMessage> {
     let skeleton_phase = props.skeleton_phase;
     match state.phase {
-        GameViewPhase::Saving | GameViewPhase::Resetting => {
+        GameViewPhase::Saving => {
             let base = loaded_view(state, skeleton_phase);
-            let label = if state.phase == GameViewPhase::Saving {
-                "Saving changes..."
-            } else {
-                "Resetting..."
-            };
-            stack![base, opaque(saving_overlay(state.spinner_angle, label))].into()
+            stack![
+                base,
+                opaque(saving_overlay(state.spinner_angle, "Saving changes..."))
+            ]
+            .into()
         }
-        GameViewPhase::Connecting
-        | GameViewPhase::WaitingStats
-        | GameViewPhase::LoadingData
-        | GameViewPhase::Ready => {
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Ready => {
             let base = loaded_view(state, skeleton_phase);
-            if state.show_reset_modal {
-                stack![base, opaque(reset_modal(state))].into()
-            } else if state.show_apply_modal {
+            if state.show_apply_modal {
                 stack![base, opaque(apply_modal(state))].into()
             } else {
                 base
@@ -143,14 +134,12 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
         .count();
 
     match state.phase {
-        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
-            Some(
-                status_bar::<GameViewMessage>()
-                    .scanning("Loading achievements", ready, total.max(1))
-                    .into(),
-            )
-        }
-        GameViewPhase::Ready | GameViewPhase::Saving | GameViewPhase::Resetting => {
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats => Some(
+            status_bar::<GameViewMessage>()
+                .scanning("Loading achievements", ready, total.max(1))
+                .into(),
+        ),
+        GameViewPhase::Ready | GameViewPhase::Saving => {
             if total == 0 {
                 None
             } else if ready < total {
@@ -294,7 +283,6 @@ fn achievements_tab<'a>(
 ) -> Element<'a, GameViewMessage> {
     let mut col = column![].spacing(0).height(Length::Fill);
     col = col.push(achievement_list(state, skeleton_phase));
-    col = col.push(action_footer());
     col.into()
 }
 
@@ -325,7 +313,7 @@ const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
 const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
 const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
-fn action_footer<'a>() -> Element<'a, GameViewMessage> {
+fn bulk_action_buttons<'a>() -> Element<'a, GameViewMessage> {
     let mk_outlined =
         |lbl: &'static str, tc: Color, m: GameViewMessage| -> Element<'_, GameViewMessage> {
             button(text(lbl).size(12).color(tc))
@@ -368,73 +356,9 @@ fn action_footer<'a>() -> Element<'a, GameViewMessage> {
         GameViewMessage::BulkAction(BulkOp::Invert),
     );
 
-    let vert_divider = container(space())
-        .width(Length::Fixed(1.0))
-        .height(Length::Fixed(20.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
-            ..container::Style::default()
-        });
-
-    let reset_btn = button(
-        row![
-            text("\u{26A0}").size(12).color(C_DANGER),
-            text(" Reset").size(12).color(C_DANGER),
-        ]
-        .align_y(Alignment::Center),
-    )
-    .on_press(GameViewMessage::ResetClicked)
-    .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-    .style(|_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: if hovered {
-                Some(iced::Background::Color(Color {
-                    a: 0.12,
-                    ..C_DANGER
-                }))
-            } else {
-                None
-            },
-            border: iced::Border {
-                color: Color {
-                    a: 0.30,
-                    ..C_DANGER
-                },
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            text_color: C_DANGER,
-            ..button::Style::default()
-        }
-    });
-
-    let action_row = row![
-        space().width(Length::Fill),
-        unlock_btn,
-        lock_btn,
-        invert_btn,
-        vert_divider,
-        reset_btn,
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center)
-    .padding(Padding::default().left(16).right(16).top(8).bottom(8));
-
-    let top_rule = container(space())
-        .width(Length::Fill)
-        .height(Length::Fixed(1.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
-            ..container::Style::default()
-        });
-
-    container(column![top_rule, action_row].spacing(0))
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        })
+    row![unlock_btn, lock_btn, invert_btn]
+        .spacing(6)
+        .align_y(Alignment::Center)
         .into()
 }
 
@@ -1052,10 +976,7 @@ fn achievement_card_widget<'a>(
 fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let dirty = state.dirty_count();
     let has_errors = state.has_stat_errors();
-    let is_busy = matches!(
-        state.phase,
-        GameViewPhase::Saving | GameViewPhase::Resetting
-    );
+    let is_busy = matches!(state.phase, GameViewPhase::Saving);
 
     let cancel_label = if dirty > 0 {
         format!(
@@ -1067,9 +988,9 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     };
 
     let cancel_btn = if dirty > 0 && !is_busy {
-        button(text(cancel_label).size(13).color(C_FG))
+        button(text(cancel_label).size(12).color(C_FG))
             .on_press(GameViewMessage::DiscardChanges)
-            .padding(Padding::from([8u16, 16]))
+            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
                 button::Style {
@@ -1080,22 +1001,22 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
                     },
                     border: iced::Border {
                         color: C_MUTED,
-                        width: 2.0,
-                        radius: 4.0.into(),
+                        width: 1.0,
+                        radius: 6.0.into(),
                     },
                     text_color: C_FG,
                     ..button::Style::default()
                 }
             })
     } else {
-        button(text(cancel_label).size(13).color(Color { a: 0.4, ..C_FG }))
-            .padding(Padding::from([8u16, 16]))
+        button(text(cancel_label).size(12).color(Color { a: 0.4, ..C_FG }))
+            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
             .style(|_t, _status| button::Style {
                 background: None,
                 border: iced::Border {
                     color: Color { a: 0.3, ..C_MUTED },
-                    width: 2.0,
-                    radius: 4.0.into(),
+                    width: 1.0,
+                    radius: 6.0.into(),
                 },
                 text_color: Color { a: 0.4, ..C_FG },
                 ..button::Style::default()
@@ -1110,9 +1031,9 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
 
     let apply_enabled = dirty > 0 && !has_errors && !is_busy;
     let apply_btn = if apply_enabled {
-        button(text(apply_label).size(13))
+        button(text(apply_label).size(12))
             .on_press(GameViewMessage::ApplyClicked)
-            .padding(Padding::from([8u16, 16]))
+            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
             .style(|_t, status| {
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
                 let bg_color = if hovered {
@@ -1127,7 +1048,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
                 };
                 button::Style {
                     background: Some(iced::Background::Color(bg_color)),
-                    border: dracula_border_radius(4.0),
+                    border: dracula_border_radius(6.0),
                     text_color: Color::BLACK,
                     shadow: if hovered {
                         iced::Shadow {
@@ -1142,11 +1063,11 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
                 }
             })
     } else {
-        button(text(apply_label).size(13))
-            .padding(Padding::from([8u16, 16]))
+        button(text(apply_label).size(12))
+            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
             .style(|_t, _s| button::Style {
                 background: Some(iced::Background::Color(Color { a: 0.3, ..C_PURPLE })),
-                border: dracula_border_radius(4.0),
+                border: dracula_border_radius(6.0),
                 text_color: Color { a: 0.4, ..C_FG },
                 ..button::Style::default()
             })
@@ -1161,8 +1082,20 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
         space().width(20).into()
     };
 
+    let bulk_buttons = bulk_action_buttons();
+
+    let vert_divider = container(space())
+        .width(Length::Fixed(1.0))
+        .height(Length::Fixed(28.0))
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(C_BORDER)),
+            ..container::Style::default()
+        });
+
     row![
+        bulk_buttons,
         space().width(Length::Fill),
+        vert_divider,
         spinner_el,
         cancel_btn,
         apply_btn
@@ -1170,184 +1103,6 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     .spacing(8)
     .align_y(Alignment::Center)
     .into()
-}
-
-fn reset_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let scope_stats = radio_option(
-        "Stats only",
-        "Resets all stat counters to their default values.",
-        state.reset_scope == ResetScope::StatsOnly,
-        GameViewMessage::ResetScopeSelected(ResetScope::StatsOnly),
-    );
-
-    let scope_all = radio_option(
-        "Stats + Achievements",
-        "Resets stats AND locks all achievements. This cannot be undone.",
-        state.reset_scope == ResetScope::StatsAndAchievements,
-        GameViewMessage::ResetScopeSelected(ResetScope::StatsAndAchievements),
-    );
-
-    let warning_box = container(
-        column![
-            text("\u{26A0} About cloud saves").size(13).color(C_ORANGE),
-            text(
-                "SteamLens resets Steam-side achievement and stat data. \
-                 Games that use Steam Cloud may re-upload their own save \
-                 data on next launch, restoring some or all values. \
-                 Verify in-game progress after resetting."
-            )
-            .size(12)
-            .color(C_MUTED),
-        ]
-        .spacing(4),
-    )
-    .padding(Padding::from([8u16, 12]))
-    .style(|_theme| container::Style {
-        background: Some(iced::Background::Color(Color {
-            r: 1.0,
-            g: 0.722,
-            b: 0.424,
-            a: 0.08,
-        })),
-        border: iced::Border {
-            color: C_ORANGE,
-            width: 1.0,
-            radius: 4.0.into(),
-        },
-        ..container::Style::default()
-    });
-
-    let confirm_input_label = text(format!(
-        "Type \"{name}\" to confirm:",
-        name = state.game_name.trim()
-    ))
-    .size(12)
-    .color(C_MUTED);
-
-    let confirm_input = text_input(state.game_name.trim(), &state.reset_confirm_input)
-        .on_input(GameViewMessage::ResetConfirmInputChanged)
-        .size(13)
-        .padding(Padding::from([6u16, 10]))
-        .style(|_theme, _status| iced::widget::text_input::Style {
-            background: iced::Background::Color(Color {
-                r: 0.12,
-                g: 0.13,
-                b: 0.17,
-                a: 1.0,
-            }),
-            border: iced::Border {
-                color: C_MUTED,
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            icon: C_MUTED,
-            placeholder: Color { a: 0.3, ..C_MUTED },
-            value: C_FG,
-            selection: Color {
-                a: 0.35,
-                ..C_PURPLE
-            },
-        });
-
-    let confirm_gate = column![confirm_input_label, confirm_input].spacing(4);
-
-    let confirm_enabled = state.reset_confirm_matches();
-
-    let confirm_label = match state.reset_scope {
-        ResetScope::StatsOnly => "Reset Stats \u{26A0}",
-        ResetScope::StatsAndAchievements => "Reset Stats + Achievements \u{26A0}",
-        ResetScope::Pending => "Reset \u{26A0}",
-    };
-    let confirm_btn = {
-        let base = button(text(confirm_label).size(13).color(if confirm_enabled {
-            Color::WHITE
-        } else {
-            Color {
-                a: 0.4,
-                ..Color::WHITE
-            }
-        }))
-        .padding(Padding::from([8u16, 16]))
-        .style(move |_t, _s| button::Style {
-            background: Some(iced::Background::Color(Color {
-                a: if confirm_enabled { 1.0 } else { 0.3 },
-                ..C_RED
-            })),
-            border: dracula_border_radius(4.0),
-            ..button::Style::default()
-        });
-        if confirm_enabled {
-            base.on_press(GameViewMessage::ResetConfirmed)
-        } else {
-            base
-        }
-    };
-
-    let cancel_btn = button(text("Cancel").size(13))
-        .on_press(GameViewMessage::ResetCancelled)
-        .padding(Padding::from([8u16, 16]))
-        .style(|_t, _s| button::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
-            border: dracula_border_radius(4.0),
-            ..button::Style::default()
-        });
-
-    let button_row = row![cancel_btn, space().width(Length::Fill), confirm_btn]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding(Padding::default().top(16));
-
-    let modal_inner = column![
-        text("\u{26A0}  Reset Options").size(16).color(C_FG),
-        text("What would you like to reset?")
-            .size(13)
-            .color(C_MUTED),
-        scope_stats,
-        scope_all,
-        warning_box,
-        confirm_gate,
-        button_row,
-    ]
-    .spacing(12)
-    .padding(Padding::from(24u16));
-
-    let modal_box = container(modal_inner)
-        .width(Length::Fixed(480.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                r: 0.18,
-                g: 0.19,
-                b: 0.24,
-                a: 1.0,
-            })),
-            border: iced::Border {
-                color: C_CURRENT_LINE,
-                width: 1.0,
-                radius: 8.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    let backdrop = container(space())
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.6,
-            })),
-            ..container::Style::default()
-        });
-
-    let centered = container(modal_box)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center);
-
-    stack![backdrop, centered].into()
 }
 
 fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
@@ -1388,9 +1143,7 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         ..container::Style::default()
     });
 
-    let confirm_input_label = text("Type \"confirmed\" to apply:")
-        .size(12)
-        .color(C_MUTED);
+    let confirm_input_label = text("Type \"confirmed\" to apply:").size(12).color(C_MUTED);
 
     let confirm_input = text_input("confirmed", &state.apply_confirm_input)
         .on_input(GameViewMessage::ApplyConfirmInputChanged)
@@ -1545,36 +1298,6 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         .align_y(Alignment::Center);
 
     stack![backdrop, centered].into()
-}
-
-fn radio_option<'a>(
-    label: &'a str,
-    sublabel: &'a str,
-    selected: bool,
-    on_press: GameViewMessage,
-) -> Element<'a, GameViewMessage> {
-    let indicator = if selected {
-        text("(\u{2022})").size(14).color(C_PURPLE)
-    } else {
-        text("( )").size(14).color(C_MUTED)
-    };
-
-    let text_col = column![
-        text(label).size(13).color(C_FG),
-        text(sublabel).size(12).color(C_MUTED),
-    ]
-    .spacing(2);
-
-    mouse_area(
-        container(
-            row![indicator, text_col]
-                .spacing(8)
-                .align_y(Alignment::Start),
-        )
-        .padding(Padding::from([8u16, 0])),
-    )
-    .on_press(on_press)
-    .into()
 }
 
 fn saving_overlay<'a>(angle: f32, label: &'a str) -> Element<'a, GameViewMessage> {

@@ -221,12 +221,6 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
             w.send(SteamRequest::RequestGlobalPercentages);
         }
 
-        if let SteamReply::ResetDone = &reply
-            && let Some(w) = &app.context.worker
-        {
-            w.send(SteamRequest::RequestUserStats);
-        }
-
         let Screen::GameView(state) = &mut app.screen else {
             continue;
         };
@@ -1383,9 +1377,7 @@ fn has_active_skeletons(app: &App) -> bool {
         Screen::GameView(state) => {
             matches!(
                 state.phase,
-                game_view::GameViewPhase::Connecting
-                    | game_view::GameViewPhase::WaitingStats
-                    | game_view::GameViewPhase::LoadingData
+                game_view::GameViewPhase::Connecting | game_view::GameViewPhase::WaitingStats
             ) || state.achievements.iter().any(|r| {
                 if r.is_spoiler_hidden() {
                     return false;
@@ -2524,56 +2516,6 @@ mod tests {
     }
 
     #[test]
-    fn reset_confirm_blocks_when_name_mismatch() {
-        use game_view::{GameViewMessage, GameViewPhase, update};
-
-        let mut state = GameViewState::new(105600);
-        state.phase = GameViewPhase::Ready;
-        state.game_name = "Terraria".to_owned();
-
-        let mut app = App::default();
-        let _task = update(&mut state, GameViewMessage::ResetClicked, &mut app.context);
-        assert!(state.show_reset_modal, "modal must open on ResetClicked");
-        assert!(
-            state.reset_confirm_input.is_empty(),
-            "input must be cleared on open"
-        );
-
-        let _task = update(
-            &mut state,
-            GameViewMessage::ResetConfirmInputChanged("Wrong".to_owned()),
-            &mut app.context,
-        );
-        assert_eq!(state.reset_confirm_input, "Wrong");
-        assert!(
-            !state.reset_confirm_matches(),
-            "confirm must NOT match for wrong input"
-        );
-    }
-
-    #[test]
-    fn reset_confirm_allows_case_insensitive_match() {
-        use game_view::{GameViewMessage, GameViewPhase, update};
-
-        let mut state = GameViewState::new(105600);
-        state.phase = GameViewPhase::Ready;
-        state.game_name = "Terraria".to_owned();
-
-        let mut app = App::default();
-        let _task = update(&mut state, GameViewMessage::ResetClicked, &mut app.context);
-
-        let _task = update(
-            &mut state,
-            GameViewMessage::ResetConfirmInputChanged("TERRARIA ".to_owned()),
-            &mut app.context,
-        );
-        assert!(
-            state.reset_confirm_matches(),
-            "confirm must match for case-insensitive + trailing space input"
-        );
-    }
-
-    #[test]
     fn global_percentages_reply_populates_rarity() {
         use std::collections::HashMap;
 
@@ -2888,15 +2830,6 @@ mod tests {
         assert!(
             has_active_skeletons(&app),
             "Connecting must activate skeleton subscription"
-        );
-    }
-
-    #[test]
-    fn has_active_skeletons_true_for_game_view_loading_data() {
-        let app = make_app_with_game_view_phase(game_view::GameViewPhase::LoadingData);
-        assert!(
-            has_active_skeletons(&app),
-            "LoadingData must activate skeleton subscription"
         );
     }
 

@@ -234,29 +234,9 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Per-achievement [`Self::clear_achievement`] alone leaves stat-driven
-    /// achievements ready to re-unlock once the game observes the
-    /// non-zero counter — this method wipes the underlying stats so the
-    /// reset survives the next launch.
-    pub fn reset_all_stats(&self, achievements_too: bool) -> Result<(), SteamError> {
-        // SAFETY: see impl-level note.
-        let ok = unsafe {
-            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
-            ((*vtbl).reset_all_stats)(self.raw, achievements_too)
-        };
-        if ok {
-            Ok(())
-        } else {
-            Err(SteamError::CallFailed {
-                method: "ResetAllStats",
-            })
-        }
-    }
-
     /// Drives the overlay's "X/Y" progress popup. Steam keeps this counter
-    /// separately from regular stats; [`Self::reset_all_stats`] does NOT
-    /// clear it — call with `current = 0` to clear the popup counter
-    /// without a game-side write.
+    /// separately from regular stats — call with `current = 0` to clear the
+    /// popup counter without a game-side write.
     pub fn indicate_achievement_progress(
         &self,
         name: &str,

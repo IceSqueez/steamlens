@@ -158,8 +158,8 @@ use crate::steam_worker::{SteamReply, SteamRequest};
 
 use types::{
     AchievementFilter, AchievementRow, AchievementSort, Banner, BannerKind, BulkOp, RarityTier,
-    ResetScope, StatRow, StatValue, build_apply_payload, compute_tier_map, dirty_count,
-    has_stat_errors, visible_achievement_ids,
+    StatRow, StatValue, build_apply_payload, compute_tier_map, dirty_count, has_stat_errors,
+    visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -199,11 +199,6 @@ pub enum GameViewMessage {
     ApplyConfirmInputChanged(String),
     ApplyConfirmed,
     ApplyCancelled,
-    ResetClicked,
-    ResetScopeSelected(ResetScope),
-    ResetConfirmInputChanged(String),
-    ResetConfirmed,
-    ResetCancelled,
     BannerDismissed,
     DiscardChanges,
     RevealHidden(String),
@@ -239,10 +234,8 @@ pub enum GameViewEvent {
 pub enum GameViewPhase {
     Connecting,
     WaitingStats,
-    LoadingData,
     Ready,
     Saving,
-    Resetting,
     Error,
 }
 
@@ -263,9 +256,6 @@ pub struct GameViewState {
     pub rarity_tier_set: HashSet<RarityTier>,
     pub include_hidden: bool,
 
-    pub reset_scope: ResetScope,
-    pub reset_confirm_input: String,
-    pub show_reset_modal: bool,
     pub apply_confirm_input: String,
     pub show_apply_modal: bool,
 
@@ -308,9 +298,6 @@ impl GameViewState {
             achievement_sort: AchievementSort::UnlockChance,
             rarity_tier_set: HashSet::new(),
             include_hidden: false,
-            reset_scope: ResetScope::Pending,
-            reset_confirm_input: String::new(),
-            show_reset_modal: false,
             apply_confirm_input: String::new(),
             show_apply_modal: false,
             banner: None,
@@ -342,14 +329,6 @@ impl GameViewState {
 
     pub fn has_pending_reveals(&self) -> bool {
         !self.reveal_queue.is_empty()
-    }
-
-    pub fn reset_confirm_matches(&self) -> bool {
-        self.reset_scope != ResetScope::Pending
-            && self
-                .reset_confirm_input
-                .trim()
-                .eq_ignore_ascii_case(self.game_name.trim())
     }
 
     pub fn apply_confirm_matches(&self) -> bool {
@@ -471,19 +450,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             state.banner = Some(Banner {
                 kind: BannerKind::Error,
                 message: format!("Failed to save: {e}"),
-                dismissible: true,
-            });
-            Task::done(GameViewMessage::AchievementsFullyLoaded)
-        }
-        SteamReply::ResetDone => {
-            state.phase = GameViewPhase::LoadingData;
-            Task::none()
-        }
-        SteamReply::ResetFailed(e) => {
-            state.phase = GameViewPhase::Ready;
-            state.banner = Some(Banner {
-                kind: BannerKind::Error,
-                message: format!("Reset failed: {e}"),
                 dismissible: true,
             });
             Task::done(GameViewMessage::AchievementsFullyLoaded)
@@ -783,51 +749,6 @@ pub fn update(
             }
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::ResetClicked => {
-            state.reset_scope = ResetScope::StatsOnly;
-            state.reset_confirm_input.clear();
-            state.show_reset_modal = true;
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::ResetScopeSelected(scope) => {
-            state.reset_scope = scope;
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::ResetConfirmInputChanged(text) => {
-            state.reset_confirm_input = text;
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::ResetConfirmed => {
-            state.show_reset_modal = false;
-            state.reset_confirm_input.clear();
-            state.phase = GameViewPhase::Resetting;
-            if let Some(w) = worker {
-                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
-                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                if let Err(e) = w.send_checked(
-                    SteamRequest::ResetAll {
-                        scope: state.reset_scope,
-                    },
-                    steam_running,
-                    user_logged_in,
-                ) {
-                    surface_connectivity_error(ctx, e);
-                    state.phase = GameViewPhase::Ready;
-                    return (
-                        Task::none(),
-                        GameViewEvent::AchievementsFullyLoaded {
-                            app_id: state.app_id,
-                        },
-                    );
-                }
-            }
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::ResetCancelled => {
-            state.show_reset_modal = false;
-            state.reset_confirm_input.clear();
-            (Task::none(), GameViewEvent::None)
-        }
         GameViewMessage::BannerDismissed => {
             state.banner = None;
             (Task::none(), GameViewEvent::None)
@@ -933,11 +854,7 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage
 
     let needs_spinner = matches!(
         state.phase,
-        GameViewPhase::Connecting
-            | GameViewPhase::WaitingStats
-            | GameViewPhase::LoadingData
-            | GameViewPhase::Saving
-            | GameViewPhase::Resetting
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
     );
 
     let needs_tick = needs_spinner
