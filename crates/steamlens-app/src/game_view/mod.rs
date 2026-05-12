@@ -8,7 +8,10 @@ pub use view::achievement_search_id;
 
 use std::collections::HashMap;
 
-pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderContent<'a> {
+pub fn header_content<'a>(
+    state: &'a GameViewState,
+    theme: crate::ui::theme::AppTheme,
+) -> crate::screen::AppHeaderContent<'a> {
     use crate::screen::{SegmentItem, SegmentedControlConfig};
     use std::borrow::Cow;
     use types::AchievementSort;
@@ -38,6 +41,7 @@ pub fn header_content<'a>(state: &'a GameViewState) -> crate::screen::AppHeaderC
         leading: Some(view::build_back_leading()),
         status_filter: Some(build_achievement_status_strip(state)),
         category_filter: Some(build_rarity_tier_strip(state)),
+        theme,
     }
 }
 

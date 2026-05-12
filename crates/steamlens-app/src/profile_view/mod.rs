@@ -8,6 +8,7 @@ pub use view::library_search_id;
 pub fn header_content<'a>(
     state: &'a types::ProfileViewState,
     _steam_running: Option<bool>,
+    theme: crate::ui::theme::AppTheme,
 ) -> crate::screen::AppHeaderContent<'a> {
     use crate::capsule_cache::CapsuleSize;
     use crate::screen::{SegmentItem, SegmentedControlConfig};
@@ -69,6 +70,7 @@ pub fn header_content<'a>(
         leading: None,
         status_filter: Some(build_profile_status_strip(state)),
         category_filter,
+        theme,
     }
 }
 

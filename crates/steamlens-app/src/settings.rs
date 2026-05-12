@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::{AchievementSort, RarityTier};
 use crate::profile_view::types::LibrarySort;
+use crate::ui::theme::AppTheme;
 
-const CURRENT_SETTINGS_VERSION: u32 = 1;
+const CURRENT_SETTINGS_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UiSettings {
@@ -11,8 +12,8 @@ pub struct UiSettings {
     pub window_width: f32,
     #[serde(default = "default_window_height")]
     pub window_height: f32,
-    #[serde(default = "default_theme")]
-    pub theme: String,
+    #[serde(default)]
+    pub theme: AppTheme,
 }
 
 fn default_window_width() -> f32 {
@@ -23,16 +24,12 @@ fn default_window_height() -> f32 {
     800.0
 }
 
-fn default_theme() -> String {
-    "dracula".to_owned()
-}
-
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
             window_width: default_window_width(),
             window_height: default_window_height(),
-            theme: default_theme(),
+            theme: AppTheme::default(),
         }
     }
 }
@@ -225,11 +222,11 @@ mod tests {
     #[test]
     fn non_default_settings_round_trip() {
         let original = Settings {
-            schema_version: 1,
+            schema_version: 2,
             ui: UiSettings {
                 window_width: 1920.0,
                 window_height: 1080.0,
-                theme: "dracula".to_owned(),
+                theme: AppTheme::Light,
             },
             library: LibrarySettings {
                 sort: LibrarySort::NameAsc,
