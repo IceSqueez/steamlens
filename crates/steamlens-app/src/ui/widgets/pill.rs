@@ -1,8 +1,11 @@
 use iced::widget::{button, container};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Vector};
 
-const INACTIVE_BG_ALPHA: f32 = 0.10;
-const INACTIVE_BORDER_ALPHA: f32 = 0.20;
+const INACTIVE_BG_ALPHA: f32 = 0.06;
+const INACTIVE_BORDER_ALPHA: f32 = 0.18;
+const SELECTED_BG_ALPHA: f32 = 0.32;
+const SELECTED_BORDER_ALPHA: f32 = 0.95;
+const SELECTED_BORDER_WIDTH: f32 = 1.5;
 const HOVER_BG_BOOST: f32 = 0.10;
 const HOVER_BORDER_BOOST: f32 = 0.20;
 
@@ -86,9 +89,14 @@ impl<'a, M: 'a> Pill<'a, M> {
 impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
     fn from(p: Pill<'a, M>) -> Self {
         let tint = p.tint;
-        let (bg_alpha, border_alpha) = match p.selected {
-            Some(false) => (INACTIVE_BG_ALPHA, INACTIVE_BORDER_ALPHA),
-            _ => (p.bg_alpha, p.border_alpha),
+        let (bg_alpha, border_alpha, border_width) = match p.selected {
+            Some(true) => (
+                SELECTED_BG_ALPHA,
+                SELECTED_BORDER_ALPHA,
+                SELECTED_BORDER_WIDTH,
+            ),
+            Some(false) => (INACTIVE_BG_ALPHA, INACTIVE_BORDER_ALPHA, 1.0),
+            None => (p.bg_alpha, p.border_alpha, 1.0),
         };
         let bg = Color {
             a: bg_alpha,
@@ -148,7 +156,7 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
                                 a: border_a,
                                 ..tint
                             },
-                            width: 1.0,
+                            width: border_width,
                             radius: radius.into(),
                         },
                         shadow,
@@ -164,7 +172,7 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
                     background: Some(Background::Color(bg)),
                     border: Border {
                         color: border_color,
-                        width: 1.0,
+                        width: border_width,
                         radius: radius.into(),
                     },
                     shadow,
