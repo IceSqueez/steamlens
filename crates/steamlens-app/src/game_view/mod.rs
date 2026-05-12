@@ -472,6 +472,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         SteamReply::GlobalPercentagesReady(map) => {
             if state.achievements.is_empty() {
                 state.pending_rarity_percent = Some(map);
+                Task::none()
             } else {
                 for row in &mut state.achievements {
                     if let Some(&pct) = map.get(&row.data.id) {
@@ -479,8 +480,8 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                     }
                 }
                 state.tier_breakdown = compute_tier_breakdown(&state.achievements);
+                Task::done(GameViewMessage::AchievementsFullyLoaded)
             }
-            Task::none()
         }
         SteamReply::GlobalPercentagesFailed => Task::none(),
     }
