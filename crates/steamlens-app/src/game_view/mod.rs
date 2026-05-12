@@ -77,7 +77,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
     let hidden_count = state
         .achievements
         .iter()
-        .filter(|r| r.is_spoiler_hidden())
+        .filter(|r| r.data.is_hidden)
         .count();
 
     let any_selected = !state.rarity_tier_set.is_empty() || state.include_hidden;
