@@ -294,12 +294,6 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         disconnect_worker(app);
         state.cache_only = true;
         state.phase = game_view::GameViewPhase::Ready;
-        state.banner = Some(game_view::types::Banner {
-            kind: game_view::types::BannerKind::Warning,
-            message: "Steam is not running \u{2014} showing cached data, edits disabled."
-                .to_owned(),
-            dismissible: false,
-        });
     } else {
         disconnect_worker(app);
         let (worker, rx) = SteamWorker::spawn();
