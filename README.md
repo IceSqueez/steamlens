@@ -12,39 +12,37 @@ A Steam achievement manager with rarity insights and library statistics.
 
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 
-![Screenshot](./assets/Screenshot.png)
+![Screenshot](./assets/screenshot.png)
 
 ## Features
 
-### Library (Profile view)
+### Edit achievements and stats
 
-- **Card grid** with capsule artwork — switch between three preset image sizes (Small / Medium / Large) and the layout reflows to fit.
-- **Live search** filters games by name as you type.
-- **Three sort modes** — Last Played, Name (A→Z), Completion %.
-- **Per-card rarity breakdown** — a small bar shows the tiers of achievements you've unlocked for each game; hover for counts.
-- **Steam level** is shown next to your persona name in the header.
-- **Failed-scan recovery** — if individual games fail to scan, a _Retry_ button appears in the status footer that re-queues just the failed apps.
+- **Unlock or re-lock any achievement** with a dirty-state Apply flow and bulk operations — unlock all, lock all, invert selection.
+- **Typed `confirmed` gate** before changes hit Steam, so a partial edit never lands by reflex.
+- **In-game statistics editor** — view and modify numeric stats (counters, progress trackers, currencies) with bulk Max-all / Reset-all or per-stat controls. Increment-only stats are detected and validated.
 
-### Game view
+### Rarity insights at a glance
 
-- **Achievement cards** with rarity tiers (Common / Uncommon / Rare / Very Rare / Ultra Rare), rounded segments, and unlock-time stamps.
-- **Rare-glow animation** — achievements unlocked by fewer than 10% of players get a soft animated gold border.
-- **Search** with inline highlighting on names and descriptions.
-- **Filters** — by status (All / Unlocked / Locked / Hidden) and by rarity tier; combine them freely.
-- **Sort** — by unlock chance, by rarity tier, or alphabetically.
-- **Toggle achievements** with a dirty-state Apply flow; bulk operations (unlock all / lock all / invert).
-- **Stats editor** behind a consent gate. Increment-only stats are detected and validated.
-- **Reset with typed-name confirmation** so you don't reset Civilization VI by accident when you meant Vampire Survivors.
-- **Reactive icons** — achievement icons fade in as Steam delivers them, with a smooth animation.
+- **Five rarity tiers** (Common, Uncommon, Rare, Mythical, Legendary) computed from Steam's live global unlock percentages, with a consistent color palette across every view.
+- **Per-game rarity breakdown bar** on every library card — at a glance you see how your unlocked achievements split across tiers; hover any segment for counts.
+- **Profile-wide summary** in the library header — aggregate progress totals, rarity-card breakdown, and a "closest to 100%" tile spotlighting titles you're a few unlocks away from completing.
 
-### General
+### Works offline, recovers gracefully
 
-- **Modern dark theme** (Dracula by default) for comfortable extended use.
-- **Smooth animations** throughout — card reveals on load, hover states, skeleton placeholders during hydration.
+- **Read-only Game View without Steam running** — open any previously-scanned game from disk cache and inspect its achievements, icons, and stats schema. Editing locks until Steam reconnects.
+- **Failed-scan recovery** — when individual games fail during library scan, a one-click Retry in the status footer re-queues only what failed, not the whole library.
+- **Schema-versioned cache** with `change_number`-driven invalidation, so reopens are instant and stale data is detected the moment a game ships an update.
 
-## Known Limitations (Alpha)
+### Polished by default
 
-- **Linux is the primary test platform.** macOS and Windows binaries build green on CI; runtime testing on those platforms is lighter during alpha.
+- **Dark and Light themes** — toggle from the app header; choice persists across restarts.
+- **Update checker** — on startup, SteamLens checks GitHub for a newer release and surfaces an info banner with a one-click Download link.
+- **Live capsule artwork** at three preset sizes, smooth animations and skeleton placeholders during hydration, search and filter across library and achievements — the basics, kept fast and out of your way.
+
+## Known Limitations (Beta)
+
+- **Linux is the primary test platform.** macOS and Windows binaries build green on CI; manual runtime verification on those platforms lands during beta.1.
 
 ## Notes & Caveats
 
@@ -59,6 +57,44 @@ A few things worth knowing before you start:
 
 ## Installation
 
+Pre-built binaries are published with each release. Grab the right artifact for your OS from the [latest release page](https://github.com/IceSqueez/steamlens/releases/latest).
+
+### Linux (AppImage)
+
+```bash
+chmod +x steamlens-app-*-linux-x64.AppImage
+./steamlens-app-*-linux-x64.AppImage
+```
+
+AppImage is portable — no install required. Optionally integrate with your desktop using [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher), or move the binary into `~/.local/bin/` and create your own `.desktop` entry.
+
+If the AppImage fails to launch, install the runtime libs for your distro:
+
+```bash
+# Ubuntu / Debian
+sudo apt install libwayland-client0 libxkbcommon0 libgl1 libfontconfig1
+
+# Fedora
+sudo dnf install wayland libxkbcommon mesa-libGL fontconfig
+
+# Arch
+sudo pacman -S wayland libxkbcommon mesa fontconfig
+```
+
+### macOS (.dmg)
+
+1. Download the `.dmg` for your CPU (`macos-arm64` for Apple Silicon, `macos-x64` for Intel).
+2. Open the `.dmg` and drag **SteamLens** into Applications.
+3. The first launch is blocked by Gatekeeper because the app is not yet notarized. Workaround:
+   - Right-click **SteamLens** → **Open** → confirm in the dialog. macOS remembers the choice for future launches.
+   - Or run once from Terminal: `xattr -dr com.apple.quarantine /Applications/SteamLens.app`
+
+### Windows (.exe)
+
+1. Download `steamlens-app-*-windows-x64.exe` and place it anywhere convenient (e.g. `%LOCALAPPDATA%\Programs\SteamLens\`).
+2. SmartScreen may warn that the publisher is unknown — click **More info** → **Run anyway**.
+3. Double-click to launch. No installer; create your own Start Menu shortcut if you want one.
+
 ### From source
 
 ```bash
@@ -68,42 +104,29 @@ cargo build --release
 ./target/release/steamlens-app
 ```
 
-### System dependencies (Linux)
-
-On Ubuntu / Debian:
+System dependencies on Linux:
 
 ```bash
+# Ubuntu / Debian
 sudo apt install libwayland-dev libxkbcommon-dev libgl1-mesa-dev libx11-dev pkg-config
-```
 
-On Fedora:
-
-```bash
+# Fedora
 sudo dnf install wayland-devel libxkbcommon-devel mesa-libGL-devel libX11-devel pkg-config
-```
 
-On Arch:
-
-```bash
+# Arch
 sudo pacman -S wayland libxkbcommon mesa libx11 pkg-config
 ```
 
-### macOS
-
-Make sure you have [Xcode Command Line Tools](https://developer.apple.com/download/) installed; [Homebrew](https://brew.sh/) is optional. Cargo will pick up dependencies via the macOS SDK.
-
-### Windows
-
-No special dependencies — the MSVC toolchain plus Cargo handle the rest.
+macOS needs [Xcode Command Line Tools](https://developer.apple.com/download/); [Homebrew](https://brew.sh/) is optional. Windows uses the MSVC toolchain — no extra system dependencies.
 
 ## Usage
 
-1. **Start SteamLens.** Launch the binary; it splashes and connects to your running Steam client.
-2. **Browse your library.** Search by name, change sort order, or switch capsule sizes from the top-right card menu.
-3. **Open a game.** Click a card to enter the game view. Skeleton placeholders fade out as cached data is hydrated, then refreshed once Steam responds.
+1. **Start SteamLens.** Launch the binary; it splashes and connects to your running Steam client. Without Steam, the library still opens in read-only mode from disk cache.
+2. **Browse your library.** Filter by status or genre, change sort order, switch capsule sizes — or just scroll.
+3. **Open a game.** Click a card to enter the game view. Cached achievements and icons appear instantly; live data refreshes the moment Steam responds.
 4. **Edit achievements.** Click any achievement to toggle it. Changes are tracked locally until you Apply.
-5. **Edit stats** by enabling the consent checkbox, then editing values inline. Increment-only stats reject decreases.
-6. **Apply or discard.** When there are dirty changes, an Apply button appears at the bottom. Click it to write to Steam, or Cancel to drop the changes.
+5. **Edit stats.** Use the in-game statistics panel to max, reset, or set values directly. Increment-only stats reject decreases.
+6. **Apply or discard.** When there are dirty changes, a typed `confirmed` gate guards the Apply button — type the word, click Apply, changes are written to Steam. Cancel drops the changes.
 7. **Go back.** The back arrow returns you to the library; the game-view state is cached for next time.
 
 ## Architecture
