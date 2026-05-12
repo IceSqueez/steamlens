@@ -197,21 +197,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
                 go_back_to_profile(app);
             }
             disconnect_worker(app);
-            app.context.connectivity.steam_running = Some(false);
-            let already_warned = app.context.messaging.banners.iter().any(|b| {
-                b.severity == BannerSeverity::Warning && b.body.starts_with("Steam is not running")
-            });
-            if !already_warned {
-                app.context.messaging.push_banner(
-                    BannerSeverity::Warning,
-                    "Steam is not running \u{2014} reconnect to load achievements",
-                    Some(messaging::BannerAction {
-                        label: "Reconnect",
-                        message: Message::RetrySteamConnect,
-                    }),
-                    false,
-                );
-            }
+            mark_steam_offline_and_warn(app);
             return Task::none();
         }
 
@@ -243,6 +229,29 @@ fn disconnect_worker(app: &mut App) {
     }
     app.context.worker = None;
     app.context.worker_rx = None;
+}
+
+fn mark_steam_offline_and_warn(app: &mut App) {
+    app.context.connectivity.steam_running = Some(false);
+    if let Screen::ProfileView(pv_state) = &mut app.screen {
+        pv_state.progress_scanner = None;
+        pv_state.progress_rx = None;
+        pv_state.last_scan_completed_at = Some(std::time::Instant::now());
+    }
+    let already_warned = app.context.messaging.banners.iter().any(|b| {
+        b.severity == BannerSeverity::Warning && b.body.starts_with("Steam is not running")
+    });
+    if !already_warned {
+        app.context.messaging.push_banner(
+            BannerSeverity::Warning,
+            "Steam is not running \u{2014} reconnect to load achievements",
+            Some(messaging::BannerAction {
+                label: "Reconnect",
+                message: Message::RetrySteamConnect,
+            }),
+            false,
+        );
+    }
 }
 
 fn go_back_to_profile(app: &mut App) {
@@ -413,20 +422,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::batch(tasks)
             } else if is_scan_failed {
                 if let Some((app_id, reason)) = scan_failed_details {
-                    let action = messaging::ToastAction {
-                        label: "Retry".to_owned(),
-                        on_press: crate::Message::ProfileView(
-                            crate::profile_view::types::ProfileViewMessage::RetrySingleFailedScan(
-                                app_id,
+                    if reason.contains("Steam client is not running")
+                        || reason.contains("Steam is not running")
+                    {
+                        mark_steam_offline_and_warn(app);
+                    } else {
+                        let action = messaging::ToastAction {
+                            label: "Retry".to_owned(),
+                            on_press: crate::Message::ProfileView(
+                                crate::profile_view::types::ProfileViewMessage::RetrySingleFailedScan(
+                                    app_id,
+                                ),
                             ),
-                        ),
-                    };
-                    app.context.messaging.push_toast_with_action(
-                        messaging::ToastKind::Error,
-                        format!("Failed to load app {app_id}"),
-                        Some(reason),
-                        action,
-                    );
+                        };
+                        app.context.messaging.push_toast_with_action(
+                            messaging::ToastKind::Error,
+                            format!("Failed to load app {app_id}"),
+                            Some(reason),
+                            action,
+                        );
+                    }
                 }
                 task
             } else {

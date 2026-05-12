@@ -145,9 +145,12 @@ fn profile_status_bar(
         if total == 0 {
             return None;
         }
+        let failed = state.failed_app_ids.len();
+        let hydrated = state.games.iter().filter(|g| g.is_hydrated()).count();
         return Some(
             status_bar::<ProfileViewMessage>()
-                .offline(total, "games")
+                .offline(hydrated.max(total - failed), "games")
+                .failed(failed)
                 .into(),
         );
     }

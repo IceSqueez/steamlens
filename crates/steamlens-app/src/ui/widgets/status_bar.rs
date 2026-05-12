@@ -30,6 +30,7 @@ enum Mode<'a> {
     Offline {
         cached_count: usize,
         noun: Cow<'a, str>,
+        failed_count: usize,
     },
 }
 
@@ -84,7 +85,15 @@ impl<'a, M: 'a + Clone> StatusBar<'a, M> {
         self.mode = Mode::Offline {
             cached_count,
             noun: noun.into(),
+            failed_count: 0,
         };
+        self
+    }
+
+    pub fn failed(mut self, failed: usize) -> Self {
+        if let Mode::Offline { failed_count, .. } = &mut self.mode {
+            *failed_count = failed;
+        }
         self
     }
 
@@ -139,13 +148,25 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                     );
                 }
             }
-            Mode::Offline { cached_count, noun } => {
+            Mode::Offline {
+                cached_count,
+                noun,
+                failed_count,
+            } => {
                 left = left.push(cluster(OFFLINE_DOT, "Offline", OFFLINE_DOT));
                 left = left.push(
                     text(format!("Cached: {cached_count} {noun}"))
                         .size(11)
                         .color(C_TEXT_MUTED),
                 );
+                if failed_count > 0 {
+                    left = left.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
+                    left = left.push(
+                        text(format!("Failed: {failed_count}"))
+                            .size(11)
+                            .color(OFFLINE_DOT),
+                    );
+                }
             }
         }
 
