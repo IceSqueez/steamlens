@@ -1,7 +1,8 @@
 use std::process::ExitStatus;
 
-use steamlens_core::ipc::WorkerErrorKind;
-use tokio::process::{Child, ChildStdin, ChildStdout};
+use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use tokio::process::{Child, ChildStdin};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, Copy)]
@@ -91,7 +92,8 @@ pub enum WorkerProtocolError {
 pub struct WorkerHandle {
     child: Child,
     stdin: ChildStdin,
-    stdout: ChildStdout,
+    responses: mpsc::UnboundedReceiver<WorkerResponse>,
+    _reader_task: JoinHandle<()>,
     stderr_task: Option<JoinHandle<Vec<u8>>>,
     _guard: steamlens_core::ChildLifetimeGuard,
     mode: WorkerMode,
@@ -145,10 +147,21 @@ impl WorkerHandle {
             buf
         });
 
+        let (resp_tx, responses) = mpsc::unbounded_channel::<WorkerResponse>();
+        let reader_task = tokio::spawn(async move {
+            let mut stdout = stdout;
+            while let Some(resp) = crate::ipc_pipe::read_response(&mut stdout).await {
+                if resp_tx.send(resp).is_err() {
+                    break;
+                }
+            }
+        });
+
         Ok(Self {
             child,
             stdin,
-            stdout,
+            responses,
+            _reader_task: reader_task,
             stderr_task: Some(stderr_task),
             _guard: guard,
             mode,
@@ -178,7 +191,7 @@ impl WorkerHandle {
     pub async fn recv(
         &mut self,
     ) -> Result<Option<steamlens_core::ipc::WorkerResponse>, WorkerProtocolError> {
-        Ok(crate::ipc_pipe::read_response(&mut self.stdout).await)
+        Ok(self.responses.recv().await)
     }
 
     /// Interactive: graceful Shutdown command, then kill on `CHILD_DRAIN` timeout. Returns `(status, None)`.

@@ -152,18 +152,39 @@ fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
     }
 }
 
+fn is_unsolicited(resp: &WorkerResponse) -> bool {
+    matches!(
+        resp,
+        WorkerResponse::IconUpdated { .. } | WorkerResponse::GlobalPercentagesReady { .. }
+    )
+}
+
 async fn round_trip(
     handle: &mut WorkerHandle,
     cmd: &WorkerCommand,
     timeout: Duration,
+    rep_tx: &mpsc::Sender<SteamReply>,
 ) -> Option<WorkerResponse> {
     if handle.send(cmd).await.is_err() {
         return None;
     }
-    tokio::time::timeout(timeout, handle.recv())
-        .await
-        .ok()
-        .and_then(|inner| inner.ok().flatten())
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return None;
+        }
+        match tokio::time::timeout(remaining, handle.recv()).await {
+            Ok(Ok(Some(resp))) => {
+                if is_unsolicited(&resp) {
+                    handle_worker_response(resp, rep_tx);
+                    continue;
+                }
+                return Some(resp);
+            }
+            _ => return None,
+        }
+    }
 }
 
 async fn run_apply_sequence(
@@ -191,7 +212,7 @@ async fn run_apply_sequence(
     }
 
     for cmd in &staging_cmds {
-        match round_trip(handle, cmd, staging_timeout).await {
+        match round_trip(handle, cmd, staging_timeout, rep_tx).await {
             Some(WorkerResponse::Ack) => {}
             Some(WorkerResponse::Error { kind, message }) => {
                 reply(rep_tx, error_reply(kind, message));
@@ -218,7 +239,7 @@ async fn run_apply_sequence(
     }
 
     let store_timeout = timeouts::LIVE_LOAD;
-    match round_trip(handle, &WorkerCommand::StoreStats, store_timeout).await {
+    match round_trip(handle, &WorkerCommand::StoreStats, store_timeout, rep_tx).await {
         Some(WorkerResponse::Stored) => {
             reply(rep_tx, SteamReply::ChangesSaved);
             let load_timeout = timeouts::LIVE_LOAD;
@@ -226,6 +247,7 @@ async fn run_apply_sequence(
                 handle,
                 &WorkerCommand::LoadAchievementsAndStats,
                 load_timeout,
+                rep_tx,
             )
             .await
             {
@@ -344,24 +366,6 @@ fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply
     }
 }
 
-async fn drain_responses(
-    handle: &mut WorkerHandle,
-    rep_tx: &mpsc::Sender<SteamReply>,
-    drain_ms: u64,
-) {
-    let deadline = tokio::time::Instant::now() + Duration::from_millis(drain_ms);
-    loop {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() {
-            break;
-        }
-        match tokio::time::timeout(remaining, handle.recv()).await {
-            Ok(Ok(Some(resp))) => handle_worker_response(resp, rep_tx),
-            _ => break,
-        }
-    }
-}
-
 type ConnectError = crate::worker_subprocess::WorkerProtocolError;
 
 async fn await_steam_connected(
@@ -392,7 +396,14 @@ async fn handle_request(
     match req {
         SteamRequest::RequestUserStats => {
             let timeout = timeouts::LIVE_LOAD;
-            match round_trip(handle, &WorkerCommand::LoadAchievementsAndStats, timeout).await {
+            match round_trip(
+                handle,
+                &WorkerCommand::LoadAchievementsAndStats,
+                timeout,
+                rep_tx,
+            )
+            .await
+            {
                 Some(resp) => handle_worker_response(resp, rep_tx),
                 None => reply(
                     rep_tx,
@@ -403,7 +414,14 @@ async fn handle_request(
 
         SteamRequest::RequestGlobalPercentages => {
             let timeout = timeouts::GLOBAL_PERCENTAGES;
-            match round_trip(handle, &WorkerCommand::RequestGlobalPercentages, timeout).await {
+            match round_trip(
+                handle,
+                &WorkerCommand::RequestGlobalPercentages,
+                timeout,
+                rep_tx,
+            )
+            .await
+            {
                 Some(resp) => handle_worker_response(resp, rep_tx),
                 None => reply(rep_tx, SteamReply::GlobalPercentagesFailed),
             }
@@ -435,6 +453,7 @@ async fn handle_request(
                     include_achievements,
                 },
                 timeout,
+                rep_tx,
             )
             .await
             {
@@ -509,11 +528,27 @@ async fn bridge_loop(
     }
 
     loop {
-        drain_responses(&mut handle, &rep_tx, timeouts::ICON_DRAIN_MS).await;
-
-        let Some(req) = req_rx.recv().await else {
-            let _ = handle.finish().await;
-            return;
+        let req = tokio::select! {
+            biased;
+            resp = handle.recv() => {
+                match resp {
+                    Ok(Some(r)) => {
+                        handle_worker_response(r, &rep_tx);
+                        continue;
+                    }
+                    Ok(None) | Err(_) => {
+                        let _ = handle.finish().await;
+                        return;
+                    }
+                }
+            }
+            req = req_rx.recv() => match req {
+                Some(r) => r,
+                None => {
+                    let _ = handle.finish().await;
+                    return;
+                }
+            },
         };
 
         match req {
