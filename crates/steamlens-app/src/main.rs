@@ -647,13 +647,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::none();
             }
 
-            tracing::info!(
-                app_id,
-                earned,
-                total,
-                change_number,
-                "persist game summary"
-            );
+            tracing::info!(app_id, earned, total, change_number, "persist game summary");
 
             let mut full_entry = build_game_view_cache_entry(
                 gv_state,
