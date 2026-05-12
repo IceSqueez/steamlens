@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::cached::Cached;
 use crate::cache::store::CacheIoError;
 
-const CURRENT_PROFILE_SCHEMA: u32 = 2;
+const CURRENT_PROFILE_SCHEMA: u32 = 3;
 const CURRENT_LIBRARY_SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +17,6 @@ pub struct CachedProfile {
     pub avatar_png_bytes: Option<Vec<u8>>,
     pub steam_root: Option<PathBuf>,
     pub cached_at: u64,
-    #[serde(default)]
     pub steam_level: Option<u32>,
 }
 

@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::RarityTier;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub const SUMMARY_SCHEMA_VERSION: u32 = 5;
+pub const SUMMARY_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameCacheEntry {
@@ -17,11 +17,8 @@ pub struct GameCacheEntry {
     pub achievements: Vec<CachedAchievement>,
     pub stats: Vec<CachedStat>,
     pub progress: CachedProgress,
-    #[serde(default)]
     pub tier_breakdown: Vec<(RarityTier, u32)>,
-    #[serde(default)]
     pub genre: Option<String>,
-    #[serde(default)]
     pub playtime_minutes: Option<u32>,
 }
 
@@ -36,7 +33,6 @@ pub struct GameSummaryCache {
     pub progress: CachedProgress,
     pub tier_breakdown: Vec<(RarityTier, u32)>,
     pub genre: Option<String>,
-    #[serde(default)]
     pub playtime_minutes: Option<u32>,
 }
 
@@ -74,15 +70,10 @@ pub struct CachedStat {
     pub api_name: String,
     pub display_name: String,
     pub value: CachedStatValue,
-    #[serde(default)]
     pub max_value: Option<u64>,
-    #[serde(default)]
     pub min_value: Option<i64>,
-    #[serde(default)]
     pub default_value: Option<i64>,
-    #[serde(default)]
     pub is_increment_only: bool,
-    #[serde(default)]
     pub permission: u32,
 }
 

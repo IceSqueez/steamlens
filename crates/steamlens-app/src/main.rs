@@ -625,12 +625,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = gv_state
                 .achievements
                 .iter()
-                .filter_map(|r| {
-                    r.data
-                        .icon
-                        .as_ref()
-                        .map(|i| (r.data.id.clone(), i.clone()))
-                })
+                .filter_map(|r| r.data.icon.as_ref().map(|i| (r.data.id.clone(), i.clone())))
                 .collect();
             let icons_task = Task::perform(
                 async move {
@@ -1878,7 +1873,7 @@ mod tests {
         let mut app = make_app_probing();
         app.context.connectivity.steam_running = Some(false);
         let cached = CachedProfile {
-            schema_version: 2,
+            schema_version: 3,
             steam_id: 76561198000000042,
             persona_name: "FromCache".to_owned(),
             account_name: "cache_login".to_owned(),
@@ -1912,7 +1907,7 @@ mod tests {
             avatar_png_bytes: None,
         });
         let cached = CachedProfile {
-            schema_version: 2,
+            schema_version: 3,
             steam_id: 999,
             persona_name: "ShouldNotWin".to_owned(),
             account_name: "stale".to_owned(),
@@ -2953,11 +2948,31 @@ mod tests {
     }
 
     #[test]
-    fn has_active_skeletons_false_for_game_view_ready() {
-        let app = make_app_with_game_view_phase(game_view::GameViewPhase::Ready);
+    fn has_active_skeletons_false_for_game_view_ready_with_populated_achievements() {
+        let mut app = make_app_with_game_view_phase(game_view::GameViewPhase::Ready);
+        if let Screen::GameView(state) = &mut app.screen {
+            use crate::game_view::types::{AchievementData, AchievementRow};
+            let data = AchievementData {
+                id: "ACH".to_owned(),
+                display_name: "x".to_owned(),
+                description: String::new(),
+                is_hidden: false,
+                is_achieved: true,
+                unlock_time: None,
+                permission: 0,
+                icon: Some(steamlens_core::AchievementIcon {
+                    width: 1,
+                    height: 1,
+                    rgba: vec![0; 4],
+                }),
+            };
+            let mut row = AchievementRow::from(data);
+            row.rarity_percent = Some(50.0);
+            state.achievements = vec![row];
+        }
         assert!(
             !has_active_skeletons(&app),
-            "Ready phase must NOT activate skeleton subscription"
+            "Ready phase with hydrated achievements must NOT activate skeleton subscription"
         );
     }
 
