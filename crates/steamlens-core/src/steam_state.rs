@@ -6,12 +6,7 @@ use steamlens_vdf::parse_text;
 /// clients may omit the `Software/Valve/Steam` nesting — callers MUST
 /// NOT dirty the cache solely because `LastPlayed` is unavailable.
 pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u64> {
-    let localconfig_path = steam_root
-        .join("userdata")
-        .join(steamid3.to_string())
-        .join("config")
-        .join("localconfig.vdf");
-
+    let localconfig_path = localconfig_path(steam_root, steamid3);
     let content = std::fs::read_to_string(&localconfig_path).ok()?;
     let root = parse_text(&content).ok()?;
 
@@ -22,6 +17,30 @@ pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option
         .as_str()?;
 
     last_played_str.parse::<u64>().ok()
+}
+
+/// Returns total playtime in minutes for `app_id`, or `None` if the field
+/// is missing / file unavailable. Steam stores playtime as integer minutes.
+pub fn read_playtime(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u32> {
+    let localconfig_path = localconfig_path(steam_root, steamid3);
+    let content = std::fs::read_to_string(&localconfig_path).ok()?;
+    let root = parse_text(&content).ok()?;
+
+    let playtime_str = root
+        .path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"])?
+        .get(&app_id.to_string())?
+        .get("Playtime")?
+        .as_str()?;
+
+    playtime_str.parse::<u32>().ok()
+}
+
+fn localconfig_path(steam_root: &Path, steamid3: u64) -> std::path::PathBuf {
+    steam_root
+        .join("userdata")
+        .join(steamid3.to_string())
+        .join("config")
+        .join("localconfig.vdf")
 }
 
 #[cfg(test)]

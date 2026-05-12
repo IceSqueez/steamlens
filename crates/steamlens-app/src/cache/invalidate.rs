@@ -140,6 +140,7 @@ fn synthesize_compat_entry(
         progress: summary.progress,
         tier_breakdown: summary.tier_breakdown,
         genre: summary.genre,
+        playtime_minutes: summary.playtime_minutes,
     }
 }
 
@@ -170,6 +171,7 @@ mod tests {
             },
             tier_breakdown: Vec::new(),
             genre: None,
+            playtime_minutes: None,
         }
     }
 
