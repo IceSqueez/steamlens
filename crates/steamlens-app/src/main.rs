@@ -509,7 +509,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if schema_bumped > 0 {
                 app.context.messaging.push_banner(
                     BannerSeverity::Info,
-                    "Cache updated — your library is refreshing in the background.",
+                    "Cache schema updated — your library is refreshing in the background.",
                     None,
                     true,
                 );
