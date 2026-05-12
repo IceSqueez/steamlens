@@ -282,8 +282,6 @@ pub struct GameViewState {
     >,
 
     pub hovered_bar_slice: Option<RarityTier>,
-
-    pub global_percentages_done: bool,
 }
 
 impl GameViewState {
@@ -316,7 +314,6 @@ impl GameViewState {
             pending_rarity_percent: None,
             capsule_handles: HashMap::new(),
             hovered_bar_slice: None,
-            global_percentages_done: false,
         }
     }
 
@@ -416,7 +413,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             state.stats = stats.into_iter().map(StatRow::from).collect();
             state.phase = GameViewPhase::Ready;
             state.fade_in = 0.0;
-            state.global_percentages_done = pending_pct.is_some();
 
             state.reveal_queue = state
                 .achievements
@@ -486,7 +482,6 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
         }
         SteamReply::Disconnected => Task::none(),
         SteamReply::GlobalPercentagesReady(map) => {
-            state.global_percentages_done = true;
             if state.achievements.is_empty() {
                 state.pending_rarity_percent = Some(map);
             } else {
@@ -499,10 +494,7 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
             }
             Task::none()
         }
-        SteamReply::GlobalPercentagesFailed => {
-            state.global_percentages_done = true;
-            Task::none()
-        }
+        SteamReply::GlobalPercentagesFailed => Task::none(),
     }
 }
 
