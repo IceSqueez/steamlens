@@ -1450,7 +1450,10 @@ fn view(app: &App) -> Element<'_, Message> {
         }
 
         Screen::GameView(state) => {
-            let props = game_view::GameViewProps { skeleton_phase };
+            let props = game_view::GameViewProps {
+                skeleton_phase,
+                app_theme: theme,
+            };
             game_view::view(state, props).map(Message::GameView)
         }
     };

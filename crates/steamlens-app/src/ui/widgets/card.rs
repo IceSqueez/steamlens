@@ -1,16 +1,17 @@
 use iced::widget::{button, container};
 use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Vector};
 
-use crate::ui::theme::{AppTheme, palette};
+use crate::ui::theme::{palette, theme_from_iced};
 
 const DEFAULT_RADIUS: f32 = 8.0;
 
 pub fn card<'a, M: Clone + 'a>(content: impl Into<Element<'a, M>>) -> Card<'a, M> {
     Card {
         content: content.into(),
-        theme: AppTheme::default(),
         on_press: None,
         accent: None,
+        gold: false,
+        border_accent: false,
         radius: DEFAULT_RADIUS,
         forced_hover: None,
         width: None,
@@ -25,9 +26,10 @@ pub fn card<'a, M: Clone + 'a>(content: impl Into<Element<'a, M>>) -> Card<'a, M
 
 pub struct Card<'a, M> {
     content: Element<'a, M>,
-    theme: AppTheme,
     on_press: Option<M>,
     accent: Option<Color>,
+    gold: bool,
+    border_accent: bool,
     radius: f32,
     forced_hover: Option<bool>,
     width: Option<Length>,
@@ -40,11 +42,6 @@ pub struct Card<'a, M> {
 }
 
 impl<'a, M: Clone + 'a> Card<'a, M> {
-    pub fn theme(mut self, theme: AppTheme) -> Self {
-        self.theme = theme;
-        self
-    }
-
     pub fn on_press(mut self, message: M) -> Self {
         self.on_press = Some(message);
         self
@@ -52,6 +49,16 @@ impl<'a, M: Clone + 'a> Card<'a, M> {
 
     pub fn accent(mut self, color: Color) -> Self {
         self.accent = Some(color);
+        self
+    }
+
+    pub fn gold_when(mut self, is_gold: bool) -> Self {
+        self.gold = is_gold;
+        self
+    }
+
+    pub fn border_accent_when(mut self, use_border: bool) -> Self {
+        self.border_accent = use_border;
         self
     }
 
@@ -100,10 +107,9 @@ impl<'a, M: Clone + 'a> Card<'a, M> {
 
 impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
     fn from(card: Card<'a, M>) -> Self {
-        let palette = palette(card.theme);
-        let surface = palette.surface;
-        let neutral_hover_border = palette.accent;
-        let accent = card.accent;
+        let fixed_accent = card.accent;
+        let gold = card.gold;
+        let border_accent = card.border_accent;
         let radius = card.radius;
         let forced_hover = card.forced_hover;
         let acc_w_default = card.accent_border_width_default;
@@ -124,7 +130,18 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
 
         let mut button = button(wrapped)
             .padding(0)
-            .style(move |_theme: &iced::Theme, status| {
+            .style(move |t: &iced::Theme, status| {
+                let p = palette(theme_from_iced(t));
+                let surface = p.surface;
+                let neutral_hover_border = p.accent;
+                let accent = if gold {
+                    Some(p.rarity_legendary)
+                } else if border_accent {
+                    Some(p.border)
+                } else {
+                    fixed_accent
+                };
+
                 let hovered = forced_hover.unwrap_or(matches!(
                     status,
                     button::Status::Hovered | button::Status::Pressed
@@ -229,17 +246,14 @@ mod tests {
     }
 
     #[test]
-    fn card_with_all_setters_constructs_in_each_theme() {
-        for theme in [AppTheme::Dark, AppTheme::Light] {
-            let _: Element<'_, ()> = card(text("body"))
-                .theme(theme)
-                .accent(Color::from_rgb(1.0, 0.85, 0.4))
-                .radius(6.0)
-                .hovered(true)
-                .width(Length::Fixed(200.0))
-                .height(Length::Fixed(100.0))
-                .into();
-        }
+    fn card_with_all_setters_constructs() {
+        let _: Element<'_, ()> = card(text("body"))
+            .accent(Color::from_rgb(1.0, 0.85, 0.4))
+            .radius(6.0)
+            .hovered(true)
+            .width(Length::Fixed(200.0))
+            .height(Length::Fixed(100.0))
+            .into();
     }
 
     #[test]

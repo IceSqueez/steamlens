@@ -5,7 +5,7 @@ use std::time::Instant;
 use iced::widget::{button, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
-use crate::theme::{C_ACCENT, C_SURFACE, C_TEXT_MUTED};
+use crate::ui::theme::{palette, theme_from_iced};
 
 const CONNECTED_DOT: Color = Color::from_rgb(0.427, 0.788, 0.498);
 const OFFLINE_DOT: Color = Color::from_rgb(0.941, 0.784, 0.478);
@@ -119,8 +119,16 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                 noun,
                 last_sync,
             } => {
-                left = left.push(cluster(CONNECTED_DOT, "Connected", C_TEXT_MUTED));
-                left = left.push(text(format!("{count} {noun}")).size(11).color(C_TEXT_MUTED));
+                left = left.push(cluster_themed(
+                    CONNECTED_DOT,
+                    "Connected",
+                    ThemeTextKind::Muted,
+                ));
+                left = left.push(text(format!("{count} {noun}")).size(11).style(
+                    |t: &iced::Theme| iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_muted),
+                    },
+                ));
                 if let Some(t) = last_sync {
                     let secs = t.elapsed().as_secs();
                     let sync_label = if secs < 60 {
@@ -128,8 +136,16 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                     } else {
                         format!("Last sync {}m ago", secs / 60)
                     };
-                    left = left.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
-                    left = left.push(text(sync_label).size(11).color(C_TEXT_MUTED));
+                    left = left.push(text("\u{00B7}").size(11).style(|t: &iced::Theme| {
+                        iced::widget::text::Style {
+                            color: Some(palette(theme_from_iced(t)).text_muted),
+                        }
+                    }));
+                    left = left.push(text(sync_label).size(11).style(|t: &iced::Theme| {
+                        iced::widget::text::Style {
+                            color: Some(palette(theme_from_iced(t)).text_muted),
+                        }
+                    }));
                 }
             }
             Mode::Scanning {
@@ -137,15 +153,15 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                 current,
                 total,
             } => {
-                left = left.push(cluster(C_ACCENT, label, C_ACCENT));
+                left = left.push(cluster_themed_accent(label));
                 if total > 0 {
                     let ratio = (current as f32 / total as f32).clamp(0.0, 1.0);
                     left = left.push(progress_bar(ratio));
-                    left = left.push(
-                        text(format!("{current} / {total}"))
-                            .size(11)
-                            .color(C_TEXT_MUTED),
-                    );
+                    left = left.push(text(format!("{current} / {total}")).size(11).style(
+                        |t: &iced::Theme| iced::widget::text::Style {
+                            color: Some(palette(theme_from_iced(t)).text_muted),
+                        },
+                    ));
                 }
             }
             Mode::Offline {
@@ -157,10 +173,16 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                 left = left.push(
                     text(format!("Cached: {cached_count} {noun}"))
                         .size(11)
-                        .color(C_TEXT_MUTED),
+                        .style(|t: &iced::Theme| iced::widget::text::Style {
+                            color: Some(palette(theme_from_iced(t)).text_muted),
+                        }),
                 );
                 if failed_count > 0 {
-                    left = left.push(text("\u{00B7}").size(11).color(C_TEXT_MUTED));
+                    left = left.push(text("\u{00B7}").size(11).style(|t: &iced::Theme| {
+                        iced::widget::text::Style {
+                            color: Some(palette(theme_from_iced(t)).text_muted),
+                        }
+                    }));
                     left = left.push(
                         text(format!("Failed: {failed_count}"))
                             .size(11)
@@ -178,14 +200,14 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
         if let Some((label, msg)) = b.retry {
             footer_row = footer_row.push(link_button(label, C_OFFLINE_RETRY, msg));
         } else if let Some(msg) = b.reconnect {
-            footer_row = footer_row.push(link_button("Reconnect", C_ACCENT, msg));
+            footer_row = footer_row.push(link_button_accent(msg));
         }
 
         let inner = container(footer_row)
             .width(Length::Fill)
             .padding(Padding::default().left(14).right(14).top(8).bottom(8))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(Background::Color(C_SURFACE)),
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(Background::Color(palette(theme_from_iced(t)).surface)),
                 border: Border {
                     radius: 10.0.into(),
                     ..Border::default()
@@ -201,6 +223,10 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
 }
 
 const C_OFFLINE_RETRY: Color = Color::from_rgb(0.941, 0.784, 0.478);
+
+enum ThemeTextKind {
+    Muted,
+}
 
 fn cluster<'a, M: 'a>(
     dot_color: Color,
@@ -225,6 +251,92 @@ fn cluster<'a, M: 'a>(
         .into()
 }
 
+fn cluster_themed<'a, M: 'a>(
+    dot_color: Color,
+    label: impl Into<Cow<'a, str>>,
+    _kind: ThemeTextKind,
+) -> Element<'a, M> {
+    let label: Cow<'a, str> = label.into();
+    let dot = container(iced::widget::Space::new())
+        .width(Length::Fixed(6.0))
+        .height(Length::Fixed(6.0))
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(Background::Color(dot_color)),
+            border: Border {
+                radius: 3.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        });
+    row![
+        dot,
+        text(label)
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            })
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn cluster_themed_accent<'a, M: 'a>(label: impl Into<Cow<'a, str>>) -> Element<'a, M> {
+    let label: Cow<'a, str> = label.into();
+    let dot = container(iced::widget::Space::new())
+        .width(Length::Fixed(6.0))
+        .height(Length::Fixed(6.0))
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(Background::Color(palette(theme_from_iced(t)).accent)),
+            border: Border {
+                radius: 3.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        });
+    row![
+        dot,
+        text(label)
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).accent),
+            })
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn link_button_accent<'a, M: 'a + Clone>(msg: M) -> Element<'a, M> {
+    button(
+        text("Reconnect")
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).accent),
+            }),
+    )
+    .on_press(msg)
+    .padding(0)
+    .style(|t: &iced::Theme, status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        let color = palette(theme_from_iced(t)).accent;
+        iced::widget::button::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border::default(),
+            text_color: if hovered {
+                Color { a: 0.85, ..color }
+            } else {
+                color
+            },
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
+}
+
 fn progress_bar<'a, M: 'a>(ratio: f32) -> Element<'a, M> {
     let portion_fill = ((ratio * 1000.0).round() as u16).clamp(1, 1000);
     let portion_rest = 1000 - portion_fill;
@@ -232,8 +344,8 @@ fn progress_bar<'a, M: 'a>(ratio: f32) -> Element<'a, M> {
     let fill = container(iced::widget::Space::new())
         .width(Length::FillPortion(portion_fill))
         .height(Length::Fixed(3.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_ACCENT)),
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(Background::Color(palette(theme_from_iced(t)).accent)),
             border: Border {
                 radius: 1.5.into(),
                 ..Border::default()

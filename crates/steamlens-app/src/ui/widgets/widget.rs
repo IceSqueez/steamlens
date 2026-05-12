@@ -1,10 +1,3 @@
-//! Shared chrome for two-column summary panels (profile + game widgets).
-//!
-//! Each consumer constructs the per-view bits (header image+labels, top5 rows),
-//! everything else — colors, tier helpers, count cards, rarity bar with ticks,
-//! the 5fr/2fr surrounding frame, and a generic "closest-to-..." right-column
-//! list — lives here.
-
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
@@ -12,9 +5,8 @@ use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::game_view::types::RarityTier;
-use crate::theme::{C_ACCENT, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
-use crate::ui::theme::{AppTheme, palette};
-use crate::ui::widgets::bar::{BarSegment, segmented_bar};
+use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::widgets::bar::{BarColor, BarSegment, segmented_bar};
 
 pub const C_RARITY_COMMON: Color = Color::from_rgb(0.314, 0.980, 0.482);
 pub const C_RARITY_UNCOMMON: Color = Color::from_rgb(0.545, 0.914, 0.992);
@@ -134,7 +126,9 @@ impl WidgetSummary {
 pub fn breakdown_label<'a, M: 'a>() -> Element<'a, M> {
     text("ACHIEVEMENTS BREAKDOWN")
         .size(10)
-        .color(C_TEXT_MUTED)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_muted),
+        })
         .into()
 }
 
@@ -149,11 +143,19 @@ pub fn earnings_row<'a, M: 'a>(summary: &WidgetSummary) -> Element<'a, M> {
 
     let earned_text = text(format_thousands(earned))
         .size(20)
-        .color(C_TEXT_PRIMARY);
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_primary),
+        });
     let total_text = text(format!("/ {}", format_thousands(total)))
         .size(20)
-        .color(C_TEXT_DIM);
-    let pct_text = text(format!("{pct:.1}% unlocked")).size(12).color(C_ACCENT);
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_dim),
+        });
+    let pct_text = text(format!("{pct:.1}% unlocked"))
+        .size(12)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).accent),
+        });
 
     let counter_row = row![earned_text, total_text]
         .spacing(6)
@@ -201,7 +203,12 @@ pub fn count_card<'a, M: 'a + Clone>(
         let pct_text = text(format!("{pct:.1}%"))
             .size(10)
             .color(Color { a: 0.75, ..accent });
-        let label_text = text(display_label).size(11).color(C_TEXT_MUTED);
+        let label_text =
+            text(display_label)
+                .size(11)
+                .style(|t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).text_muted),
+                });
 
         let info_col = column![number, label_text, pct_text]
             .spacing(2)
@@ -263,12 +270,17 @@ pub fn cards_separator<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a
     let remaining = summary.locked();
     let pct_to_go = summary.pct_to_go();
 
-    let remaining_label = text(format_remaining(remaining as u64))
-        .size(11)
-        .color(C_TEXT_MUTED);
+    let remaining_label =
+        text(format_remaining(remaining as u64))
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            });
     let pct_label = text(format!("{pct_to_go:.1}% to go"))
         .size(11)
-        .color(C_TEXT_DIM);
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_dim),
+        });
 
     let label_row = row![
         remaining_label,
@@ -282,14 +294,14 @@ pub fn cards_separator<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a
         .into()
 }
 
-fn tick_tier_color(threshold: u8) -> Color {
+fn tick_tier_color(threshold: u8) -> Option<Color> {
     match threshold {
-        0 => C_RARITY_COMMON,
-        25 => C_RARITY_UNCOMMON,
-        50 => C_RARITY_RARE,
-        75 => C_RARITY_MYTHICAL,
-        100 => C_RARITY_LEGENDARY,
-        _ => C_TEXT_MUTED,
+        0 => Some(C_RARITY_COMMON),
+        25 => Some(C_RARITY_UNCOMMON),
+        50 => Some(C_RARITY_RARE),
+        75 => Some(C_RARITY_MYTHICAL),
+        100 => Some(C_RARITY_LEGENDARY),
+        _ => None,
     }
 }
 
@@ -300,25 +312,39 @@ pub fn tick_marks<'a, M: 'a + Clone>(unlocked_pct: f32) -> Element<'a, M> {
 
     for (i, threshold) in THRESHOLDS.iter().enumerate() {
         let lit = tick_lit_at(unlocked_pct, *threshold);
-        let tick_color = if lit {
-            tick_tier_color(*threshold)
-        } else {
-            C_TEXT_MUTED
-        };
+        let lit_color_opt = tick_tier_color(*threshold);
 
         let dot = container(iced::widget::Space::new())
             .width(Length::Fixed(6.0))
             .height(Length::Fixed(6.0))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(tick_color)),
-                border: Border {
-                    radius: 3.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
+            .style(move |t: &iced::Theme| {
+                let p = palette(theme_from_iced(t));
+                let color = if lit {
+                    lit_color_opt.unwrap_or(p.text_muted)
+                } else {
+                    p.text_muted
+                };
+                container::Style {
+                    background: Some(Background::Color(color)),
+                    border: Border {
+                        radius: 3.0.into(),
+                        ..Border::default()
+                    },
+                    ..container::Style::default()
+                }
             });
 
-        let label = text(format!("{threshold}%")).size(14).color(tick_color);
+        let label = text(format!("{threshold}%"))
+            .size(14)
+            .style(move |t: &iced::Theme| {
+                let p = palette(theme_from_iced(t));
+                let color = if lit {
+                    lit_color_opt.unwrap_or(p.text_muted)
+                } else {
+                    p.text_muted
+                };
+                iced::widget::text::Style { color: Some(color) }
+            });
         let tick_unit = row![dot, label].spacing(3).align_y(Alignment::Center);
 
         let tick_pct = *threshold as f32;
@@ -401,7 +427,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             let pct = *count as f64 / total_for_pct as f64 * 100.0;
             segments.push(BarSegment {
                 weight: *count,
-                color: rarity_color(*tier),
+                color: rarity_color(*tier).into(),
             });
             tier_at.push(Some(*tier));
             tooltips.push(format!(
@@ -417,7 +443,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             let pct = unrated as f64 / total_for_pct as f64 * 100.0;
             segments.push(BarSegment {
                 weight: unrated,
-                color: C_ACCENT,
+                color: BarColor::Accent,
             });
             tier_at.push(None);
             tooltips.push(format!(
@@ -432,7 +458,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             let pct = locked as f64 / total_for_pct as f64 * 100.0;
             segments.push(BarSegment {
                 weight: locked,
-                color: palette(AppTheme::Dark).hover,
+                color: BarColor::Hover,
             });
             tier_at.push(None);
             tooltips.push(format!(
@@ -448,7 +474,6 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
 
         let tip_lookup = tooltips.clone();
         let mut bar_builder = segmented_bar(segments, Length::Fill, BAR_HEIGHT)
-            .theme(AppTheme::Dark)
             .radius(BAR_RADIUS)
             .hovered(hovered_idx)
             .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default());
@@ -469,26 +494,31 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
 }
 
 pub fn widget_panel<'a, M: 'a>(left: Element<'a, M>, right: Element<'a, M>) -> Element<'a, M> {
-    let surface_style = || container::Style {
-        background: Some(Background::Color(C_SURFACE)),
-        border: Border {
-            radius: 10.0.into(),
-            ..Border::default()
-        },
-        ..container::Style::default()
-    };
-
     let two_col_row = row![
         container(left)
             .width(Length::FillPortion(5))
             .height(Length::Fixed(WIDGET_ROW_HEIGHT))
             .padding(18)
-            .style(move |_: &iced::Theme| surface_style()),
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(Background::Color(palette(theme_from_iced(t)).surface)),
+                border: Border {
+                    radius: 10.0.into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            }),
         container(right)
             .width(Length::FillPortion(3))
             .height(Length::Fixed(WIDGET_ROW_HEIGHT))
             .padding(16)
-            .style(move |_: &iced::Theme| surface_style()),
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(Background::Color(palette(theme_from_iced(t)).surface)),
+                border: Border {
+                    radius: 10.0.into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            }),
     ]
     .spacing(16);
 
@@ -507,9 +537,16 @@ pub fn closest_row<'a, M: 'a + Clone>(
 ) -> Element<'a, M> {
     let primary_label = text(primary.into())
         .size(12)
-        .color(C_TEXT_PRIMARY)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_primary),
+        })
         .wrapping(text::Wrapping::None);
-    let secondary_label = text(secondary.into()).size(11).color(C_TEXT_MUTED);
+    let secondary_label =
+        text(secondary.into())
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            });
 
     let info_col = column![
         container(primary_label).width(Length::Fill).clip(true),
@@ -518,15 +555,20 @@ pub fn closest_row<'a, M: 'a + Clone>(
     .spacing(1)
     .width(Length::Fill);
 
-    let pct_chip = text(pct_label.into()).size(13).color(C_ACCENT);
+    let pct_chip =
+        text(pct_label.into())
+            .size(13)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).accent),
+            });
 
     let row_content = row![image, info_col, pct_chip]
         .spacing(8)
         .align_y(Alignment::Center)
         .padding(Padding::default().left(6).right(6).top(5).bottom(5));
 
-    let row_container = container(row_content).style(|_: &iced::Theme| container::Style {
-        background: Some(Background::Color(C_HOVER)),
+    let row_container = container(row_content).style(|t: &iced::Theme| container::Style {
+        background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
         border: Border {
             radius: 6.0.into(),
             ..Border::default()
@@ -584,11 +626,11 @@ mod tests {
 
     #[test]
     fn tick_tier_color_thresholds() {
-        assert_eq!(tick_tier_color(0), C_RARITY_COMMON);
-        assert_eq!(tick_tier_color(25), C_RARITY_UNCOMMON);
-        assert_eq!(tick_tier_color(50), C_RARITY_RARE);
-        assert_eq!(tick_tier_color(75), C_RARITY_MYTHICAL);
-        assert_eq!(tick_tier_color(100), C_RARITY_LEGENDARY);
-        assert_eq!(tick_tier_color(42), C_TEXT_MUTED);
+        assert_eq!(tick_tier_color(0), Some(C_RARITY_COMMON));
+        assert_eq!(tick_tier_color(25), Some(C_RARITY_UNCOMMON));
+        assert_eq!(tick_tier_color(50), Some(C_RARITY_RARE));
+        assert_eq!(tick_tier_color(75), Some(C_RARITY_MYTHICAL));
+        assert_eq!(tick_tier_color(100), Some(C_RARITY_LEGENDARY));
+        assert_eq!(tick_tier_color(42), None);
     }
 }

@@ -10,7 +10,8 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_PRIMARY};
+use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::widgets::bar::{BarColor, BarSegment, segmented_bar};
 use crate::ui::widgets::skeleton::skeleton_box;
 use crate::ui::widgets::tooltip_box::tooltip_box;
 
@@ -19,8 +20,6 @@ use super::types::{CapsuleAsset, GameEntry, ProfileViewMessage, ProfileViewPhase
 use super::widget::{
     ProfileWidgetParams, compute_profile_summary, profile_widget, top6_closest_to_complete,
 };
-use crate::ui::theme::{AppTheme, palette};
-use crate::ui::widgets::bar::{BarSegment, segmented_bar};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::widget::{
@@ -60,10 +59,6 @@ fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
         cols -= 1;
     }
 }
-
-const C_PLACEHOLDER: Color = Color::from_rgb(0.188, 0.192, 0.247);
-const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
-const C_TEXT: Color = Color::from_rgb(0.973, 0.973, 0.949);
 
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
@@ -271,19 +266,19 @@ fn build_grid<'a>(
         .into()
 }
 
-fn completion_tier_color(pct: f32) -> Color {
+fn completion_tier_color(pct: f32) -> Option<Color> {
     if pct >= 100.0 {
-        C_RARITY_LEGENDARY
+        Some(C_RARITY_LEGENDARY)
     } else if pct >= 90.0 {
-        C_RARITY_MYTHICAL
+        Some(C_RARITY_MYTHICAL)
     } else if pct >= 75.0 {
-        C_RARITY_RARE
+        Some(C_RARITY_RARE)
     } else if pct >= 50.0 {
-        C_RARITY_UNCOMMON
+        Some(C_RARITY_UNCOMMON)
     } else if pct >= 25.0 {
-        C_RARITY_COMMON
+        Some(C_RARITY_COMMON)
     } else {
-        C_TEXT_MUTED
+        None
     }
 }
 
@@ -530,8 +525,10 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileView
         CapsuleAsset::Pending => container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
             .height(Length::Fixed(capsule_h))
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_PLACEHOLDER)),
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(
+                    palette(theme_from_iced(t)).placeholder,
+                )),
                 border: iced::Border {
                     radius: 4.0.into(),
                     ..iced::Border::default()
@@ -540,20 +537,28 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileView
             })
             .into(),
 
-        CapsuleAsset::Unavailable => container(text("no image").size(10).color(C_MUTED))
+        CapsuleAsset::Unavailable => {
+            container(text("no image").size(10).style(|t: &iced::Theme| {
+                iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).text_muted),
+                }
+            }))
             .width(Length::Fixed(card_w))
             .height(Length::Fixed(capsule_h))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
-            .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(C_PLACEHOLDER)),
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(
+                    palette(theme_from_iced(t)).placeholder,
+                )),
                 border: iced::Border {
                     radius: 4.0.into(),
                     ..iced::Border::default()
                 },
                 ..container::Style::default()
             })
-            .into(),
+            .into()
+        }
     };
 
     let hover_overlay: Element<'_, ProfileViewMessage> = if is_hovered || is_pinned {
@@ -598,16 +603,14 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileView
         .progress
         .as_ref()
         .is_some_and(|p| p.total > 0 && p.earned >= p.total);
-    let accent = is_gold.then(|| palette(AppTheme::Dark).rarity_legendary);
 
     card(card_inner)
-        .theme(AppTheme::Dark)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(total_h))
         .padding(Padding::default().top(8))
         .radius(6.0)
         .hovered(is_hovered)
-        .accent_maybe(accent)
+        .gold_when(is_gold)
         .on_press(ProfileViewMessage::GameSelected(app_id))
         .into()
 }
@@ -649,7 +652,7 @@ fn build_tier_stacked_bar<'a>(
         let pct = count as f64 / total as f64 * 100.0;
         segments.push(BarSegment {
             weight: count,
-            color: rarity_color_for_tier(*t),
+            color: rarity_color_for_tier(*t).into(),
         });
         tier_at.push(Some(*t));
         tooltips.push(format!(
@@ -664,7 +667,7 @@ fn build_tier_stacked_bar<'a>(
         let pct = locked_count as f64 / total as f64 * 100.0;
         segments.push(BarSegment {
             weight: locked_count,
-            color: palette(AppTheme::Dark).hover,
+            color: BarColor::Hover,
         });
         tier_at.push(None);
         tooltips.push(format!("{locked_count} Locked \u{00B7} {pct:.1}%"));
@@ -677,7 +680,6 @@ fn build_tier_stacked_bar<'a>(
 
     let bar: Element<'a, ProfileViewMessage> =
         segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
-            .theme(AppTheme::Dark)
             .hovered(hovered_idx)
             .on_hover(move |idx| {
                 let tier = idx.and_then(|i| tier_lookup.get(i).copied().flatten());
@@ -718,31 +720,38 @@ fn build_hover_overlay<'a>(
         button(
             text(pin_label)
                 .size(11)
-                .color(if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY }),
+                .style(move |t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(if is_pinned {
+                        palette(theme_from_iced(t)).accent
+                    } else {
+                        palette(theme_from_iced(t)).text_primary
+                    }),
+                }),
         )
         .on_press(ProfileViewMessage::RequestToggleGamePin(app_id))
         .padding(Padding::default().left(10).right(10).top(4).bottom(4))
-        .style(move |_: &iced::Theme, status| {
+        .style(move |t: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let p = palette(theme_from_iced(t));
             button::Style {
                 background: Some(iced::Background::Color(if hovered {
-                    Color { a: 0.90, ..C_HOVER }
+                    Color { a: 0.90, ..p.hover }
                 } else {
                     Color {
                         a: 0.75,
-                        ..C_SURFACE
+                        ..p.surface
                     }
                 })),
                 border: iced::Border {
                     color: if is_pinned {
-                        Color { a: 0.6, ..C_ACCENT }
+                        Color { a: 0.6, ..p.accent }
                     } else {
-                        C_BORDER
+                        p.border
                     },
                     width: 1.0,
                     radius: 6.0.into(),
                 },
-                text_color: if is_pinned { C_ACCENT } else { C_TEXT_PRIMARY },
+                text_color: if is_pinned { p.accent } else { p.text_primary },
                 ..button::Style::default()
             }
         });
@@ -764,7 +773,9 @@ fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileV
     let name_str = entry.name.as_deref().unwrap_or("");
     let name_text = text(name_str)
         .size(12)
-        .color(C_TEXT)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_primary),
+        })
         .wrapping(text::Wrapping::None);
 
     let counter_str: Option<String> = match entry.progress.as_ref() {
@@ -778,7 +789,12 @@ fn build_name_row<'a>(entry: &'a GameEntry, card_w: f32) -> Element<'a, ProfileV
         .unwrap_or(0.0);
 
     let counter: Element<'_, ProfileViewMessage> = match &counter_str {
-        Some(s) => text(s.clone()).size(11).color(C_MUTED).into(),
+        Some(s) => text(s.clone())
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            })
+            .into(),
         None => iced::widget::Space::new().width(Length::Shrink).into(),
     };
 
@@ -828,19 +844,26 @@ fn build_tags_row<'a>(
             return None;
         }
         let pct = p.earned as f32 / p.total as f32 * 100.0;
-        let tier_color = completion_tier_color(pct);
+        let tier_color_opt = completion_tier_color(pct);
         let is_legendary = pct >= 100.0;
+        let tint = tier_color_opt.unwrap_or(C_RARITY_COMMON);
 
-        let pct_text = text(format!("{pct:.0}%")).size(11).color(tier_color);
-        let mut p = pill(pct_text, tier_color).with_dot(tier_color);
+        let pct_text = text(format!("{pct:.0}%"))
+            .size(11)
+            .style(move |t: &iced::Theme| iced::widget::text::Style {
+                color: Some(
+                    tier_color_opt.unwrap_or_else(|| palette(theme_from_iced(t)).text_muted),
+                ),
+            });
+        let mut pill_el = pill(pct_text, tint).with_dot(tint);
         if is_legendary {
-            p = p.glow(Color {
+            pill_el = pill_el.glow(Color {
                 a: 0.5,
                 ..C_RARITY_LEGENDARY
             });
         }
 
-        Some(p.into())
+        Some(pill_el.into())
     });
 
     let genre_tag: Option<Element<'_, ProfileViewMessage>> = genre.map(|g| {
@@ -878,12 +901,19 @@ fn build_tags_row<'a>(
 }
 
 fn center_text(msg: &str) -> Element<'_, ProfileViewMessage> {
-    container(text(msg).size(14).color(C_MUTED))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .into()
+    let msg = msg.to_owned();
+    container(
+        text(msg)
+            .size(14)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_x(Alignment::Center)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 #[cfg(test)]
