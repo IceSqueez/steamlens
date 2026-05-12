@@ -1453,15 +1453,19 @@ fn has_active_skeletons(app: &App) -> bool {
     match &app.screen {
         Screen::ProfileView(pv) => pv.games.iter().any(|g| !g.is_hydrated()),
         Screen::GameView(state) => {
+            if state.cache_only {
+                return state.achievements.is_empty();
+            }
             matches!(
                 state.phase,
                 game_view::GameViewPhase::Connecting | game_view::GameViewPhase::WaitingStats
-            ) || state.achievements.iter().any(|r| {
-                if r.is_spoiler_hidden() {
-                    return false;
-                }
-                r.data.icon.is_none() || r.rarity_percent.is_none()
-            })
+            ) || state.achievements.is_empty()
+                || state.achievements.iter().any(|r| {
+                    if r.is_spoiler_hidden() {
+                        return false;
+                    }
+                    r.data.icon.is_none() || r.rarity_percent.is_none()
+                })
         }
     }
 }
