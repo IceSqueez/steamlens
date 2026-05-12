@@ -195,7 +195,10 @@ pub enum GameViewMessage {
     StatsResetSingle(String),
     BulkAction(BulkOp),
     ReloadRequested,
-    ApplyChanges,
+    ApplyClicked,
+    ApplyConfirmInputChanged(String),
+    ApplyConfirmed,
+    ApplyCancelled,
     ResetClicked,
     ResetScopeSelected(ResetScope),
     ResetConfirmInputChanged(String),
@@ -263,6 +266,8 @@ pub struct GameViewState {
     pub reset_scope: ResetScope,
     pub reset_confirm_input: String,
     pub show_reset_modal: bool,
+    pub apply_confirm_input: String,
+    pub show_apply_modal: bool,
 
     pub banner: Option<Banner>,
 
@@ -306,6 +311,8 @@ impl GameViewState {
             reset_scope: ResetScope::Pending,
             reset_confirm_input: String::new(),
             show_reset_modal: false,
+            apply_confirm_input: String::new(),
+            show_apply_modal: false,
             banner: None,
             spinner_angle: 0.0,
             fade_in: 0.0,
@@ -343,6 +350,12 @@ impl GameViewState {
                 .reset_confirm_input
                 .trim()
                 .eq_ignore_ascii_case(self.game_name.trim())
+    }
+
+    pub fn apply_confirm_matches(&self) -> bool {
+        self.apply_confirm_input
+            .trim()
+            .eq_ignore_ascii_case("confirmed")
     }
 
     pub fn has_fading_cards(&self) -> bool {
@@ -717,7 +730,29 @@ pub fn update(
             }
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::ApplyChanges => {
+        GameViewMessage::ApplyClicked => {
+            if state.dirty_count() == 0 || state.has_stat_errors() {
+                return (Task::none(), GameViewEvent::None);
+            }
+            state.apply_confirm_input.clear();
+            state.show_apply_modal = true;
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::ApplyConfirmInputChanged(text) => {
+            state.apply_confirm_input = text;
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::ApplyCancelled => {
+            state.show_apply_modal = false;
+            state.apply_confirm_input.clear();
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::ApplyConfirmed => {
+            if !state.apply_confirm_matches() {
+                return (Task::none(), GameViewEvent::None);
+            }
+            state.show_apply_modal = false;
+            state.apply_confirm_input.clear();
             if state.dirty_count() == 0 || state.has_stat_errors() {
                 return (Task::none(), GameViewEvent::None);
             }
