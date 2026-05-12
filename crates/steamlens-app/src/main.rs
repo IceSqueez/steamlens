@@ -265,10 +265,7 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         Box::new(ProfileViewState::new())
     };
 
-    disconnect_worker(app);
-
-    let (worker, rx) = SteamWorker::spawn();
-    worker.send(SteamRequest::ConnectWithApp(app_id));
+    let steam_off = app.context.connectivity.steam_running == Some(false);
 
     let mut state = GameViewState::new(app_id).with_prev_profile(prev);
     state.achievement_sort = app.context.settings.manager.sort;
@@ -293,6 +290,24 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
             steamlens_core::read_playtime(&app.context.steam_root, app.context.steamid3, app_id);
     }
 
+    if steam_off {
+        disconnect_worker(app);
+        state.cache_only = true;
+        state.phase = game_view::GameViewPhase::Ready;
+        state.banner = Some(game_view::types::Banner {
+            kind: game_view::types::BannerKind::Warning,
+            message: "Steam is not running \u{2014} showing cached data, edits disabled."
+                .to_owned(),
+            dismissible: false,
+        });
+    } else {
+        disconnect_worker(app);
+        let (worker, rx) = SteamWorker::spawn();
+        worker.send(SteamRequest::ConnectWithApp(app_id));
+        app.context.worker = Some(worker);
+        app.context.worker_rx = Some(rx);
+    }
+
     let capsule_task = Task::perform(
         capsule_cache::fetch_capsule(app_id, capsule_cache::CapsuleSize::Portrait),
         move |result| match result {
@@ -314,8 +329,6 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         },
     );
 
-    app.context.worker = Some(worker);
-    app.context.worker_rx = Some(rx);
     app.screen = Screen::GameView(Box::new(state));
 
     capsule_task
@@ -633,23 +646,30 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let Screen::GameView(gv_state) = &app.screen else {
                             return task;
                         };
-                        let app_id = gv_state.app_id;
-                        let mut entry = build_game_view_cache_entry(
-                            gv_state,
-                            app_id,
-                            &app.context.steam_root,
-                            app.context.steamid3,
-                        );
-                        if let Some(existing) = app.context.cached_entries.get(&app_id)
-                            && entry.genre.is_none()
-                        {
-                            entry.genre = existing.genre.clone();
+                        if gv_state.cache_only {
+                            None
+                        } else {
+                            let app_id = gv_state.app_id;
+                            let mut entry = build_game_view_cache_entry(
+                                gv_state,
+                                app_id,
+                                &app.context.steam_root,
+                                app.context.steamid3,
+                            );
+                            if let Some(existing) = app.context.cached_entries.get(&app_id)
+                                && entry.genre.is_none()
+                            {
+                                entry.genre = existing.genre.clone();
+                            }
+                            app.context.cached_entries.insert(app_id, entry.clone());
+                            Some(cache::commands::write_game_cache(entry))
                         }
-                        app.context.cached_entries.insert(app_id, entry.clone());
-                        cache::commands::write_game_cache(entry)
                     };
                     go_back_to_profile(app);
-                    Task::batch([task, write_task])
+                    match write_task {
+                        Some(w) => Task::batch([task, w]),
+                        None => task,
+                    }
                 }
                 GameViewEvent::InvalidateCache { app_id } => {
                     let invalidate_task = update(app, Message::InvalidateGameCache(app_id));
@@ -724,6 +744,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         account_name.clone(),
                         p.avatar_image.clone(),
                         steam_root_opt,
+                        p.steam_level,
                     );
                     app.context.steam_level = p.steam_level;
                     app.context.user_profile = Some(UserProfile {
@@ -839,7 +860,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 return Task::none();
             }
             app.context.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
-            app.context.steam_level = None;
+            app.context.steam_level = cached.steam_level;
             app.context.profile_avatar_handle = cached
                 .avatar_png_bytes
                 .as_ref()
@@ -884,14 +905,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .collect();
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 pv_state.library_name_map = name_map;
-            }
-            if app.context.connectivity.steam_running == Some(false) {
-                app.context.messaging.push_banner(
-                    BannerSeverity::Info,
-                    "Showing cached library \u{2014} connect Steam to refresh",
-                    None,
-                    true,
-                );
             }
             app.library_cache_resolved = true;
             crate::log!("library_cache_resolved = true (LibraryCacheLoaded)");
@@ -1811,6 +1824,7 @@ mod tests {
             avatar_png_bytes: None,
             cached_at: 0,
             steam_root: None,
+            steam_level: None,
         };
         let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
         let p = app
@@ -1844,6 +1858,7 @@ mod tests {
             avatar_png_bytes: None,
             steam_root: None,
             cached_at: 0,
+            steam_level: None,
         };
         let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
         let p = app.context.user_profile.as_ref().unwrap();

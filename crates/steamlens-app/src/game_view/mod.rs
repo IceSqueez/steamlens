@@ -291,6 +291,8 @@ pub struct GameViewState {
 
     pub genre: Option<String>,
     pub playtime_minutes: Option<u32>,
+
+    pub cache_only: bool,
 }
 
 impl GameViewState {
@@ -324,6 +326,7 @@ impl GameViewState {
             expected_total: 0,
             genre: None,
             playtime_minutes: None,
+            cache_only: false,
         }
     }
 
@@ -711,7 +714,7 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ApplyClicked => {
-            if state.dirty_count() == 0 || state.has_stat_errors() {
+            if state.cache_only || state.dirty_count() == 0 || state.has_stat_errors() {
                 return (Task::none(), GameViewEvent::None);
             }
             state.apply_confirm_input.clear();
