@@ -9,7 +9,6 @@ use crate::ui::theme::{palette, theme_from_iced};
 
 const C_WARNING: Color = Color::from_rgb(0.941, 0.784, 0.478);
 const C_ERROR: Color = Color::from_rgb(0.863, 0.392, 0.392);
-const BANNER_SURFACE: Color = Color::from_rgb(0.165, 0.149, 0.220);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Severity {
@@ -155,8 +154,8 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
         let inner = container(content_row)
             .width(Length::Fill)
             .padding(Padding::default().left(14).right(14).top(10).bottom(10))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(BANNER_SURFACE)),
+            .style(move |t: &iced::Theme| container::Style {
+                background: Some(Background::Color(palette(theme_from_iced(t)).surface)),
                 border: Border {
                     color: border_color,
                     width: 1.0,
@@ -239,7 +238,7 @@ fn dismiss_button<'a, M: 'a + Clone>(msg: M) -> Element<'a, M> {
         );
         iced::widget::button::Style {
             background: Some(Background::Color(if hovered {
-                Color::from_rgba(1.0, 1.0, 1.0, 0.06)
+                palette(theme_from_iced(t)).hover
             } else {
                 Color::TRANSPARENT
             })),
