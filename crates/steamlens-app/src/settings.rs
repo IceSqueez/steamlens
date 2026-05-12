@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn old_toml_missing_rarity_tiers_gets_empty_default() {
         let tmp = std::env::temp_dir().join("steamlens_test_old_rarity_999999.toml");
-        let toml_without_rarity = "schema_version = 1\n[manager]\nfilter = \"all\"\n";
+        let toml_without_rarity = "schema_version = 2\n[manager]\nfilter = \"all\"\n";
         std::fs::write(&tmp, toml_without_rarity).expect("write");
         let result = load_from_path(&tmp);
         assert!(
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn partial_settings_fills_in_defaults() {
         let tmp = std::env::temp_dir().join("steamlens_test_partial_999999.toml");
-        let partial = "schema_version = 1\n[library]\nsort = \"name_asc\"\n";
+        let partial = "schema_version = 2\n[library]\nsort = \"name_asc\"\n";
         std::fs::write(&tmp, partial).expect("write");
         let result = load_from_path(&tmp);
         assert_eq!(result.library.sort, LibrarySort::NameAsc);
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn library_view_absent_from_toml_defaults_to_grid() {
         let tmp = std::env::temp_dir().join("steamlens_test_no_view_999999.toml");
-        let toml_without_view = "schema_version = 1\n[library]\nsort = \"name_asc\"\n";
+        let toml_without_view = "schema_version = 2\n[library]\nsort = \"name_asc\"\n";
         std::fs::write(&tmp, toml_without_view).expect("write");
         let result = load_from_path(&tmp);
         assert_eq!(
