@@ -1,3 +1,4 @@
+pub mod stats_panel;
 pub mod types;
 mod view;
 pub mod widget;
@@ -156,8 +157,8 @@ use crate::profile_view::types::ProfileViewState;
 use crate::steam_worker::{SteamReply, SteamRequest};
 
 use types::{
-    AchievementFilter, AchievementRow, AchievementSort, ActiveTab, Banner, BannerKind, BulkOp,
-    RarityTier, ResetScope, StatRow, build_apply_payload, compute_tier_map, dirty_count,
+    AchievementFilter, AchievementRow, AchievementSort, Banner, BannerKind, BulkOp, RarityTier,
+    ResetScope, StatRow, StatValue, build_apply_payload, compute_tier_map, dirty_count,
     has_stat_errors, visible_achievement_ids,
 };
 
@@ -181,16 +182,16 @@ fn surface_connectivity_error(
 #[derive(Debug, Clone)]
 pub enum GameViewMessage {
     AchievementToggled(String),
-    StatEdited(String, String),
-    StatEditCommitted(String),
     FilterChanged(AchievementFilter),
     RarityTierToggled(RarityTier),
     HiddenPillToggled,
     RarityFilterCleared,
     AchievementSortChanged(AchievementSort),
     SearchChanged(String),
-    TabChanged(ActiveTab),
-    StatsConsentToggled(bool),
+    StatsSearchChanged(String),
+    StatsMaxAll,
+    StatsResetAll,
+    StatsResetSingle(String),
     BulkAction(BulkOp),
     ReloadRequested,
     ApplyChanges,
@@ -251,13 +252,12 @@ pub struct GameViewState {
     pub reveal_queue: VecDeque<String>,
     pub tier_breakdown: Vec<(RarityTier, u32)>,
 
-    pub active_tab: ActiveTab,
     pub search_query: String,
+    pub stats_search_query: String,
     pub filter: AchievementFilter,
     pub achievement_sort: AchievementSort,
     pub rarity_tier_set: HashSet<RarityTier>,
     pub include_hidden: bool,
-    pub stats_edit_consent: bool,
 
     pub reset_scope: ResetScope,
     pub reset_confirm_input: String,
@@ -296,13 +296,12 @@ impl GameViewState {
             stats: Vec::new(),
             reveal_queue: VecDeque::new(),
             tier_breakdown: Vec::new(),
-            active_tab: ActiveTab::Achievements,
             search_query: String::new(),
+            stats_search_query: String::new(),
             filter: AchievementFilter::All,
             achievement_sort: AchievementSort::UnlockChance,
             rarity_tier_set: HashSet::new(),
             include_hidden: false,
-            stats_edit_consent: false,
             reset_scope: ResetScope::Pending,
             reset_confirm_input: String::new(),
             show_reset_modal: false,
@@ -545,18 +544,6 @@ pub fn update(
             }
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::StatEdited(id, text) => {
-            if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
-                row.edit_text = text;
-            }
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::StatEditCommitted(id) => {
-            if let Some(row) = state.stats.iter_mut().find(|r| r.data.id == id) {
-                row.validate_and_parse();
-            }
-            (Task::none(), GameViewEvent::None)
-        }
         GameViewMessage::FilterChanged(f) => {
             state.filter = f;
             (Task::none(), GameViewEvent::None)
@@ -604,21 +591,51 @@ pub fn update(
             state.search_query = q;
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::TabChanged(tab) => {
-            state.active_tab = tab;
+        GameViewMessage::StatsSearchChanged(q) => {
+            state.stats_search_query = q;
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::StatsConsentToggled(v) => {
-            state.stats_edit_consent = v;
-            if !v {
-                for row in &mut state.stats {
-                    if row.is_dirty {
-                        row.edit_text = row.data.original_value.to_edit_string();
-                        row.data.value = row.data.original_value;
-                        row.is_dirty = false;
-                        row.edit_error = None;
-                    }
-                }
+        GameViewMessage::StatsMaxAll => {
+            for stat in &mut state.stats {
+                let Some(max) = stat.data.max_value else {
+                    continue;
+                };
+                let new_value = match stat.data.value {
+                    StatValue::Int(_) => StatValue::Int(max as i32),
+                    StatValue::Float(_) => StatValue::Float(max as f32),
+                };
+                stat.data.value = new_value;
+                stat.edit_text = new_value.to_edit_string();
+                stat.is_dirty = new_value != stat.data.original_value;
+                stat.edit_error = None;
+            }
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::StatsResetAll => {
+            for stat in &mut state.stats {
+                let default = stat.data.default_value.unwrap_or(0);
+                let new_value = match stat.data.value {
+                    StatValue::Int(_) => StatValue::Int(default as i32),
+                    StatValue::Float(_) => StatValue::Float(default as f32),
+                };
+                stat.data.value = new_value;
+                stat.edit_text = new_value.to_edit_string();
+                stat.is_dirty = new_value != stat.data.original_value;
+                stat.edit_error = None;
+            }
+            (Task::none(), GameViewEvent::None)
+        }
+        GameViewMessage::StatsResetSingle(id) => {
+            if let Some(stat) = state.stats.iter_mut().find(|s| s.data.id == id) {
+                let default = stat.data.default_value.unwrap_or(0);
+                let new_value = match stat.data.value {
+                    StatValue::Int(_) => StatValue::Int(default as i32),
+                    StatValue::Float(_) => StatValue::Float(default as f32),
+                };
+                stat.data.value = new_value;
+                stat.edit_text = new_value.to_edit_string();
+                stat.is_dirty = new_value != stat.data.original_value;
+                stat.edit_error = None;
             }
             (Task::none(), GameViewEvent::None)
         }

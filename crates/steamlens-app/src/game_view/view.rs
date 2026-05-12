@@ -13,12 +13,12 @@ pub fn achievement_search_id() -> WidgetId {
 }
 
 use super::types::{
-    AchievementRow, ActiveTab, BannerKind, BulkOp, RarityTier, ResetScope, StatRow,
-    compute_tier_map, visible_achievement_ids,
+    AchievementRow, BannerKind, BulkOp, RarityTier, ResetScope, compute_tier_map,
+    visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::theme::{
-    C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_SECONDARY,
+    C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_MUTED, C_TEXT_SECONDARY,
 };
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
@@ -26,7 +26,6 @@ use crate::ui::widgets::pill::pill;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
-const C_BG: Color = Color::from_rgb(0.157, 0.165, 0.212);
 const C_CURRENT_LINE: Color = Color::from_rgb(0.267, 0.278, 0.353);
 const C_FG: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
@@ -103,23 +102,19 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
         app_id: state.app_id,
         game_name: state.game_name.as_str(),
         achievements: state.achievements.as_slice(),
+        stats: state.stats.as_slice(),
+        stats_search_query: state.stats_search_query.as_str(),
         capsule_handles: &state.capsule_handles,
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
     });
-    let tabs = tab_bar_widget(state);
     let top_block: Element<'_, GameViewMessage> = if let Some(b) = &state.banner {
-        column![game_widget_el, tabs, banner_widget(b)]
-            .spacing(0)
-            .into()
+        column![game_widget_el, banner_widget(b)].spacing(0).into()
     } else {
-        column![game_widget_el, tabs].spacing(0).into()
+        game_widget_el
     };
 
-    let body = match state.active_tab {
-        ActiveTab::Achievements => achievements_tab(state, skeleton_phase),
-        ActiveTab::Stats => stats_tab(state),
-    };
+    let body = achievements_tab(state, skeleton_phase);
 
     compose_screen(ScreenContent {
         top: Some(top_block),
@@ -230,96 +225,6 @@ pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
         "Reload achievements & stats from Steam",
         iced::widget::tooltip::Position::Bottom,
     )
-}
-
-fn tab_bar_widget(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let ach_count = state.achievements.len();
-    let stats_count = state.stats.len();
-    let ach_active = state.active_tab == ActiveTab::Achievements;
-
-    let ach_tab = tab_button(
-        "Achievements",
-        ach_count,
-        ach_active,
-        GameViewMessage::TabChanged(ActiveTab::Achievements),
-    );
-    let stats_tab = tab_button(
-        "Stats",
-        stats_count,
-        !ach_active,
-        GameViewMessage::TabChanged(ActiveTab::Stats),
-    );
-
-    let tabs_row = row![ach_tab, stats_tab]
-        .spacing(0)
-        .padding(Padding::default().left(16).right(16).top(0).bottom(0));
-
-    let underline = container(space())
-        .width(Length::Fill)
-        .height(Length::Fixed(1.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
-            ..container::Style::default()
-        });
-
-    container(column![tabs_row, underline].spacing(0))
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_SURFACE)),
-            ..container::Style::default()
-        })
-        .into()
-}
-
-fn tab_button(
-    label: &'static str,
-    count: usize,
-    active: bool,
-    on_press: GameViewMessage,
-) -> Element<'static, GameViewMessage> {
-    let label_text = text(label)
-        .size(13)
-        .color(if active { C_ACCENT } else { C_TEXT_MUTED });
-    let count_text = text(format!("{count}")).size(11).color(C_TEXT_DIM);
-
-    let inner = row![label_text, count_text]
-        .spacing(4)
-        .align_y(Alignment::Center);
-
-    let active_indicator = container(space())
-        .width(Length::Fill)
-        .height(Length::Fixed(2.0))
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(if active {
-                C_ACCENT
-            } else {
-                Color::TRANSPARENT
-            })),
-            ..container::Style::default()
-        });
-
-    let tab_col = column![
-        container(inner).padding(Padding::default().left(12).right(12).top(8).bottom(8)),
-        active_indicator,
-    ]
-    .spacing(0);
-
-    button(tab_col)
-        .on_press(on_press)
-        .padding(0)
-        .style(move |_theme, status| {
-            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style {
-                background: if hovered && !active {
-                    Some(iced::Background::Color(C_HOVER))
-                } else {
-                    None
-                },
-                border: iced::Border::default(),
-                ..button::Style::default()
-            }
-        })
-        .into()
 }
 
 fn banner_widget(banner: &super::types::Banner) -> Element<'_, GameViewMessage> {
@@ -1140,163 +1045,6 @@ fn achievement_card_widget<'a>(
     }
 
     c.into()
-}
-
-fn stats_tab(state: &GameViewState) -> Element<'_, GameViewMessage> {
-    let consent_check = iced::widget::checkbox(state.stats_edit_consent)
-        .on_toggle(GameViewMessage::StatsConsentToggled)
-        .size(14);
-    let consent_label = text("I understand that editing stats may corrupt game saves").size(13);
-    let consent_row = row![consent_check, consent_label]
-        .spacing(8)
-        .align_y(Alignment::Center);
-
-    let consent_area = container(consent_row)
-        .width(Length::Fill)
-        .padding(Padding::from([12u16, 16]))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
-            ..container::Style::default()
-        });
-
-    if state.stats.is_empty() {
-        let empty = container(
-            text("No stats available for this game.")
-                .size(13)
-                .color(C_MUTED),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center);
-
-        return column![consent_area, empty]
-            .spacing(0)
-            .height(Length::Fill)
-            .into();
-    }
-
-    let header = container(
-        row![
-            text("Name")
-                .size(13)
-                .color(C_MUTED)
-                .width(Length::FillPortion(3)),
-            text("Value / Max")
-                .size(13)
-                .color(C_MUTED)
-                .width(Length::FillPortion(2)),
-            text("Type")
-                .size(13)
-                .color(C_MUTED)
-                .width(Length::FillPortion(1)),
-        ]
-        .spacing(16)
-        .padding(Padding::from([8u16, 16])),
-    )
-    .width(Length::Fill)
-    .style(|_theme| container::Style {
-        background: Some(iced::Background::Color(Color { a: 0.8, ..C_BG })),
-        ..container::Style::default()
-    });
-
-    let rows: Vec<Element<'_, GameViewMessage>> = state
-        .stats
-        .iter()
-        .map(|s| stat_row_widget(s, state.stats_edit_consent))
-        .collect();
-
-    let list = scrollable(column(rows).spacing(0)).height(Length::Fill);
-
-    column![consent_area, header, list]
-        .spacing(0)
-        .height(Length::Fill)
-        .into()
-}
-
-fn stat_row_widget(row: &StatRow, editing_enabled: bool) -> Element<'_, GameViewMessage> {
-    let is_protected = row.data.permission != 0;
-    let can_edit = editing_enabled && !is_protected;
-
-    let type_badge = match row.data.value {
-        super::types::StatValue::Int(_) => "Int",
-        super::types::StatValue::Float(_) => "Float",
-    };
-
-    let value_str = row.data.value.to_edit_string();
-    let value_display = match row.data.max_value {
-        Some(max) => format!("{value_str} / {max}"),
-        None => value_str,
-    };
-
-    let value_col: Element<'_, GameViewMessage> = if can_edit {
-        text_input("", &row.edit_text)
-            .on_input(|s| GameViewMessage::StatEdited(row.data.id.clone(), s))
-            .on_submit(GameViewMessage::StatEditCommitted(row.data.id.clone()))
-            .padding(6)
-            .size(13)
-            .width(Length::FillPortion(2))
-            .into()
-    } else {
-        container(
-            text(value_display)
-                .size(13)
-                .color(if is_protected { C_ORANGE } else { C_FG }),
-        )
-        .width(Length::FillPortion(2))
-        .padding(Padding::from([6u16, 8]))
-        .into()
-    };
-
-    let dirty_dot: Element<'_, GameViewMessage> = if row.is_dirty {
-        text("*").size(12).color(C_YELLOW).into()
-    } else {
-        space().width(10).into()
-    };
-
-    let name_col: Element<'_, GameViewMessage> = row![
-        text(row.data.display_name.clone())
-            .size(13)
-            .color(C_FG)
-            .width(Length::Fill),
-        dirty_dot,
-    ]
-    .spacing(4)
-    .align_y(Alignment::Center)
-    .width(Length::FillPortion(3))
-    .into();
-
-    let type_col: Element<'_, GameViewMessage> = text(type_badge)
-        .size(12)
-        .color(C_MUTED)
-        .width(Length::FillPortion(1))
-        .into();
-
-    let main_row = row![name_col, value_col, type_col]
-        .spacing(16)
-        .align_y(Alignment::Center)
-        .padding(Padding::from([8u16, 16]));
-
-    let mut col_parts = column![main_row].spacing(0);
-
-    if let Some(err) = &row.edit_error {
-        col_parts = col_parts.push(
-            container(text(err.clone()).size(12).color(C_RED))
-                .padding(Padding::default().left(16).bottom(4)),
-        );
-    }
-
-    container(col_parts)
-        .width(Length::Fill)
-        .style(|_theme| container::Style {
-            border: iced::Border {
-                color: Color { a: 0.15, ..C_MUTED },
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
 }
 
 fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {

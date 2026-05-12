@@ -485,7 +485,7 @@ pub fn widget_panel<'a, M: 'a>(left: Element<'a, M>, right: Element<'a, M>) -> E
             .padding(18)
             .style(move |_: &iced::Theme| surface_style()),
         container(right)
-            .width(Length::FillPortion(2))
+            .width(Length::FillPortion(3))
             .height(Length::Fixed(WIDGET_ROW_HEIGHT))
             .padding(16)
             .style(move |_: &iced::Theme| surface_style()),
