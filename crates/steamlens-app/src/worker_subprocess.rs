@@ -101,7 +101,7 @@ pub struct WorkerHandle {
 
 impl WorkerHandle {
     pub async fn spawn(app_id: u32, mode: WorkerMode) -> Result<Self, WorkerSpawnError> {
-        let exe = std::env::current_exe().map_err(WorkerSpawnError::ExeNotFound)?;
+        let exe = steamlens_core::current_exe_resilient().map_err(WorkerSpawnError::ExeNotFound)?;
         let mut child = tokio::process::Command::new(exe)
             .arg("--worker")
             .arg(app_id.to_string())

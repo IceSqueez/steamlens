@@ -745,7 +745,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         false,
                     );
 
-                    cache::commands::load_profile_cache()
+                    Task::batch([
+                        cache::commands::load_profile_cache(),
+                        cache::commands::load_library_cache(),
+                    ])
                 }
                 Err(ProbeFailure::SteamNotRunning) => {
                     app.context.connectivity.steam_running = Some(false);
@@ -763,7 +766,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         false,
                     );
 
-                    cache::commands::load_profile_cache()
+                    Task::batch([
+                        cache::commands::load_profile_cache(),
+                        cache::commands::load_library_cache(),
+                    ])
                 }
                 Err(ProbeFailure::Other(reason)) => {
                     app.context.connectivity.steam_running = None;
@@ -781,7 +787,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         false,
                     );
 
-                    cache::commands::load_profile_cache()
+                    Task::batch([
+                        cache::commands::load_profile_cache(),
+                        cache::commands::load_library_cache(),
+                    ])
                 }
             }
         }
@@ -812,9 +821,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::LibraryCacheLoaded(maybe) => {
-            let Some(cached) = maybe else {
-                return Task::none();
-            };
             let games_present = if let Screen::ProfileView(pv) = &app.screen {
                 !pv.games.is_empty()
             } else {
@@ -823,6 +829,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if games_present {
                 return Task::none();
             }
+            let Some(cached) = maybe else {
+                return Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
+                    Vec::new(),
+                )));
+            };
             let summary: Vec<steamlens_core::GameSummary> = cached
                 .games
                 .iter()

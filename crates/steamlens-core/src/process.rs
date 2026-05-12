@@ -127,6 +127,25 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
     }
 }
 
+/// Returns a path that `Command::new()` can exec to spawn another instance of
+/// the running binary, even if the on-disk file has been deleted or replaced
+/// since launch (e.g. by `cargo build` during a dev session). On Linux this
+/// returns the literal `/proc/self/exe` symlink, which the kernel preserves
+/// for the running process regardless of filesystem state. On macOS/Windows
+/// we fall back to `std::env::current_exe()` — both platforms keep the on-disk
+/// path stable (Windows locks the .exe; macOS preserves inode but
+/// `current_exe()` still resolves correctly in practice).
+pub fn current_exe_resilient() -> std::io::Result<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        Ok(std::path::PathBuf::from("/proc/self/exe"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        std::env::current_exe()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

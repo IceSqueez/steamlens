@@ -30,7 +30,7 @@ pub use paths::{
     appcache_stats_dir, steam_install_root_candidates, steamclient_lib_candidates, user_data_dir,
 };
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
-pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit};
+pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit, current_exe_resilient};
 pub use profile::{ProfileError, STEAMID64_INDIVIDUAL_MIN, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
