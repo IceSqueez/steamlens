@@ -732,8 +732,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::RetrySteamConnect => {
             app.context.connectivity = ConnectivityState::default();
-            app.library_cache_resolved = false;
-            app.cache_classified = false;
             app.context
                 .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
