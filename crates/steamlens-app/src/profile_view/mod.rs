@@ -308,7 +308,7 @@ pub fn update(
                 let total = state.scan_target_count;
                 let failed = state.failed_app_ids.len();
                 let succeeded = total.saturating_sub(failed);
-                crate::log!(
+                tracing::info!(
                     "scan: completed {total} apps in {elapsed:?} ({succeeded} ok, {failed} failed)"
                 );
             }

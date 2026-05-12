@@ -160,7 +160,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
             skeleton_phase: 0.0,
         },
     };
-    crate::log!(
+    tracing::info!(
         "no_ach: cache loaded with {} entries",
         context.no_ach_cache.entries.len()
     );
@@ -195,7 +195,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
 
     for reply in replies {
         if let SteamReply::ConnectFailed(reason) = &reply {
-            crate::log!("worker: connect failed: {reason}");
+            tracing::error!("worker: connect failed: {reason}");
             if matches!(app.screen, Screen::GameView(_)) {
                 go_back_to_profile(app);
             }
@@ -397,7 +397,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let extra = if is_scan_complete {
                 app.library_cache_resolved = true;
-                crate::log!("library_cache_resolved = true (ScanComplete)");
+                tracing::info!("library_cache_resolved = true (ScanComplete)");
                 let games = enumerated_games.unwrap_or_default();
                 let steam_root = app.context.steam_root.clone();
                 let steamid3 = app.context.steamid3;
@@ -503,7 +503,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::CacheClassified(result) => {
             app.cache_classified = true;
-            crate::log!("cache_classified = true (CacheClassified)");
+            tracing::info!("cache_classified = true (CacheClassified)");
 
             let ClassifyResult {
                 hits,
@@ -578,7 +578,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::CacheWritten { app_id, result } => {
             if let Err(e) = result {
-                crate::log!("cache: write failed for app {app_id}: {e}");
+                tracing::error!("cache: write failed for app {app_id}: {e}");
             }
             Task::none()
         }
@@ -638,7 +638,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 playtime_minutes,
             };
 
-            crate::log!(
+            tracing::info!(
                 "persist game summary: app_id={app_id} earned={earned} total={total} change_number={change_number}"
             );
 
@@ -667,7 +667,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     tokio::task::spawn_blocking(move || {
                         for (id, icon) in &icons_to_write {
                             if let Err(e) = cache::icons::write_blocking(app_id, id, icon) {
-                                crate::log!(
+                                tracing::warn!(
                                     "icon cache write failed app_id={app_id} ach={id}: {e}"
                                 );
                             }
@@ -713,7 +713,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::GameView(m) => {
             let Screen::GameView(state) = &mut app.screen else {
                 #[cfg(debug_assertions)]
-                crate::log!("dropped stale GameView message: {m:?} (current screen: not GameView)");
+                tracing::warn!(
+                    "dropped stale GameView message: {m:?} (current screen: not GameView)"
+                );
                 return Task::none();
             };
 
@@ -752,7 +754,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::SettingsWritten(result) => {
             if let Err(e) = result {
-                crate::log!("settings: write error: {e}");
+                tracing::error!("settings: write error: {e}");
                 app.context
                     .messaging
                     .push_toast(ToastKind::Error, "Could not save settings", None);
@@ -820,7 +822,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     if !p.game_summaries.is_empty() {
                         let pkginfo_count = p.game_summaries.len();
-                        crate::log!("packageinfo: {pkginfo_count} games after type-filter");
+                        tracing::info!("packageinfo: {pkginfo_count} games after type-filter");
                         let no_ach = &app.context.no_ach_cache;
                         let cache_entries = no_ach.entries.len();
                         let filtered: Vec<_> = p
@@ -830,7 +832,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             .collect();
                         let total = filtered.len();
                         let dropped = pkginfo_count - total;
-                        crate::log!(
+                        tracing::info!(
                             "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
                         );
                         let _ = total;
@@ -847,7 +849,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.connectivity.steam_running = Some(true);
                     app.context.connectivity.user_logged_in = Some(false);
                     app.context.steam_level = None;
-                    crate::log!("probe: connectivity.user_logged_in = false");
+                    tracing::warn!("probe: connectivity.user_logged_in = false");
 
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
@@ -868,7 +870,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.connectivity.steam_running = Some(false);
                     app.context.connectivity.user_logged_in = None;
                     app.context.steam_level = None;
-                    crate::log!("probe: steam_running = false");
+                    tracing::warn!("probe: steam_running = false");
 
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
@@ -889,7 +891,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.connectivity.steam_running = None;
                     app.context.connectivity.user_logged_in = None;
                     app.context.steam_level = None;
-                    crate::log!("probe failed: {reason}");
+                    tracing::warn!("probe failed: {reason}");
 
                     app.context.messaging.push_banner(
                         BannerSeverity::Warning,
@@ -967,7 +969,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 pv_state.library_name_map = name_map;
             }
             app.library_cache_resolved = true;
-            crate::log!("library_cache_resolved = true (LibraryCacheLoaded)");
+            tracing::info!("library_cache_resolved = true (LibraryCacheLoaded)");
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
             )))
@@ -975,14 +977,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::NoAchCacheWritten(result) => {
             if let Err(e) = result {
-                crate::log!("no_achievements cache: write failed: {e}");
+                tracing::error!("no_achievements cache: write failed: {e}");
             }
             Task::none()
         }
 
         Message::PersistentCacheWritten(label, result) => {
             if let Err(e) = result {
-                crate::log!("{label} cache: write failed: {e}");
+                tracing::error!("{label} cache: write failed: {e}");
                 app.context.messaging.push_banner(
                     BannerSeverity::Error,
                     format!("Cache write failed ({label}): {e}"),
@@ -1137,7 +1139,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    crate::log!("update_check: {e}");
+                    tracing::warn!("update_check: {e}");
                 }
             }
             Task::none()
@@ -1449,7 +1451,7 @@ fn open_url_in_browser(url: &str) {
         .args(["/C", "start", "", url])
         .spawn();
     if let Err(e) = cmd {
-        crate::log!("failed to open url {url}: {e}");
+        tracing::warn!("failed to open url {url}: {e}");
     }
 }
 
@@ -1650,19 +1652,19 @@ fn main() -> iced::Result {
     }
     if args.len() == 3 && args[1] == "--worker" {
         let app_id: u32 = args[2].parse().unwrap_or_else(|_| {
-            crate::log!("invalid app_id: {}", args[2]);
+            tracing::error!("invalid app_id: {}", args[2]);
             std::process::exit(2);
         });
         worker::run(app_id);
     }
     if args.len() >= 2 && args[1].starts_with("--worker") {
-        crate::log!("usage: steamlens-app --worker <app_id>");
+        tracing::info!("usage: steamlens-app --worker <app_id>");
         std::process::exit(2);
     }
 
     let swept = steamlens_core::sweep_orphans();
     if swept > 0 {
-        crate::log!("swept {swept} orphan shm region(s) at startup");
+        tracing::info!("swept {swept} orphan shm region(s) at startup");
     }
 
     let loaded = settings::load_settings();

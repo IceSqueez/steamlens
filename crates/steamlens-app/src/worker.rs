@@ -65,7 +65,7 @@ pub fn run(app_id: u32) -> ! {
 
 async fn probe_main() -> i32 {
     let t0 = std::time::Instant::now();
-    crate::log!("probe: connect…");
+    tracing::debug!("probe: connect…");
     let client = match steamlens_core::connect(0) {
         Ok(c) => c,
         Err(steamlens_core::SteamError::NotLoggedIn) => {
@@ -85,7 +85,7 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
-    crate::log!("probe: connected in {:?}", t0.elapsed());
+    tracing::info!("probe: connected in {:?}", t0.elapsed());
 
     let steam_id = client.steam_id();
 
@@ -100,10 +100,10 @@ async fn probe_main() -> i32 {
             return 1;
         }
     };
-    crate::log!("probe: persona+steamid in {:?}", t0.elapsed());
+    tracing::debug!("probe: persona+steamid in {:?}", t0.elapsed());
 
     let avatar_png = encode_avatar_png(&client);
-    crate::log!(
+    tracing::debug!(
         "probe: avatar in {:?} ({} bytes)",
         t0.elapsed(),
         avatar_png.as_ref().map(|v| v.len()).unwrap_or(0)
@@ -115,11 +115,11 @@ async fn probe_main() -> i32 {
     let games = match client.enumerate_owned_games(true) {
         Ok(g) => g,
         Err(e) => {
-            crate::log!("probe: enumerate_owned_games failed: {e}");
+            tracing::warn!("probe: enumerate_owned_games failed: {e}");
             Vec::new()
         }
     };
-    crate::log!(
+    tracing::info!(
         "probe: enumerate_owned_games: {} games in {:?} (total {:?})",
         games.len(),
         t_enum.elapsed(),
@@ -127,10 +127,10 @@ async fn probe_main() -> i32 {
     );
 
     let steam_level = client.get_player_steam_level();
-    crate::log!("probe: steam level: {:?}", steam_level);
+    tracing::debug!("probe: steam level: {:?}", steam_level);
 
     let steam_root = client.steam_root().ok();
-    crate::log!("probe: steam_root: {:?}", steam_root);
+    tracing::debug!("probe: steam_root: {:?}", steam_root);
 
     let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
@@ -160,11 +160,11 @@ fn encode_avatar_png(client: &steamlens_core::Client) -> Option<Vec<u8>> {
 
 async fn worker_main(app_id: u32) -> i32 {
     let t0 = std::time::Instant::now();
-    crate::log!("worker app_id={app_id}: connect…");
+    tracing::debug!("worker app_id={app_id}: connect…");
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
-            crate::log!(
+            tracing::error!(
                 "worker app_id={app_id}: connect failed in {:?}: {e}",
                 t0.elapsed()
             );
@@ -176,14 +176,14 @@ async fn worker_main(app_id: u32) -> i32 {
             return 1;
         }
     };
-    crate::log!("worker app_id={app_id}: connected in {:?}", t0.elapsed());
+    tracing::info!("worker app_id={app_id}: connected in {:?}", t0.elapsed());
 
     let connected = WorkerResponse::SteamConnected {
         steam_id: client.steam_id(),
         app_name: client.app_name(),
     };
     if write_response(&connected).await.is_err() {
-        crate::log!("worker app_id={app_id}: write SteamConnected failed");
+        tracing::error!("worker app_id={app_id}: write SteamConnected failed");
         return 1;
     }
 
@@ -211,7 +211,7 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    crate::log!("worker app_id={app_id}: dispatch_loop ready");
+    tracing::debug!("worker app_id={app_id}: dispatch_loop ready");
 
     loop {
         tokio::select! {
@@ -221,13 +221,13 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
                 let cmd = match cmd {
                     Some(c) => c,
                     None => {
-                        crate::log!("worker app_id={app_id}: stdin reader task ended");
+                        tracing::debug!("worker app_id={app_id}: stdin reader task ended");
                         return 1;
                     }
                 };
                 match cmd {
                     Err(e) => {
-                        crate::log!("worker app_id={app_id}: read_command err: {e}");
+                        tracing::error!("worker app_id={app_id}: read_command err: {e}");
                         let _ = write_response(&WorkerResponse::Error {
                             kind: WorkerErrorKind::Generic,
                             message: e.to_string(),
@@ -235,11 +235,11 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
                         return 1;
                     }
                     Ok(None) => {
-                        crate::log!("worker app_id={app_id}: stdin EOF");
+                        tracing::debug!("worker app_id={app_id}: stdin EOF");
                         return 0;
                     }
                     Ok(Some(command)) => {
-                        crate::log!(
+                        tracing::debug!(
                             "worker app_id={app_id}: cmd received: {}",
                             command_label(&command)
                         );
@@ -255,7 +255,7 @@ async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
             _ = interval.tick() => {
                 if let Ok(callbacks) = client.poll_callbacks() {
                     if !callbacks.is_empty() {
-                        crate::log!(
+                        tracing::trace!(
                             "worker app_id={app_id}: tick — {} callbacks",
                             callbacks.len()
                         );
@@ -600,9 +600,9 @@ async fn load_achievements_card_only(client: &Client, app_id: u32) -> WorkerResp
         .and_then(|id| steamlens_core::primary_genre_name(&id).map(str::to_owned));
 
     let t0 = std::time::Instant::now();
-    crate::log!("worker: request_user_stats start");
+    tracing::debug!("worker: request_user_stats start");
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
-        crate::log!(
+        tracing::error!(
             "worker: request_user_stats failed in {:?}: {e}",
             t0.elapsed()
         );
@@ -611,20 +611,20 @@ async fn load_achievements_card_only(client: &Client, app_id: u32) -> WorkerResp
             message: e.to_string(),
         };
     }
-    crate::log!(
+    tracing::debug!(
         "worker: request_user_stats sent in {:?}; waiting for UserStatsReceived",
         t0.elapsed()
     );
 
     let t_wait = std::time::Instant::now();
     if let Some(early) = wait_for_stats_received_card_only(client, steam_id).await {
-        crate::log!(
+        tracing::debug!(
             "worker: stats wait returned early (likely error/no-schema) in {:?}",
             t_wait.elapsed()
         );
         return early;
     }
-    crate::log!("worker: UserStatsReceived OK in {:?}", t_wait.elapsed());
+    tracing::info!("worker: UserStatsReceived OK in {:?}", t_wait.elapsed());
 
     let num = stats_iface.num_achievements();
 
@@ -701,7 +701,7 @@ async fn wait_for_stats_received(client: &Client, expected_user: u64) -> Option<
                     if *user_steam_id != expected_user {
                         continue;
                     }
-                    crate::log!(
+                    tracing::debug!(
                         "worker: UserStatsReceived: result={} game={}",
                         result.raw(),
                         game_id,
@@ -758,7 +758,7 @@ async fn wait_for_stats_received_card_only(
                     if *user_steam_id != expected_user {
                         continue;
                     }
-                    crate::log!(
+                    tracing::debug!(
                         "worker: UserStatsReceived (card-only): result={} game={}",
                         result.raw(),
                         game_id,
@@ -787,7 +787,7 @@ async fn wait_for_stats_received_card_only(
         }
 
         if std::time::Instant::now() >= deadline {
-            crate::log!(
+            tracing::warn!(
                 "worker: wait_for_stats_received_card_only TIMEOUT after {:?} (no callback fired)",
                 timeouts::STAT_RECEIVED
             );
@@ -973,7 +973,7 @@ async fn write_response(msg: &WorkerResponse) -> Result<(), WorkerError> {
     let framed = match encode_frame(msg) {
         Ok(f) => f,
         Err(e) => {
-            crate::log!("worker: write_response: encode_frame failed: {e}");
+            tracing::error!("worker: write_response: encode_frame failed: {e}");
             return Err(WorkerError::Frame(e));
         }
     };

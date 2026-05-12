@@ -113,9 +113,9 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
         Err((err, diag)) => {
             let err_str = err.to_string();
             if diag.is_empty() {
-                crate::log!("progress_scan: app_id={app_id} failed: {err}");
+                tracing::error!("progress_scan: app_id={app_id} failed: {err}");
             } else {
-                crate::log!(
+                tracing::error!(
                     "progress_scan: app_id={app_id} failed: {err}\n--- worker diagnostics ---\n{}--- end diagnostics ---",
                     diag
                 );
@@ -237,13 +237,13 @@ async fn run_full_scan_protocol(
     };
 
     let t_card = std::time::Instant::now();
-    crate::log!("scan: send LoadAchievementsAndStatsCardOnly");
+    tracing::debug!("scan: send LoadAchievementsAndStatsCardOnly");
     handle
         .send(&WorkerCommand::LoadAchievementsAndStatsCardOnly)
         .await?;
     let (achievements, stats, genre) =
         read_card_only_skipping_async(handle, timeouts::COLD_SCAN_LOAD).await?;
-    crate::log!(
+    tracing::info!(
         "scan: CardOnly response in {:?} ({} achievements)",
         t_card.elapsed(),
         achievements.len()

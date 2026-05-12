@@ -847,7 +847,7 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::CapsuleFailed { app_id, size } => {
-            crate::log!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
+            tracing::warn!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
             (Task::none(), GameViewEvent::None)
         }
 

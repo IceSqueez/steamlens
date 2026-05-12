@@ -96,13 +96,6 @@ where
     Ok(())
 }
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => {
-        ::tracing::info!($($arg)*);
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +117,7 @@ mod tests {
         );
 
         if first.is_ok() {
-            crate::log!("test marker abc123");
+            tracing::info!("test marker abc123");
 
             let content_after_log = std::fs::read(&path).expect("read after log");
             assert!(
