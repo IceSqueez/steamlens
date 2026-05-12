@@ -53,9 +53,6 @@ pub struct GameViewProps {
 pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameViewMessage> {
     let skeleton_phase = props.skeleton_phase;
     match state.phase {
-        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::LoadingData => {
-            loading_view(state, skeleton_phase)
-        }
         GameViewPhase::Saving | GameViewPhase::Resetting => {
             let base = loaded_view(state, skeleton_phase);
             let label = if state.phase == GameViewPhase::Saving {
@@ -65,7 +62,10 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
             };
             stack![base, opaque(saving_overlay(state.spinner_angle, label))].into()
         }
-        GameViewPhase::Ready => {
+        GameViewPhase::Connecting
+        | GameViewPhase::WaitingStats
+        | GameViewPhase::LoadingData
+        | GameViewPhase::Ready => {
             let base = loaded_view(state, skeleton_phase);
             if state.show_reset_modal {
                 stack![base, opaque(reset_modal(state))].into()
@@ -75,10 +75,6 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
         }
         GameViewPhase::Error => error_view(state),
     }
-}
-
-fn loading_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
-    build_skeleton_ach_grid(state, skeleton_phase)
 }
 
 fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
@@ -619,6 +615,10 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
 }
 
 fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
+    if state.achievements.is_empty() {
+        return build_skeleton_ach_grid(state, skeleton_phase);
+    }
+
     let visible_ids = visible_achievement_ids(
         &state.achievements,
         state.filter,
