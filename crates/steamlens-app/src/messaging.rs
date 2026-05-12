@@ -260,6 +260,7 @@ fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
     let mut t = toast_widget::<crate::Message>()
         .kind(kind)
         .title(toast.title.clone())
+        .on_close(crate::Message::DismissToast(toast.id))
         .on_hover_enter(crate::Message::ToastHovered(toast.id, true))
         .on_hover_exit(crate::Message::ToastHovered(toast.id, false));
     if let Some(body) = &toast.body {
@@ -267,8 +268,6 @@ fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
     }
     if let Some(action) = &toast.action {
         t = t.action(action.label.clone(), action.on_press.clone());
-    } else if matches!(toast.kind, ToastKind::Error) {
-        t = t.action("Dismiss", crate::Message::DismissToast(toast.id));
     }
     t.into()
 }
