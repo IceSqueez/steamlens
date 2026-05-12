@@ -414,7 +414,7 @@ fn build_global_actions() -> Element<'static, crate::Message> {
     use crate::theme::{C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
     use crate::ui::widgets::tooltip_box::tooltip_box;
 
-    let make_icon_btn = |glyph: &'static str, toast_msg: &'static str| {
+    let make_icon_btn = |glyph: &'static str, on_press: crate::Message| {
         button(
             container(text(glyph).size(14).color(C_TEXT_MUTED))
                 .width(Length::Fixed(32.0))
@@ -422,7 +422,7 @@ fn build_global_actions() -> Element<'static, crate::Message> {
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center),
         )
-        .on_press(crate::Message::GlobalToast(toast_msg.to_owned()))
+        .on_press(on_press)
         .padding(0)
         .style(|_: &iced::Theme, status| {
             let hovered = matches!(
@@ -452,12 +452,15 @@ fn build_global_actions() -> Element<'static, crate::Message> {
 
     row![
         tooltip_box(
-            make_icon_btn("\u{2699}", "Settings \u{2014} coming soon"),
+            make_icon_btn(
+                "\u{2699}",
+                crate::Message::GlobalToast("Settings \u{2014} coming soon".to_owned()),
+            ),
             "Settings",
             iced::widget::tooltip::Position::Bottom,
         ),
         tooltip_box(
-            make_icon_btn("\u{24D8}", "About \u{2014} coming soon"),
+            make_icon_btn("\u{24D8}", crate::Message::ShowAbout),
             "About",
             iced::widget::tooltip::Position::Bottom,
         ),
