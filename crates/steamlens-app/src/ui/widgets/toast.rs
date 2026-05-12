@@ -47,6 +47,7 @@ pub struct Toast<'a, M> {
     title: Cow<'a, str>,
     body: Option<Cow<'a, str>>,
     action: Option<(Cow<'a, str>, M)>,
+    on_close: Option<M>,
     on_hover_enter: Option<M>,
     on_hover_exit: Option<M>,
     _phantom: PhantomData<&'a ()>,
@@ -59,6 +60,7 @@ impl<'a, M> Default for Toast<'a, M> {
             title: Cow::Borrowed(""),
             body: None,
             action: None,
+            on_close: None,
             on_hover_enter: None,
             on_hover_exit: None,
             _phantom: PhantomData,
@@ -84,6 +86,11 @@ impl<'a, M: 'a + Clone> Toast<'a, M> {
 
     pub fn action(mut self, label: impl Into<Cow<'a, str>>, on_press: M) -> Self {
         self.action = Some((label.into(), on_press));
+        self
+    }
+
+    pub fn on_close(mut self, msg: M) -> Self {
+        self.on_close = Some(msg);
         self
     }
 
@@ -114,6 +121,10 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
 
         if let Some((label, msg)) = t.action {
             content_row = content_row.push(link_button(label, msg));
+        }
+
+        if let Some(close_msg) = t.on_close {
+            content_row = content_row.push(close_button(close_msg));
         }
 
         let inner = container(content_row)
@@ -163,6 +174,35 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
             (None, None) => composed.into(),
         }
     }
+}
+
+fn close_button<'a, M: 'a + Clone>(msg: M) -> Element<'a, M> {
+    button(
+        container(text("\u{00D7}").size(14).color(C_TEXT_MUTED))
+            .width(Length::Fixed(18.0))
+            .height(Length::Fixed(18.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .on_press(msg)
+    .padding(0)
+    .style(move |_: &iced::Theme, status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        iced::widget::button::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border::default(),
+            text_color: if hovered {
+                C_TEXT_PRIMARY
+            } else {
+                C_TEXT_MUTED
+            },
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
 }
 
 fn link_button<'a, M: 'a + Clone>(label: impl Into<Cow<'a, str>>, msg: M) -> Element<'a, M> {
