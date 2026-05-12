@@ -5,8 +5,7 @@ use iced::widget::{button, column, container, image as image_widget, row, svg, t
 use iced::{Alignment, Border, Color, Element, Length, Shadow, Vector};
 
 use crate::capsule_cache::CapsuleSize;
-use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
-use crate::ui::widgets::pill::pill;
+use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::skeleton::skeleton_box;
 use crate::ui::widgets::widget::{
     WidgetSummary, breakdown_row, cards_separator, rarity_bar, rarity_cards, widget_panel,
@@ -130,12 +129,42 @@ fn build_game_header<'a>(
     genre: Option<&'a str>,
     playtime_minutes: Option<u32>,
 ) -> Element<'a, GameViewMessage> {
-    let name = text(game_name.to_owned()).size(15).color(C_TEXT_PRIMARY);
-    let appid_pill = pill(
-        text(format!("AppID {app_id}")).size(11).color(C_ACCENT),
-        C_ACCENT,
-    )
-    .radius(4.0);
+    let name = text(game_name.to_owned())
+        .size(15)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_primary),
+        });
+    let appid_label = text(format!("AppID {app_id}"))
+        .size(11)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).accent),
+        });
+    let appid_pill = iced::widget::container(appid_label)
+        .padding(
+            iced::Padding::default()
+                .left(8u32)
+                .right(8u32)
+                .top(3u32)
+                .bottom(3u32),
+        )
+        .style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color {
+                    a: 0.15,
+                    ..p.accent
+                })),
+                border: iced::Border {
+                    color: iced::Color {
+                        a: 0.40,
+                        ..p.accent
+                    },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..iced::widget::container::Style::default()
+            }
+        });
 
     let invalidate_btn = build_invalidate_button(app_id);
 
@@ -150,7 +179,9 @@ fn build_game_header<'a>(
 
     let genre_text = text(genre.unwrap_or("Unknown genre").to_owned())
         .size(12)
-        .color(C_TEXT_MUTED);
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_muted),
+        });
 
     let clock_icon = svg(SVG_CLOCK.clone())
         .width(Length::Fixed(12.0))
@@ -159,7 +190,11 @@ fn build_game_header<'a>(
     let playtime_label = format_playtime(playtime_minutes);
     let playtime_row = row![
         clock_icon,
-        text(playtime_label).size(12).color(C_TEXT_MUTED),
+        text(playtime_label)
+            .size(12)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }),
     ]
     .spacing(6)
     .align_y(Alignment::Center);
@@ -188,16 +223,17 @@ fn build_invalidate_button<'a>(app_id: u32) -> Element<'a, GameViewMessage> {
     )
     .on_press(GameViewMessage::InvalidateCacheClicked(app_id))
     .padding(0)
-    .style(|_theme, status| {
+    .style(|t: &iced::Theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let p = palette(theme_from_iced(t));
         button::Style {
             background: Some(iced::Background::Color(if hovered {
-                C_HOVER
+                p.hover
             } else {
                 Color::TRANSPARENT
             })),
             border: Border {
-                color: if hovered { C_ACCENT } else { C_BORDER },
+                color: if hovered { p.accent } else { p.border },
                 width: 1.0,
                 radius: 6.0.into(),
             },

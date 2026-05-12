@@ -123,7 +123,7 @@ fn build_profile_genre_strip<'a>(
     const GENRE_PILL_PAD_H: u32 = 9;
     const GENRE_PILL_PAD_V: u32 = 4;
 
-    let neutral = crate::theme::C_TEXT_MUTED;
+    let neutral = crate::ui::theme::palette(crate::ui::theme::AppTheme::Dark).text_muted;
     let any_selected = !state.genre_filter.is_empty();
     let mut chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()

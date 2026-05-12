@@ -3,7 +3,7 @@ use iced::{Background, Border, Color, Element, Length, border};
 
 use super::tooltip_box::tooltip_box;
 
-use crate::ui::theme::{AppTheme, palette};
+use crate::ui::theme::{palette, theme_from_iced};
 
 const DEFAULT_RADIUS: f32 = 4.0;
 const DEFAULT_GAP_PX: f32 = 1.0;
@@ -18,7 +18,6 @@ pub fn segmented_bar<'a, M: Clone + 'a>(
         segments,
         width: width.into(),
         height,
-        theme: AppTheme::default(),
         radius: DEFAULT_RADIUS,
         gap_px: DEFAULT_GAP_PX,
         hovered_idx: None,
@@ -28,16 +27,38 @@ pub fn segmented_bar<'a, M: Clone + 'a>(
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum BarColor {
+    Fixed(Color),
+    Hover,
+    Accent,
+}
+
+impl BarColor {
+    pub fn resolve(self, p: &crate::ui::theme::ThemePalette) -> Color {
+        match self {
+            BarColor::Fixed(c) => c,
+            BarColor::Hover => p.hover,
+            BarColor::Accent => p.accent,
+        }
+    }
+}
+
+impl From<Color> for BarColor {
+    fn from(c: Color) -> Self {
+        BarColor::Fixed(c)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct BarSegment {
     pub weight: u32,
-    pub color: Color,
+    pub color: BarColor,
 }
 
 pub struct SegmentedBar<'a, M> {
     segments: Vec<BarSegment>,
     width: Length,
     height: f32,
-    theme: AppTheme,
     radius: f32,
     gap_px: f32,
     hovered_idx: Option<usize>,
@@ -46,11 +67,6 @@ pub struct SegmentedBar<'a, M> {
 }
 
 impl<'a, M: Clone + 'a> SegmentedBar<'a, M> {
-    pub fn theme(mut self, theme: AppTheme) -> Self {
-        self.theme = theme;
-        self
-    }
-
     pub fn radius(mut self, radius: f32) -> Self {
         self.radius = radius;
         self
@@ -85,8 +101,6 @@ impl<'a, M: Clone + 'a> SegmentedBar<'a, M> {
 
 impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
     fn from(bar: SegmentedBar<'a, M>) -> Self {
-        let palette = palette(bar.theme);
-        let track_color = palette.hover;
         let radius = bar.radius;
         let height = bar.height;
 
@@ -96,8 +110,8 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
             return container(Space::new())
                 .width(bar.width)
                 .height(Length::Fixed(height))
-                .style(move |_: &iced::Theme| container::Style {
-                    background: Some(Background::Color(track_color)),
+                .style(move |t: &iced::Theme| container::Style {
+                    background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
                     border: Border {
                         radius: radius.into(),
                         ..Border::default()
@@ -126,19 +140,15 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
                     container(Space::new())
                         .width(Length::Fixed(bar.gap_px))
                         .height(Length::Fixed(height))
-                        .style(move |_: &iced::Theme| container::Style {
-                            background: Some(Background::Color(track_color)),
+                        .style(move |t: &iced::Theme| container::Style {
+                            background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
                             ..container::Style::default()
                         }),
                 );
             }
 
             let is_hovered = bar.hovered_idx == Some(idx);
-            let effective_color = if is_hovered {
-                brighten(seg.color, HOVER_BRIGHTEN_FACTOR)
-            } else {
-                seg.color
-            };
+            let seg_color = seg.color;
 
             let seg_radius = border::Radius {
                 top_left: if is_first { radius } else { 0.0 },
@@ -150,13 +160,22 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
             let seg_widget = container(Space::new())
                 .width(Length::FillPortion(seg.weight as u16))
                 .height(Length::Fixed(height))
-                .style(move |_: &iced::Theme| container::Style {
-                    background: Some(Background::Color(effective_color)),
-                    border: Border {
-                        radius: seg_radius,
-                        ..Border::default()
-                    },
-                    ..container::Style::default()
+                .style(move |t: &iced::Theme| {
+                    let p = palette(theme_from_iced(t));
+                    let base = seg_color.resolve(p);
+                    let effective_color = if is_hovered {
+                        brighten(base, HOVER_BRIGHTEN_FACTOR)
+                    } else {
+                        base
+                    };
+                    container::Style {
+                        background: Some(Background::Color(effective_color)),
+                        border: Border {
+                            radius: seg_radius,
+                            ..Border::default()
+                        },
+                        ..container::Style::default()
+                    }
                 });
 
             let mut interactive: Element<'a, M> = if let Some(f) = bar.tooltip_for.as_ref() {
@@ -184,8 +203,8 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
         container(bar_row)
             .width(bar.width)
             .height(Length::Fixed(height))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(track_color)),
+            .style(move |t: &iced::Theme| container::Style {
+                background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
                 border: Border {
                     radius: radius.into(),
                     ..Border::default()
@@ -213,11 +232,11 @@ mod tests {
         vec![
             BarSegment {
                 weight: 3,
-                color: Color::from_rgb(0.5, 0.5, 0.5),
+                color: BarColor::Fixed(Color::from_rgb(0.5, 0.5, 0.5)),
             },
             BarSegment {
                 weight: 2,
-                color: Color::from_rgb(0.7, 0.3, 0.9),
+                color: BarColor::Fixed(Color::from_rgb(0.7, 0.3, 0.9)),
             },
         ]
     }
@@ -234,17 +253,14 @@ mod tests {
     }
 
     #[test]
-    fn bar_with_all_options_constructs_in_each_theme() {
-        for theme in [AppTheme::Dark, AppTheme::Light] {
-            let _: Element<'_, ()> = segmented_bar(make_segments(), Length::Fill, 6.0)
-                .theme(theme)
-                .radius(2.0)
-                .gap_px(2.0)
-                .hovered(Some(0))
-                .on_hover(|_idx| ())
-                .tooltip(|idx| format!("slice {idx}"))
-                .into();
-        }
+    fn bar_with_all_options_constructs() {
+        let _: Element<'_, ()> = segmented_bar(make_segments(), Length::Fill, 6.0)
+            .radius(2.0)
+            .gap_px(2.0)
+            .hovered(Some(0))
+            .on_hover(|_idx| ())
+            .tooltip(|idx| format!("slice {idx}"))
+            .into();
     }
 
     #[test]
@@ -260,11 +276,11 @@ mod tests {
         let segs = vec![
             BarSegment {
                 weight: 0,
-                color: Color::WHITE,
+                color: BarColor::Fixed(Color::WHITE),
             },
             BarSegment {
                 weight: 5,
-                color: Color::BLACK,
+                color: BarColor::Fixed(Color::BLACK),
             },
         ];
         let _: Element<'_, ()> = segmented_bar::<()>(segs, Length::Fill, 8.0).into();

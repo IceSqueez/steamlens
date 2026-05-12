@@ -7,8 +7,7 @@ use iced::{Alignment, Element, Length};
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
-use crate::ui::widgets::pill::pill;
+use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 use crate::ui::widgets::widget::{
     WidgetSummary, breakdown_row, cards_separator, closest_row, rarity_bar, rarity_cards,
@@ -257,21 +256,59 @@ fn build_profile_info<'a>(
         .map(|p| p.persona_name.as_str())
         .unwrap_or("Steam User");
 
-    let nickname = text(persona.to_string()).size(15).color(C_TEXT_PRIMARY);
+    let nickname =
+        text(persona.to_string())
+            .size(15)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_primary),
+            });
 
     let level_str = match steam_level {
         Some(n) => format!("level ({n})"),
         None => "level (X)".to_owned(),
     };
-    let profile_level = pill(text(level_str).size(11).color(C_ACCENT), C_ACCENT).radius(4.0);
+    let level_label = text(level_str)
+        .size(11)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).accent),
+        });
+    let profile_level = iced::widget::container(level_label)
+        .padding(
+            iced::Padding::default()
+                .left(8u32)
+                .right(8u32)
+                .top(3u32)
+                .bottom(3u32),
+        )
+        .style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color {
+                    a: 0.15,
+                    ..p.accent
+                })),
+                border: iced::Border {
+                    color: iced::Color {
+                        a: 0.40,
+                        ..p.accent
+                    },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..iced::widget::container::Style::default()
+            }
+        });
 
     let nickname_row = row![nickname, profile_level]
         .spacing(6)
         .align_y(Alignment::Center);
 
-    let tracked_games = text(format!("{games_count} games tracked"))
-        .size(12)
-        .color(C_TEXT_MUTED);
+    let tracked_games =
+        text(format!("{games_count} games tracked"))
+            .size(12)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            });
 
     column![nickname_row, tracked_games].spacing(2).into()
 }
@@ -306,12 +343,21 @@ fn build_right_column<'a>(
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
 ) -> Element<'a, ProfileViewMessage> {
-    let header = text("CLOSEST TO 100%").size(11).color(C_TEXT_MUTED);
+    let header =
+        text("CLOSEST TO 100%")
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            });
 
     if top6.is_empty() {
         return column![
             header,
-            text("Nothing to recommend yet").size(12).color(C_TEXT_DIM),
+            text("Nothing to recommend yet")
+                .size(12)
+                .style(|t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).text_dim),
+                }),
         ]
         .spacing(8)
         .into();

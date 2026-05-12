@@ -5,25 +5,15 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use super::GameViewMessage;
 use super::types::{StatRow, StatValue};
-use crate::theme::{C_ACCENT, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY};
+use crate::ui::theme::{palette, theme_from_iced};
 
 const C_GREEN: Color = Color::from_rgb(0.427, 0.788, 0.498);
 const C_DANGER: Color = Color::from_rgb(0.863, 0.392, 0.392);
 const C_DIRTY: Color = Color::from_rgb(0.945, 0.980, 0.549);
-const C_SEARCH_BG: Color = Color::from_rgb(
-    0x2a as f32 / 255.0,
-    0x26 as f32 / 255.0,
-    0x38 as f32 / 255.0,
-);
-const C_ROW_DIVIDER: Color = Color::from_rgb(
-    0x2a as f32 / 255.0,
-    0x26 as f32 / 255.0,
-    0x38 as f32 / 255.0,
-);
-const C_BORDER: Color = Color::from_rgb(
-    0x2d as f32 / 255.0,
-    0x29 as f32 / 255.0,
-    0x40 as f32 / 255.0,
+const C_VALUE_IN_PROGRESS: Color = Color::from_rgb(
+    0xaa as f32 / 255.0,
+    0xa6 as f32 / 255.0,
+    0xc0 as f32 / 255.0,
 );
 
 const PROGRESS_BAR_HEIGHT: f32 = 2.0;
@@ -78,7 +68,9 @@ pub fn build_stats_panel<'a>(
                 "No stats match the search"
             })
             .size(11)
-            .color(C_TEXT_MUTED),
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }),
         )
         .width(Length::Fill)
         .padding(Padding::default().top(20).bottom(20))
@@ -104,12 +96,18 @@ pub fn build_stats_panel<'a>(
 fn build_header<'a>(stats: &'a [StatRow]) -> Element<'a, GameViewMessage> {
     let (total, maxed, in_progress) = summarize(stats);
 
-    let title = text("IN-GAME STATISTICS").size(11).color(C_TEXT_MUTED);
+    let title = text("IN-GAME STATISTICS")
+        .size(11)
+        .style(|t: &iced::Theme| iced::widget::text::Style {
+            color: Some(palette(theme_from_iced(t)).text_muted),
+        });
     let subtitle = text(format!(
         "{total} stats \u{00B7} {maxed} maxed \u{00B7} {in_progress} in progress"
     ))
     .size(10)
-    .color(C_TEXT_DIM);
+    .style(|t: &iced::Theme| iced::widget::text::Style {
+        color: Some(palette(theme_from_iced(t)).text_dim),
+    });
 
     let left_col = column![title, subtitle].spacing(2);
 
@@ -146,16 +144,28 @@ fn action_button(
     msg: GameViewMessage,
     disabled: bool,
 ) -> Element<'static, GameViewMessage> {
-    let icon_color = if disabled { C_TEXT_DIM } else { tint };
     let icon_el = svg(icon)
         .width(Length::Fixed(11.0))
         .height(Length::Fixed(11.0))
-        .style(move |_t: &iced::Theme, _status| iced::widget::svg::Style {
-            color: Some(icon_color),
+        .style(move |t: &iced::Theme, _status| {
+            let color = if disabled {
+                palette(theme_from_iced(t)).text_dim
+            } else {
+                tint
+            };
+            iced::widget::svg::Style { color: Some(color) }
         });
 
-    let text_color = if disabled { C_TEXT_DIM } else { tint };
-    let inner = row![icon_el, text(label).size(11).color(text_color)]
+    let label_el = text(label).size(11).style(move |t: &iced::Theme| {
+        let color = if disabled {
+            palette(theme_from_iced(t)).text_dim
+        } else {
+            tint
+        };
+        iced::widget::text::Style { color: Some(color) }
+    });
+
+    let inner = row![icon_el, label_el]
         .spacing(5)
         .align_y(Alignment::Center);
 
@@ -163,9 +173,14 @@ fn action_button(
     if !disabled {
         btn = btn.on_press(msg);
     }
-    btn.style(move |_t: &iced::Theme, status| {
+    btn.style(move |t: &iced::Theme, status| {
         let hovered =
             !disabled && matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let text_color = if disabled {
+            palette(theme_from_iced(t)).text_dim
+        } else {
+            tint
+        };
         let bg_alpha = if disabled {
             0.04
         } else if hovered {
@@ -209,34 +224,38 @@ fn build_search_input(query: &str) -> Element<'_, GameViewMessage> {
         .on_input(GameViewMessage::StatsSearchChanged)
         .size(12)
         .padding(Padding::default().left(6).right(8).top(6).bottom(6))
-        .style(
-            |_t: &iced::Theme, _status| iced::widget::text_input::Style {
+        .style(|t: &iced::Theme, _status| {
+            let p = palette(theme_from_iced(t));
+            iced::widget::text_input::Style {
                 background: Background::Color(Color::TRANSPARENT),
                 border: Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,
                     radius: 0.0.into(),
                 },
-                icon: C_TEXT_MUTED,
-                placeholder: C_TEXT_DIM,
-                value: C_TEXT_PRIMARY,
-                selection: Color { a: 0.3, ..C_ACCENT },
-            },
-        );
+                icon: p.text_muted,
+                placeholder: p.text_dim,
+                value: p.text_primary,
+                selection: Color { a: 0.3, ..p.accent },
+            }
+        });
 
     let inner = row![icon, input].spacing(0).align_y(Alignment::Center);
 
     container(inner)
         .width(Length::Fill)
         .padding(Padding::default().left(9).right(2).top(0).bottom(0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_SEARCH_BG)),
-            border: Border {
-                color: C_BORDER,
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            ..container::Style::default()
+        .style(|t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            container::Style {
+                background: Some(Background::Color(p.hover)),
+                border: Border {
+                    color: p.border,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                ..container::Style::default()
+            }
         })
         .into()
 }
@@ -245,28 +264,20 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     let (current, maxed, has_progress) = current_max_pair(row_data);
     let is_dirty = row_data.is_dirty;
 
-    let (mut name_color, mut value_color) = if !has_progress {
-        (C_TEXT_DIM, C_TEXT_DIM)
-    } else if maxed {
-        (C_TEXT_PRIMARY, C_GREEN)
-    } else {
-        (
-            C_TEXT_PRIMARY,
-            Color::from_rgb(
-                0xaa as f32 / 255.0,
-                0xa6 as f32 / 255.0,
-                0xc0 as f32 / 255.0,
-            ),
-        )
-    };
-    if is_dirty {
-        name_color = C_DIRTY;
-        value_color = C_DIRTY;
-    }
-
-    let name_text = text(row_data.data.display_name.clone())
-        .size(12)
-        .color(name_color);
+    let name_text =
+        text(row_data.data.display_name.clone())
+            .size(12)
+            .style(move |t: &iced::Theme| {
+                let p = palette(theme_from_iced(t));
+                let color = if is_dirty {
+                    C_DIRTY
+                } else if !has_progress {
+                    p.text_dim
+                } else {
+                    p.text_primary
+                };
+                iced::widget::text::Style { color: Some(color) }
+            });
 
     let dirty_dot: Option<Element<'_, GameViewMessage>> = if is_dirty {
         Some(
@@ -318,7 +329,19 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
 
     let value_text = text(format_value(current, row_data.data.max_value, maxed))
         .size(10)
-        .color(value_color);
+        .style(move |t: &iced::Theme| {
+            let p = palette(theme_from_iced(t));
+            let color = if is_dirty {
+                C_DIRTY
+            } else if !has_progress {
+                p.text_dim
+            } else if maxed {
+                C_GREEN
+            } else {
+                C_VALUE_IN_PROGRESS
+            };
+            iced::widget::text::Style { color: Some(color) }
+        });
 
     let header_row =
         row![name_block, Space::new().width(Length::Fill), value_text,].align_y(Alignment::Center);
@@ -363,14 +386,6 @@ fn build_progress_bar(
         _ => 0.0,
     };
 
-    let fill_color = if is_dirty {
-        C_DIRTY
-    } else if maxed {
-        C_GREEN
-    } else {
-        C_ACCENT
-    };
-
     let portion_fill = ((ratio * 1000.0).round() as u16).clamp(0, 1000);
     let portion_rest = 1000u16.saturating_sub(portion_fill);
 
@@ -383,13 +398,22 @@ fn build_progress_bar(
         container(Space::new())
             .width(Length::FillPortion(portion_fill))
             .height(Length::Fixed(PROGRESS_BAR_HEIGHT))
-            .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(fill_color)),
-                border: Border {
-                    radius: 1.0.into(),
-                    ..Border::default()
-                },
-                ..container::Style::default()
+            .style(move |t: &iced::Theme| {
+                let fill_color = if is_dirty {
+                    C_DIRTY
+                } else if maxed {
+                    C_GREEN
+                } else {
+                    palette(theme_from_iced(t)).accent
+                };
+                container::Style {
+                    background: Some(Background::Color(fill_color)),
+                    border: Border {
+                        radius: 1.0.into(),
+                        ..Border::default()
+                    },
+                    ..container::Style::default()
+                }
             })
             .into()
     };
@@ -402,8 +426,8 @@ fn build_progress_bar(
     container(row![fill_widget, rest_widget])
         .width(Length::Fill)
         .height(Length::Fixed(PROGRESS_BAR_HEIGHT))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_SEARCH_BG)),
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
             border: Border {
                 radius: 1.0.into(),
                 ..Border::default()
@@ -418,22 +442,27 @@ fn neutral_row_button(
     msg: GameViewMessage,
     disabled: bool,
 ) -> Element<'static, GameViewMessage> {
-    let label_color = if disabled { C_TEXT_DIM } else { C_TEXT_MUTED };
-    let lbl = text(label).size(10).color(label_color);
+    let lbl = text(label).size(10).style(move |t: &iced::Theme| {
+        let p = palette(theme_from_iced(t));
+        let color = if disabled { p.text_dim } else { p.text_muted };
+        iced::widget::text::Style { color: Some(color) }
+    });
 
     let mut btn = button(lbl).padding(Padding::default().left(7).right(7).top(3).bottom(3));
     if !disabled {
         btn = btn.on_press(msg);
     }
 
-    btn.style(move |_t: &iced::Theme, status| {
+    btn.style(move |t: &iced::Theme, status| {
         let hovered =
             !disabled && matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let p = palette(theme_from_iced(t));
+        let label_color = if disabled { p.text_dim } else { p.text_muted };
         button::Style {
             background: if hovered {
                 Some(Background::Color(Color {
                     a: 0.20,
-                    ..C_TEXT_MUTED
+                    ..p.text_muted
                 }))
             } else {
                 None
@@ -442,15 +471,15 @@ fn neutral_row_button(
                 color: if hovered {
                     Color {
                         a: 0.60,
-                        ..C_TEXT_MUTED
+                        ..p.text_muted
                     }
                 } else {
-                    C_BORDER
+                    p.border
                 },
                 width: 1.0,
                 radius: 4.0.into(),
             },
-            text_color: if hovered { C_TEXT_PRIMARY } else { label_color },
+            text_color: if hovered { p.text_primary } else { label_color },
             ..button::Style::default()
         }
     })
@@ -487,8 +516,8 @@ fn divider<M: 'static>() -> Element<'static, M> {
     container(Space::new())
         .width(Length::Fill)
         .height(Length::Fixed(1.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_ROW_DIVIDER)),
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
             ..container::Style::default()
         })
         .into()

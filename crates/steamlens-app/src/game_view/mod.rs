@@ -116,7 +116,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         chips.push(p.into());
     }
 
-    let hidden_color = crate::theme::C_TEXT_MUTED;
+    let hidden_color = crate::ui::theme::palette(crate::ui::theme::AppTheme::Dark).text_muted;
     let hidden_inner = row![
         text("Hidden").size(11).color(hidden_color),
         text(format!("{hidden_count}")).size(11).color(Color {

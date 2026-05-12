@@ -5,7 +5,7 @@ use iced::border::Radius;
 use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
-use crate::theme::{C_ACCENT, C_TEXT_MUTED, C_TEXT_PRIMARY};
+use crate::ui::theme::{palette, theme_from_iced};
 
 const C_WARNING: Color = Color::from_rgb(0.941, 0.784, 0.478);
 const C_ERROR: Color = Color::from_rgb(0.863, 0.392, 0.392);
@@ -20,9 +20,17 @@ pub enum Severity {
 }
 
 impl Severity {
-    fn accent(self) -> Color {
+    fn accent_static(self) -> Color {
         match self {
-            Severity::Info => C_ACCENT,
+            Severity::Info => palette(crate::ui::theme::AppTheme::Dark).accent,
+            Severity::Warning => C_WARNING,
+            Severity::Error => C_ERROR,
+        }
+    }
+
+    fn accent_for_theme(self, t: &iced::Theme) -> Color {
+        match self {
+            Severity::Info => palette(theme_from_iced(t)).accent,
             Severity::Warning => C_WARNING,
             Severity::Error => C_ERROR,
         }
@@ -96,27 +104,48 @@ impl<'a, M: 'a + Clone> Banner<'a, M> {
 
 impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
     fn from(b: Banner<'a, M>) -> Self {
-        let accent = b.severity.accent();
-        let border_color = Color { a: 0.30, ..accent };
+        let severity = b.severity;
+        let accent_static = severity.accent_static();
+        let border_color = Color {
+            a: 0.30,
+            ..accent_static
+        };
 
-        let icon = text(b.severity.glyph()).size(14).color(accent);
+        let icon = text(severity.glyph())
+            .size(14)
+            .style(move |t: &iced::Theme| iced::widget::text::Style {
+                color: Some(severity.accent_for_theme(t)),
+            });
 
         let text_col: Element<'a, M> = match b.text {
             Some(sub) => column![
-                text(b.title).size(13).color(C_TEXT_PRIMARY),
-                text(sub).size(11).color(C_TEXT_MUTED),
+                text(b.title).size(13).style(|t: &iced::Theme| {
+                    iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_primary),
+                    }
+                }),
+                text(sub).size(11).style(|t: &iced::Theme| {
+                    iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_muted),
+                    }
+                }),
             ]
             .spacing(2)
             .into(),
-            None => text(b.title).size(13).color(C_TEXT_PRIMARY).into(),
+            None => text(b.title)
+                .size(13)
+                .style(|t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).text_primary),
+                })
+                .into(),
         };
 
         let mut content_row = row![icon, text_col].spacing(12).align_y(Alignment::Center);
         content_row = content_row.push(iced::widget::Space::new().width(Length::Fill));
 
-        let filled = b.severity.action_filled();
+        let filled = severity.action_filled();
         if let Some((label, msg)) = b.action {
-            content_row = content_row.push(action_button(label, accent, filled, msg));
+            content_row = content_row.push(action_button(label, accent_static, filled, msg));
         }
 
         if let Some(msg) = b.on_dismiss {
@@ -145,7 +174,7 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
             .width(Length::Fill)
             .padding(Padding::default().left(3))
             .style(move |_: &iced::Theme| container::Style {
-                background: Some(Background::Color(accent)),
+                background: Some(Background::Color(accent_static)),
                 border: Border {
                     radius: Radius {
                         top_left: 6.0,
@@ -194,26 +223,32 @@ fn action_button<'a, M: 'a + Clone>(
 }
 
 fn dismiss_button<'a, M: 'a + Clone>(msg: M) -> Element<'a, M> {
-    button(text("\u{2715}").size(11).color(C_TEXT_MUTED))
-        .on_press(msg)
-        .padding(Padding::default().left(4).right(4).top(2).bottom(2))
-        .style(|_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(Background::Color(if hovered {
-                    Color::from_rgba(1.0, 1.0, 1.0, 0.06)
-                } else {
-                    Color::TRANSPARENT
-                })),
-                border: Border::default(),
-                text_color: C_TEXT_MUTED,
-                ..iced::widget::button::Style::default()
-            }
-        })
-        .into()
+    button(
+        text("\u{2715}")
+            .size(11)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }),
+    )
+    .on_press(msg)
+    .padding(Padding::default().left(4).right(4).top(2).bottom(2))
+    .style(|t: &iced::Theme, status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        iced::widget::button::Style {
+            background: Some(Background::Color(if hovered {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.06)
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: Border::default(),
+            text_color: palette(theme_from_iced(t)).text_muted,
+            ..iced::widget::button::Style::default()
+        }
+    })
+    .into()
 }
 
 #[cfg(test)]

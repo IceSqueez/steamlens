@@ -16,8 +16,7 @@ use super::types::{
     AchievementRow, BannerKind, BulkOp, RarityTier, compute_tier_map, visible_achievement_ids,
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
-use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED};
-use crate::ui::theme::{AppTheme, palette};
+use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
 
@@ -44,13 +43,15 @@ fn dracula_border_radius(r: f32) -> iced::Border {
 
 pub struct GameViewProps {
     pub skeleton_phase: f32,
+    pub app_theme: crate::ui::theme::AppTheme,
 }
 
 pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameViewMessage> {
     let skeleton_phase = props.skeleton_phase;
+    let app_theme = props.app_theme;
     match state.phase {
         GameViewPhase::Saving => {
-            let base = loaded_view(state, skeleton_phase);
+            let base = loaded_view(state, skeleton_phase, app_theme);
             stack![
                 base,
                 opaque(saving_overlay(state.spinner_angle, "Saving changes..."))
@@ -58,7 +59,7 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
             .into()
         }
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Ready => {
-            let base = loaded_view(state, skeleton_phase);
+            let base = loaded_view(state, skeleton_phase, app_theme);
             if state.show_apply_modal {
                 stack![base, opaque(apply_modal(state))].into()
             } else {
@@ -88,7 +89,11 @@ fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
         .into()
 }
 
-fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
+fn loaded_view(
+    state: &GameViewState,
+    skeleton_phase: f32,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'_, GameViewMessage> {
     use crate::game_view::widget::{GameWidgetParams, game_widget};
 
     let game_widget_el = game_widget(GameWidgetParams {
@@ -109,7 +114,7 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
         game_widget_el
     };
 
-    let body = achievements_tab(state, skeleton_phase);
+    let body = achievements_tab(state, skeleton_phase, app_theme);
 
     compose_screen(ScreenContent {
         top: Some(top_block),
@@ -175,55 +180,60 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
 }
 
 pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {
-    button(text("\u{2039} Back").size(13).color(C_ACCENT))
-        .on_press(crate::Message::GoBack)
-        .padding(Padding::from([0u16, 0]))
-        .style(|_theme, _status| button::Style {
-            background: None,
-            border: iced::Border::default(),
-            ..button::Style::default()
-        })
-        .into()
+    button(
+        text("\u{2039} Back")
+            .size(13)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).accent),
+            }),
+    )
+    .on_press(crate::Message::GoBack)
+    .padding(Padding::from([0u16, 0]))
+    .style(|_theme, _status| button::Style {
+        background: None,
+        border: iced::Border::default(),
+        ..button::Style::default()
+    })
+    .into()
 }
 
 pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
     use crate::ui::widgets::tooltip_box::tooltip_box;
 
-    let btn = button(
-        container(text("\u{21BB}").size(16).color(C_ACCENT))
+    let btn =
+        button(
+            container(text("\u{21BB}").size(16).style(|t: &iced::Theme| {
+                iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).accent),
+                }
+            }))
             .width(Length::Fixed(32.0))
             .height(Length::Fixed(32.0))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center),
-    )
-    .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
-    .padding(0)
-    .style(|_theme, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        button::Style {
-            background: Some(iced::Background::Color(if hovered {
-                Color {
-                    a: 0.18,
-                    ..C_ACCENT
-                }
-            } else {
-                Color {
-                    a: 0.10,
-                    ..C_ACCENT
-                }
-            })),
-            border: iced::Border {
-                color: Color {
-                    a: if hovered { 0.55 } else { 0.40 },
-                    ..C_ACCENT
+        )
+        .on_press(crate::Message::GameView(GameViewMessage::ReloadRequested))
+        .padding(0)
+        .style(|t: &iced::Theme, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let accent = palette(theme_from_iced(t)).accent;
+            button::Style {
+                background: Some(iced::Background::Color(Color {
+                    a: if hovered { 0.18 } else { 0.10 },
+                    ..accent
+                })),
+                border: iced::Border {
+                    color: Color {
+                        a: if hovered { 0.55 } else { 0.40 },
+                        ..accent
+                    },
+                    width: 1.0,
+                    radius: 6.0.into(),
                 },
-                width: 1.0,
-                radius: 6.0.into(),
-            },
-            text_color: C_ACCENT,
-            ..button::Style::default()
-        }
-    });
+                text_color: accent,
+                ..button::Style::default()
+            }
+        });
 
     tooltip_box(
         btn,
@@ -294,9 +304,10 @@ fn banner_widget(banner: &super::types::Banner) -> Element<'_, GameViewMessage> 
 fn achievements_tab<'a>(
     state: &'a GameViewState,
     skeleton_phase: f32,
+    app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
     let mut col = column![].spacing(0).height(Length::Fill);
-    col = col.push(achievement_list(state, skeleton_phase));
+    col = col.push(achievement_list(state, skeleton_phase, app_theme));
     col.into()
 }
 
@@ -329,46 +340,48 @@ const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
 fn bulk_action_buttons<'a>() -> Element<'a, GameViewMessage> {
     let mk_outlined =
-        |lbl: &'static str, tc: Color, m: GameViewMessage| -> Element<'_, GameViewMessage> {
-            button(text(lbl).size(12).color(tc))
-                .on_press(m)
-                .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-                .style(move |_theme, status| {
-                    let hovered =
-                        matches!(status, button::Status::Hovered | button::Status::Pressed);
-                    button::Style {
-                        background: if hovered {
-                            Some(iced::Background::Color(C_HOVER))
+        |lbl: &'static str, use_accent: bool, m: GameViewMessage| -> Element<'_, GameViewMessage> {
+            button(
+                text(lbl)
+                    .size(12)
+                    .style(move |t: &iced::Theme| iced::widget::text::Style {
+                        color: Some(if use_accent {
+                            palette(theme_from_iced(t)).accent
                         } else {
-                            None
-                        },
-                        border: iced::Border {
-                            color: C_BORDER,
-                            width: 1.0,
-                            radius: 6.0.into(),
-                        },
-                        text_color: tc,
-                        ..button::Style::default()
-                    }
-                })
-                .into()
+                            palette(theme_from_iced(t)).text_muted
+                        }),
+                    }),
+            )
+            .on_press(m)
+            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
+            .style(move |t: &iced::Theme, status| {
+                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                let p = palette(theme_from_iced(t));
+                button::Style {
+                    background: if hovered {
+                        Some(iced::Background::Color(p.hover))
+                    } else {
+                        None
+                    },
+                    border: iced::Border {
+                        color: p.border,
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    text_color: if use_accent { p.accent } else { p.text_muted },
+                    ..button::Style::default()
+                }
+            })
+            .into()
         };
 
     let unlock_btn = mk_outlined(
         "Unlock all",
-        C_ACCENT,
+        true,
         GameViewMessage::BulkAction(BulkOp::Unlock),
     );
-    let lock_btn = mk_outlined(
-        "Lock all",
-        C_TEXT_MUTED,
-        GameViewMessage::BulkAction(BulkOp::Lock),
-    );
-    let invert_btn = mk_outlined(
-        "Invert",
-        C_TEXT_MUTED,
-        GameViewMessage::BulkAction(BulkOp::Invert),
-    );
+    let lock_btn = mk_outlined("Lock all", false, GameViewMessage::BulkAction(BulkOp::Lock));
+    let invert_btn = mk_outlined("Invert", false, GameViewMessage::BulkAction(BulkOp::Invert));
 
     row![unlock_btn, lock_btn, invert_btn]
         .spacing(6)
@@ -464,7 +477,11 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
     }
 }
 
-fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameViewMessage> {
+fn achievement_list(
+    state: &GameViewState,
+    skeleton_phase: f32,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'_, GameViewMessage> {
     if state.achievements.is_empty() {
         return build_skeleton_ach_grid(state, skeleton_phase);
     }
@@ -517,6 +534,7 @@ fn achievement_list(state: &GameViewState, skeleton_phase: f32) -> Element<'_, G
                         glow_pulse,
                         tier,
                         skeleton_phase,
+                        app_theme,
                     )
                 } else {
                     build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase)
@@ -676,7 +694,9 @@ fn achievement_card_widget<'a>(
     glow_pulse: f32,
     tier: Option<RarityTier>,
     _skeleton_phase: f32,
+    app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
+    let fg = crate::ui::theme::palette(app_theme).text_primary;
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
 
@@ -744,7 +764,7 @@ fn achievement_card_widget<'a>(
         row.data.display_name.clone()
     };
 
-    let name_color = if row.is_dirty { C_YELLOW } else { C_FG };
+    let name_color = if row.is_dirty { C_YELLOW } else { fg };
     let name_label: Element<'_, GameViewMessage> =
         if !row.is_dirty && !spoiler_hidden && !search_query.is_empty() {
             if let Some((before, matched, after)) = highlight_split(&display_name, &search_query) {
@@ -753,11 +773,11 @@ fn achievement_card_widget<'a>(
                 let after = after.to_owned();
                 container(
                     rich_text![
-                        span(before).color(C_FG),
+                        span(before).color(fg),
                         span(matched)
                             .color(C_YELLOW)
                             .background(Color { a: 0.2, ..C_YELLOW }),
-                        span(after).color(C_FG),
+                        span(after).color(fg),
                     ]
                     .on_link_click(iced::never)
                     .size(ACH_CARD_TITLE_TEXT_SIZE)
@@ -856,27 +876,34 @@ fn achievement_card_widget<'a>(
 
     let badge_text = row.status_label();
     let is_locked_badge = badge_text == "Locked";
-    let badge_color = match badge_text {
-        "Protected" => C_ORANGE,
-        "Pending" => C_YELLOW,
-        "Unlocked" => C_GREEN,
-        _ => C_TEXT_MUTED,
+    let fixed_badge_color: Option<Color> = match badge_text {
+        "Protected" => Some(C_ORANGE),
+        "Pending" => Some(C_YELLOW),
+        "Unlocked" => Some(C_GREEN),
+        _ => None,
     };
 
-    let badge_text_color = if is_locked_badge {
-        C_LOCKED_DESC
-    } else {
-        Color {
+    let badge = if let Some(badge_color) = fixed_badge_color {
+        let badge_text_color = Color {
             a: 0.9,
             ..badge_color
-        }
+        };
+        pill(
+            text(badge_text)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .color(badge_text_color),
+            badge_color,
+        )
+    } else {
+        let locked_text =
+            text(badge_text)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .style(move |_t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(C_LOCKED_DESC),
+                });
+        pill(locked_text, C_LOCKED_DESC)
     };
-    let badge = pill(
-        text(badge_text)
-            .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-            .color(badge_text_color),
-        badge_color,
-    );
+    let _ = is_locked_badge;
 
     let rarity_badge: Option<Element<'_, GameViewMessage>> = if spoiler_hidden {
         None
@@ -894,29 +921,30 @@ fn achievement_card_widget<'a>(
 
     let bottom_row: Element<'_, GameViewMessage> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
-        let reveal_btn = button(
-            text("Reveal")
-                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .color(C_ACCENT),
-        )
+        let reveal_btn = button(text("Reveal").size(ACH_CARD_DESCRIPTION_TEXT_SIZE).style(
+            |t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).accent),
+            },
+        ))
         .on_press(GameViewMessage::RevealHidden(reveal_id))
         .padding(Padding::default().left(12).right(12).top(3).bottom(3))
-        .style(|_t, status| {
+        .style(|t: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            let accent = palette(theme_from_iced(t)).accent;
             button::Style {
                 background: Some(Background::Color(Color {
                     a: if hovered { 0.28 } else { 0.18 },
-                    ..C_ACCENT
+                    ..accent
                 })),
                 border: Border {
                     color: Color {
                         a: if hovered { 0.65 } else { 0.45 },
-                        ..C_ACCENT
+                        ..accent
                     },
                     width: 1.0,
                     radius: 12.0.into(),
                 },
-                text_color: C_ACCENT,
+                text_color: accent,
                 ..button::Style::default()
             }
         });
@@ -966,13 +994,11 @@ fn achievement_card_widget<'a>(
         None
     };
 
-    let mut c = card(card_container)
-        .theme(AppTheme::Dark)
-        .on_press(GameViewMessage::AchievementToggled(toggle_id));
+    let mut c = card(card_container).on_press(GameViewMessage::AchievementToggled(toggle_id));
 
     if is_hidden_card {
         c = c
-            .accent(palette(AppTheme::Dark).border)
+            .border_accent_when(true)
             .accent_border_width(1.0, 1.0)
             .accent_alpha(0.40, 0.55)
             .radius(10.0);
@@ -1004,39 +1030,61 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     };
 
     let cancel_btn = if dirty > 0 && !is_busy {
-        button(text(cancel_label).size(12).color(C_FG))
-            .on_press(GameViewMessage::DiscardChanges)
-            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-            .style(|_t, status| {
-                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                button::Style {
-                    background: if hovered {
-                        Some(iced::Background::Color(Color { a: 0.2, ..C_MUTED }))
-                    } else {
-                        None
-                    },
-                    border: iced::Border {
-                        color: C_MUTED,
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    text_color: C_FG,
-                    ..button::Style::default()
-                }
-            })
+        button(
+            text(cancel_label)
+                .size(12)
+                .style(|t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(palette(theme_from_iced(t)).text_primary),
+                }),
+        )
+        .on_press(GameViewMessage::DiscardChanges)
+        .padding(Padding::default().left(12).right(12).top(6).bottom(6))
+        .style(|t: &iced::Theme, status| {
+            let p = palette(theme_from_iced(t));
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: if hovered {
+                    Some(iced::Background::Color(Color { a: 0.2, ..C_MUTED }))
+                } else {
+                    None
+                },
+                border: iced::Border {
+                    color: C_MUTED,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
+                text_color: p.text_primary,
+                ..button::Style::default()
+            }
+        })
     } else {
-        button(text(cancel_label).size(12).color(Color { a: 0.4, ..C_FG }))
-            .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-            .style(|_t, _status| button::Style {
+        button(
+            text(cancel_label)
+                .size(12)
+                .style(|t: &iced::Theme| iced::widget::text::Style {
+                    color: Some(Color {
+                        a: 0.4,
+                        ..palette(theme_from_iced(t)).text_primary
+                    }),
+                }),
+        )
+        .padding(Padding::default().left(12).right(12).top(6).bottom(6))
+        .style(|t: &iced::Theme, _status| {
+            let p = palette(theme_from_iced(t));
+            button::Style {
                 background: None,
                 border: iced::Border {
                     color: Color { a: 0.3, ..C_MUTED },
                     width: 1.0,
                     radius: 6.0.into(),
                 },
-                text_color: Color { a: 0.4, ..C_FG },
+                text_color: Color {
+                    a: 0.4,
+                    ..p.text_primary
+                },
                 ..button::Style::default()
-            })
+            }
+        })
     };
 
     let apply_label = if dirty > 0 {
@@ -1081,11 +1129,17 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     } else {
         button(text(apply_label).size(12))
             .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-            .style(|_t, _s| button::Style {
-                background: Some(iced::Background::Color(Color { a: 0.3, ..C_PURPLE })),
-                border: dracula_border_radius(6.0),
-                text_color: Color { a: 0.4, ..C_FG },
-                ..button::Style::default()
+            .style(|t: &iced::Theme, _s| {
+                let p = palette(theme_from_iced(t));
+                button::Style {
+                    background: Some(iced::Background::Color(Color { a: 0.3, ..C_PURPLE })),
+                    border: dracula_border_radius(6.0),
+                    text_color: Color {
+                        a: 0.4,
+                        ..p.text_primary
+                    },
+                    ..button::Style::default()
+                }
             })
     };
 
@@ -1103,8 +1157,8 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let vert_divider = container(space())
         .width(Length::Fixed(1.0))
         .height(Length::Fixed(28.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_BORDER)),
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(palette(theme_from_iced(t)).border)),
             ..container::Style::default()
         });
 

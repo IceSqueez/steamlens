@@ -414,44 +414,49 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
 fn build_global_actions(
     current_theme: crate::ui::theme::AppTheme,
 ) -> Element<'static, crate::Message> {
-    use crate::theme::{C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
     use crate::ui::widgets::tooltip_box::tooltip_box;
 
-    let make_icon_btn = |glyph: &'static str, on_press: crate::Message| {
-        button(
-            container(text(glyph).size(14).color(C_TEXT_MUTED))
+    let make_icon_btn =
+        |glyph: &'static str, on_press: crate::Message| {
+            button(
+                container(text(glyph).size(14).style(|t: &iced::Theme| {
+                    iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_muted),
+                    }
+                }))
                 .width(Length::Fixed(32.0))
                 .height(Length::Fixed(32.0))
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center),
-        )
-        .on_press(on_press)
-        .padding(0)
-        .style(|_: &iced::Theme, status| {
-            let hovered = matches!(
-                status,
-                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
-            );
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(if hovered {
-                    C_HOVER
-                } else {
-                    iced::Color::TRANSPARENT
-                })),
-                border: iced::Border {
-                    color: C_BORDER,
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                text_color: if hovered {
-                    C_TEXT_PRIMARY
-                } else {
-                    C_TEXT_MUTED
-                },
-                ..iced::widget::button::Style::default()
-            }
-        })
-    };
+            )
+            .on_press(on_press)
+            .padding(0)
+            .style(|t: &iced::Theme, status| {
+                let hovered = matches!(
+                    status,
+                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+                );
+                let p = palette(theme_from_iced(t));
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(if hovered {
+                        p.hover
+                    } else {
+                        iced::Color::TRANSPARENT
+                    })),
+                    border: iced::Border {
+                        color: p.border,
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    text_color: if hovered {
+                        p.text_primary
+                    } else {
+                        p.text_muted
+                    },
+                    ..iced::widget::button::Style::default()
+                }
+            })
+        };
 
     let (theme_glyph, theme_tooltip) = match current_theme {
         crate::ui::theme::AppTheme::Dark => ("\u{263C}", "Switch to light theme"),
