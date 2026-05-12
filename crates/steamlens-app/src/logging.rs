@@ -70,10 +70,15 @@ where
 }
 
 fn host_filter() -> Targets {
+    let default_level = std::env::var("STEAMLENS_LOG")
+        .ok()
+        .and_then(|s| s.parse::<Level>().ok())
+        .unwrap_or(Level::INFO);
     Targets::new()
-        .with_target("steamlens_app", Level::TRACE)
-        .with_target("steamlens_core", Level::TRACE)
-        .with_target("steamlens_vdf", Level::TRACE)
+        .with_target("steamlens_app", default_level)
+        .with_target("steamlens_core", default_level)
+        .with_target("steamlens_vdf", default_level)
+        .with_target("worker", default_level)
         .with_target("panic", Level::ERROR)
         .with_default(LevelFilter::OFF)
 }
