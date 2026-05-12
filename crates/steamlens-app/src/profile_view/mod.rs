@@ -178,7 +178,7 @@ use types::{
     StoredCapsule,
 };
 
-const MAX_CONCURRENT_DOWNLOADS: usize = 2;
+const MAX_CONCURRENT_DOWNLOADS: usize = 8;
 
 pub fn update(
     state: &mut ProfileViewState,

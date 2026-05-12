@@ -9,6 +9,12 @@ pub fn fetch_capsule(app_id: u32, size: CapsuleSize) -> Task<ProfileViewMessage>
         async move { capsule_cache::fetch_capsule(app_id, size).await },
         move |result| match result {
             Ok((fetched_size, pixels)) => {
+                tracing::debug!(
+                    app_id,
+                    width = pixels.width,
+                    height = pixels.height,
+                    "capsule fetched"
+                );
                 let handle = ImageHandle::from_rgba(pixels.width, pixels.height, pixels.rgba);
                 ProfileViewMessage::CapsuleLoaded {
                     app_id,
@@ -18,10 +24,13 @@ pub fn fetch_capsule(app_id: u32, size: CapsuleSize) -> Task<ProfileViewMessage>
                     height: pixels.height,
                 }
             }
-            Err((fetched_size, _)) => ProfileViewMessage::CapsuleFailed {
-                app_id,
-                size: fetched_size,
-            },
+            Err((fetched_size, err)) => {
+                tracing::warn!(app_id, error = %err, "capsule fetch failed");
+                ProfileViewMessage::CapsuleFailed {
+                    app_id,
+                    size: fetched_size,
+                }
+            }
         },
     )
 }
