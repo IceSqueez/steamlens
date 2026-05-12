@@ -79,6 +79,7 @@ fn host_filter() -> Targets {
         .with_target("steamlens_core", default_level)
         .with_target("steamlens_vdf", default_level)
         .with_target("worker", default_level)
+        .with_target("probe", default_level)
         .with_target("panic", Level::ERROR)
         .with_default(LevelFilter::OFF)
 }
