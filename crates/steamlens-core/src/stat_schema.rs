@@ -12,6 +12,7 @@ pub enum StatKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatDescriptor {
     pub name: String,
+    pub display_name: Option<String>,
     pub kind: StatKind,
     pub max_value: Option<u64>,
     pub default_value: Option<i64>,
@@ -96,8 +97,22 @@ fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
             .and_then(|p| p.value.as_i32())
             .map(|v| v as i64);
 
+        let display_name = children
+            .iter()
+            .find(|p| p.key == "display")
+            .and_then(|p| p.value.as_section())
+            .and_then(|display_children| {
+                display_children
+                    .iter()
+                    .find(|p| p.key == "name")
+                    .and_then(|p| p.value.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_owned())
+            });
+
         out.push(StatDescriptor {
             name,
+            display_name,
             kind,
             max_value,
             default_value,

@@ -490,8 +490,13 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
                 StatValue::Float(stats_iface.get_stat_float(&desc.name).unwrap_or(0.0))
             }
         };
+        let display_name = desc
+            .display_name
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| desc.name.clone());
         stats.push(steamlens_core::StatData {
-            display_name: desc.name.clone(),
+            display_name,
             id: desc.name,
             value,
             original_value: value,
