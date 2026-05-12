@@ -697,68 +697,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::batch([task, sync_task])
                 }
                 GameViewEvent::GoBack => {
-                    let write_tasks: Vec<Task<Message>> = {
-                        let Screen::GameView(gv_state) = &app.screen else {
-                            return task;
-                        };
-                        if gv_state.cache_only {
-                            Vec::new()
-                        } else {
-                            let app_id = gv_state.app_id;
-                            let mut entry = build_game_view_cache_entry(
-                                gv_state,
-                                app_id,
-                                &app.context.steam_root,
-                                app.context.steamid3,
-                            );
-                            if let Some(existing) = app.context.cached_entries.get(&app_id)
-                                && entry.genre.is_none()
-                            {
-                                entry.genre = existing.genre.clone();
-                            }
-                            app.context.cached_entries.insert(app_id, entry.clone());
-
-                            let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> =
-                                gv_state
-                                    .achievements
-                                    .iter()
-                                    .filter_map(|r| {
-                                        r.data.icon.as_ref().map(|i| (r.data.id.clone(), i.clone()))
-                                    })
-                                    .collect();
-                            let icons_task = Task::perform(
-                                async move {
-                                    tokio::task::spawn_blocking(move || {
-                                        for (id, icon) in &icons_to_write {
-                                            if let Err(e) =
-                                                cache::icons::write_blocking(app_id, id, icon)
-                                            {
-                                                crate::log!(
-                                                    "icon cache write failed app_id={app_id} ach={id}: {e}"
-                                                );
-                                            }
-                                        }
-                                    })
-                                    .await
-                                    .map_err(|e| e.to_string())
-                                },
-                                move |result| Message::CacheWritten {
-                                    app_id,
-                                    result: result.map(|_| ()),
-                                },
-                            );
-
-                            vec![cache::commands::write_game_cache(entry), icons_task]
-                        }
-                    };
                     go_back_to_profile(app);
-                    if write_tasks.is_empty() {
-                        task
-                    } else {
-                        let mut combined = vec![task];
-                        combined.extend(write_tasks);
-                        Task::batch(combined)
-                    }
+                    task
                 }
                 GameViewEvent::InvalidateCache { app_id } => {
                     let invalidate_task = update(app, Message::InvalidateGameCache(app_id));
