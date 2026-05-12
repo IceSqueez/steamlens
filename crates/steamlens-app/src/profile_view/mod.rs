@@ -432,9 +432,12 @@ fn drain_progress_results(
                 let scan_app_id = result.app_id;
                 let Some(data) = result.data else {
                     state.failed_app_ids.insert(scan_app_id);
+                    let reason = result
+                        .error
+                        .unwrap_or_else(|| format!("Scan failed for app {scan_app_id}"));
                     tasks.push(Task::done(ProfileViewMessage::ScanFailed {
                         app_id: scan_app_id,
-                        reason: format!("Scan failed for app {scan_app_id}"),
+                        reason,
                     }));
                     continue;
                 };
