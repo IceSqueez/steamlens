@@ -105,6 +105,17 @@ pub async fn write_game_summary(entry: &GameSummaryCache) -> Result<(), CacheIoE
     atomic_write(&path, &bytes).await
 }
 
+pub async fn delete_game_cache_dir(app_id: u32) -> Result<(), CacheIoError> {
+    let dir = crate::paths::cache_dir()
+        .join("games")
+        .join(app_id.to_string());
+    match tokio::fs::remove_dir_all(&dir).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(CacheIoError::Io(e)),
+    }
+}
+
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 pub async fn load_game_achievements(app_id: u32) -> Option<GameAchievementsCache> {
     let path = crate::paths::game_achievements_path(app_id);
@@ -191,6 +202,7 @@ mod tests {
             },
             tier_breakdown: Vec::new(),
             genre: None,
+            playtime_minutes: None,
         }
     }
 
@@ -402,6 +414,7 @@ mod tests {
             },
             tier_breakdown: Vec::new(),
             genre: Some("Action".to_owned()),
+            playtime_minutes: None,
         };
 
         let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");
@@ -467,6 +480,7 @@ mod tests {
             },
             tier_breakdown: Vec::new(),
             genre: None,
+            playtime_minutes: None,
         };
 
         let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");

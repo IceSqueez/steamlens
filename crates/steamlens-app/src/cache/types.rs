@@ -21,6 +21,8 @@ pub struct GameCacheEntry {
     pub tier_breakdown: Vec<(RarityTier, u32)>,
     #[serde(default)]
     pub genre: Option<String>,
+    #[serde(default)]
+    pub playtime_minutes: Option<u32>,
 }
 
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
@@ -34,6 +36,8 @@ pub struct GameSummaryCache {
     pub progress: CachedProgress,
     pub tier_breakdown: Vec<(RarityTier, u32)>,
     pub genre: Option<String>,
+    #[serde(default)]
+    pub playtime_minutes: Option<u32>,
 }
 
 #[allow(dead_code, reason = "consumers land in subsequent migration chunks")]

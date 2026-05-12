@@ -401,6 +401,7 @@ mod tests {
             progress: CachedProgress { earned, total },
             tier_breakdown: Vec::new(),
             genre: None,
+            playtime_minutes: None,
         }
     }
 

@@ -94,6 +94,8 @@ fn loaded_view(state: &GameViewState, skeleton_phase: f32) -> Element<'_, GameVi
     let game_widget_el = game_widget(GameWidgetParams {
         app_id: state.app_id,
         game_name: state.game_name.as_str(),
+        genre: state.genre.as_deref(),
+        playtime_minutes: state.playtime_minutes,
         achievements: state.achievements.as_slice(),
         stats: state.stats.as_slice(),
         stats_search_query: state.stats_search_query.as_str(),

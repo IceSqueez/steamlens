@@ -501,6 +501,7 @@ fn drain_progress_results(
                     progress: entry.progress,
                     tier_breakdown: entry.tier_breakdown.clone(),
                     genre: entry.genre.clone(),
+                    playtime_minutes: entry.playtime_minutes,
                 });
 
                 ctx.cached_entries.insert(scan_app_id, entry.clone());

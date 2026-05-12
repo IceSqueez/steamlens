@@ -227,6 +227,7 @@ pub enum GameViewMessage {
     },
     BarSliceHoverEnter(RarityTier),
     BarSliceHoverExit,
+    InvalidateCacheClicked(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +235,7 @@ pub enum GameViewEvent {
     None,
     GoBack,
     AchievementsFullyLoaded { app_id: u32 },
+    InvalidateCache { app_id: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -286,6 +288,9 @@ pub struct GameViewState {
     pub hovered_bar_slice: Option<RarityTier>,
 
     pub expected_total: u32,
+
+    pub genre: Option<String>,
+    pub playtime_minutes: Option<u32>,
 }
 
 impl GameViewState {
@@ -317,6 +322,8 @@ impl GameViewState {
             capsule_handles: HashMap::new(),
             hovered_bar_slice: None,
             expected_total: 0,
+            genre: None,
+            playtime_minutes: None,
         }
     }
 
@@ -845,6 +852,10 @@ pub fn update(
         GameViewMessage::BarSliceHoverExit => {
             state.hovered_bar_slice = None;
             (Task::none(), GameViewEvent::None)
+        }
+
+        GameViewMessage::InvalidateCacheClicked(app_id) => {
+            (Task::none(), GameViewEvent::InvalidateCache { app_id })
         }
     }
 }

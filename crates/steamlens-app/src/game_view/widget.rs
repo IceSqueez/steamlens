@@ -1,20 +1,36 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use iced::widget::{column, container, image as image_widget, row, text};
+use iced::widget::{button, column, container, image as image_widget, row, svg, text};
 use iced::{Alignment, Border, Color, Element, Length, Shadow, Vector};
 
 use crate::capsule_cache::CapsuleSize;
-use crate::theme::{C_ACCENT, C_TEXT_MUTED, C_TEXT_PRIMARY};
+use crate::theme::{C_ACCENT, C_BORDER, C_HOVER, C_TEXT_MUTED, C_TEXT_PRIMARY};
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::skeleton::skeleton_box;
 use crate::ui::widgets::widget::{
-    WidgetSummary, breakdown_row, cards_separator, format_thousands, rarity_bar, rarity_cards,
-    widget_panel,
+    WidgetSummary, breakdown_row, cards_separator, rarity_bar, rarity_cards, widget_panel,
 };
 
 use super::GameViewMessage;
 use super::types::{AchievementRow, RarityTier, compute_tier_map};
 use crate::profile_view::types::StoredCapsule;
+
+static SVG_CLOCK: LazyLock<svg::Handle> = LazyLock::new(|| {
+    svg::Handle::from_memory(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#6b6884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>"##
+            .as_bytes()
+            .to_vec(),
+    )
+});
+
+static SVG_INVALIDATE: LazyLock<svg::Handle> = LazyLock::new(|| {
+    svg::Handle::from_memory(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#bd93f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>"##
+            .as_bytes()
+            .to_vec(),
+    )
+});
 
 const CAPSULE_SLOT_W: f32 = 184.0;
 const CAPSULE_SLOT_H: f32 = 276.0;
@@ -46,6 +62,8 @@ pub fn compute_game_summary(achievements: &[AchievementRow]) -> WidgetSummary {
 pub struct GameWidgetParams<'a> {
     pub app_id: u32,
     pub game_name: &'a str,
+    pub genre: Option<&'a str>,
+    pub playtime_minutes: Option<u32>,
     pub achievements: &'a [AchievementRow],
     pub stats: &'a [super::types::StatRow],
     pub stats_search_query: &'a str,
@@ -61,6 +79,8 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
     let inner_col = build_left_column(
         params.app_id,
         params.game_name,
+        params.genre,
+        params.playtime_minutes,
         &summary,
         params.hovered_bar_slice,
     );
@@ -77,10 +97,12 @@ const HEADER_BLOCK_H: f32 = 64.0;
 fn build_left_column<'a>(
     app_id: u32,
     game_name: &'a str,
+    genre: Option<&'a str>,
+    playtime_minutes: Option<u32>,
     summary: &WidgetSummary,
     hovered_bar_slice: Option<RarityTier>,
 ) -> Element<'a, GameViewMessage> {
-    let header_row = build_game_header(app_id, game_name, summary);
+    let header_row = build_game_header(app_id, game_name, genre, playtime_minutes);
     let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
@@ -105,7 +127,8 @@ fn build_left_column<'a>(
 fn build_game_header<'a>(
     app_id: u32,
     game_name: &'a str,
-    summary: &WidgetSummary,
+    genre: Option<&'a str>,
+    playtime_minutes: Option<u32>,
 ) -> Element<'a, GameViewMessage> {
     let name = text(game_name.to_owned()).size(15).color(C_TEXT_PRIMARY);
     let appid_pill = pill(
@@ -114,22 +137,97 @@ fn build_game_header<'a>(
     )
     .radius(4.0);
 
-    let name_row = row![name, appid_pill].spacing(6).align_y(Alignment::Center);
+    let invalidate_btn = build_invalidate_button(app_id);
 
-    let subtitle = text(format!(
-        "{} achievements",
-        format_thousands(summary.achievement_total)
-    ))
-    .size(12)
-    .color(C_TEXT_MUTED);
+    let name_row = row![
+        name,
+        appid_pill,
+        iced::widget::Space::new().width(Length::Fill),
+        invalidate_btn,
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
 
-    let info = column![name_row, subtitle].spacing(2);
+    let genre_text = text(genre.unwrap_or("Unknown genre").to_owned())
+        .size(12)
+        .color(C_TEXT_MUTED);
+
+    let clock_icon = svg(SVG_CLOCK.clone())
+        .width(Length::Fixed(12.0))
+        .height(Length::Fixed(12.0));
+
+    let playtime_label = format_playtime(playtime_minutes);
+    let playtime_row = row![
+        clock_icon,
+        text(playtime_label).size(12).color(C_TEXT_MUTED),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
+
+    let info = column![name_row, genre_text, playtime_row].spacing(2);
 
     container(info)
         .width(Length::Fill)
         .height(Length::Fixed(HEADER_BLOCK_H))
         .align_y(Alignment::Start)
         .into()
+}
+
+fn build_invalidate_button<'a>(app_id: u32) -> Element<'a, GameViewMessage> {
+    use crate::ui::widgets::tooltip_box::tooltip_box;
+
+    let icon = svg(SVG_INVALIDATE.clone())
+        .width(Length::Fixed(14.0))
+        .height(Length::Fixed(14.0));
+    let btn = button(
+        container(icon)
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .on_press(GameViewMessage::InvalidateCacheClicked(app_id))
+    .padding(0)
+    .style(|_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(iced::Background::Color(if hovered {
+                C_HOVER
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: Border {
+                color: if hovered { C_ACCENT } else { C_BORDER },
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..button::Style::default()
+        }
+    });
+
+    tooltip_box(
+        btn,
+        "Clear cached data for this game",
+        iced::widget::tooltip::Position::Left,
+    )
+}
+
+fn format_playtime(minutes: Option<u32>) -> String {
+    let Some(m) = minutes else {
+        return "Never played".to_owned();
+    };
+    if m == 0 {
+        return "Never played".to_owned();
+    }
+    let hours = m / 60;
+    let mins = m % 60;
+    if hours == 0 {
+        format!("{mins}m played")
+    } else if mins == 0 {
+        format!("{hours}h played")
+    } else {
+        format!("{hours}h {mins}m played")
+    }
 }
 
 fn build_capsule<'a>(
