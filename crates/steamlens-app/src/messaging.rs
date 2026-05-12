@@ -4,7 +4,7 @@ use iced::widget::{column, container};
 use iced::{Element, Length, Padding};
 
 const TOAST_LIFETIME: Duration = Duration::from_secs(4);
-const MAX_VISIBLE_TOASTS: usize = 3;
+const MAX_VISIBLE_TOASTS: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerSeverity {
@@ -238,16 +238,13 @@ pub fn toast_stack<'a>(messaging: &'a MessagingCenter) -> Element<'a, crate::Mes
     for toast in messaging.toasts.iter().rev().take(MAX_VISIBLE_TOASTS) {
         toast_col = toast_col.push(render_toast(toast));
     }
-    column![
-        iced::widget::Space::new().height(Length::Fill),
-        container(toast_col)
-            .width(Length::Fill)
-            .padding(Padding::default().right(16).bottom(16)),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .align_x(iced::Alignment::End)
-    .into()
+    container(toast_col)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::Alignment::End)
+        .align_y(iced::Alignment::Start)
+        .padding(Padding::default().right(16).top(16))
+        .into()
 }
 
 fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
