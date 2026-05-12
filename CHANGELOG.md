@@ -1,9 +1,103 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.9] - 2026-05-12
+### ⚙️ Miscellaneous Tasks
+- *(assets)* Adds images and multires ico
+
+### 🎨 Styling
+- *(ui)* Pull bar+ticks up after header, taller rarity cards with centered content
+- *(status-bar)* Rounded surface and consistent margins matching widget panel
+- *(ui)* Expand short sort labels to full descriptive text
+- *(ui)* Use em-dash instead of arrow in name-sort label
+
+### 🐛 Bug Fixes
+- *(widgets)* Fixed styling issues
+- *(game-view)* Add drop shadow under portrait capsule
+- *(ui)* Move earnings counter into its own row below header in both widgets
+- *(ui)* Cap rarity-cards row width so cards stop stretching beyond 124px each
+- *(ui)* Clip overflowing game-card names so wide titles stop breaking layout
+- *(ui)* UI enchancements
+- *(ui)* Per-tier rarity bar tick colors; wire hover state on game widget bar
+- *(game-view)* Skeleton-until-icon-ready per achievement card
+- *(ipc)* Drain worker stdout via background reader task to unblock icon callbacks
+- *(game-view)* Drop bogus count label from action footer
+- *(app)* Survive binary replacement; unblock splash on probe failure
+- *(game-view)* Render full layout from open-game tick
+- *(ui)* Status bar progress now tracks icons + rarity percentages and capsule load
+- *(game-view)* Status bar counts only cards with both icon and rarity percent
+- *(app)* Route ProfileView async messages to prev_profile_state on GameView
+- *(about)* Use icon-128 to reduce bilinear downscale artifacts
+- *(game-view)* Use cached achievement count as initial loading total
+- *(core)* Correct ISteamUserStats013 vtable order for GetStat/SetStat overloads
+- *(ui)* Unify achievement description color across locked and unlocked
+- *(cache)* Refresh summary tier-breakdown after global percentages arrive
+- *(cache)* Persist and restore steam level from profile cache
+- *(ui)* Rename Steam-disconnect banner action from "Retry" to "Reconnect"
+- *(ui)* Replace blurry refresh glyph with crisp trash-bin in cache invalidate button
+- *(ui)* Drop redundant in-view banner from game_view cache-only mode
+- *(ui)* Show offline status bar in cache-only game view
+- *(ui)* Hydrate game view from full disk cache when Steam is offline
+- *(cache)* Persist scanned achievements so offline cards render
+- *(ui)* Tick skeleton shimmer animation in cache-only game view
+- *(cache)* Persist stat schema fields so offline progress bars render
+- *(splash)* Do not reset boot flags on reconnect, prevents stuck splash
+- *(ui)* Clarify schema-bump banner wording
+- *(scan)* Skip progress scanner when Steam is offline to prevent worker flood
+- *(scan)* Cancel scan and surface offline banner when Steam dies mid-scan
+- *(scan)* Plumb worker error into ScanFailed and broaden Steam-died detection
+- *(scan)* Create scanner in prev_profile_state when CacheClassified arrives on GameView
+- *(core)* Propagate steam_root from probe worker so playtime reads succeed
+- *(ui)* Clear search query on GoBack from game view
+
+### 📚 Documentation
+- *(readme)* Updated description
+- *(readme)* Adds application screenshot
+- *(readme)* Updates badges
+
+### 🚀 Features
+- *(ui)* Refresh banner, status footer, and toast visuals
+- *(game)* Adds game widget; extracted common logic to ui/widgets
+- *(game-view)* Large capsule slot with disk-cached fetch on game open
+- *(ui)* Abbreviate rarity card labels when widget is narrow
+- *(ui)* Show tooltip with full game name when card title is truncated
+- *(ui)* Show top 6 closest-to-100% games in profile widget
+- *(images)* Adds proper images when application is running
+- *(ui)* Colored genre pills on game cards and in genre filter strip
+- *(ui)* Add dot prefix and hover state to genre filter pills
+- *(ui)* Polish about modal — drop header, svg icons, glow on app icon
+- *(game-view)* Replace closest-to-achieve with in-game statistics panel
+- *(stats)* Yellow dirty indicator on rows
+- *(stats)* Display_name from VDF schema
+- *(game-view)* Require typed 'confirmed' to commit pending changes to Steam
+- *(ui)* Dim filter-pill dots when any filter is active
+- *(ui)* Genre and playtime in game header; per-game cache invalidate button
+- *(ui)* Allow opening game view in read-only cache mode without Steam
+- *(cache)* Persist achievement icons to disk for offline rendering
+- *(cache)* Write full game cache and icons on achievements-loaded
+- *(ui)* Add manual close button to every toast
+- *(ui)* Position toasts at top-right and raise stack limit to 5
+- *(ui)* Replace Settings stub with theme switcher and persist AppTheme
+- *(ui)* Migrate hardcoded colors to theme-aware style closures
+- *(app)* Notify user when a newer GitHub release is available
+
+### 🚜 Refactor
+- *(ui)* Extract banner, status_bar and toast as standalone widgets
+- *(ui)* Banner and per-view status_bar via ScreenContent slot
+- *(ui)* Merge bulk-action row into footer
+- *(cache)* Drop redundant cache writes from game view go-back
+- *(cache)* Bump schema versions instead of serde-default for new fields
+
+### 🛠️ Build
+- *(build)* Ship Windows exe, Linux AppImage, macOS dmg with embedded icons
+
+### 🧪 Testing
+- *(settings)* Fixed broken unit tests
+
 ## [1.0.0-alpha.8] - 2026-05-11
 ### ⚙️ Miscellaneous Tasks
 - *(app)* Cleanup
+- Release
 
 ### ⚡ Performance
 - *(app)* Tighten card-only scan timeouts and add worker dispatch diagnostics
@@ -42,6 +136,9 @@ All notable changes to this project will be documented in this file.
 - *(ui)* Hide status footer when scan completes
 - *(ui)* Replace SteamNotRunning full-screen with warning banner + reconnect
 - *(profile-view)* Show remaining-to-100% count in "Closest to 100%" row
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-alpha.8
 
 ### 🚀 Features
 - *(app)* Introduce crate::logging and migrate all eprintln! callsites
