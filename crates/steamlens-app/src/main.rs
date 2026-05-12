@@ -638,8 +638,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 playtime_minutes,
             };
 
+            if let Some(existing) = app.context.cached_entries.get(&app_id)
+                && existing.progress.earned == summary.progress.earned
+                && existing.progress.total == summary.progress.total
+                && existing.tier_breakdown == summary.tier_breakdown
+                && existing.playtime_minutes == summary.playtime_minutes
+            {
+                return Task::none();
+            }
+
             tracing::info!(
-                "persist game summary: app_id={app_id} earned={earned} total={total} change_number={change_number}"
+                app_id,
+                earned,
+                total,
+                change_number,
+                "persist game summary"
             );
 
             let mut full_entry = build_game_view_cache_entry(
