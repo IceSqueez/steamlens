@@ -489,8 +489,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     for summary in summary_entries {
                         tasks.push(cache::commands::write_game_summary(summary));
                     }
-                    for (app_id, cn) in no_ach_entries {
-                        app.context.no_ach_cache.insert(app_id, cn);
+                    if !no_ach_entries.is_empty() {
+                        for (app_id, cn) in no_ach_entries {
+                            app.context.no_ach_cache.insert(app_id, cn);
+                        }
                         let snapshot = app.context.no_ach_cache.clone();
                         tasks.push(cache::commands::write_no_ach_cache(snapshot));
                     }
