@@ -282,6 +282,8 @@ pub struct GameViewState {
     >,
 
     pub hovered_bar_slice: Option<RarityTier>,
+
+    pub expected_total: u32,
 }
 
 impl GameViewState {
@@ -314,6 +316,7 @@ impl GameViewState {
             pending_rarity_percent: None,
             capsule_handles: HashMap::new(),
             hovered_bar_slice: None,
+            expected_total: 0,
         }
     }
 

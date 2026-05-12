@@ -288,6 +288,7 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     state.include_hidden = app.context.settings.manager.include_hidden;
 
     if let Some(cached) = app.context.cached_entries.get(&app_id) {
+        state.expected_total = cached.progress.total;
         seed_game_view_from_cache(&mut state, cached);
     }
 
