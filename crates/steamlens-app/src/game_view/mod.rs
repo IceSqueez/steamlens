@@ -167,9 +167,8 @@ use crate::profile_view::types::ProfileViewState;
 use crate::steam_worker::{SteamReply, SteamRequest};
 
 use types::{
-    AchievementFilter, AchievementRow, AchievementSort, Banner, BannerKind, BulkOp, RarityTier,
-    StatRow, StatValue, build_apply_payload, compute_tier_map, dirty_count, has_stat_errors,
-    visible_achievement_ids,
+    AchievementFilter, AchievementRow, AchievementSort, BulkOp, RarityTier, StatRow, StatValue,
+    build_apply_payload, compute_tier_map, dirty_count, has_stat_errors, visible_achievement_ids,
 };
 
 pub(crate) const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -180,13 +179,11 @@ fn surface_connectivity_error(
 ) {
     use crate::worker_subprocess::ConnectivityError as CE;
     let msg = match err {
-        CE::SteamNotRunning => "Steam is not running — cannot send command",
-        CE::NotLoggedIn => "User is not signed in to Steam — cannot send command",
+        CE::SteamNotRunning => "Steam disconnected — action skipped",
+        CE::NotLoggedIn => "Not signed in to Steam — action skipped",
     };
-    if !ctx.messaging.banners.iter().any(|b| b.body == msg) {
-        ctx.messaging
-            .push_banner(crate::messaging::BannerSeverity::Warning, msg, None, true);
-    }
+    ctx.messaging
+        .push_toast(crate::messaging::ToastKind::Error, msg.to_owned(), None);
 }
 
 #[derive(Debug, Clone)]
@@ -209,7 +206,6 @@ pub enum GameViewMessage {
     ApplyConfirmInputChanged(String),
     ApplyConfirmed,
     ApplyCancelled,
-    BannerDismissed,
     DiscardChanges,
     RevealHidden(String),
     SpinnerTick,
@@ -271,8 +267,6 @@ pub struct GameViewState {
     pub apply_confirm_input: String,
     pub show_apply_modal: bool,
 
-    pub banner: Option<Banner>,
-
     pub spinner_angle: f32,
     pub fade_in: f32,
     pub rare_glow_phase: f32,
@@ -317,7 +311,6 @@ impl GameViewState {
             include_hidden: false,
             apply_confirm_input: String::new(),
             show_apply_modal: false,
-            banner: None,
             spinner_angle: 0.0,
             fade_in: 0.0,
             rare_glow_phase: 0.0,
@@ -364,7 +357,11 @@ impl GameViewState {
     }
 }
 
-pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<GameViewMessage> {
+pub fn handle_steam_reply(
+    state: &mut GameViewState,
+    reply: SteamReply,
+    ctx: &mut crate::app_context::AppContext,
+) -> Task<GameViewMessage> {
     match reply {
         SteamReply::Connected { app_name, .. } => {
             if let Some(name) = app_name {
@@ -458,20 +455,20 @@ pub fn handle_steam_reply(state: &mut GameViewState, reply: SteamReply) -> Task<
                 }
             }
             state.phase = GameViewPhase::Ready;
-            state.banner = Some(Banner {
-                kind: BannerKind::Success,
-                message: "Changes saved to Steam.".to_owned(),
-                dismissible: true,
-            });
+            ctx.messaging.push_toast(
+                crate::messaging::ToastKind::Success,
+                "Changes saved to Steam".to_owned(),
+                None,
+            );
             Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::SaveFailed(e) => {
             state.phase = GameViewPhase::Ready;
-            state.banner = Some(Banner {
-                kind: BannerKind::Error,
-                message: format!("Failed to save: {e}"),
-                dismissible: true,
-            });
+            ctx.messaging.push_toast(
+                crate::messaging::ToastKind::Error,
+                format!("Failed to save: {e}"),
+                None,
+            );
             Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::IconUpdated { name, icon } => {
@@ -534,11 +531,11 @@ pub fn update(
         GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
                 if row.data.permission != 0 {
-                    state.banner = Some(Banner {
-                        kind: BannerKind::Warning,
-                        message: "This achievement is protected and cannot be modified.".to_owned(),
-                        dismissible: true,
-                    });
+                    ctx.messaging.push_toast(
+                        crate::messaging::ToastKind::Info,
+                        "This achievement is protected and cannot be modified".to_owned(),
+                        None,
+                    );
                 } else {
                     row.is_dirty = !row.is_dirty;
                 }
@@ -694,7 +691,6 @@ pub fn update(
             state.achievements.clear();
             state.stats.clear();
             state.reveal_queue.clear();
-            state.banner = None;
             if let Some(w) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
@@ -768,10 +764,6 @@ pub fn update(
                     );
                 }
             }
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::BannerDismissed => {
-            state.banner = None;
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::DiscardChanges => {
@@ -990,7 +982,7 @@ mod tests {
             name: "ACH_FOO".to_owned(),
             icon: sample_icon(),
         };
-        let _task = handle_steam_reply(&mut state, reply);
+        let _task = handle_steam_reply(&mut state, reply, &mut make_test_ctx());
 
         let icon = state.achievements[0]
             .data
@@ -1010,7 +1002,7 @@ mod tests {
             name: "ACH_NONEXISTENT".to_owned(),
             icon: sample_icon(),
         };
-        let _task = handle_steam_reply(&mut state, reply);
+        let _task = handle_steam_reply(&mut state, reply, &mut make_test_ctx());
 
         assert!(state.achievements[0].data.icon.is_none());
     }

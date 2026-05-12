@@ -12,9 +12,7 @@ pub fn achievement_search_id() -> WidgetId {
     WidgetId::new("achievement-search")
 }
 
-use super::types::{
-    AchievementRow, BannerKind, BulkOp, RarityTier, compute_tier_map, visible_achievement_ids,
-};
+use super::types::{AchievementRow, BulkOp, RarityTier, compute_tier_map, visible_achievement_ids};
 use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
@@ -108,16 +106,10 @@ fn loaded_view(
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
     });
-    let top_block: Element<'_, GameViewMessage> = if let Some(b) = &state.banner {
-        column![game_widget_el, banner_widget(b)].spacing(0).into()
-    } else {
-        game_widget_el
-    };
-
     let body = achievements_tab(state, skeleton_phase, app_theme);
 
     compose_screen(ScreenContent {
-        top: Some(top_block),
+        top: Some(game_widget_el),
         status_bar: game_status_bar(state),
         body,
         footer: Some(footer_bar(state)),
@@ -240,65 +232,6 @@ pub(crate) fn build_game_reload_button() -> Element<'static, crate::Message> {
         "Reload achievements & stats from Steam",
         iced::widget::tooltip::Position::Bottom,
     )
-}
-
-fn banner_widget(banner: &super::types::Banner) -> Element<'_, GameViewMessage> {
-    let (bg, text_color) = match banner.kind {
-        BannerKind::Success => (
-            Color {
-                r: 0.314,
-                g: 0.980,
-                b: 0.482,
-                a: 0.15,
-            },
-            C_GREEN,
-        ),
-        BannerKind::Warning => (
-            Color {
-                r: 1.0,
-                g: 0.722,
-                b: 0.424,
-                a: 0.15,
-            },
-            C_ORANGE,
-        ),
-        BannerKind::Error => (
-            Color {
-                r: 1.0,
-                g: 0.333,
-                b: 0.333,
-                a: 0.15,
-            },
-            C_RED,
-        ),
-    };
-
-    let msg_text = text(banner.message.clone()).size(13).color(text_color);
-
-    let inner: Element<'_, GameViewMessage> = if banner.dismissible {
-        let dismiss = button(text("\u{00D7}").size(13).color(text_color))
-            .on_press(GameViewMessage::BannerDismissed)
-            .padding(Padding::from([2u16, 8]))
-            .style(|_t, _s| button::Style {
-                background: None,
-                ..button::Style::default()
-            });
-        row![msg_text, space().width(Length::Fill), dismiss]
-            .align_y(Alignment::Center)
-            .spacing(8)
-            .into()
-    } else {
-        msg_text.into()
-    };
-
-    container(inner)
-        .width(Length::Fill)
-        .padding(Padding::from([8u16, 16]))
-        .style(move |_theme| container::Style {
-            background: Some(iced::Background::Color(bg)),
-            ..container::Style::default()
-        })
-        .into()
 }
 
 fn achievements_tab<'a>(

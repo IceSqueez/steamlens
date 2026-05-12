@@ -144,20 +144,6 @@ impl std::fmt::Display for AchievementSort {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BannerKind {
-    Success,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone)]
-pub struct Banner {
-    pub kind: BannerKind,
-    pub message: String,
-    pub dismissible: bool,
-}
-
 #[derive(Debug, Clone)]
 pub enum BulkOp {
     Unlock,
