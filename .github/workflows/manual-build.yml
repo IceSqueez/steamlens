@@ -1,0 +1,18 @@
+name: Manual Build (artifacts only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: "Artifact retention (days)"
+        required: false
+        default: "7"
+        type: string
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/_build-matrix.yml
+    with:
+      bin_name: steamlens-app
+      retention_days: ${{ fromJSON(inputs.retention_days) }}
