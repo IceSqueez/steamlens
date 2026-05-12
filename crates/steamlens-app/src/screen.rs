@@ -85,7 +85,7 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
     for seg_cfg in content.segments {
         top_row = top_row.push(build_segmented_control(seg_cfg));
     }
-    top_row = top_row.push(Space::new().width(Length::Fill));
+    top_row = top_row.push(Space::new().width(Length::FillPortion(1)));
     for action in content.screen_actions {
         top_row = top_row.push(action);
     }
@@ -389,7 +389,8 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
         .padding(Padding::default().left(0).right(8));
 
     container(inner_row)
-        .width(Length::Fixed(220.0))
+        .width(Length::FillPortion(3))
+        .max_width(400.0)
         .style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             container::Style {
