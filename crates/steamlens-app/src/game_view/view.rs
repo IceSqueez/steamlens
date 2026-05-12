@@ -18,8 +18,7 @@ use super::types::{
 };
 use super::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::theme::{
-    C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_PRIMARY,
-    C_TEXT_SECONDARY,
+    C_ACCENT, C_BORDER, C_DANGER, C_HOVER, C_SURFACE, C_TEXT_DIM, C_TEXT_MUTED, C_TEXT_SECONDARY,
 };
 use crate::ui::theme::{AppTheme, palette};
 use crate::ui::widgets::card::card;
@@ -385,19 +384,9 @@ fn achievements_tab<'a>(
     state: &'a GameViewState,
     skeleton_phase: f32,
 ) -> Element<'a, GameViewMessage> {
-    let visible_ids = visible_achievement_ids(
-        &state.achievements,
-        state.filter,
-        &state.search_query,
-        state.achievement_sort,
-        &state.rarity_tier_set,
-        state.include_hidden,
-    );
-    let filtered_count = visible_ids.len();
-
     let mut col = column![].spacing(0).height(Length::Fill);
     col = col.push(achievement_list(state, skeleton_phase));
-    col = col.push(action_footer(state, filtered_count));
+    col = col.push(action_footer());
     col.into()
 }
 
@@ -428,22 +417,7 @@ const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
 const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
 const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
-fn action_footer<'a>(
-    state: &'a GameViewState,
-    filtered_count: usize,
-) -> Element<'a, GameViewMessage> {
-    let total = state.achievements.len();
-
-    let count_label: Element<'_, GameViewMessage> = row![
-        text(format!("{filtered_count}"))
-            .size(12)
-            .color(C_TEXT_PRIMARY),
-        text(format!(" of {total} achievements"))
-            .size(12)
-            .color(C_TEXT_MUTED),
-    ]
-    .into();
-
+fn action_footer<'a>() -> Element<'a, GameViewMessage> {
     let mk_outlined =
         |lbl: &'static str, tc: Color, m: GameViewMessage| -> Element<'_, GameViewMessage> {
             button(text(lbl).size(12).color(tc))
@@ -528,7 +502,6 @@ fn action_footer<'a>(
     });
 
     let action_row = row![
-        count_label,
         space().width(Length::Fill),
         unlock_btn,
         lock_btn,
