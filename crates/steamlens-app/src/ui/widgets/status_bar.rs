@@ -28,7 +28,8 @@ enum Mode<'a> {
         total: usize,
     },
     Offline {
-        cached_games: usize,
+        cached_count: usize,
+        noun: Cow<'a, str>,
     },
 }
 
@@ -79,8 +80,11 @@ impl<'a, M: 'a + Clone> StatusBar<'a, M> {
         self
     }
 
-    pub fn offline(mut self, cached_games: usize) -> Self {
-        self.mode = Mode::Offline { cached_games };
+    pub fn offline(mut self, cached_count: usize, noun: impl Into<Cow<'a, str>>) -> Self {
+        self.mode = Mode::Offline {
+            cached_count,
+            noun: noun.into(),
+        };
         self
     }
 
@@ -135,10 +139,10 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
                     );
                 }
             }
-            Mode::Offline { cached_games } => {
+            Mode::Offline { cached_count, noun } => {
                 left = left.push(cluster(OFFLINE_DOT, "Offline", OFFLINE_DOT));
                 left = left.push(
-                    text(format!("Cached: {cached_games} games"))
+                    text(format!("Cached: {cached_count} {noun}"))
                         .size(11)
                         .color(C_TEXT_MUTED),
                 );
@@ -286,6 +290,6 @@ mod tests {
 
     #[test]
     fn offline_builds() {
-        let _: Element<'_, ()> = status_bar().offline(344).on_reconnect(()).into();
+        let _: Element<'_, ()> = status_bar().offline(344, "games").on_reconnect(()).into();
     }
 }

@@ -141,7 +141,7 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
         } else {
             Some(
                 status_bar::<GameViewMessage>()
-                    .connected(total, "achievements", None)
+                    .offline(total, "achievements")
                     .into(),
             )
         };

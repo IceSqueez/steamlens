@@ -145,7 +145,11 @@ fn profile_status_bar(
         if total == 0 {
             return None;
         }
-        return Some(status_bar::<ProfileViewMessage>().offline(total).into());
+        return Some(
+            status_bar::<ProfileViewMessage>()
+                .offline(total, "games")
+                .into(),
+        );
     }
 
     if total == 0 {
