@@ -122,20 +122,24 @@ fn build_profile_genre_strip<'a>(
     const GENRE_PILL_PAD_V: u32 = 4;
 
     let neutral = crate::theme::C_TEXT_MUTED;
+    let any_selected = !state.genre_filter.is_empty();
     let mut chips: Vec<iced::Element<'_, crate::Message>> = genres
         .into_iter()
         .map(|g| {
             let tint = genre_color(&g);
             let label = text(g.clone()).size(11).color(tint);
-            pill(label, tint)
+            let is_selected = state.genre_filter.contains(&g);
+            let mut p = pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
-                .with_dot(tint)
-                .selected(state.genre_filter.contains(&g))
+                .selected(is_selected)
                 .on_press(crate::Message::ProfileView(
                     types::ProfileViewMessage::GenreFilterToggled(g),
-                ))
-                .into()
+                ));
+            if !any_selected || is_selected {
+                p = p.with_dot(tint);
+            }
+            p.into()
         })
         .collect();
 

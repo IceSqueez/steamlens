@@ -76,6 +76,8 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         .filter(|r| r.is_spoiler_hidden())
         .count();
 
+    let any_selected = !state.rarity_tier_set.is_empty() || state.include_hidden;
+
     let mut chips: Vec<iced::Element<'_, crate::Message>> = Vec::new();
     for (tier, label) in [
         (RarityTier::Common, "Common"),
@@ -95,17 +97,18 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         .spacing(4)
         .align_y(Alignment::Center);
 
-        chips.push(
-            pill(inner, color)
-                .with_dot(color)
-                .radius(TIER_PILL_RADIUS)
-                .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
-                .selected(state.rarity_tier_set.contains(&tier))
-                .on_press(crate::Message::GameView(
-                    GameViewMessage::RarityTierToggled(tier),
-                ))
-                .into(),
-        );
+        let is_selected = state.rarity_tier_set.contains(&tier);
+        let mut p = pill(inner, color)
+            .radius(TIER_PILL_RADIUS)
+            .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+            .selected(is_selected)
+            .on_press(crate::Message::GameView(
+                GameViewMessage::RarityTierToggled(tier),
+            ));
+        if !any_selected || is_selected {
+            p = p.with_dot(color);
+        }
+        chips.push(p.into());
     }
 
     let hidden_color = crate::theme::C_TEXT_MUTED;
@@ -118,14 +121,15 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
     ]
     .spacing(4)
     .align_y(Alignment::Center);
-    chips.push(
-        pill(hidden_inner, hidden_color)
-            .radius(TIER_PILL_RADIUS)
-            .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
-            .selected(state.include_hidden)
-            .on_press(crate::Message::GameView(GameViewMessage::HiddenPillToggled))
-            .into(),
-    );
+    let mut hidden_pill = pill(hidden_inner, hidden_color)
+        .radius(TIER_PILL_RADIUS)
+        .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
+        .selected(state.include_hidden)
+        .on_press(crate::Message::GameView(GameViewMessage::HiddenPillToggled));
+    if !any_selected || state.include_hidden {
+        hidden_pill = hidden_pill.with_dot(hidden_color);
+    }
+    chips.push(hidden_pill.into());
 
     if !state.rarity_tier_set.is_empty() || state.include_hidden {
         chips.push(Space::new().width(Length::Fill).into());
