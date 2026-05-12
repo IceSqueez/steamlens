@@ -1,9 +1,40 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-beta.1] - 2026-05-12
+### Qstyle
+- *(fmt)* Apply workspace-wide rustfmt
+
+### ⚙️ Miscellaneous Tasks
+- *(app)* Updates actual screenshot
+- *(logging)* Default to INFO filter; STEAMLENS_LOG env override
+
+### ⚡ Performance
+- *(cache)* Batch no_achievements writes per drain to cut cold-scan IO
+
+### 🐛 Bug Fixes
+- *(game-view)* Rarity strip hidden count uses is_hidden meta not spoiler state
+
+### 📚 Documentation
+- *(readme)* Refresh feature list and add per-OS install instructions
+
+### 🚀 Features
+- *(scan)* Log aggregate cold-scan summary on completion
+- *(profile)* Log capsule fetch results and raise concurrency to 8
+- *(game-view)* Add Hidden pill to card chrome for is_hidden achievements
+- *(game-view)* Mark hidden achievements with corner badge instead of footer pill
+
+### 🚜 Refactor
+- *(logging)* Unwrap worker stderr lines and re-emit at parsed level
+- *(logging)* Classify call sites into TRACE/DEBUG/INFO/WARN/ERROR
+
+### 🛠️ Build
+- *(macos)* Ad-hoc sign .app bundle before .dmg packaging
+
 ## [1.0.0-alpha.9] - 2026-05-12
 ### ⚙️ Miscellaneous Tasks
 - *(assets)* Adds images and multires ico
+- Release
 
 ### 🎨 Styling
 - *(ui)* Pull bar+ticks up after header, taller rarity cards with centered content
@@ -54,6 +85,7 @@ All notable changes to this project will be documented in this file.
 - *(readme)* Updated description
 - *(readme)* Adds application screenshot
 - *(readme)* Updates badges
+- *(release)* Release v1.0.0-alpha.9
 
 ### 🚀 Features
 - *(ui)* Refresh banner, status footer, and toast visuals
