@@ -649,12 +649,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     Task::batch([task, sync_task])
                 }
                 GameViewEvent::GoBack => {
-                    let write_task = {
+                    let write_tasks: Vec<Task<Message>> = {
                         let Screen::GameView(gv_state) = &app.screen else {
                             return task;
                         };
                         if gv_state.cache_only {
-                            None
+                            Vec::new()
                         } else {
                             let app_id = gv_state.app_id;
                             let mut entry = build_game_view_cache_entry(
@@ -669,13 +669,47 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 entry.genre = existing.genre.clone();
                             }
                             app.context.cached_entries.insert(app_id, entry.clone());
-                            Some(cache::commands::write_game_cache(entry))
+
+                            let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> =
+                                gv_state
+                                    .achievements
+                                    .iter()
+                                    .filter_map(|r| {
+                                        r.data.icon.as_ref().map(|i| (r.data.id.clone(), i.clone()))
+                                    })
+                                    .collect();
+                            let icons_task = Task::perform(
+                                async move {
+                                    tokio::task::spawn_blocking(move || {
+                                        for (id, icon) in &icons_to_write {
+                                            if let Err(e) =
+                                                cache::icons::write_blocking(app_id, id, icon)
+                                            {
+                                                crate::log!(
+                                                    "icon cache write failed app_id={app_id} ach={id}: {e}"
+                                                );
+                                            }
+                                        }
+                                    })
+                                    .await
+                                    .map_err(|e| e.to_string())
+                                },
+                                move |result| Message::CacheWritten {
+                                    app_id,
+                                    result: result.map(|_| ()),
+                                },
+                            );
+
+                            vec![cache::commands::write_game_cache(entry), icons_task]
                         }
                     };
                     go_back_to_profile(app);
-                    match write_task {
-                        Some(w) => Task::batch([task, w]),
-                        None => task,
+                    if write_tasks.is_empty() {
+                        task
+                    } else {
+                        let mut combined = vec![task];
+                        combined.extend(write_tasks);
+                        Task::batch(combined)
                     }
                 }
                 GameViewEvent::InvalidateCache { app_id } => {
@@ -1124,10 +1158,12 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
 
     state.game_name = cached.name.clone();
 
+    let app_id = cached.app_id;
     state.achievements = cached
         .achievements
         .iter()
         .map(|a| {
+            let icon = cache::icons::load_blocking(app_id, &a.api_name);
             let data = AchievementData {
                 id: a.api_name.clone(),
                 display_name: a.display_name.clone(),
@@ -1136,7 +1172,7 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
                 is_achieved: a.earned,
                 unlock_time: a.earned_at.map(|t| t as u32),
                 permission: 0,
-                icon: None,
+                icon,
             };
             let mut row = AchievementRow::from(data);
             row.appeared = true;
