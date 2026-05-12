@@ -117,9 +117,9 @@ impl AchievementSort {
 
     pub fn short_label(self) -> &'static str {
         match self {
-            AchievementSort::UnlockChance => "UC",
-            AchievementSort::RarityAndName => "R&N",
-            AchievementSort::Name => "A\u{2013}Z",
+            AchievementSort::UnlockChance => "Unlock chance",
+            AchievementSort::RarityAndName => "Rarity & name",
+            AchievementSort::Name => "A \u{2192} Z",
         }
     }
 
@@ -132,9 +132,9 @@ impl AchievementSort {
     }
 
     pub const ALL: &'static [AchievementSort] = &[
+        AchievementSort::Name,
         AchievementSort::UnlockChance,
         AchievementSort::RarityAndName,
-        AchievementSort::Name,
     ];
 }
 
