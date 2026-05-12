@@ -270,7 +270,9 @@ fn go_back_to_profile(app: &mut App) {
         &mut app.screen,
         Screen::ProfileView(Box::new(ProfileViewState::new())),
     ) {
-        app.screen = Screen::ProfileView(gv_state.prev_profile_state);
+        let mut prev = gv_state.prev_profile_state;
+        prev.search.clear();
+        app.screen = Screen::ProfileView(prev);
     }
 }
 
