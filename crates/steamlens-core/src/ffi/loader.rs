@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use libloading::{Library, Symbol};
@@ -30,12 +30,12 @@ pub fn shared() -> Result<&'static SteamLibrary, SteamError> {
 impl SteamLibrary {
     fn load() -> Result<Self, SteamError> {
         let path = discover_steamclient_path()?;
-        // SAFETY: `steamclient.so`'s ELF initialisers spawn auxiliary
-        // pthreads that hold code-pointers into the library's text
-        // segment, so the handle is parked in the `STEAM_LIBRARY`
-        // `OnceLock` for process lifetime — `dlclose` would unmap the
-        // text segment and crash those threads.
-        let handle = unsafe { Library::new(&path) }
+        // SAFETY: `steamclient`'s initialisers spawn auxiliary threads
+        // that hold code-pointers into the library's text segment, so
+        // the handle is parked in the `STEAM_LIBRARY` `OnceLock` for
+        // process lifetime — unloading would unmap the text segment and
+        // crash those threads.
+        let handle = unsafe { load_steamclient(&path) }
             .map_err(|source| SteamError::LibraryLoadFailed { path, source })?;
 
         // SAFETY: Both symbols are NUL-terminated byte-string literals.
@@ -126,6 +126,26 @@ impl SteamLibrary {
             });
         }
         Ok(raw)
+    }
+}
+
+unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
+    #[cfg(target_os = "windows")]
+    {
+        // steamclient64.dll depends on sibling DLLs that live in the
+        // Steam install directory (tier0_s64.dll, vstdlib_s64.dll, …).
+        // Default LoadLibraryExW search order does not include the DLL's
+        // own directory; LOAD_WITH_ALTERED_SEARCH_PATH adds it.
+        use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WinLibrary};
+        // SAFETY: forwarded from the caller's unsafe contract.
+        return unsafe {
+            WinLibrary::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH).map(Library::from)
+        };
+    }
+    #[cfg(not(target_os = "windows"))]
+    // SAFETY: forwarded from the caller's unsafe contract.
+    unsafe {
+        Library::new(path)
     }
 }
 

@@ -41,6 +41,17 @@ impl From<FrameError> for WorkerError {
     }
 }
 
+fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = err.to_string();
+    let mut cur = err.source();
+    while let Some(e) = cur {
+        out.push_str(": ");
+        out.push_str(&e.to_string());
+        cur = e.source();
+    }
+    out
+}
+
 pub fn run_probe() -> ! {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
@@ -82,10 +93,10 @@ async fn probe_main() -> i32 {
             return 1;
         }
         Err(e) => {
-            tracing::error!("probe: connect failed: {e}");
+            tracing::error!("probe: connect failed: {}", error_chain(&e));
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::Connect,
-                message: e.to_string(),
+                message: error_chain(&e),
             })
             .await;
             return 1;
@@ -170,10 +181,10 @@ async fn worker_main(app_id: u32) -> i32 {
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!("connect failed in {:?}: {e}", t0.elapsed());
+            tracing::error!("connect failed in {:?}: {}", t0.elapsed(), error_chain(&e));
             let _ = write_response(&WorkerResponse::Error {
                 kind: WorkerErrorKind::Connect,
-                message: e.to_string(),
+                message: error_chain(&e),
             })
             .await;
             return 1;
