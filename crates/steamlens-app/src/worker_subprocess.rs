@@ -138,7 +138,7 @@ impl WorkerHandle {
             let mut buf = Vec::new();
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                crate::log!("worker[app_id={app_id}] stderr: {line}");
+                forward_worker_line(app_id, &line);
                 if capture {
                     buf.extend_from_slice(line.as_bytes());
                     buf.push(b'\n');
@@ -244,6 +244,39 @@ async fn abort_task(task: Option<JoinHandle<Vec<u8>>>) {
     }
 }
 
+fn forward_worker_line(app_id: u32, line: &str) {
+    let (level, message) = parse_worker_line(line);
+    match level {
+        tracing::Level::ERROR => {
+            tracing::error!(target: "worker", app_id, "{message}")
+        }
+        tracing::Level::WARN => tracing::warn!(target: "worker", app_id, "{message}"),
+        tracing::Level::DEBUG => {
+            tracing::debug!(target: "worker", app_id, "{message}")
+        }
+        tracing::Level::TRACE => {
+            tracing::trace!(target: "worker", app_id, "{message}")
+        }
+        _ => tracing::info!(target: "worker", app_id, "{message}"),
+    }
+}
+
+fn parse_worker_line(line: &str) -> (tracing::Level, &str) {
+    let trimmed = line.trim_start();
+    for (prefix, level) in [
+        ("ERROR ", tracing::Level::ERROR),
+        ("WARN ", tracing::Level::WARN),
+        ("INFO ", tracing::Level::INFO),
+        ("DEBUG ", tracing::Level::DEBUG),
+        ("TRACE ", tracing::Level::TRACE),
+    ] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            return (level, rest);
+        }
+    }
+    (tracing::Level::INFO, line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +322,37 @@ mod tests {
         let _: WorkerProtocolError = WorkerProtocolError::UnexpectedEof;
         let _: WorkerProtocolError = WorkerProtocolError::Decode(std::io::Error::other("x"));
         let _: WorkerProtocolError = WorkerProtocolError::Write(std::io::Error::other("y"));
+    }
+
+    #[test]
+    fn parse_worker_line_strips_known_levels() {
+        let cases = [
+            (
+                "INFO worker connected",
+                tracing::Level::INFO,
+                "worker connected",
+            ),
+            (
+                "DEBUG cmd dispatched",
+                tracing::Level::DEBUG,
+                "cmd dispatched",
+            ),
+            ("WARN cache miss", tracing::Level::WARN, "cache miss"),
+            ("ERROR pipe broken", tracing::Level::ERROR, "pipe broken"),
+            ("TRACE tick", tracing::Level::TRACE, "tick"),
+        ];
+        for (line, expected_level, expected_msg) in cases {
+            let (level, msg) = parse_worker_line(line);
+            assert_eq!(level, expected_level, "level for {line:?}");
+            assert_eq!(msg, expected_msg, "message for {line:?}");
+        }
+    }
+
+    #[test]
+    fn parse_worker_line_falls_back_to_info_when_no_prefix() {
+        let (level, msg) = parse_worker_line("steamlens: BLoggedOn = true");
+        assert_eq!(level, tracing::Level::INFO);
+        assert_eq!(msg, "steamlens: BLoggedOn = true");
     }
 
     #[test]

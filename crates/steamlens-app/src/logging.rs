@@ -12,10 +12,11 @@ pub fn init() -> io::Result<()> {
     init_with_path(&crate::paths::log_path())
 }
 
-/// Subprocess only. Writes to stderr instead of touching the host's log file —
-/// the host pipes worker stderr and forwards each line into its own writer.
+/// Subprocess only. Writes to stderr with a minimal `<LEVEL> <message>` format —
+/// the host parses the level prefix and re-emits each line into its own writer
+/// with proper timestamp + target, so worker output is not double-wrapped.
 pub fn init_worker() -> io::Result<()> {
-    install_subscriber(std::io::stderr)
+    install_worker_subscriber(std::io::stderr)
 }
 
 pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
@@ -36,6 +37,21 @@ fn install_subscriber<W>(writer: W) -> io::Result<()>
 where
     W: for<'w> tracing_subscriber::fmt::MakeWriter<'w> + Send + Sync + 'static,
 {
+    let filter = host_filter();
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_writer(writer)
+        .with_ansi(false)
+        .with_target(true)
+        .with_level(true);
+
+    install(fmt_layer, filter)
+}
+
+fn install_worker_subscriber<W>(writer: W) -> io::Result<()>
+where
+    W: for<'w> tracing_subscriber::fmt::MakeWriter<'w> + Send + Sync + 'static,
+{
     let filter = Targets::new()
         .with_target("steamlens_app", Level::TRACE)
         .with_target("steamlens_core", Level::TRACE)
@@ -46,9 +62,26 @@ where
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_ansi(false)
-        .with_target(true)
-        .with_level(true);
+        .with_target(false)
+        .with_level(true)
+        .without_time();
 
+    install(fmt_layer, filter)
+}
+
+fn host_filter() -> Targets {
+    Targets::new()
+        .with_target("steamlens_app", Level::TRACE)
+        .with_target("steamlens_core", Level::TRACE)
+        .with_target("steamlens_vdf", Level::TRACE)
+        .with_target("panic", Level::ERROR)
+        .with_default(LevelFilter::OFF)
+}
+
+fn install<L>(fmt_layer: L, filter: Targets) -> io::Result<()>
+where
+    L: tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync + 'static,
+{
     let subscriber = tracing_subscriber::registry().with(fmt_layer).with(filter);
 
     tracing::subscriber::set_global_default(subscriber)
