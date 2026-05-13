@@ -51,7 +51,7 @@ unsafe extern "system" fn seh_handler(
     // lock-free path. No heap allocation, no panic-machinery re-entry.
     let (code, addr) = unsafe {
         let rec = (*info).ExceptionRecord;
-        ((*rec).ExceptionCode, (*rec).ExceptionAddress)
+        ((*rec).ExceptionCode as u32, (*rec).ExceptionAddress)
     };
 
     let mut buf = [0u8; 64];
