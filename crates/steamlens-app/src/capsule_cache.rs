@@ -9,15 +9,26 @@ use tokio::fs;
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .connect_timeout(HTTP_CONNECT_TIMEOUT)
-            .timeout(HTTP_REQUEST_TIMEOUT)
-            .build()
-            .expect("reqwest::Client init failed")
-    })
+fn http_client() -> Option<&'static reqwest::Client> {
+    static CLIENT: OnceLock<Option<reqwest::Client>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            match reqwest::Client::builder()
+                .connect_timeout(HTTP_CONNECT_TIMEOUT)
+                .timeout(HTTP_REQUEST_TIMEOUT)
+                .build()
+            {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "reqwest::Client init failed; capsule HTTP fetches disabled"
+                    );
+                    None
+                }
+            }
+        })
+        .as_ref()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -134,12 +145,19 @@ pub async fn fetch_capsule(
             .map_err(|e| (size, e));
     }
 
+    let Some(client) = http_client() else {
+        return Err((
+            size,
+            CapsuleError::Http("HTTP client unavailable".to_owned()),
+        ));
+    };
+
     let mut last_err = CapsuleError::NotFound;
     for filename in fallback_chain(size) {
         let url = format!(
             "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
         );
-        match http_client().get(&url).send().await {
+        match client.get(&url).send().await {
             Ok(response) => {
                 if response.status() == reqwest::StatusCode::NOT_FOUND {
                     last_err = CapsuleError::NotFound;
