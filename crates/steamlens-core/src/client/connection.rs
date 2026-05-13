@@ -170,12 +170,26 @@ impl SteamConnection {
 
         // SAFETY: `GetISteamUtils` takes (this, pipe, version) — no user
         // handle — per slot 9 of ISteamClient018. Null is non-fatal.
-        tracing::info!(target: "establish", version = STEAM_UTILS_VERSION, "get_isteam_utils: calling");
-        let steam_utils = unsafe {
-            let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-            ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
+        //
+        // Windows: `steamclient64.dll` faults inside this call with an
+        // access violation rather than returning null. The interface
+        // pointer is consumed only for `ISteamUtils005::GetImageSize` /
+        // `GetImageRGBA` (avatars + achievement icons); skipping it
+        // leaves those features degraded but keeps the rest of the
+        // client functional. Linux/macOS unaffected.
+        let _ = &utils_version;
+        #[cfg(target_os = "windows")]
+        let steam_utils = core::ptr::null_mut();
+        #[cfg(not(target_os = "windows"))]
+        let steam_utils = {
+            tracing::info!(target: "establish", version = STEAM_UTILS_VERSION, "get_isteam_utils: calling");
+            let ptr = unsafe {
+                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+                ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
+            };
+            tracing::info!(target: "establish", null = ptr.is_null(), "get_isteam_utils: returned");
+            ptr
         };
-        tracing::info!(target: "establish", null = steam_utils.is_null(), "get_isteam_utils: returned");
 
         let friends_version = CString::new(STEAM_FRIENDS_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
