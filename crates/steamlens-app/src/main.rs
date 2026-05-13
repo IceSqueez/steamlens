@@ -755,12 +755,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .unwrap_or_else(|| format!("App {app_id}"));
             app.context.cached_entries.remove(&app_id);
 
+            let steam_on = app.context.connectivity.steam_running == Some(true);
+
             let pv_state: &mut ProfileViewState = match &mut app.screen {
                 Screen::ProfileView(s) => s.as_mut(),
                 Screen::GameView(s) => s.prev_profile_state.as_mut(),
             };
             if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = None;
+            }
+            if steam_on {
+                let mut scanner = crate::progress_scan::ProgressScanner::new(vec![app_id]);
+                pv_state.progress_rx = scanner.take_receiver();
+                pv_state.progress_scanner = Some(scanner);
             }
 
             app.context.messaging.push_toast(
@@ -1218,6 +1225,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::OfflineCacheLoaded { app_id, entry } => {
             let Some(full) = entry.map(|b| *b) else {
+                if let Screen::GameView(state) = &mut app.screen
+                    && state.app_id == app_id
+                    && state.cache_only
+                {
+                    state.phase = game_view::GameViewPhase::Error;
+                    state.error_message =
+                        "No cached data \u{2014} reconnect Steam to load this game".to_owned();
+                }
                 return Task::none();
             };
             if let Screen::GameView(state) = &mut app.screen
