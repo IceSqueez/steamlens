@@ -49,9 +49,14 @@ impl Client {
         self.friends.persona_name()
     }
 
+    /// Reads the avatar PNG that Steam already cached on disk at
+    /// `<steam_root>/config/avatarcache/<steamid64>.png`. Bypasses
+    /// `ISteamFriends::GetMediumFriendAvatar` + `ISteamUtils::GetImageRGBA`
+    /// entirely so we don't depend on the Steam image-handle pipeline.
+    /// Returns `None` if the file is missing or undecodable — the avatar
+    /// is non-essential, no error needs to bubble.
     pub fn user_avatar(&self) -> Option<Image> {
-        self.friends
-            .user_avatar(|handle| self.get_image(handle).ok().flatten())
+        crate::avatar::read_local_avatar(self.steam_id()).ok()
     }
 
     pub fn is_subscribed_app(&self, app_id: u32) -> bool {

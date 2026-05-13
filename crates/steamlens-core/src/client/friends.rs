@@ -33,6 +33,7 @@ impl Friends {
         Some(name)
     }
 
+    #[allow(dead_code, reason = "removed in ISteamUtils-cleanup migration chunk")]
     pub(super) fn user_avatar<F>(&self, get_image: F) -> Option<Image>
     where
         F: FnOnce(i32) -> Option<Image>,
