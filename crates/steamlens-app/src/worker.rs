@@ -455,7 +455,16 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
             Some(unlock_time)
         };
 
-        if let Some(filename) = icon_filenames.get(&id).and_then(|r| r.icon.clone()) {
+        // Pick the colour variant for earned, gray for locked; fall back to
+        // whatever's available if the schema only ships one of the two.
+        let icon_filename = icon_filenames.get(&id).and_then(|r| {
+            if is_achieved {
+                r.icon.clone().or_else(|| r.icon_gray.clone())
+            } else {
+                r.icon_gray.clone().or_else(|| r.icon.clone())
+            }
+        });
+        if let Some(filename) = icon_filename {
             let id_for_task = id.clone();
             pending_fetches.spawn(async move {
                 let result =

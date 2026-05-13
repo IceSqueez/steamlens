@@ -43,7 +43,29 @@ struct ApiInner {
 #[derive(serde::Deserialize)]
 struct ApiAchievement {
     name: String,
+    #[serde(deserialize_with = "percent_as_f32")]
     percent: f32,
+}
+
+fn percent_as_f32<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    use serde::de::Error;
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => n
+            .as_f64()
+            .map(|f| f as f32)
+            .ok_or_else(|| D::Error::custom("percent not representable as f64")),
+        serde_json::Value::String(s) => s
+            .parse::<f32>()
+            .map_err(|e| D::Error::custom(format!("percent string parse: {e}"))),
+        other => Err(D::Error::custom(format!(
+            "percent must be number or string, got {other:?}"
+        ))),
+    }
 }
 
 fn cache_path(app_id: u32) -> PathBuf {
@@ -128,11 +150,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_well_formed_response() {
+    fn parses_percent_as_number_or_string() {
+        // Steam Web API emits "percent" as a JSON string (e.g. "70.4"), not a
+        // number — we must accept both shapes.
         let json = br#"{
             "achievementpercentages": {
                 "achievements": [
-                    { "name": "ACH_A", "percent": 65.5 },
+                    { "name": "ACH_A", "percent": "65.5" },
                     { "name": "ACH_B", "percent": 1.2 }
                 ]
             }

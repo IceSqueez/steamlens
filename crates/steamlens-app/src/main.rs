@@ -690,31 +690,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .cached_entries
                 .insert(app_id, full_entry.clone());
 
-            let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = gv_state
-                .achievements
-                .iter()
-                .filter_map(|r| r.data.icon.as_ref().map(|i| (r.data.id.clone(), i.clone())))
-                .collect();
-            let icons_task = Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        for (id, icon) in &icons_to_write {
-                            if let Err(e) = cache::icons::write_blocking(app_id, id, icon) {
-                                tracing::warn!(
-                                    "icon cache write failed app_id={app_id} ach={id}: {e}"
-                                );
-                            }
-                        }
-                    })
-                    .await
-                    .map_err(|e| e.to_string())
-                },
-                move |result| Message::CacheWritten {
-                    app_id,
-                    result: result.map(|_| ()),
-                },
-            );
-
             let summary_task = Task::perform(
                 async move { crate::cache::store::write_game_summary(&summary).await },
                 move |result| Message::CacheWritten {
@@ -724,7 +699,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             );
             let game_task = cache::commands::write_game_cache(full_entry);
 
-            Task::batch([summary_task, game_task, icons_task])
+            Task::batch([summary_task, game_task])
         }
 
         Message::InvalidateGameCache(app_id) => {
@@ -1217,11 +1192,21 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
     state.game_name = cached.name.clone();
 
     let app_id = cached.app_id;
+    let icon_files = steamlens_core::load_achievement_icons(app_id).unwrap_or_default();
     state.achievements = cached
         .achievements
         .iter()
         .map(|a| {
-            let icon = cache::icons::load_blocking(app_id, &a.api_name);
+            let filename = icon_files.get(&a.api_name).and_then(|r| {
+                if a.earned {
+                    r.icon.clone().or_else(|| r.icon_gray.clone())
+                } else {
+                    r.icon_gray.clone().or_else(|| r.icon.clone())
+                }
+            });
+            let icon = filename
+                .as_deref()
+                .and_then(|fname| cache::achievement_icons::load_blocking(app_id, fname));
             let data = AchievementData {
                 id: a.api_name.clone(),
                 display_name: a.display_name.clone(),

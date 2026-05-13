@@ -186,6 +186,31 @@ fn surface_connectivity_error(
         .push_toast(crate::messaging::ToastKind::Error, msg.to_owned(), None);
 }
 
+async fn refetch_icons_for_flipped(
+    app_id: u32,
+    flipped: Vec<(String, bool)>,
+) -> Vec<(String, steamlens_core::AchievementIcon)> {
+    if flipped.is_empty() {
+        return Vec::new();
+    }
+    let icon_files = steamlens_core::load_achievement_icons(app_id).unwrap_or_default();
+    let mut out = Vec::with_capacity(flipped.len());
+    for (name, is_achieved) in flipped {
+        let filename = icon_files.get(&name).and_then(|r| {
+            if is_achieved {
+                r.icon.clone().or_else(|| r.icon_gray.clone())
+            } else {
+                r.icon_gray.clone().or_else(|| r.icon.clone())
+            }
+        });
+        let Some(filename) = filename else { continue };
+        if let Ok(icon) = crate::cache::achievement_icons::load_or_fetch(app_id, &filename).await {
+            out.push((name, icon));
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone)]
 pub enum GameViewMessage {
     AchievementToggled(String),
@@ -228,6 +253,7 @@ pub enum GameViewMessage {
     BarSliceHoverEnter(RarityTier),
     BarSliceHoverExit,
     InvalidateCacheClicked(u32),
+    IconsRefreshed(Vec<(String, steamlens_core::AchievementIcon)>),
 }
 
 #[derive(Debug, Clone)]
@@ -442,9 +468,12 @@ pub fn handle_steam_reply(
             Task::none()
         }
         SteamReply::ChangesSaved => {
+            let mut flipped: Vec<(String, bool)> = Vec::new();
             for row in &mut state.achievements {
                 if row.is_dirty {
-                    row.data.is_achieved = row.effective_achieved();
+                    let new_state = row.effective_achieved();
+                    flipped.push((row.data.id.clone(), new_state));
+                    row.data.is_achieved = new_state;
                     row.is_dirty = false;
                 }
             }
@@ -460,7 +489,15 @@ pub fn handle_steam_reply(
                 "Changes saved to Steam".to_owned(),
                 None,
             );
-            Task::done(GameViewMessage::AchievementsFullyLoaded)
+            let app_id = state.app_id;
+            let refresh_task = Task::perform(
+                async move { refetch_icons_for_flipped(app_id, flipped).await },
+                GameViewMessage::IconsRefreshed,
+            );
+            Task::batch([
+                Task::done(GameViewMessage::AchievementsFullyLoaded),
+                refresh_task,
+            ])
         }
         SteamReply::SaveFailed(e) => {
             state.phase = GameViewPhase::Ready;
@@ -855,6 +892,14 @@ pub fn update(
 
         GameViewMessage::InvalidateCacheClicked(app_id) => {
             (Task::none(), GameViewEvent::InvalidateCache { app_id })
+        }
+        GameViewMessage::IconsRefreshed(results) => {
+            for (name, icon) in results {
+                if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
+                    row.data.icon = Some(icon);
+                }
+            }
+            (Task::none(), GameViewEvent::None)
         }
     }
 }

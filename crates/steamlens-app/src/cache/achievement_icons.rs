@@ -45,6 +45,15 @@ fn cache_path(app_id: u32, filename: &str) -> PathBuf {
         .join(safe)
 }
 
+/// Synchronous, cache-only read for callers on the UI thread (no CDN fetch,
+/// no async). Returns `None` on any error so the caller can fall back to a
+/// skeleton placeholder while the worker re-fetches.
+pub fn load_blocking(app_id: u32, filename: &str) -> Option<AchievementIcon> {
+    let path = cache_path(app_id, filename);
+    let bytes = std::fs::read(&path).ok()?;
+    decode(&bytes, &path.display().to_string()).ok()
+}
+
 pub async fn load_or_fetch(app_id: u32, filename: &str) -> Result<AchievementIcon, IconFetchError> {
     let path = cache_path(app_id, filename);
     if let Ok(bytes) = tokio::fs::read(&path).await
