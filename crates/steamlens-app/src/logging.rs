@@ -16,7 +16,72 @@ pub fn init() -> io::Result<()> {
 /// the host parses the level prefix and re-emits each line into its own writer
 /// with proper timestamp + target, so worker output is not double-wrapped.
 pub fn init_worker() -> io::Result<()> {
-    install_worker_subscriber(std::io::stderr)
+    install_worker_subscriber(std::io::stderr)?;
+    #[cfg(target_os = "windows")]
+    install_seh_handler();
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn install_seh_handler() {
+    use windows_sys::Win32::System::Diagnostics::Debug::SetUnhandledExceptionFilter;
+    // SAFETY: `seh_handler` is a valid `LPTOP_LEVEL_EXCEPTION_FILTER`
+    // function pointer.  `SetUnhandledExceptionFilter` is always safe to
+    // call; it installs a process-wide last-resort filter and returns the
+    // previous one (which we discard — we do not need to chain).
+    unsafe {
+        SetUnhandledExceptionFilter(Some(seh_handler));
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn seh_handler(
+    info: *const windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_POINTERS,
+) -> i32 {
+    use windows_sys::Win32::Storage::FileSystem::WriteFile;
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
+
+    // SAFETY: OS guarantees `info` and `info.ExceptionRecord` are non-null
+    // and valid for the duration of the call. We read only plain integer
+    // and pointer fields. We deliberately do NOT use `eprintln!`,
+    // `tracing`, or `std::io::Stderr::lock()` — all three acquire user-space
+    // mutexes (std stderr uses a non-reentrant `Mutex`) which the faulting
+    // thread may already hold, causing same-thread deadlock. `WriteFile`
+    // on a Win32 handle goes straight to the kernel and is the only
+    // lock-free path. No heap allocation, no panic-machinery re-entry.
+    let (code, addr) = unsafe {
+        let rec = (*info).ExceptionRecord;
+        ((*rec).ExceptionCode, (*rec).ExceptionAddress)
+    };
+
+    let mut buf = [0u8; 64];
+    let msg = format_seh_line(&mut buf, code, addr as usize);
+
+    // SAFETY: `STD_ERROR_HANDLE` is a process-wide pseudo-handle; `WriteFile`
+    // accepts a borrowed handle and a borrowed buffer, writes synchronously,
+    // and does not retain either pointer after returning.
+    unsafe {
+        let handle = GetStdHandle(STD_ERROR_HANDLE);
+        let mut written: u32 = 0;
+        WriteFile(
+            handle,
+            msg.as_ptr(),
+            msg.len() as u32,
+            &mut written,
+            core::ptr::null_mut(),
+        );
+    }
+
+    windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_EXECUTE_HANDLER
+}
+
+#[cfg(target_os = "windows")]
+fn format_seh_line<'a>(buf: &'a mut [u8; 64], code: u32, addr: usize) -> &'a [u8] {
+    use std::io::Write;
+    let mut cursor = std::io::Cursor::new(buf.as_mut_slice());
+    let _ = write!(cursor, "ERROR seh: code=0x{code:08X} addr=0x{addr:016X}\n");
+    let pos = cursor.position() as usize;
+    &buf[..pos]
 }
 
 pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
