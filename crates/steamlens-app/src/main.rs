@@ -115,6 +115,7 @@ enum Message {
             Option<std::time::SystemTime>,
         )>,
     ),
+    LocalProfileLoaded(Option<Box<steamlens_core::UserProfile>>),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -137,24 +138,10 @@ struct App {
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
-    let steam_root = std::path::PathBuf::new();
-    let profile_result = steamlens_core::load_local_profile();
-    let steamid3 = profile_result
-        .as_ref()
-        .ok()
-        .map(|p| p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN))
-        .unwrap_or(0);
-
     let mut pv_state = ProfileViewState::new();
     pv_state.sort = loaded_settings.library.sort;
 
     let (worker, rx) = SteamWorker::spawn();
-
-    let user_profile = profile_result.ok();
-    let profile_avatar_handle = user_profile
-        .as_ref()
-        .and_then(|p| p.avatar_png_bytes.as_ref())
-        .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
     let context = AppContext {
         worker: Some(worker),
@@ -164,10 +151,10 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         messaging: MessagingCenter::new(),
         cached_entries: HashMap::new(),
         pending_hit_queue: VecDeque::new(),
-        steam_root,
-        steamid3,
-        user_profile,
-        profile_avatar_handle,
+        steam_root: std::path::PathBuf::new(),
+        steamid3: 0,
+        user_profile: None,
+        profile_avatar_handle: None,
         connectivity: ConnectivityState::default(),
         steam_level: None,
         no_ach_cache: cache::load_no_achievements_cache_blocking(),
@@ -197,8 +184,21 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         Task::batch([
             splash_commands::min_splash_wait(),
             splash_commands::probe_steam_boot(),
+            spawn_local_profile_load(),
             Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
         ]),
+    )
+}
+
+fn spawn_local_profile_load() -> Task<Message> {
+    Task::perform(
+        async {
+            tokio::task::spawn_blocking(|| steamlens_core::load_local_profile().ok())
+                .await
+                .ok()
+                .flatten()
+        },
+        |profile| Message::LocalProfileLoaded(profile.map(Box::new)),
     )
 }
 
@@ -1197,6 +1197,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::SteamStateRefreshed(None) => Task::none(),
+
+        Message::LocalProfileLoaded(profile) => {
+            let profile = profile.map(|b| *b);
+            app.context.profile_avatar_handle = profile
+                .as_ref()
+                .and_then(|p| p.avatar_png_bytes.as_ref())
+                .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
+            if let Some(p) = &profile {
+                app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
+            }
+            app.context.user_profile = profile;
+            Task::none()
+        }
 
         Message::OfflineCacheLoaded { app_id, entry } => {
             let Some(full) = entry.map(|b| *b) else {
