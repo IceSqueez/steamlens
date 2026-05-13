@@ -1380,7 +1380,7 @@ fn highlight_split<'a>(source: &'a str, query: &str) -> Option<(&'a str, &'a str
 #[cfg(test)]
 mod skeleton_polish_tests {
     use super::{ACH_CARD_HEIGHT, ACH_CARD_ICON, ACH_CARD_WIDTH, C_LOCKED_DESC};
-    use crate::theme::C_TEXT_MUTED;
+    use crate::ui::theme::DARK;
     use iced::Color;
 
     #[test]
@@ -1407,11 +1407,11 @@ mod skeleton_polish_tests {
     #[test]
     fn locked_desc_color_is_lighter_than_text_muted() {
         let locked = C_LOCKED_DESC;
-        let muted = C_TEXT_MUTED;
+        let muted = DARK.text_muted;
         let luminance = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
         assert!(
             luminance(locked) >= luminance(muted),
-            "C_LOCKED_DESC must be lighter than or equal to C_TEXT_MUTED — locked descriptions should be more readable"
+            "C_LOCKED_DESC must be lighter than or equal to text_muted — locked descriptions should be more readable"
         );
     }
 
