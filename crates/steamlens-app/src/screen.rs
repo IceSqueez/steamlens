@@ -108,6 +108,7 @@ pub fn render_app_header(content: AppHeaderContent<'_>) -> Element<'_, crate::Me
 
         if let Some(strip) = content.status_filter {
             if prev_present {
+                second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
                 second = second.push(build_strip_divider());
                 second = second.push(Space::new().width(Length::Fixed(STRIP_DIVIDER_SPACING)));
             }
