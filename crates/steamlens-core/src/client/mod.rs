@@ -123,7 +123,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
     };
     let friends = Friends {
         steam_friends: conn.steam_friends,
-        steam_id: conn.steam_id,
     };
     let callbacks = Callbacks { pipe: conn.pipe };
     let user = User {

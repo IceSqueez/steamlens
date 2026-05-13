@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "consumed by achievement-icon callsite switch in next migration chunk"
-)]
-
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -46,7 +41,7 @@ fn cache_path(app_id: u32, filename: &str) -> PathBuf {
     crate::paths::cache_dir()
         .join("games")
         .join(app_id.to_string())
-        .join("cdn_icons")
+        .join("achievement_icons")
         .join(safe)
 }
 

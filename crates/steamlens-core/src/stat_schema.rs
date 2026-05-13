@@ -20,7 +20,7 @@ pub struct StatDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AchievementIconRefs {
+pub struct AchievementIconFiles {
     pub icon: Option<String>,
     pub icon_gray: Option<String>,
 }
@@ -37,7 +37,7 @@ pub(crate) fn load(app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
 
 pub fn load_achievement_icons(
     app_id: u32,
-) -> Result<std::collections::HashMap<String, AchievementIconRefs>, SteamError> {
+) -> Result<std::collections::HashMap<String, AchievementIconFiles>, SteamError> {
     let bytes = match read_schema_bytes(app_id) {
         Some(b) => b,
         None => return Ok(std::collections::HashMap::new()),
@@ -138,14 +138,10 @@ fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
     out
 }
 
-#[allow(
-    dead_code,
-    reason = "consumed once switch to CDN-based icon path lands"
-)]
 fn extract_achievement_icons(
     root: &Value,
     app_id: u32,
-) -> std::collections::HashMap<String, AchievementIconRefs> {
+) -> std::collections::HashMap<String, AchievementIconFiles> {
     let mut out = std::collections::HashMap::new();
     let stats_section = match root.get(&format!("{app_id}/stats")) {
         Some(v) => v,
@@ -212,7 +208,7 @@ fn extract_achievement_icons(
                 }
                 None => (None, None),
             };
-            out.insert(name, AchievementIconRefs { icon, icon_gray });
+            out.insert(name, AchievementIconFiles { icon, icon_gray });
         }
     }
     out

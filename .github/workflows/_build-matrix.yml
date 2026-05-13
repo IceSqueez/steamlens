@@ -79,15 +79,9 @@ jobs:
         shell: bash
         run: |
           SRC="target/${{ matrix.target }}/release/${{ inputs.bin_name }}.exe"
-          PDB="target/${{ matrix.target }}/release/${{ inputs.bin_name }}.pdb"
-          BASE="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}"
-          OUT_EXE="${BASE}.exe"
-          mv "$SRC" "$OUT_EXE"
-          if [ -f "$PDB" ]; then
-            mv "$PDB" "${BASE}.pdb"
-          fi
-          echo "ARTIFACT_PATH=$OUT_EXE" >> $GITHUB_ENV
-          echo "ARTIFACT_PDB_PATH=${BASE}.pdb" >> $GITHUB_ENV
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.exe"
+          mv "$SRC" "$OUT"
+          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
 
       # ---------- Linux: AppImage with hicolor icon set + top-level icon ----------
       - name: Package Linux AppImage
@@ -222,12 +216,4 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_PATH }}
           path: ${{ env.ARTIFACT_PATH }}
-          retention-days: ${{ inputs.retention_days == 0 && 3 || inputs.retention_days }}
-
-      - name: Upload Windows .pdb (when generated)
-        if: matrix.os == 'windows-latest' && hashFiles(env.ARTIFACT_PDB_PATH) != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.ARTIFACT_PDB_PATH }}
-          path: ${{ env.ARTIFACT_PDB_PATH }}
           retention-days: ${{ inputs.retention_days == 0 && 3 || inputs.retention_days }}

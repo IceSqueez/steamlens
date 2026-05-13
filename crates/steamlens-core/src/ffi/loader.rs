@@ -51,7 +51,6 @@ impl SteamLibrary {
         // thread-safe to call concurrently (they do not require
         // synchronisation on their own code-path; Steam's internal locks
         // protect shared state inside the library).
-        tracing::info!(target: "loader", "loader: resolving Steam_BGetCallback");
         let b_get_callback_fn: BGetCallbackFn = unsafe {
             let sym: Symbol<BGetCallbackFn> =
                 handle.get(b"Steam_BGetCallback\0").map_err(|source| {
@@ -60,12 +59,8 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            tracing::info!(target: "loader", "loader: resolved Steam_BGetCallback");
-            let fn_ptr = *sym;
-            tracing::info!(target: "loader", "loader: copied Steam_BGetCallback fn ptr");
-            fn_ptr
+            *sym
         };
-        tracing::info!(target: "loader", "loader: resolving Steam_FreeLastCallback");
         let free_last_callback_fn: FreeLastCallbackFn = unsafe {
             let sym: Symbol<FreeLastCallbackFn> =
                 handle.get(b"Steam_FreeLastCallback\0").map_err(|source| {
@@ -74,13 +69,9 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            tracing::info!(target: "loader", "loader: resolved Steam_FreeLastCallback");
-            let fn_ptr = *sym;
-            tracing::info!(target: "loader", "loader: copied Steam_FreeLastCallback fn ptr");
-            fn_ptr
+            *sym
         };
 
-        tracing::info!(target: "loader", "loader: SteamLibrary constructed");
         Ok(Self {
             handle,
             b_get_callback_fn,
@@ -177,9 +168,7 @@ unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
                 // retain the pointer after returning. The returned cookie is
                 // discarded — we never remove the directory.
                 let cookie = unsafe { AddDllDirectory(wide.as_ptr()) };
-                if !cookie.is_null() {
-                    tracing::info!(dir = %dir.display(), "loader: AddDllDirectory ok");
-                } else {
+                if cookie.is_null() {
                     // SAFETY: see above.
                     let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
                     tracing::warn!(
@@ -191,10 +180,6 @@ unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
             }
         }
 
-        tracing::info!(
-            path = %path.display(),
-            "loader: LoadLibraryExW (LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS)"
-        );
         // SAFETY: forwarded from the caller's unsafe contract; `path` is a
         // valid filesystem path to steamclient64.dll. The combined flags
         // make the loader search the application dir, System32, and every
@@ -203,7 +188,7 @@ unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
         let flags = LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS;
         let result = unsafe { WinLibrary::load_with_flags(path, flags).map(Library::from) };
         match &result {
-            Ok(_) => tracing::info!("loader: LoadLibraryExW succeeded"),
+            Ok(_) => {}
             Err(e) => tracing::error!(error = %e, "loader: LoadLibraryExW failed"),
         }
         return result;

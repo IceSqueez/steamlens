@@ -458,7 +458,8 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
         if let Some(filename) = icon_filenames.get(&id).and_then(|r| r.icon.clone()) {
             let id_for_task = id.clone();
             pending_fetches.spawn(async move {
-                let result = crate::cache::cdn_icons::load_or_fetch(app_id, &filename).await;
+                let result =
+                    crate::cache::achievement_icons::load_or_fetch(app_id, &filename).await;
                 (id_for_task, result)
             });
         }
@@ -842,7 +843,7 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
 
 async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
     let app_id = client.app_id();
-    match crate::cache::global_pct::load_or_fetch(app_id).await {
+    match crate::cache::rarity::load_or_fetch(app_id).await {
         Ok(map) => shm_response_for_pct(map),
         Err(e) => WorkerResponse::Error {
             kind: WorkerErrorKind::RequestGlobalPercentages,

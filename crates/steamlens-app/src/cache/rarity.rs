@@ -9,7 +9,7 @@ const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const CACHE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
 #[derive(Debug, thiserror::Error)]
-pub enum GlobalPctError {
+pub enum RarityError {
     #[error("HTTP request failed: {source}")]
     Http {
         #[source]
@@ -53,7 +53,7 @@ fn cache_path(app_id: u32) -> PathBuf {
         .join("global_percentages.json")
 }
 
-pub async fn load_or_fetch(app_id: u32) -> Result<HashMap<String, f32>, GlobalPctError> {
+pub async fn load_or_fetch(app_id: u32) -> Result<HashMap<String, f32>, RarityError> {
     let path = cache_path(app_id);
     if let Ok(meta) = tokio::fs::metadata(&path).await
         && let Ok(modified) = meta.modified()
@@ -72,7 +72,7 @@ pub async fn load_or_fetch(app_id: u32) -> Result<HashMap<String, f32>, GlobalPc
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|source| GlobalPctError::Io {
+            .map_err(|source| RarityError::Io {
                 path: parent.to_path_buf(),
                 source,
             })?;
@@ -81,28 +81,28 @@ pub async fn load_or_fetch(app_id: u32) -> Result<HashMap<String, f32>, GlobalPc
     Ok(map)
 }
 
-async fn fetch(app_id: u32) -> Result<Vec<u8>, GlobalPctError> {
+async fn fetch(app_id: u32) -> Result<Vec<u8>, RarityError> {
     let url = format!("{API_HOST}{API_PATH}?gameid={app_id}&format=json");
     let resp = http_client()
         .get(&url)
         .send()
         .await
-        .map_err(|source| GlobalPctError::Http { source })?;
+        .map_err(|source| RarityError::Http { source })?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(GlobalPctError::Status {
+        return Err(RarityError::Status {
             status: status.as_u16(),
         });
     }
     resp.bytes()
         .await
         .map(|b| b.to_vec())
-        .map_err(|source| GlobalPctError::Http { source })
+        .map_err(|source| RarityError::Http { source })
 }
 
-fn parse_json(bytes: &[u8]) -> Result<HashMap<String, f32>, GlobalPctError> {
+fn parse_json(bytes: &[u8]) -> Result<HashMap<String, f32>, RarityError> {
     let env: ApiEnvelope =
-        serde_json::from_slice(bytes).map_err(|source| GlobalPctError::Parse { source })?;
+        serde_json::from_slice(bytes).map_err(|source| RarityError::Parse { source })?;
     Ok(env
         .achievementpercentages
         .achievements
@@ -153,12 +153,12 @@ mod tests {
     #[test]
     fn reports_parse_error_on_malformed_input() {
         let err = parse_json(b"not json").unwrap_err();
-        assert!(matches!(err, GlobalPctError::Parse { .. }));
+        assert!(matches!(err, RarityError::Parse { .. }));
     }
 
     #[test]
     fn reports_parse_error_on_missing_top_level_key() {
         let err = parse_json(br#"{"foo":"bar"}"#).unwrap_err();
-        assert!(matches!(err, GlobalPctError::Parse { .. }));
+        assert!(matches!(err, RarityError::Parse { .. }));
     }
 }

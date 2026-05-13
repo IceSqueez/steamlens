@@ -249,7 +249,7 @@ pub struct ISteamFriends009 {
     _reserved_23_set_played_with: usize,
     _reserved_24_activate_game_overlay_invite_dialog: usize,
     _reserved_25_get_small_friend_avatar: usize,
-    pub get_medium_friend_avatar: unsafe extern "C" fn(this: *mut c_void, steam_id: u64) -> i32,
+    _reserved_26_get_medium_friend_avatar: usize,
     _reserved_27_get_large_friend_avatar: usize,
 }
 
