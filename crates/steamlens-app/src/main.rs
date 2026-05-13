@@ -305,6 +305,13 @@ fn mark_steam_offline_and_warn(app: &mut App) {
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
 
+fn current_pv_state_mut(screen: &mut Screen) -> &mut ProfileViewState {
+    match screen {
+        Screen::ProfileView(state) => state.as_mut(),
+        Screen::GameView(state) => state.prev_profile_state.as_mut(),
+    }
+}
+
 fn dispatch_game_event(app: &mut App, task: Task<Message>, event: GameViewEvent) -> Task<Message> {
     match event {
         GameViewEvent::None => task,
@@ -438,10 +445,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         },
 
         Message::ProfileView(msg) => {
-            let pv_state: &mut ProfileViewState = match &mut app.screen {
-                Screen::ProfileView(state) => state.as_mut(),
-                Screen::GameView(state) => state.prev_profile_state.as_mut(),
-            };
+            let pv_state = current_pv_state_mut(&mut app.screen);
 
             let is_scan_complete = matches!(msg, ProfileViewMessage::ScanComplete(_));
             let is_scan_failed = matches!(msg, ProfileViewMessage::ScanFailed { .. });
@@ -470,10 +474,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                 let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
 
-                let pv_state: &mut ProfileViewState = match &mut app.screen {
-                    Screen::ProfileView(state) => state.as_mut(),
-                    Screen::GameView(state) => state.prev_profile_state.as_mut(),
-                };
+                let pv_state = current_pv_state_mut(&mut app.screen);
                 if !pv_state.library_name_map.is_empty() {
                     let name_map = std::mem::take(&mut pv_state.library_name_map);
                     for game in &mut pv_state.games {
@@ -589,10 +590,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_off = app.context.connectivity.steam_running == Some(false);
 
-            let pv_state: &mut ProfileViewState = match &mut app.screen {
-                Screen::ProfileView(state) => state.as_mut(),
-                Screen::GameView(state) => state.prev_profile_state.as_mut(),
-            };
+            let pv_state = current_pv_state_mut(&mut app.screen);
 
             if !dirty.is_empty() && !steam_off {
                 pv_state.scan_target_count = dirty.len();
@@ -777,10 +775,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_on = app.context.connectivity.steam_running == Some(true);
 
-            let pv_state: &mut ProfileViewState = match &mut app.screen {
-                Screen::ProfileView(s) => s.as_mut(),
-                Screen::GameView(s) => s.prev_profile_state.as_mut(),
-            };
+            let pv_state = current_pv_state_mut(&mut app.screen);
             if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = None;
             }
