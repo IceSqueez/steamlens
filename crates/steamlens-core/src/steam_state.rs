@@ -1,38 +1,29 @@
+use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
-use steamlens_vdf::parse_text;
+use steamlens_vdf::{AppLocalState, parse_localconfig_states};
 
-/// `None` on missing key / parse failure / missing file. Older Steam
-/// clients may omit the `Software/Valve/Steam` nesting — callers MUST
-/// NOT dirty the cache solely because `LastPlayed` is unavailable.
-pub fn read_last_played(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u64> {
-    let localconfig_path = localconfig_path(steam_root, steamid3);
-    let content = std::fs::read_to_string(&localconfig_path).ok()?;
-    let root = parse_text(&content).ok()?;
+pub type SteamAppState = AppLocalState;
 
-    let last_played_str = root
-        .path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"])?
-        .get(&app_id.to_string())?
-        .get("LastPlayed")?
-        .as_str()?;
-
-    last_played_str.parse::<u64>().ok()
+pub fn read_steam_state(
+    steam_root: &Path,
+    steamid3: u64,
+) -> (HashMap<u32, SteamAppState>, Option<SystemTime>) {
+    let path = localconfig_path(steam_root, steamid3);
+    let mtime = std::fs::metadata(&path)
+        .ok()
+        .and_then(|m| m.modified().ok());
+    let map = std::fs::read_to_string(&path)
+        .ok()
+        .map(|content| parse_localconfig_states(&content))
+        .unwrap_or_default();
+    (map, mtime)
 }
 
-/// Returns total playtime in minutes for `app_id`, or `None` if the field
-/// is missing / file unavailable. Steam stores playtime as integer minutes.
-pub fn read_playtime(steam_root: &Path, steamid3: u64, app_id: u32) -> Option<u32> {
-    let localconfig_path = localconfig_path(steam_root, steamid3);
-    let content = std::fs::read_to_string(&localconfig_path).ok()?;
-    let root = parse_text(&content).ok()?;
-
-    let playtime_str = root
-        .path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"])?
-        .get(&app_id.to_string())?
-        .get("Playtime")?
-        .as_str()?;
-
-    playtime_str.parse::<u32>().ok()
+pub fn read_steam_state_mtime(steam_root: &Path, steamid3: u64) -> Option<SystemTime> {
+    let path = localconfig_path(steam_root, steamid3);
+    std::fs::metadata(&path).ok()?.modified().ok()
 }
 
 fn localconfig_path(steam_root: &Path, steamid3: u64) -> std::path::PathBuf {
@@ -47,12 +38,7 @@ fn localconfig_path(steam_root: &Path, steamid3: u64) -> std::path::PathBuf {
 mod tests {
     use super::*;
 
-    fn write_localconfig(
-        steam_root: &std::path::Path,
-        steamid3: u64,
-        app_id: u32,
-        last_played: u64,
-    ) {
+    fn write_localconfig(steam_root: &Path, steamid3: u64, body: &str) {
         let config_dir = steam_root
             .join("userdata")
             .join(steamid3.to_string())
@@ -60,8 +46,7 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
 
         let content = format!(
-            r#"
-"UserLocalConfigStore"
+            r#""UserLocalConfigStore"
 {{
     "Software"
     {{
@@ -71,41 +56,59 @@ mod tests {
             {{
                 "apps"
                 {{
-                    "{app_id}"
-                    {{
-                        "LastPlayed"  "{last_played}"
-                    }}
+{body}
                 }}
             }}
         }}
     }}
-}}
-"#
+}}"#
         );
         std::fs::write(config_dir.join("localconfig.vdf"), content).unwrap();
     }
 
     #[test]
-    fn read_last_played_happy_path() {
+    fn read_steam_state_picks_up_last_played_and_playtime() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let dir = tmp.path();
-        write_localconfig(dir, 111721205, 105600, 1777926953);
-        let ts = read_last_played(dir, 111721205, 105600).unwrap();
-        assert_eq!(ts, 1777926953);
+        write_localconfig(
+            tmp.path(),
+            111721205,
+            r#"                    "105600"
+                    {
+                        "LastPlayed"  "1777926953"
+                        "Playtime"    "120"
+                    }"#,
+        );
+        let (map, mtime) = read_steam_state(tmp.path(), 111721205);
+        let entry = map.get(&105600).copied().unwrap();
+        assert_eq!(entry.last_played, Some(1_777_926_953));
+        assert_eq!(entry.playtime_minutes, Some(120));
+        assert!(mtime.is_some());
     }
 
     #[test]
-    fn read_last_played_app_id_not_in_apps_returns_none() {
+    fn read_steam_state_missing_file_returns_empty_with_none_mtime() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let dir = tmp.path();
-        write_localconfig(dir, 111721205, 105600, 1777926953);
-        assert!(read_last_played(dir, 111721205, 99999).is_none());
+        let (map, mtime) = read_steam_state(tmp.path(), 111721205);
+        assert!(map.is_empty());
+        assert!(mtime.is_none());
     }
 
     #[test]
-    fn read_last_played_missing_file_returns_none() {
+    fn read_steam_state_mtime_only_reports_change_independent_of_content() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let dir = tmp.path();
-        assert!(read_last_played(dir, 111721205, 105600).is_none());
+        write_localconfig(
+            tmp.path(),
+            1,
+            r#"                    "1" { "LastPlayed" "100" }"#,
+        );
+        let first = read_steam_state_mtime(tmp.path(), 1).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_localconfig(
+            tmp.path(),
+            1,
+            r#"                    "1" { "LastPlayed" "200" }"#,
+        );
+        let second = read_steam_state_mtime(tmp.path(), 1).unwrap();
+        assert!(second > first, "mtime must advance on rewrite");
     }
 }

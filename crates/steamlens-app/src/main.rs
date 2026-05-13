@@ -109,6 +109,12 @@ enum Message {
         app_id: u32,
         entry: Option<Box<GameCacheEntry>>,
     },
+    SteamStateRefreshed(
+        Option<(
+            HashMap<u32, steamlens_core::SteamAppState>,
+            Option<std::time::SystemTime>,
+        )>,
+    ),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -165,6 +171,8 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         connectivity: ConnectivityState::default(),
         steam_level: None,
         no_ach_cache: cache::load_no_achievements_cache_blocking(),
+        steam_state: HashMap::new(),
+        steam_state_mtime: None,
         animation: AnimationState {
             skeleton_phase: 0.0,
         },
@@ -331,6 +339,14 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     let mut tasks: Vec<Task<Message>> = Vec::new();
 
+    if !app.context.steam_root.as_os_str().is_empty() {
+        tasks.push(spawn_steam_state_refresh(
+            app.context.steam_root.clone(),
+            app.context.steamid3,
+            app.context.steam_state_mtime,
+        ));
+    }
+
     if let Some(cached) = app.context.cached_entries.get(&app_id) {
         state.expected_total = cached.progress.total;
         state.genre = cached.genre.clone();
@@ -340,8 +356,11 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         }
     }
     if state.playtime_minutes.is_none() {
-        state.playtime_minutes =
-            steamlens_core::read_playtime(&app.context.steam_root, app.context.steamid3, app_id);
+        state.playtime_minutes = app
+            .context
+            .steam_state
+            .get(&app_id)
+            .and_then(|s| s.playtime_minutes);
     }
 
     if steam_off {
@@ -652,11 +671,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
-            let playtime_minutes = steamlens_core::read_playtime(
-                &app.context.steam_root,
-                app.context.steamid3,
-                app_id,
-            );
+            let playtime_minutes = app
+                .context
+                .steam_state
+                .get(&app_id)
+                .and_then(|s| s.playtime_minutes);
 
             let summary = crate::cache::types::GameSummaryCache {
                 schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
@@ -681,12 +700,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             tracing::info!(app_id, earned, total, change_number, "persist game summary");
 
-            let mut full_entry = build_game_view_cache_entry(
-                gv_state,
-                app_id,
-                &app.context.steam_root,
-                app.context.steamid3,
-            );
+            let mut full_entry =
+                build_game_view_cache_entry(gv_state, app_id, &app.context.steam_state);
             if let Some(existing) = app.context.cached_entries.get(&app_id) {
                 cache::store::merge_preserved_fields(&mut full_entry, existing);
             }
@@ -854,6 +869,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     });
 
                     let mut tasks: Vec<Task<Message>> = Vec::new();
+
+                    tasks.push(spawn_steam_state_refresh(
+                        app.context.steam_root.clone(),
+                        app.context.steamid3,
+                        app.context.steam_state_mtime,
+                    ));
 
                     tasks.push(cache::commands::write_profile_cache(cached));
 
@@ -1169,6 +1190,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             task.map(Message::GameView)
         }
 
+        Message::SteamStateRefreshed(Some((state, mtime))) => {
+            app.context.steam_state = state;
+            app.context.steam_state_mtime = mtime;
+            Task::none()
+        }
+
+        Message::SteamStateRefreshed(None) => Task::none(),
+
         Message::OfflineCacheLoaded { app_id, entry } => {
             let Some(full) = entry.map(|b| *b) else {
                 return Task::none();
@@ -1292,6 +1321,29 @@ fn compute_seed_from_cache(cached: &GameCacheEntry) -> game_view::SeededGameView
     }
 }
 
+fn spawn_steam_state_refresh(
+    steam_root: std::path::PathBuf,
+    steamid3: u64,
+    known_mtime: Option<std::time::SystemTime>,
+) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let current_mtime = steamlens_core::read_steam_state_mtime(&steam_root, steamid3);
+                if current_mtime.is_some() && current_mtime == known_mtime {
+                    return None;
+                }
+                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, steamid3);
+                Some((map, mtime))
+            })
+            .await
+            .ok()
+            .flatten()
+        },
+        Message::SteamStateRefreshed,
+    )
+}
+
 fn spawn_seed_task(app_id: u32, cached: GameCacheEntry) -> Task<Message> {
     Task::perform(
         async move {
@@ -1319,13 +1371,12 @@ pub(crate) fn build_cache_entry_from_scan(
     scanned: &progress_scan::ScannedGameData,
     app_id: u32,
     entry_name: Option<&str>,
-    steam_root: &std::path::Path,
-    steamid3: u64,
+    steam_state: &std::collections::HashMap<u32, steamlens_core::SteamAppState>,
 ) -> GameCacheEntry {
     use cache::types::{CachedAchievement, CachedProgress, CachedStat};
     use game_view::compute_tier_breakdown;
     use game_view::types::{AchievementData, AchievementRow};
-    use steamlens_core::{StatValue, read_last_played, read_playtime};
+    use steamlens_core::StatValue;
 
     let stats: Vec<CachedStat> = scanned
         .stats
@@ -1376,8 +1427,9 @@ pub(crate) fn build_cache_entry_from_scan(
         .collect();
     let tier_breakdown = compute_tier_breakdown(&tier_rows);
 
-    let steam_last_played = read_last_played(steam_root, steamid3, app_id).unwrap_or(0);
-    let playtime_minutes = read_playtime(steam_root, steamid3, app_id);
+    let state_entry = steam_state.get(&app_id).copied().unwrap_or_default();
+    let steam_last_played = state_entry.last_played.unwrap_or(0) as u64;
+    let playtime_minutes = state_entry.playtime_minutes;
     let cached_at = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1423,11 +1475,9 @@ pub(crate) fn build_cache_entry_from_scan(
 fn build_game_view_cache_entry(
     state: &GameViewState,
     app_id: u32,
-    steam_root: &std::path::Path,
-    steamid3: u64,
+    steam_state: &std::collections::HashMap<u32, steamlens_core::SteamAppState>,
 ) -> GameCacheEntry {
     use cache::types::{CachedAchievement, CachedProgress, CachedStat};
-    use steamlens_core::{read_last_played, read_playtime};
 
     let earned = state
         .achievements
@@ -1474,8 +1524,9 @@ fn build_game_view_cache_entry(
         })
         .collect();
 
-    let steam_last_played = read_last_played(steam_root, steamid3, app_id).unwrap_or(0);
-    let playtime_minutes = read_playtime(steam_root, steamid3, app_id);
+    let state_entry = steam_state.get(&app_id).copied().unwrap_or_default();
+    let steam_last_played = state_entry.last_played.unwrap_or(0) as u64;
+    let playtime_minutes = state_entry.playtime_minutes;
 
     let cached_at = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -1768,6 +1819,8 @@ mod tests {
                     },
                     steam_level: None,
                     no_ach_cache: cache::NoAchievementsCache::new(),
+                    steam_state: HashMap::new(),
+                    steam_state_mtime: None,
                     animation: AnimationState {
                         skeleton_phase: 0.0,
                     },
@@ -2201,8 +2254,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            std::path::Path::new("/tmp/nonexistent"),
-            0,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(entry.progress.earned, 2);
         assert_eq!(entry.progress.total, 3);
@@ -2221,8 +2273,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            std::path::Path::new("/tmp/nonexistent"),
-            0,
+            &std::collections::HashMap::new(),
         );
         assert_eq!(entry.name, "FallbackName");
     }
@@ -2243,8 +2294,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            std::path::Path::new("/tmp/nonexistent"),
-            0,
+            &std::collections::HashMap::new(),
         );
         assert!(
             !entry.tier_breakdown.is_empty(),
@@ -2263,8 +2313,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            std::path::Path::new("/tmp/nonexistent"),
-            0,
+            &std::collections::HashMap::new(),
         );
         assert!(
             entry.tier_breakdown.is_empty(),
