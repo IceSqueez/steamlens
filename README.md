@@ -36,13 +36,9 @@ A Steam achievement manager with rarity insights and library statistics.
 
 ### Polished by default
 
-- **Dark and Light themes** — toggle from the app header; choice persists across restarts.
+- **Dark and Light themes** — toggle from the app header; choice persists across restarts. Every widget (library cards, game view, modals, status bar, toasts) resolves colors through the active palette — no hardcoded constants leaking through.
 - **Update checker** — on startup, SteamLens checks GitHub for a newer release and surfaces an info banner with a one-click Download link.
 - **Live capsule artwork** at three preset sizes, smooth animations and skeleton placeholders during hydration, search and filter across library and achievements — the basics, kept fast and out of your way.
-
-## Known Limitations (Beta)
-
-- **Linux is the primary test platform.** macOS and Windows binaries build green on CI; manual runtime verification on those platforms lands during beta.1.
 
 ## Notes & Caveats
 
@@ -54,6 +50,7 @@ A few things worth knowing before you start:
 - **Some games store progression in stats.** Editing stats can affect quest progress, item unlocks, or save state. The consent checkbox before a stats edit is there for that reason.
 - **No warranty.** SteamLens is provided as-is. The author and contributors aren't liable for lost progress, data corruption, or other consequences of running the tool.
 - **Not affiliated with Valve.** SteamLens is an independent open-source project — no endorsement by Valve Corporation or Steam.
+- **Application data is stored in `~/.steamlens/`** on Linux, macOS, and Windows alike — same path across platforms by design. On Unix the cache and settings files are written with mode `0600` (owner read/write only). Delete the folder to start fresh.
 
 ## Installation
 
@@ -128,6 +125,30 @@ macOS needs [Xcode Command Line Tools](https://developer.apple.com/download/); [
 5. **Edit stats.** Use the in-game statistics panel to max, reset, or set values directly. Increment-only stats reject decreases.
 6. **Apply or discard.** When there are dirty changes, a typed `confirmed` gate guards the Apply button — type the word, click Apply, changes are written to Steam. Cancel drops the changes.
 7. **Go back.** The back arrow returns you to the library; the game-view state is cached for next time.
+
+### Keyboard shortcuts
+
+- **`Ctrl + F`** (`⌘F` on macOS) — focus the search box (library or achievements, depending on current view).
+- **`Esc`** — close the open modal, or clear the current search query if the search box is non-empty.
+- **`Ctrl + S`** (all platforms, including macOS) — Apply staged changes when on Game View with pending edits and no stat errors. Equivalent to clicking Apply through the confirm gate.
+
+## Troubleshooting
+
+**Logs.** All output is written to `~/.steamlens/steamlens.log` (truncated on every restart). Attach this file to bug reports.
+
+**Verbose logs for crash reports.** If you hit a hard-to-reproduce bug, re-run with trace-level logs:
+
+```bash
+STEAMLENS_LOG=trace ./steamlens-app    # Linux / macOS
+```
+
+```powershell
+$env:STEAMLENS_LOG = "trace"; .\steamlens-app.exe    # Windows PowerShell
+```
+
+The log will now contain per-FFI-step markers (vtable calls, Steam-callback poll ticks, cache writes, etc.) — useful when filing a GitHub issue. Default level is `INFO`; valid values: `error`, `warn`, `info`, `debug`, `trace`.
+
+**Reset application data.** Delete `~/.steamlens/` (Linux/macOS) or `%USERPROFILE%\.steamlens\` (Windows) to start fresh. Cached games, settings, and login profile are stored there.
 
 ## Architecture
 
