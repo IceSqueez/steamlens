@@ -325,11 +325,15 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         .collect();
     state.include_hidden = app.context.settings.manager.include_hidden;
 
+    let mut tasks: Vec<Task<Message>> = Vec::new();
+
     if let Some(cached) = app.context.cached_entries.get(&app_id) {
         state.expected_total = cached.progress.total;
         state.genre = cached.genre.clone();
         state.playtime_minutes = cached.playtime_minutes;
-        seed_game_view_from_cache(&mut state, cached);
+        if !cached.achievements.is_empty() {
+            tasks.push(spawn_seed_task(app_id, cached.clone()));
+        }
     }
     if state.playtime_minutes.is_none() {
         state.playtime_minutes =
@@ -347,7 +351,9 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
             if state.playtime_minutes.is_none() {
                 state.playtime_minutes = full.playtime_minutes;
             }
-            seed_game_view_from_cache(&mut state, &full);
+            if !full.achievements.is_empty() {
+                tasks.push(spawn_seed_task(app_id, full.clone()));
+            }
             app.context.cached_entries.insert(app_id, full);
         }
         disconnect_worker(app);
@@ -361,7 +367,7 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         app.context.worker_rx = Some(rx);
     }
 
-    let capsule_task = Task::perform(
+    tasks.push(Task::perform(
         capsule_cache::fetch_capsule(app_id, capsule_cache::CapsuleSize::Portrait),
         move |result| match result {
             Ok((size, pixels)) => {
@@ -380,11 +386,11 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
             }
             Err((size, _)) => Message::GameView(GameViewMessage::CapsuleFailed { app_id, size }),
         },
-    );
+    ));
 
     app.screen = Screen::GameView(Box::new(state));
 
-    capsule_task
+    Task::batch(tasks)
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -1206,18 +1212,12 @@ fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
     entry.tier_breakdown = compute_tier_breakdown(&rows);
 }
 
-fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry) {
-    use game_view::GameViewPhase;
+fn compute_seed_from_cache(cached: &GameCacheEntry) -> game_view::SeededGameView {
+    use game_view::SeededGameView;
     use game_view::types::{AchievementData, AchievementRow, StatData, StatRow, StatValue};
 
-    if cached.achievements.is_empty() {
-        return;
-    }
-
-    state.game_name = cached.name.clone();
-
     let app_id = cached.app_id;
-    state.achievements = cached
+    let achievements: Vec<AchievementRow> = cached
         .achievements
         .iter()
         .map(|a| {
@@ -1240,7 +1240,7 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
         })
         .collect();
 
-    state.stats = cached
+    let stats: Vec<StatRow> = cached
         .stats
         .iter()
         .map(|s| {
@@ -1263,8 +1263,34 @@ fn seed_game_view_from_cache(state: &mut GameViewState, cached: &GameCacheEntry)
         })
         .collect();
 
-    state.phase = GameViewPhase::Connecting;
-    state.reveal_queue.clear();
+    SeededGameView {
+        game_name: cached.name.clone(),
+        achievements,
+        stats,
+    }
+}
+
+fn spawn_seed_task(app_id: u32, cached: GameCacheEntry) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || compute_seed_from_cache(&cached))
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, app_id, "seed task panicked");
+                    game_view::SeededGameView {
+                        game_name: String::new(),
+                        achievements: Vec::new(),
+                        stats: Vec::new(),
+                    }
+                })
+        },
+        move |seeded| {
+            Message::GameView(GameViewMessage::CacheSeeded {
+                app_id,
+                seeded: Box::new(seeded),
+            })
+        },
+    )
 }
 
 pub(crate) fn build_cache_entry_from_scan(
