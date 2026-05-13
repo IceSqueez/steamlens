@@ -1,5 +1,9 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::cache::types::{
     CURRENT_SCHEMA_VERSION, GameAchievementsCache, GameCacheEntry, GameSummaryCache,
@@ -7,6 +11,17 @@ use crate::cache::types::{
 };
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+static CACHE_WRITE_LOCKS: OnceLock<Mutex<HashMap<u32, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+
+fn cache_write_lock(app_id: u32) -> Arc<AsyncMutex<()>> {
+    let map = CACHE_WRITE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .entry(app_id)
+        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+        .clone()
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheIoError {
@@ -84,14 +99,19 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
 }
 
 pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError> {
-    let path = game_cache_path(entry.app_id);
+    write_game_cache_at(&game_cache_path(entry.app_id), entry).await
+}
+
+async fn write_game_cache_at(path: &Path, entry: &GameCacheEntry) -> Result<(), CacheIoError> {
+    let lock = cache_write_lock(entry.app_id);
+    let _guard = lock.lock().await;
     let mut merged = entry.clone();
-    if let Some(old) = load_game_cache_from_path(&path).await {
+    if let Some(old) = load_game_cache_from_path(path).await {
         merge_preserved_fields(&mut merged, &old);
     }
     let bytes =
         serde_json::to_vec_pretty(&merged).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    atomic_write(&path, &bytes).await
+    atomic_write(path, &bytes).await
 }
 
 pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEntry) {
@@ -667,5 +687,99 @@ mod tests {
         merge_preserved_fields(&mut new, &old);
 
         assert_eq!(new.genre.as_deref(), Some("New"));
+    }
+
+    #[test]
+    fn cache_write_lock_same_app_id_returns_same_arc() {
+        let l1 = cache_write_lock(91337);
+        let l2 = cache_write_lock(91337);
+        assert!(
+            Arc::ptr_eq(&l1, &l2),
+            "two calls for same app_id must yield the same lock instance"
+        );
+    }
+
+    #[test]
+    fn cache_write_lock_distinct_app_ids_return_different_arcs() {
+        let l1 = cache_write_lock(91338);
+        let l2 = cache_write_lock(91339);
+        assert!(
+            !Arc::ptr_eq(&l1, &l2),
+            "distinct app_ids must yield distinct lock instances"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_writes_preserve_fields_across_writers() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("91340.json");
+
+        let filled = GameCacheEntry {
+            schema_version: CURRENT_SCHEMA_VERSION,
+            app_id: 91340,
+            name: "Race Test".to_owned(),
+            steam_last_played: 0,
+            cached_at: 0,
+            achievements: vec![CachedAchievement {
+                api_name: "ACH_X".to_owned(),
+                display_name: "Filled Display".to_owned(),
+                description: "Filled Description.".to_owned(),
+                hidden: true,
+                icon_path: None,
+                icon_locked_path: None,
+                earned: false,
+                earned_at: None,
+                global_percent: None,
+            }],
+            stats: Vec::new(),
+            progress: CachedProgress {
+                earned: 0,
+                total: 1,
+            },
+            tier_breakdown: Vec::new(),
+            genre: Some("Action".to_owned()),
+            playtime_minutes: None,
+        };
+
+        let empty = GameCacheEntry {
+            achievements: vec![CachedAchievement {
+                api_name: "ACH_X".to_owned(),
+                display_name: String::new(),
+                description: String::new(),
+                hidden: false,
+                ..filled.achievements[0].clone()
+            }],
+            genre: None,
+            ..filled.clone()
+        };
+
+        let p1 = path.clone();
+        let p2 = path.clone();
+        let (r1, r2) = tokio::join!(
+            write_game_cache_at(&p1, &filled),
+            write_game_cache_at(&p2, &empty),
+        );
+        r1.expect("filled write");
+        r2.expect("empty write");
+
+        let final_entry = load_game_cache_from_path(&path)
+            .await
+            .expect("disk readback");
+
+        let ach = &final_entry.achievements[0];
+        assert_eq!(
+            ach.display_name, "Filled Display",
+            "filled display_name must survive the race"
+        );
+        assert_eq!(
+            ach.description, "Filled Description.",
+            "filled description must survive the race"
+        );
+        assert!(ach.hidden, "filled `hidden` flag must survive the race");
+        assert_eq!(
+            final_entry.genre.as_deref(),
+            Some("Action"),
+            "filled genre must survive the race"
+        );
     }
 }
