@@ -20,17 +20,8 @@ use crate::ui::widgets::pill::pill;
 
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 
-const C_CURRENT_LINE: Color = Color::from_rgb(0.267, 0.278, 0.353);
-const C_FG: Color = Color::from_rgb(0.973, 0.973, 0.949);
 const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
-const C_GREEN: Color = Color::from_rgb(0.314, 0.980, 0.482);
-const C_ORANGE: Color = Color::from_rgb(1.0, 0.722, 0.424);
-const C_PURPLE: Color = Color::from_rgb(0.741, 0.576, 0.976);
-const C_RED: Color = Color::from_rgb(1.0, 0.333, 0.333);
 const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
-const C_CYAN: Color = Color::from_rgb(0.545, 0.914, 0.992);
-const C_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
-const C_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
 
 fn dracula_border_radius(r: f32) -> iced::Border {
     iced::Border {
@@ -52,25 +43,33 @@ pub fn render(state: &GameViewState, props: GameViewProps) -> Element<'_, GameVi
             let base = loaded_view(state, skeleton_phase, app_theme);
             stack![
                 base,
-                opaque(saving_overlay(state.spinner_angle, "Saving changes..."))
+                opaque(saving_overlay(
+                    state.spinner_angle,
+                    "Saving changes...",
+                    app_theme
+                ))
             ]
             .into()
         }
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Ready => {
             let base = loaded_view(state, skeleton_phase, app_theme);
             if state.show_apply_modal {
-                stack![base, opaque(apply_modal(state))].into()
+                stack![base, opaque(apply_modal(state, app_theme))].into()
             } else {
                 base
             }
         }
-        GameViewPhase::Error => error_view(state),
+        GameViewPhase::Error => error_view(state, app_theme),
     }
 }
 
-fn error_view(state: &GameViewState) -> Element<'_, GameViewMessage> {
+fn error_view(
+    state: &GameViewState,
+    theme: crate::ui::theme::AppTheme,
+) -> Element<'_, GameViewMessage> {
+    let p = palette(theme);
     let content = column![
-        text("Failed to load").size(20).color(C_RED),
+        text("Failed to load").size(20).color(p.severity.error.text),
         text(&state.error_message).size(13).color(C_MUTED),
         button(text("Back").size(13))
             .on_press(GameViewMessage::RequestGoBack)
@@ -112,7 +111,7 @@ fn loaded_view(
         top: Some(game_widget_el),
         status_bar: game_status_bar(state),
         body,
-        footer: Some(footer_bar(state)),
+        footer: Some(footer_bar(state, app_theme)),
     })
 }
 
@@ -322,17 +321,23 @@ fn bulk_action_buttons<'a>() -> Element<'a, GameViewMessage> {
         .into()
 }
 
-pub(crate) fn tier_color(tier: RarityTier) -> Color {
+pub(crate) fn tier_color(tier: RarityTier, theme: crate::ui::theme::AppTheme) -> Color {
+    let p = palette(theme);
     match tier {
-        RarityTier::Common => C_GREEN,
-        RarityTier::Uncommon => C_CYAN,
-        RarityTier::Rare => C_PURPLE,
-        RarityTier::Mythical => C_MYTHICAL,
-        RarityTier::Legendary => C_LEGENDARY,
+        RarityTier::Common => p.rarity_common,
+        RarityTier::Uncommon => p.rarity_uncommon,
+        RarityTier::Rare => p.rarity_rare,
+        RarityTier::Mythical => p.rarity_mythical,
+        RarityTier::Legendary => p.rarity_legendary,
     }
 }
 
-fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Style {
+fn icon_glow_style(
+    tier: Option<RarityTier>,
+    glow_pulse: f32,
+    theme: crate::ui::theme::AppTheme,
+) -> container::Style {
+    let p = palette(theme);
     match tier {
         Some(RarityTier::Legendary) => {
             let alpha = 0.75 + 0.25 * glow_pulse;
@@ -341,13 +346,13 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
                 shadow: iced::Shadow {
                     color: Color {
                         a: alpha,
-                        ..C_LEGENDARY
+                        ..p.rarity_legendary
                     },
                     offset: iced::Vector::new(0.0, 0.0),
                     blur_radius: blur,
                 },
                 border: iced::Border {
-                    color: C_LEGENDARY,
+                    color: p.rarity_legendary,
                     width: 3.0,
                     radius: 8.0.into(),
                 },
@@ -358,13 +363,13 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
             shadow: iced::Shadow {
                 color: Color {
                     a: 0.45,
-                    ..C_MYTHICAL
+                    ..p.rarity_mythical
                 },
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 16.0,
             },
             border: iced::Border {
-                color: C_MYTHICAL,
+                color: p.rarity_mythical,
                 width: 2.0,
                 radius: 8.0.into(),
             },
@@ -372,12 +377,15 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
         },
         Some(RarityTier::Rare) => container::Style {
             shadow: iced::Shadow {
-                color: Color { a: 0.7, ..C_PURPLE },
+                color: Color {
+                    a: 0.7,
+                    ..p.rarity_rare
+                },
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 14.0,
             },
             border: iced::Border {
-                color: C_PURPLE,
+                color: p.rarity_rare,
                 width: 1.5,
                 radius: 8.0.into(),
             },
@@ -385,7 +393,10 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
         },
         Some(RarityTier::Uncommon) => container::Style {
             shadow: iced::Shadow {
-                color: Color { a: 0.7, ..C_CYAN },
+                color: Color {
+                    a: 0.7,
+                    ..p.rarity_uncommon
+                },
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 14.0,
             },
@@ -393,7 +404,10 @@ fn icon_glow_style(tier: Option<RarityTier>, glow_pulse: f32) -> container::Styl
         },
         Some(RarityTier::Common) => container::Style {
             shadow: iced::Shadow {
-                color: Color { a: 0.7, ..C_GREEN },
+                color: Color {
+                    a: 0.7,
+                    ..p.rarity_common
+                },
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 14.0,
             },
@@ -607,8 +621,8 @@ fn build_skeleton_ach_card(card_w: f32, phase: f32) -> Element<'static, GameView
     let card_container = container(card_body)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(ACH_CARD_HEIGHT))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(C_CURRENT_LINE)),
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(palette(theme_from_iced(t)).border)),
             border: iced::Border {
                 color: Color::TRANSPARENT,
                 width: 0.0,
@@ -629,7 +643,8 @@ fn achievement_card_widget<'a>(
     _skeleton_phase: f32,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
-    let fg = crate::ui::theme::palette(app_theme).text_primary;
+    let p = *palette(app_theme);
+    let fg = p.text_primary;
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
     let is_hidden_meta = row.data.is_hidden;
@@ -640,11 +655,11 @@ fn achievement_card_widget<'a>(
             .height(Length::Fixed(ACH_CARD_ICON))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
-            .style(|_theme| container::Style {
+            .style(move |_theme| container::Style {
                 background: Some(iced::Background::Color(Color {
-                    r: C_CURRENT_LINE.r * 0.7,
-                    g: C_CURRENT_LINE.g * 0.7,
-                    b: C_CURRENT_LINE.b * 0.7,
+                    r: p.border.r * 0.7,
+                    g: p.border.g * 0.7,
+                    b: p.border.b * 0.7,
                     a: 1.0,
                 })),
                 border: dracula_border_radius(6.0),
@@ -660,23 +675,23 @@ fn achievement_card_widget<'a>(
                 .height(Length::Fixed(ACH_CARD_ICON))
                 .opacity(opacity),
         )
-        .style(move |_theme| icon_glow_style(tier, glow_pulse))
+        .style(move |_theme| icon_glow_style(tier, glow_pulse, app_theme))
         .into()
     } else {
         let icon_bg = if effective {
-            C_CURRENT_LINE
+            p.border
         } else {
             Color {
-                r: C_CURRENT_LINE.r * 0.6,
-                g: C_CURRENT_LINE.g * 0.6,
-                b: C_CURRENT_LINE.b * 0.6,
+                r: p.border.r * 0.6,
+                g: p.border.g * 0.6,
+                b: p.border.b * 0.6,
                 a: 1.0,
             }
         };
         container(
             text(if effective { "\u{2713}" } else { "\u{25CB}" })
                 .size(20)
-                .color(if effective { C_GREEN } else { C_MUTED }),
+                .color(if effective { p.rarity_common } else { C_MUTED }),
         )
         .width(Length::Fixed(ACH_CARD_ICON))
         .height(Length::Fixed(ACH_CARD_ICON))
@@ -840,9 +855,9 @@ fn achievement_card_widget<'a>(
     let badge_text = row.status_label();
     let is_locked_badge = badge_text == "Locked";
     let fixed_badge_color: Option<Color> = match badge_text {
-        "Protected" => Some(C_ORANGE),
+        "Protected" => Some(p.severity.warning.text),
         "Pending" => Some(C_YELLOW),
-        "Unlocked" => Some(C_GREEN),
+        "Unlocked" => Some(p.rarity_common),
         _ => None,
     };
 
@@ -871,7 +886,7 @@ fn achievement_card_widget<'a>(
     let rarity_badge: Option<Element<'_, GameViewMessage>> = if spoiler_hidden {
         None
     } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
-        let tc = tier_color(t);
+        let tc = tier_color(t, app_theme);
         let label = format!("{} \u{00B7} {:.1}%", t.label(), pct);
         let label_text = text(label)
             .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
@@ -952,7 +967,7 @@ fn achievement_card_widget<'a>(
     let toggle_id = row.data.id.clone();
     let is_hidden_card = spoiler_hidden;
     let glow_color: Option<Color> = if effective && !spoiler_hidden {
-        tier.map(tier_color)
+        tier.map(|t| tier_color(t, app_theme))
     } else {
         None
     };
@@ -978,7 +993,11 @@ fn achievement_card_widget<'a>(
     c.into()
 }
 
-fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
+fn footer_bar(
+    state: &GameViewState,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'_, GameViewMessage> {
+    let p_outer = *palette(app_theme);
     let dirty = state.dirty_count();
     let has_errors = state.has_stat_errors();
     let is_busy = matches!(state.phase, GameViewPhase::Saving);
@@ -1061,17 +1080,18 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
         button(text(apply_label).size(12))
             .on_press(GameViewMessage::ApplyClicked)
             .padding(Padding::default().left(12).right(12).top(6).bottom(6))
-            .style(|_t, status| {
+            .style(move |t: &iced::Theme, status| {
+                let p = palette(theme_from_iced(t));
                 let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
                 let bg_color = if hovered {
                     Color {
-                        r: (C_PURPLE.r * 0.9 + 0.1).min(1.0),
-                        g: (C_PURPLE.g * 0.9 + 0.1).min(1.0),
-                        b: (C_PURPLE.b * 0.9 + 0.1).min(1.0),
+                        r: (p.accent.r * 0.9 + 0.1).min(1.0),
+                        g: (p.accent.g * 0.9 + 0.1).min(1.0),
+                        b: (p.accent.b * 0.9 + 0.1).min(1.0),
                         a: 1.0,
                     }
                 } else {
-                    C_PURPLE
+                    p.accent
                 };
                 button::Style {
                     background: Some(iced::Background::Color(bg_color)),
@@ -1079,7 +1099,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
                     text_color: Color::BLACK,
                     shadow: if hovered {
                         iced::Shadow {
-                            color: Color { a: 0.6, ..C_PURPLE },
+                            color: Color { a: 0.6, ..p.accent },
                             offset: iced::Vector::new(0.0, 0.0),
                             blur_radius: 8.0,
                         }
@@ -1095,7 +1115,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
             .style(|t: &iced::Theme, _s| {
                 let p = palette(theme_from_iced(t));
                 button::Style {
-                    background: Some(iced::Background::Color(Color { a: 0.3, ..C_PURPLE })),
+                    background: Some(iced::Background::Color(Color { a: 0.3, ..p.accent })),
                     border: dracula_border_radius(6.0),
                     text_color: Color {
                         a: 0.4,
@@ -1109,7 +1129,7 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     let spinner_el: Element<'_, GameViewMessage> = if is_busy {
         text(spinner_frame(state.spinner_angle))
             .size(16)
-            .color(C_PURPLE)
+            .color(p_outer.accent)
             .into()
     } else {
         space().width(20).into()
@@ -1138,7 +1158,11 @@ fn footer_bar(state: &GameViewState) -> Element<'_, GameViewMessage> {
     .into()
 }
 
-fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
+fn apply_modal(
+    state: &GameViewState,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'_, GameViewMessage> {
+    let p = *palette(app_theme);
     let dirty = state.dirty_count();
     let dirty_label = format!(
         "You are about to commit {dirty} pending change{} to Steam.",
@@ -1149,27 +1173,28 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         column![
             text("\u{26A0} This writes directly to Steam")
                 .size(13)
-                .color(C_ORANGE),
+                .color(p.severity.warning.text),
             text(
                 "Stats and achievements will be persisted via Steam's stats API \
                  and become visible on your profile immediately. Use Cancel to \
                  keep your changes staged locally without committing."
             )
             .size(12)
-            .color(Color { a: 0.90, ..C_FG }),
+            .color(Color {
+                a: 0.90,
+                ..p.text_primary
+            }),
         ]
         .spacing(4),
     )
     .padding(Padding::from([8u16, 12]))
-    .style(|_theme| container::Style {
+    .style(move |_theme| container::Style {
         background: Some(iced::Background::Color(Color {
-            r: 1.0,
-            g: 0.722,
-            b: 0.424,
             a: 0.08,
+            ..p.severity.warning.text
         })),
         border: iced::Border {
-            color: C_ORANGE,
+            color: p.severity.warning.text,
             width: 1.0,
             radius: 4.0.into(),
         },
@@ -1183,13 +1208,8 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         .on_submit(GameViewMessage::ApplyConfirmed)
         .size(13)
         .padding(Padding::from([6u16, 10]))
-        .style(|_theme, _status| iced::widget::text_input::Style {
-            background: iced::Background::Color(Color {
-                r: 0.12,
-                g: 0.13,
-                b: 0.17,
-                a: 1.0,
-            }),
+        .style(move |_theme, _status| iced::widget::text_input::Style {
+            background: iced::Background::Color(p.app),
             border: iced::Border {
                 color: C_MUTED,
                 width: 1.0,
@@ -1197,10 +1217,10 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
             },
             icon: C_MUTED,
             placeholder: Color { a: 0.3, ..C_MUTED },
-            value: C_FG,
+            value: p.text_primary,
             selection: Color {
                 a: 0.35,
-                ..C_PURPLE
+                ..p.accent
             },
         });
 
@@ -1223,17 +1243,17 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
             let bg = if !confirm_enabled {
                 Color {
                     a: 0.30,
-                    ..C_PURPLE
+                    ..p.accent
                 }
             } else if hovered {
                 Color {
-                    r: (C_PURPLE.r * 0.9 + 0.1).min(1.0),
-                    g: (C_PURPLE.g * 0.9 + 0.1).min(1.0),
-                    b: (C_PURPLE.b * 0.9 + 0.1).min(1.0),
+                    r: (p.accent.r * 0.9 + 0.1).min(1.0),
+                    g: (p.accent.g * 0.9 + 0.1).min(1.0),
+                    b: (p.accent.b * 0.9 + 0.1).min(1.0),
                     a: 1.0,
                 }
             } else {
-                C_PURPLE
+                p.accent
             };
             button::Style {
                 background: Some(iced::Background::Color(bg)),
@@ -1249,21 +1269,21 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         }
     };
 
-    let cancel_btn = button(text("Cancel").size(13).color(C_FG))
+    let cancel_btn = button(text("Cancel").size(13).color(p.text_primary))
         .on_press(GameViewMessage::ApplyCancelled)
         .padding(Padding::from([8u16, 16]))
-        .style(|_t, status| {
+        .style(move |_t, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: Some(iced::Background::Color(if hovered {
                     Color {
-                        r: (C_CURRENT_LINE.r * 0.85 + 0.18).min(1.0),
-                        g: (C_CURRENT_LINE.g * 0.85 + 0.18).min(1.0),
-                        b: (C_CURRENT_LINE.b * 0.85 + 0.18).min(1.0),
+                        r: (p.border.r * 0.85 + 0.18).min(1.0),
+                        g: (p.border.g * 0.85 + 0.18).min(1.0),
+                        b: (p.border.b * 0.85 + 0.18).min(1.0),
                         a: 1.0,
                     }
                 } else {
-                    C_CURRENT_LINE
+                    p.border
                 })),
                 border: iced::Border {
                     color: if hovered {
@@ -1274,7 +1294,7 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
                     width: 1.0,
                     radius: 4.0.into(),
                 },
-                text_color: C_FG,
+                text_color: p.text_primary,
                 ..button::Style::default()
             }
         });
@@ -1285,7 +1305,9 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
         .padding(Padding::default().top(16));
 
     let modal_inner = column![
-        text("\u{26A0}  Confirm Apply").size(16).color(C_FG),
+        text("\u{26A0}  Confirm Apply")
+            .size(16)
+            .color(p.text_primary),
         text(dirty_label).size(13).color(C_MUTED),
         warning_box,
         confirm_gate,
@@ -1296,15 +1318,10 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
 
     let modal_box = container(modal_inner)
         .width(Length::Fixed(480.0))
-        .style(|_theme| container::Style {
-            background: Some(iced::Background::Color(Color {
-                r: 0.18,
-                g: 0.19,
-                b: 0.24,
-                a: 1.0,
-            })),
+        .style(move |_theme| container::Style {
+            background: Some(iced::Background::Color(p.surface)),
             border: iced::Border {
-                color: C_CURRENT_LINE,
+                color: p.border,
                 width: 1.0,
                 radius: 8.0.into(),
             },
@@ -1333,10 +1350,15 @@ fn apply_modal(state: &GameViewState) -> Element<'_, GameViewMessage> {
     stack![backdrop, centered].into()
 }
 
-fn saving_overlay<'a>(angle: f32, label: &'a str) -> Element<'a, GameViewMessage> {
-    let spinner = text(spinner_frame(angle)).size(24).color(C_PURPLE);
+fn saving_overlay<'a>(
+    angle: f32,
+    label: &'a str,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'a, GameViewMessage> {
+    let p = palette(app_theme);
+    let spinner = text(spinner_frame(angle)).size(24).color(p.accent);
 
-    let content = column![spinner, text(label).size(14).color(C_FG)]
+    let content = column![spinner, text(label).size(14).color(p.text_primary)]
         .spacing(8)
         .align_x(Alignment::Center);
 
