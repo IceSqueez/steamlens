@@ -14,7 +14,6 @@ pub(super) const STEAM_USER_023_VERSION: &str = "SteamUser023";
 pub(super) const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 pub(super) const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
 pub(super) const STEAM_APPS_008_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION008";
-pub(super) const STEAM_UTILS_VERSION: &str = "SteamUtils005";
 pub(super) const STEAM_FRIENDS_VERSION: &str = "SteamFriends009";
 
 pub(super) struct SteamConnection {
@@ -24,7 +23,6 @@ pub(super) struct SteamConnection {
     pub(super) steam_user_stats: RawInterface,
     pub(super) steam_apps: RawInterface,
     pub(super) steam_apps_008: RawInterface,
-    pub(super) steam_utils: RawInterface,
     pub(super) steam_friends: RawInterface,
     pub(super) pipe: HSteamPipe,
     pub(super) user: HSteamUser,
@@ -44,6 +42,7 @@ impl SteamConnection {
         }
 
         let library = loader::shared()?;
+
         let steam_client = library.create_interface(STEAM_CLIENT_VERSION)?;
 
         // SAFETY: `CreateInterface("SteamClient018")` guarantees the returned
@@ -148,18 +147,6 @@ impl SteamConnection {
             ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_008_version.as_ptr())
         };
 
-        let utils_version =
-            CString::new(STEAM_UTILS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
-                version: STEAM_UTILS_VERSION.to_owned(),
-            })?;
-
-        // SAFETY: `GetISteamUtils` takes (this, pipe, version) — no user
-        // handle — per slot 9 of ISteamClient018. Null is non-fatal.
-        let steam_utils = unsafe {
-            let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-            ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
-        };
-
         let friends_version = CString::new(STEAM_FRIENDS_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
                 version: STEAM_FRIENDS_VERSION.to_owned(),
@@ -220,7 +207,6 @@ impl SteamConnection {
             steam_user_stats,
             steam_apps,
             steam_apps_008,
-            steam_utils,
             steam_friends,
             pipe,
             user,

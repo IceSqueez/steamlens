@@ -1,9 +1,10 @@
+pub mod achievement_icons;
 pub mod cached;
 pub mod commands;
-pub mod icons;
 pub mod invalidate;
 pub mod no_achievements;
 pub mod persistent;
+pub mod rarity;
 pub mod store;
 pub mod types;
 

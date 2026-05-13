@@ -1,10 +1,8 @@
-use crate::client::Image;
 use crate::ffi::interfaces::ISteamFriends009;
 use crate::ffi::opaque::{self, RawInterface};
 
 pub(super) struct Friends {
     pub(super) steam_friends: RawInterface,
-    pub(super) steam_id: u64,
 }
 
 impl Friends {
@@ -31,24 +29,5 @@ impl Friends {
             .filter(|s| !s.is_empty())
             .map(str::to_owned)?;
         Some(name)
-    }
-
-    pub(super) fn user_avatar<F>(&self, get_image: F) -> Option<Image>
-    where
-        F: FnOnce(i32) -> Option<Image>,
-    {
-        if self.steam_friends.is_null() {
-            return None;
-        }
-        // SAFETY: `steam_friends` is live; CSteamID is an 8-byte aggregate
-        // passed as `u64` on SysV-x64; slot 26 = `GetMediumFriendAvatar`.
-        let handle = unsafe {
-            let vtbl = opaque::vtable::<ISteamFriends009>(self.steam_friends);
-            ((*vtbl).get_medium_friend_avatar)(self.steam_friends, self.steam_id)
-        };
-        if handle == 0 {
-            return None;
-        }
-        get_image(handle)
     }
 }

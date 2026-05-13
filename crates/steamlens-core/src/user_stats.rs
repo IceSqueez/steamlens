@@ -258,56 +258,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Returns a `SteamAPICall_t` — poll via
-    /// [`crate::Client::poll_call_result`] with callback id `1110`.
-    pub fn request_global_achievement_percentages(&self) -> Result<u64, SteamError> {
-        // SAFETY: see impl-level note.
-        let handle = unsafe {
-            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
-            ((*vtbl).request_global_achievement_percentages)(self.raw)
-        };
-        if handle == 0 {
-            Err(SteamError::CallFailed {
-                method: "RequestGlobalAchievementPercentages",
-            })
-        } else {
-            Ok(handle)
-        }
-    }
-
-    /// 0.0–100.0 — fraction of users who have unlocked the achievement.
-    /// Wait for `GlobalAchievementPercentagesReady` after
-    /// [`Self::request_global_achievement_percentages`] before reading,
-    /// otherwise Steam returns `false` for every name.
-    pub fn achievement_achieved_percent(&self, name: &str) -> Result<f32, SteamError> {
-        let cname = Self::cname(name)?;
-        let mut percent: f32 = 0.0;
-        // SAFETY: `cname` outlives the call.
-        let ok = unsafe {
-            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
-            ((*vtbl).get_achievement_achieved_percent)(self.raw, cname.as_ptr(), &mut percent)
-        };
-        if ok {
-            Ok(percent)
-        } else {
-            Err(SteamError::CallFailed {
-                method: "GetAchievementAchievedPercent",
-            })
-        }
-    }
-
-    /// `0` while Steam is still fetching — subscribe to
-    /// `UserAchievementIconFetched` to retry.
-    pub fn achievement_icon(&self, name: &str) -> Result<i32, SteamError> {
-        let cname = Self::cname(name)?;
-        // SAFETY: `cname` outlives the call.
-        let handle = unsafe {
-            let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
-            ((*vtbl).get_achievement_icon)(self.raw, cname.as_ptr())
-        };
-        Ok(handle)
-    }
-
     /// `attribute` is `"name"`, `"desc"`, or `"hidden"` (stringified
     /// `"0"`/`"1"`). Served from the local schema cache — no network.
     pub fn achievement_display_attribute(

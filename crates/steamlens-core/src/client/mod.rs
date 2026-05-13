@@ -4,28 +4,24 @@ mod connection;
 mod friends;
 mod internal;
 mod user;
-mod utils;
 
+use crate::Image;
 use crate::error::{LibraryError, SteamError};
 use crate::library::{GameSummary, enumerate_owned_games_impl};
 use crate::stat_schema::{StatDescriptor, load as load_stat_descriptors};
 use crate::steam_callback::SteamCallback;
 use crate::user_stats::UserStats;
 
-pub use utils::Image;
-
 use apps::Apps;
 use callbacks::Callbacks;
 use connection::SteamConnection;
 use friends::Friends;
 use user::User;
-use utils::Utils;
 
 pub struct Client {
     conn: SteamConnection,
     apps: Apps,
     friends: Friends,
-    utils: Utils,
     callbacks: Callbacks,
     user: User,
 }
@@ -49,9 +45,14 @@ impl Client {
         self.friends.persona_name()
     }
 
+    /// Reads the avatar PNG that Steam already cached on disk at
+    /// `<steam_root>/config/avatarcache/<steamid64>.png`. Bypasses
+    /// `ISteamFriends::GetMediumFriendAvatar` + `ISteamUtils::GetImageRGBA`
+    /// entirely so we don't depend on the Steam image-handle pipeline.
+    /// Returns `None` if the file is missing or undecodable — the avatar
+    /// is non-essential, no error needs to bubble.
     pub fn user_avatar(&self) -> Option<Image> {
-        self.friends
-            .user_avatar(|handle| self.get_image(handle).ok().flatten())
+        crate::avatar::read_local_avatar(self.steam_id()).ok()
     }
 
     pub fn is_subscribed_app(&self, app_id: u32) -> bool {
@@ -97,25 +98,6 @@ impl Client {
         UserStats::from_raw(self.conn.steam_user_stats)
     }
 
-    /// `Ok(None)` for handle 0 — Steam is still fetching; retry once
-    /// `AchievementIconFetched` (id 1408) fires.
-    pub fn get_image(&self, handle: i32) -> Result<Option<Image>, SteamError> {
-        self.utils.get_image(handle)
-    }
-
-    /// Per-call async result bound to a `SteamAPICall_t`; these do NOT
-    /// appear in the broadcast queue drained by [`Self::poll_callbacks`].
-    /// Returns `None` while pending — caller retries ~50 ms later.
-    pub fn poll_call_result(
-        &self,
-        handle: u64,
-        expected_callback_id: i32,
-        payload_size: usize,
-    ) -> Result<Option<Result<Vec<u8>, SteamError>>, SteamError> {
-        self.utils
-            .poll_call_result(handle, expected_callback_id, payload_size)
-    }
-
     /// Pure disk read of `appcache/stats/UserGameStatsSchema_<app_id>.bin`;
     /// `Ok(vec![])` when the file is missing (game never launched).
     pub fn stat_descriptors(&self, app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
@@ -141,10 +123,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
     };
     let friends = Friends {
         steam_friends: conn.steam_friends,
-        steam_id: conn.steam_id,
-    };
-    let utils = Utils {
-        steam_utils: conn.steam_utils,
     };
     let callbacks = Callbacks { pipe: conn.pipe };
     let user = User {
@@ -158,7 +136,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         conn,
         apps,
         friends,
-        utils,
         callbacks,
         user,
     })

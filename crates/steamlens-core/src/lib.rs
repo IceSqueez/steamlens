@@ -1,7 +1,9 @@
+pub mod avatar;
 mod client;
 mod error;
 mod ffi;
 pub mod genre;
+mod image_data;
 pub mod ipc;
 pub mod library;
 pub mod paths;
@@ -14,9 +16,10 @@ mod steam_callback;
 pub mod steam_state;
 mod user_stats;
 
-pub use client::{Client, Image, connect};
+pub use client::{Client, connect};
 pub use error::{LibraryError, SteamError};
 pub use genre::primary_genre_name;
+pub use image_data::Image;
 pub use ipc::shm::{
     ShmError, ShmReader, ShmWriter, read_payload, sweep_orphans, unlink_at, write_payload,
 };
@@ -33,7 +36,7 @@ pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit, current_exe_resilient};
 pub use profile::{ProfileError, STEAMID64_INDIVIDUAL_MIN, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
-pub use stat_schema::{StatDescriptor, StatKind};
+pub use stat_schema::{AchievementIconFiles, StatDescriptor, StatKind, load_achievement_icons};
 pub use steam_callback::{
     CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY, CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED,
     CALLBACK_ID_USER_STATS_RECEIVED, CALLBACK_ID_USER_STATS_STORED, STEAM_RESULT_NO_STATS_SCHEMA,

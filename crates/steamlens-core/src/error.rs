@@ -71,6 +71,9 @@ pub enum SteamError {
         observed = .observed.display()
     )]
     MalformedUserDataPath { observed: PathBuf },
+
+    #[error("Avatar cache lookup failed: {message}")]
+    AvatarCacheFailed { message: String },
 }
 
 #[derive(Debug, Error)]
