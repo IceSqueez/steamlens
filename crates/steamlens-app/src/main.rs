@@ -754,6 +754,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .map(|e| e.name.clone())
                 .unwrap_or_else(|| format!("App {app_id}"));
             app.context.cached_entries.remove(&app_id);
+
+            let pv_state: &mut ProfileViewState = match &mut app.screen {
+                Screen::ProfileView(s) => s.as_mut(),
+                Screen::GameView(s) => s.prev_profile_state.as_mut(),
+            };
+            if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
+                entry.progress = None;
+            }
+
             app.context.messaging.push_toast(
                 ToastKind::Success,
                 format!("Cache cleared for {name}"),
