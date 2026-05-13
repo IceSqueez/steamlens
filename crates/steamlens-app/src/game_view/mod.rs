@@ -40,7 +40,7 @@ pub fn header_content<'a>(
         screen_actions: vec![view::build_game_reload_button()],
         leading: Some(view::build_back_leading()),
         status_filter: Some(build_achievement_status_strip(state)),
-        category_filter: Some(build_rarity_tier_strip(state)),
+        category_filter: Some(build_rarity_tier_strip(state, theme)),
         theme,
     }
 }
@@ -63,7 +63,10 @@ fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::Filte
     crate::screen::FilterStrip { buttons }
 }
 
-fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Message> {
+fn build_rarity_tier_strip(
+    state: &GameViewState,
+    theme: crate::ui::theme::AppTheme,
+) -> iced::Element<'_, crate::Message> {
     use crate::ui::widgets::pill::pill;
     use iced::widget::{Space, row, text};
     use iced::{Alignment, Color, Length};
@@ -91,7 +94,7 @@ fn build_rarity_tier_strip(state: &GameViewState) -> iced::Element<'_, crate::Me
         (RarityTier::Legendary, "Legendary"),
     ] {
         let count = tier_map.values().filter(|&&v| v == tier).count();
-        let color = view::tier_color(tier);
+        let color = view::tier_color(tier, theme);
         let inner = row![
             text(label).size(11).color(color),
             text(format!("{count}"))
