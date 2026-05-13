@@ -27,9 +27,8 @@ impl Apps {
         if self.steam_apps_008.is_null() {
             return false;
         }
-        // SAFETY: `steam_apps_008` was obtained from `GetISteamApps("STEAMAPPS_INTERFACE_VERSION008")`
-        // in `SteamConnection::establish`; the pipe is alive for the lifetime of the owning
-        // `Client`; ISteamApps008 vtable layout is stable; SysV-x64 ABI.
+        // SAFETY: live `ISteamApps008` from `establish`; `app_id` is a value;
+        // bool return is ABI-safe.
         unsafe {
             let vtbl = opaque::vtable::<ISteamApps008>(self.steam_apps_008);
             ((*vtbl).is_subscribed_app)(self.steam_apps_008, app_id)
@@ -52,10 +51,9 @@ impl Apps {
             return None;
         }
         let mut buf = [0u8; 1024];
-        // SAFETY: `steam_apps` was obtained from `GetISteamApps("STEAMAPPS_INTERFACE_VERSION001")`
-        // in `SteamConnection::establish`; the pipe is alive for the lifetime of the owning
-        // `Client`; `key` is a static NUL-terminated C string; Steam writes into `buf` (stack)
-        // and we copy out before any further Steam call; SysV-x64 ABI.
+        // SAFETY: live `ISteamApps001`; `key` is a static NUL-terminated CStr;
+        // Steam writes into the stack `buf` and we copy out before any further
+        // Steam call.
         let written = unsafe {
             let vtbl = opaque::vtable::<ISteamApps001>(self.steam_apps);
             ((*vtbl).get_app_data)(

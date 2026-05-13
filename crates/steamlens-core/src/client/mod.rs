@@ -39,8 +39,7 @@ impl Client {
         self.user.app_id()
     }
 
-    /// Returns `None` when `SteamUser023` is unavailable (very old Steam
-    /// client) or when Steam returns a negative value (not a valid level).
+    /// Returns `None` when Steam reports a negative value (error sentinel).
     pub fn get_player_steam_level(&self) -> Option<u32> {
         self.user.get_player_steam_level()
     }
@@ -149,7 +148,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
     let callbacks = Callbacks { pipe: conn.pipe };
     let user = User {
         steam_user: conn.steam_user,
-        steam_user_023: conn.steam_user_023,
         steam_id: conn.steam_id,
         app_id: conn.app_id,
     };

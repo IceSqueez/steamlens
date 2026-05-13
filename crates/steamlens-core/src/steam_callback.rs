@@ -8,7 +8,7 @@ pub const CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
 pub const STEAM_RESULT_OK: i32 = 1;
 pub const STEAM_RESULT_NO_STATS_SCHEMA: i32 = 2;
 
-/// Only `k_EResultOK` (1) is named; other Steamworks codes are
+/// Only `Ok` (raw `1`) is named; all other Steam result codes are
 /// preserved as `Other(i32)` for caller inspection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamResult {
