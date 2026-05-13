@@ -1694,6 +1694,7 @@ fn view(app: &App) -> Element<'_, Message> {
             Message::OpenUrl("https://github.com/IceSqueez/steamlens".to_owned()),
             Message::OpenUrl("https://github.com/IceSqueez/steamlens/issues".to_owned()),
             Message::OpenUrl("https://github.com/IceSqueez/steamlens/releases".to_owned()),
+            app.context.settings.ui.theme,
         );
         iced::widget::stack![base, modal].into()
     } else {
