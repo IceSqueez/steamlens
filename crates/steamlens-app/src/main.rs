@@ -305,6 +305,22 @@ fn mark_steam_offline_and_warn(app: &mut App) {
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
 
+fn dispatch_game_event(app: &mut App, task: Task<Message>, event: GameViewEvent) -> Task<Message> {
+    match event {
+        GameViewEvent::None => task,
+        GameViewEvent::AchievementsFullyLoaded { app_id } => {
+            Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
+        }
+        GameViewEvent::GoBack => {
+            go_back_to_profile(app);
+            task
+        }
+        GameViewEvent::InvalidateCache { app_id } => {
+            Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
+        }
+    }
+}
+
 fn go_back_to_profile(app: &mut App) {
     disconnect_worker(app);
     if let Screen::GameView(gv_state) = std::mem::replace(
@@ -807,20 +823,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let (task, event) = game_view::update(state, m, &mut app.context);
             let task = task.map(Message::GameView);
-
-            match event {
-                GameViewEvent::None => task,
-                GameViewEvent::AchievementsFullyLoaded { app_id } => {
-                    Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
-                }
-                GameViewEvent::GoBack => {
-                    go_back_to_profile(app);
-                    task
-                }
-                GameViewEvent::InvalidateCache { app_id } => {
-                    Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
-                }
-            }
+            dispatch_game_event(app, task, event)
         }
 
         Message::PollWorker => drain_worker_replies(app),
@@ -1135,19 +1138,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     &mut app.context,
                 );
                 let task = task.map(Message::GameView);
-                match event {
-                    GameViewEvent::GoBack => {
-                        go_back_to_profile(app);
-                        task
-                    }
-                    GameViewEvent::AchievementsFullyLoaded { app_id } => {
-                        Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
-                    }
-                    GameViewEvent::InvalidateCache { app_id } => {
-                        Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
-                    }
-                    GameViewEvent::None => task,
-                }
+                dispatch_game_event(app, task, event)
             }
         },
 
