@@ -3,12 +3,11 @@ use std::path::PathBuf;
 
 use crate::client::internal::nul_terminated_str;
 use crate::error::SteamError;
-use crate::ffi::interfaces::{ISteamUser012, ISteamUser023};
+use crate::ffi::interfaces::ISteamUser023;
 use crate::ffi::opaque::{self, RawInterface};
 
 pub(super) struct User {
     pub(super) steam_user: RawInterface,
-    pub(super) steam_user_023: Option<RawInterface>,
     pub(super) steam_id: u64,
     pub(super) app_id: u32,
 }
@@ -22,35 +21,35 @@ impl User {
         self.app_id
     }
 
-    /// Returns `None` when `SteamUser023` is unavailable (very old Steam
-    /// client) or when Steam returns a negative value (not a valid level).
+    /// Returns `None` when Steam reports a negative value (error sentinel).
     pub(super) fn get_player_steam_level(&self) -> Option<u32> {
-        let iface = self.steam_user_023?;
-        // SAFETY: `iface` was returned by `GetISteamUser("SteamUser023")` in
-        // `SteamConnection::establish`; vtable layout matches the public Steamworks.NET
-        // header (isteamuser.h slot 24); the pipe is alive (Client is `!Send` and must be
-        // dropped before the pipe closes); SysV-x64 ABI — `this` in RDI, return in RAX as i32.
+        // SAFETY: `steam_user` is the live `SteamUser023` interface acquired
+        // in `establish`; vtable slot 24 = `GetPlayerSteamLevel`; called on
+        // the `!Send` owner thread; primitive `i32` return is ABI-safe.
+        tracing::trace!("user: get_player_steam_level pre");
         let level = unsafe {
-            let vtbl = opaque::vtable::<ISteamUser023>(iface);
-            ((*vtbl).get_player_steam_level)(iface)
+            let vtbl = opaque::vtable::<ISteamUser023>(self.steam_user);
+            ((*vtbl).get_player_steam_level)(self.steam_user)
         };
+        tracing::trace!(level, "user: get_player_steam_level post");
         if level < 0 { None } else { Some(level as u32) }
     }
 
     pub(super) fn user_data_folder(&self) -> Result<PathBuf, SteamError> {
         let mut buf = [0u8; 1024];
 
-        // SAFETY: `steam_user` was obtained from `GetISteamUser("SteamUser012")`;
-        // the pipe is alive for the lifetime of the owning `Client`; Steam writes
-        // at most `buf.len()` bytes into the stack buffer; SysV-x64 ABI.
+        // SAFETY: live `SteamUser023`; slot 6 = `GetUserDataFolder`; Steam
+        // writes at most `buf.len()` bytes into the stack buffer.
+        tracing::trace!("user: get_user_data_folder pre");
         let ok = unsafe {
-            let vtbl = opaque::vtable::<ISteamUser012>(self.steam_user);
+            let vtbl = opaque::vtable::<ISteamUser023>(self.steam_user);
             ((*vtbl).get_user_data_folder)(
                 self.steam_user,
                 buf.as_mut_ptr().cast::<c_char>(),
                 buf.len() as i32,
             )
         };
+        tracing::trace!(ok, "user: get_user_data_folder post");
 
         if !ok {
             return Err(SteamError::UserDataFolderUnavailable);

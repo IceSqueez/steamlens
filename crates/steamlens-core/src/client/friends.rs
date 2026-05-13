@@ -12,14 +12,15 @@ impl Friends {
         if self.steam_friends.is_null() {
             return None;
         }
-        // SAFETY: `steam_friends` was obtained from `GetISteamFriends("SteamFriends009")`
-        // in `SteamConnection::establish`; the pipe is alive for the lifetime of the owning
-        // `Client`; ISteamFriends009 slot 0 returns a NUL-terminated UTF-8 string valid
-        // until the next Steam call on this pipe — we copy it immediately; SysV-x64 ABI.
+        // SAFETY: live `ISteamFriends009`; slot 0 returns a NUL-terminated
+        // UTF-8 pointer valid until the next Steam call — we copy it
+        // immediately on return.
+        tracing::trace!("friends: get_persona_name pre");
         let raw_ptr = unsafe {
             let vtbl = opaque::vtable::<ISteamFriends009>(self.steam_friends);
             ((*vtbl).get_persona_name)(self.steam_friends)
         };
+        tracing::trace!(null = raw_ptr.is_null(), "friends: get_persona_name post");
         if raw_ptr.is_null() {
             return None;
         }
@@ -40,12 +41,18 @@ impl Friends {
         if self.steam_friends.is_null() {
             return None;
         }
-        // SAFETY: `steam_friends` is live; CSteamID is an 8-byte aggregate
-        // passed as `u64` on SysV-x64; slot 26 = `GetMediumFriendAvatar`.
+        // SAFETY: live `ISteamFriends009`, slot 26 = `GetMediumFriendAvatar`;
+        // CSteamID is passed inline as a `u64` argument — input parameters are
+        // ABI-safe on both MSVC and SysV.
+        tracing::trace!(
+            steam_id = self.steam_id,
+            "friends: get_medium_friend_avatar pre"
+        );
         let handle = unsafe {
             let vtbl = opaque::vtable::<ISteamFriends009>(self.steam_friends);
             ((*vtbl).get_medium_friend_avatar)(self.steam_friends, self.steam_id)
         };
+        tracing::trace!(handle, "friends: get_medium_friend_avatar post");
         if handle == 0 {
             return None;
         }

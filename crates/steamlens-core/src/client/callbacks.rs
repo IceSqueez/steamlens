@@ -22,9 +22,9 @@ impl Callbacks {
                 param_size: 0,
             };
 
-            // SAFETY: `pipe` was minted by `ConnectToGlobalUser` in `SteamConnection::establish`
-            // on this thread; `Client` is `!Send` so no other thread can race here; Steam writes
-            // through `msg` only on returning `true`; null `call_handle` skips API-call tracking.
+            // SAFETY: live `pipe` on the `!Send` owner thread; Steam writes
+            // through `msg` only on returning `true`; null `call_handle` skips
+            // API-call tracking.
             let has_callback =
                 library.b_get_callback(self.pipe, &mut msg, core::ptr::null_mut())?;
             if !has_callback {

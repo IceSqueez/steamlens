@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use libloading::{Library, Symbol};
@@ -30,12 +30,12 @@ pub fn shared() -> Result<&'static SteamLibrary, SteamError> {
 impl SteamLibrary {
     fn load() -> Result<Self, SteamError> {
         let path = discover_steamclient_path()?;
-        // SAFETY: `steamclient.so`'s ELF initialisers spawn auxiliary
-        // pthreads that hold code-pointers into the library's text
-        // segment, so the handle is parked in the `STEAM_LIBRARY`
-        // `OnceLock` for process lifetime — `dlclose` would unmap the
-        // text segment and crash those threads.
-        let handle = unsafe { Library::new(&path) }
+        // SAFETY: `steamclient`'s initialisers spawn auxiliary threads
+        // that hold code-pointers into the library's text segment, so
+        // the handle is parked in the `STEAM_LIBRARY` `OnceLock` for
+        // process lifetime — unloading would unmap the text segment and
+        // crash those threads.
+        let handle = unsafe { load_steamclient(&path) }
             .map_err(|source| SteamError::LibraryLoadFailed { path, source })?;
 
         // SAFETY: Both symbols are NUL-terminated byte-string literals.
@@ -51,6 +51,7 @@ impl SteamLibrary {
         // thread-safe to call concurrently (they do not require
         // synchronisation on their own code-path; Steam's internal locks
         // protect shared state inside the library).
+        tracing::info!(target: "loader", "loader: resolving Steam_BGetCallback");
         let b_get_callback_fn: BGetCallbackFn = unsafe {
             let sym: Symbol<BGetCallbackFn> =
                 handle.get(b"Steam_BGetCallback\0").map_err(|source| {
@@ -59,8 +60,12 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            *sym
+            tracing::info!(target: "loader", "loader: resolved Steam_BGetCallback");
+            let fn_ptr = *sym;
+            tracing::info!(target: "loader", "loader: copied Steam_BGetCallback fn ptr");
+            fn_ptr
         };
+        tracing::info!(target: "loader", "loader: resolving Steam_FreeLastCallback");
         let free_last_callback_fn: FreeLastCallbackFn = unsafe {
             let sym: Symbol<FreeLastCallbackFn> =
                 handle.get(b"Steam_FreeLastCallback\0").map_err(|source| {
@@ -69,9 +74,13 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            *sym
+            tracing::info!(target: "loader", "loader: resolved Steam_FreeLastCallback");
+            let fn_ptr = *sym;
+            tracing::info!(target: "loader", "loader: copied Steam_FreeLastCallback fn ptr");
+            fn_ptr
         };
 
+        tracing::info!(target: "loader", "loader: SteamLibrary constructed");
         Ok(Self {
             handle,
             b_get_callback_fn,
@@ -126,6 +135,83 @@ impl SteamLibrary {
             });
         }
         Ok(raw)
+    }
+}
+
+unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        use libloading::os::windows::{
+            LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_USER_DIRS, Library as WinLibrary,
+        };
+        use windows_sys::Win32::System::LibraryLoader::{
+            AddDllDirectory, SetDefaultDllDirectories,
+        };
+
+        // SAFETY: standard Win32 call; no pointer arguments. Sets the
+        // process-wide default search order to the modern flag set required
+        // by `AddDllDirectory`.
+        let default_ok =
+            unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS as u32) != 0 };
+        if !default_ok {
+            // SAFETY: `GetLastError` is always safe immediately after a
+            // failing Win32 call on the same thread.
+            let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            tracing::warn!(
+                last_error = err,
+                "loader: SetDefaultDllDirectories failed (non-fatal)"
+            );
+        }
+
+        if let Some(steam_root) = path.parent() {
+            for dir in [steam_root.to_path_buf(), steam_root.join("bin")] {
+                let wide: Vec<u16> = dir
+                    .as_os_str()
+                    .encode_wide()
+                    .chain(std::iter::once(0u16))
+                    .collect();
+                // SAFETY: `wide` is a valid NUL-terminated UTF-16 string we
+                // own on the stack. `AddDllDirectory` reads but does not
+                // retain the pointer after returning. The returned cookie is
+                // discarded — we never remove the directory.
+                let cookie = unsafe { AddDllDirectory(wide.as_ptr()) };
+                if !cookie.is_null() {
+                    tracing::info!(dir = %dir.display(), "loader: AddDllDirectory ok");
+                } else {
+                    // SAFETY: see above.
+                    let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+                    tracing::warn!(
+                        dir = %dir.display(),
+                        last_error = err,
+                        "loader: AddDllDirectory failed (non-fatal)"
+                    );
+                }
+            }
+        }
+
+        tracing::info!(
+            path = %path.display(),
+            "loader: LoadLibraryExW (LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS)"
+        );
+        // SAFETY: forwarded from the caller's unsafe contract; `path` is a
+        // valid filesystem path to steamclient64.dll. The combined flags
+        // make the loader search the application dir, System32, and every
+        // directory previously registered via `AddDllDirectory` — i.e.
+        // both Steam root and Steam\bin.
+        let flags = LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS;
+        let result = unsafe { WinLibrary::load_with_flags(path, flags).map(Library::from) };
+        match &result {
+            Ok(_) => tracing::info!("loader: LoadLibraryExW succeeded"),
+            Err(e) => tracing::error!(error = %e, "loader: LoadLibraryExW failed"),
+        }
+        return result;
+    }
+    #[cfg(not(target_os = "windows"))]
+    // SAFETY: forwarded from the caller's unsafe contract.
+    unsafe {
+        Library::new(path)
     }
 }
 
