@@ -4122,7 +4122,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "steamlens-app"
-version = "1.0.0-beta.2+build.1"
+version = "1.0.0-beta.3+build.1"
 dependencies = [
  "iced",
  "image",
@@ -4144,7 +4144,7 @@ dependencies = [
 
 [[package]]
 name = "steamlens-core"
-version = "1.0.0-beta.2+build.1"
+version = "1.0.0-beta.3+build.1"
 dependencies = [
  "libloading 0.9.0",
  "memmap2",
@@ -4162,7 +4162,7 @@ dependencies = [
 
 [[package]]
 name = "steamlens-vdf"
-version = "1.0.0-beta.2+build.1"
+version = "1.0.0-beta.3+build.1"
 dependencies = [
  "thiserror 2.0.17",
 ]
