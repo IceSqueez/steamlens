@@ -109,6 +109,10 @@ enum Message {
         app_id: u32,
         entry: Option<Box<GameCacheEntry>>,
     },
+    CacheInvalidated {
+        name: String,
+        result: Result<(), String>,
+    },
     SteamStateRefreshed(
         Option<(
             HashMap<u32, steamlens_core::SteamAppState>,
@@ -770,12 +774,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 pv_state.progress_scanner = Some(scanner);
             }
 
-            app.context.messaging.push_toast(
-                ToastKind::Success,
-                format!("Cache cleared for {name}"),
-                None,
-            );
-            cache::commands::invalidate_game_cache(app_id)
+            cache::commands::invalidate_game_cache(app_id, name)
+        }
+
+        Message::CacheInvalidated { name, result } => {
+            match result {
+                Ok(()) => app.context.messaging.push_toast(
+                    ToastKind::Success,
+                    format!("Cache cleared for {name}"),
+                    None,
+                ),
+                Err(e) => {
+                    tracing::error!(error = %e, %name, "cache invalidate failed");
+                    app.context.messaging.push_toast(
+                        ToastKind::Error,
+                        format!("Failed to clear cache for {name}"),
+                        None,
+                    );
+                }
+            }
+            Task::none()
         }
 
         Message::GameView(m) => {

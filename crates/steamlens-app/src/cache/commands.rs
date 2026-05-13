@@ -66,14 +66,17 @@ pub fn write_game_summary(entry: GameSummaryCache) -> Task<crate::Message> {
     )
 }
 
-pub fn invalidate_game_cache(app_id: u32) -> Task<crate::Message> {
+pub fn invalidate_game_cache(app_id: u32, name: String) -> Task<crate::Message> {
     Task::perform(
         async move {
             cache::store::delete_game_cache_dir(app_id)
                 .await
                 .map_err(|e| e.to_string())
         },
-        move |result| crate::Message::CacheWritten { app_id, result },
+        move |result| crate::Message::CacheInvalidated {
+            name: name.clone(),
+            result,
+        },
     )
 }
 
