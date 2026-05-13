@@ -44,6 +44,15 @@ pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError>
 
     {
         use tokio::io::AsyncWriteExt;
+        #[cfg(unix)]
+        let mut file = {
+            use std::os::unix::fs::PermissionsExt;
+            let f = tokio::fs::File::create(&tmp_path).await?;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .await?;
+            f
+        };
+        #[cfg(not(unix))]
         let mut file = tokio::fs::File::create(&tmp_path).await?;
         file.write_all(bytes).await?;
         file.sync_data().await?;
