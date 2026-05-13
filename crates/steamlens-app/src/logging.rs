@@ -2,10 +2,15 @@ use std::fs::OpenOptions;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tracing::Level;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
+
+#[cfg(target_os = "windows")]
+static SEH_OUTPUT_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
 /// Host process only. Truncates `steamlens.log` and opens it as the writer.
 pub fn init() -> io::Result<()> {
@@ -35,11 +40,60 @@ fn install_seh_handler() {
 }
 
 #[cfg(target_os = "windows")]
+fn install_seh_handler_logging_to(path: &Path) {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_APPEND_DATA, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_ALWAYS,
+    };
+
+    use std::os::windows::ffi::OsStrExt;
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0u16))
+        .collect();
+
+    // SAFETY: `wide` is a NUL-terminated UTF-16 path we own on the stack.
+    // `CreateFileW` reads but does not retain the pointer after returning.
+    // `FILE_APPEND_DATA` + `OPEN_ALWAYS` opens or creates the log file for
+    // append-only writes — safe to share with the tracing-subscriber writer
+    // because Win32 file append is atomic under concurrent writers.
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            core::ptr::null(),
+            OPEN_ALWAYS,
+            0,
+            core::ptr::null_mut(),
+        )
+    };
+    if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+        SEH_OUTPUT_HANDLE.store(handle as usize, Ordering::Relaxed);
+    }
+    install_seh_handler();
+}
+
+#[cfg(target_os = "windows")]
+fn seh_output_handle() -> windows_sys::Win32::Foundation::HANDLE {
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
+
+    let raw = SEH_OUTPUT_HANDLE.load(Ordering::Relaxed);
+    if raw != 0 {
+        raw as windows_sys::Win32::Foundation::HANDLE
+    } else {
+        // SAFETY: `GetStdHandle` is process-wide and always safe to call.
+        unsafe { GetStdHandle(STD_ERROR_HANDLE) }
+    }
+}
+
+#[cfg(target_os = "windows")]
 unsafe extern "system" fn seh_handler(
     info: *const windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_POINTERS,
 ) -> i32 {
     use windows_sys::Win32::Storage::FileSystem::WriteFile;
-    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
 
     // SAFETY: OS guarantees `info` and `info.ExceptionRecord` are non-null
     // and valid for the duration of the call. We read only plain integer
@@ -57,15 +111,14 @@ unsafe extern "system" fn seh_handler(
     let mut buf = [0u8; 64];
     let msg = format_seh_line(&mut buf, code, addr as usize);
 
-    // SAFETY: `STD_ERROR_HANDLE` is a process-wide pseudo-handle; `WriteFile`
-    // accepts a borrowed handle and a borrowed buffer, writes synchronously,
-    // and does not retain either pointer after returning.
-    let stderr = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
-    // SAFETY: same as above.
+    let target = seh_output_handle();
+    // SAFETY: `target` is either a live file handle (host) or stderr (worker);
+    // `WriteFile` accepts a borrowed handle and a borrowed buffer, writes
+    // synchronously, and does not retain either pointer after returning.
     unsafe {
         let mut written: u32 = 0;
         WriteFile(
-            stderr,
+            target,
             msg.as_ptr(),
             msg.len() as u32,
             &mut written,
@@ -79,14 +132,14 @@ unsafe extern "system" fn seh_handler(
     // heap or any user-space mutex. We use stack-only buffers, no
     // allocations. A failure of any PSAPI call is silently swallowed —
     // we are dying anyway, the module list is best-effort diagnostic.
-    write_stack_trace(stderr);
-    write_module_list(stderr);
+    write_stack_trace(target);
+    write_module_list(target);
 
     windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_EXECUTE_HANDLER
 }
 
 #[cfg(target_os = "windows")]
-fn write_stack_trace(stderr: windows_sys::Win32::Foundation::HANDLE) {
+fn write_stack_trace(target: windows_sys::Win32::Foundation::HANDLE) {
     use std::io::Write;
     use windows_sys::Win32::Storage::FileSystem::WriteFile;
     use windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace;
@@ -119,7 +172,7 @@ fn write_stack_trace(stderr: windows_sys::Win32::Foundation::HANDLE) {
         unsafe {
             let mut written: u32 = 0;
             WriteFile(
-                stderr,
+                target,
                 line.as_ptr(),
                 pos as u32,
                 &mut written,
@@ -139,7 +192,7 @@ fn format_seh_line<'a>(buf: &'a mut [u8; 64], code: u32, addr: usize) -> &'a [u8
 }
 
 #[cfg(target_os = "windows")]
-fn write_module_list(stderr: windows_sys::Win32::Foundation::HANDLE) {
+fn write_module_list(target: windows_sys::Win32::Foundation::HANDLE) {
     use std::io::Write;
     use windows_sys::Win32::Foundation::HMODULE;
     use windows_sys::Win32::Storage::FileSystem::WriteFile;
@@ -212,7 +265,7 @@ fn write_module_list(stderr: windows_sys::Win32::Foundation::HANDLE) {
         unsafe {
             let mut written: u32 = 0;
             WriteFile(
-                stderr,
+                target,
                 line.as_ptr(),
                 pos as u32,
                 &mut written,
@@ -233,7 +286,10 @@ pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
         .truncate(true)
         .open(path)?;
 
-    install_subscriber(Mutex::new(file))
+    install_subscriber(Mutex::new(file))?;
+    #[cfg(target_os = "windows")]
+    install_seh_handler_logging_to(path);
+    Ok(())
 }
 
 fn install_subscriber<W>(writer: W) -> io::Result<()>
