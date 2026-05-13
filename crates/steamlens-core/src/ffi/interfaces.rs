@@ -91,37 +91,22 @@ pub struct ISteamClient018 {
     _reserved_39_get_isteam_parties: usize,
 }
 
-#[repr(C)]
-pub struct ISteamUser012 {
-    pub get_h_steam_user: unsafe extern "C" fn(this: *mut c_void) -> HSteamUser,
-    pub logged_on: unsafe extern "C" fn(this: *mut c_void) -> bool,
-    pub get_steam_id: unsafe extern "C" fn(this: *mut c_void) -> u64,
-    _reserved_03_initiate_game_connection: usize,
-    _reserved_04_terminate_game_connection: usize,
-    _reserved_05_track_app_usage_event: usize,
-    pub get_user_data_folder:
-        unsafe extern "C" fn(this: *mut c_void, buffer: *mut c_char, buffer_size: i32) -> bool,
-    _reserved_07_start_voice_recording: usize,
-    _reserved_08_stop_voice_recording: usize,
-    _reserved_09_get_compressed_voice: usize,
-    _reserved_10_decompress_voice: usize,
-    _reserved_11_get_auth_session_ticket: usize,
-    _reserved_12_begin_auth_session: usize,
-    _reserved_13_end_auth_session: usize,
-    _reserved_14_cancel_auth_ticket: usize,
-    _reserved_15_user_has_license_for_app: usize,
-}
-
-/// `SteamUser023` vtable — field order is positional; slot order load-bearing.
+/// `get_steam_id` returns CSteamID — a class with a user-defined ctor.
+/// MSVC x64 returns it via a hidden sret out-pointer; SysV x64 returns
+/// the 8-byte value inline in RAX. cfg-gated below to match each ABI.
 #[repr(C)]
 pub struct ISteamUser023 {
     _reserved_00_get_h_steam_user: usize,
     pub b_logged_on: unsafe extern "C" fn(this: *mut c_void) -> bool,
-    _reserved_02_get_steam_id: usize,
+    #[cfg(target_os = "windows")]
+    pub get_steam_id: unsafe extern "C" fn(this: *mut c_void, out: *mut u64) -> *mut u64,
+    #[cfg(not(target_os = "windows"))]
+    pub get_steam_id: unsafe extern "C" fn(this: *mut c_void) -> u64,
     _reserved_03_initiate_game_connection_deprecated: usize,
     _reserved_04_terminate_game_connection_deprecated: usize,
     _reserved_05_track_app_usage_event: usize,
-    _reserved_06_get_user_data_folder: usize,
+    pub get_user_data_folder:
+        unsafe extern "C" fn(this: *mut c_void, buffer: *mut c_char, buffer_size: i32) -> bool,
     _reserved_07_start_voice_recording: usize,
     _reserved_08_stop_voice_recording: usize,
     _reserved_09_get_available_voice: usize,
@@ -145,8 +130,6 @@ pub struct ISteamUser023 {
 pub type CreateInterfaceFn =
     unsafe extern "C" fn(version: *const c_char, return_code: *mut i32) -> *mut c_void;
 
-/// `STEAMUSERSTATS_INTERFACE_VERSION013` vtable — field order is
-/// load-bearing; positional dispatch by Steam.
 #[repr(C)]
 pub struct ISteamUserStats013 {
     pub get_stat_int:
@@ -225,7 +208,6 @@ pub struct ISteamUserStats013 {
     _reserved_43_get_achievement_progress_limits_integer: usize,
 }
 
-/// `SteamFriends009` vtable — field order is load-bearing.
 #[repr(C)]
 pub struct ISteamFriends009 {
     pub get_persona_name: unsafe extern "C" fn(this: *mut c_void) -> *const c_char,
@@ -301,9 +283,8 @@ pub struct ISteamApps008 {
     _reserved_27_is_subscribed_from_family_sharing: usize,
 }
 
-/// `SteamUtils005` vtable — field order is load-bearing.
 #[repr(C)]
-pub struct ISteamUtils005 {
+pub struct ISteamUtils010 {
     _reserved_00_get_seconds_since_app_active: usize,
     _reserved_01_get_seconds_since_computer_active: usize,
     _reserved_02_get_connected_universe: usize,
@@ -337,4 +318,24 @@ pub struct ISteamUtils005 {
     _reserved_16_set_warning_message_hook: usize,
     _reserved_17_is_overlay_enabled: usize,
     _reserved_18_overlay_needs_present: usize,
+    _reserved_19_check_file_signature: usize,
+    _reserved_20_show_gamepad_text_input: usize,
+    _reserved_21_get_entered_gamepad_text_length: usize,
+    _reserved_22_get_entered_gamepad_text_input: usize,
+    _reserved_23_get_steam_ui_language: usize,
+    _reserved_24_is_steam_running_in_vr: usize,
+    _reserved_25_set_overlay_notification_inset: usize,
+    _reserved_26_is_steam_in_big_picture_mode: usize,
+    _reserved_27_start_vr_dashboard: usize,
+    _reserved_28_is_vr_headset_streaming_enabled: usize,
+    _reserved_29_set_vr_headset_streaming_enabled: usize,
+    _reserved_30_is_steam_china_launcher: usize,
+    _reserved_31_init_filter_text: usize,
+    _reserved_32_filter_text: usize,
+    _reserved_33_get_ipv6_connectivity_state: usize,
+    _reserved_34_is_steam_running_on_steam_deck: usize,
+    _reserved_35_show_floating_gamepad_text_input: usize,
+    _reserved_36_set_game_launcher_mode: usize,
+    _reserved_37_dismiss_floating_gamepad_text_input: usize,
+    _reserved_38_dismiss_gamepad_text_input: usize,
 }
