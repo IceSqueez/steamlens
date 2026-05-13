@@ -1,12 +1,64 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-beta.3] - 2026-05-13
+### ⚙️ Miscellaneous Tasks
+- *(timeouts)* Bump cache invalidate grace to 30s and stats timeout to 10s
+- *(profile)* Drop account_name field and rename persona_name -> nickname
+- *(core)* Drop STEAMLENS_STEAM_ROOT env override
+
+### ⚡ Performance
+- *(app)* Off-load game-view cache seed to spawn_blocking
+- *(cache)* Async load_game_cache replaces sync read on offline open
+- *(core)* Cache with mtime-based invalidation
+- *(app)* Off-load local profile + avatar handle to spawn_blocking on boot
+
+### 🐛 Bug Fixes
+- *(cache)* Preserve display_name/description/hidden/genre on cache re-write
+- *(cache)* Serialize per-app_id cache writes
+- *(cache)* Reset GameEntry.progress on InvalidateGameCache
+- *(cache)* Re-scan invalidated game and surface offline GameView error
+- *(app)* Make capsule HTTP client init fallible to avoid task panic
+- *(ui)* Defer cache-cleared toast until disk delete completes
+- *(ui)* Show Cmd F on macOS, Ctrl F elsewhere in search keybind badge
+- *(ui)* Symmetric back/devider spacing
+- *(cache)* Chmod 0600 for steamlens data files on unix
+
+### 📚 Documentation
+- *(readme)* Updates readme, adds troubleshooting section
+
+### 🚀 Features
+- *(ffi)* Upgrade ISteamUtils to v010 and ISteamUser to v023 with MSVC ABI (#11)
+- *(app)* Install SEH handler in host process writing to log file
+- *(app)* Install panic hook routing to tracing::error
+- *(ui)* Platform-correct search badge and Esc clears search
+- *(ui)* Split status bar progress into scan and capsule phases
+- *(ui)* Show current boot stage on splash screen
+
+### 🚜 Refactor
+- *(app)* Replace recursive update() calls with Task::done dispatch
+- *(app)* Extract dispatch_game_event helper
+- *(app)* Extract current_pv_state_mut helper
+- *(app)* Drop legacy theme.rs module
+- *(ui)* Theme-aware about_modal palette
+- *(ui)* Theme-aware palette in game_view widgets
+
+### 🛠️ Build
+- Add manual-build workflow for ad-hoc artifact builds
+
 ## [1.0.0-beta.2] - 2026-05-12
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### 🐛 Bug Fixes
 - *(windows)* GUI subsystem on release; pipe probe stderr to host log
 - *(ui)* Horizontal scroll for genre pills; reserve space for global actions
 - *(ui)* Adaptive search bar width — fills available space up to 400px
 - *(ui)* Slightly change scrollbar width for more clear behavior
+- *(ui)* Banner/toast/status_bar use theme palette for surfaces and text
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-beta.2
 
 ### 🚀 Features
 - *(vdf)* Combined visibility + store-presence filter
