@@ -363,7 +363,12 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
         })
         .width(Length::Fill);
 
-    let kbd_badge = container(text("Ctrl K").size(10).style(|t: &iced::Theme| {
+    #[cfg(target_os = "macos")]
+    let kbd_label = "\u{2318}F";
+    #[cfg(not(target_os = "macos"))]
+    let kbd_label = "Ctrl F";
+
+    let kbd_badge = container(text(kbd_label).size(10).style(|t: &iced::Theme| {
         let p = palette(theme_from_iced(t));
         iced::widget::text::Style {
             color: Some(p.text_dim),
