@@ -44,11 +44,7 @@ pub struct ISteamClient018 {
         pipe: HSteamPipe,
         version: *const c_char,
     ) -> *mut c_void,
-    pub get_isteam_utils: unsafe extern "C" fn(
-        this: *mut c_void,
-        pipe: HSteamPipe,
-        version: *const c_char,
-    ) -> *mut c_void,
+    _reserved_09_get_isteam_utils: usize,
     _reserved_10_get_isteam_matchmaking: usize,
     _reserved_11_get_isteam_matchmaking_servers: usize,
     _reserved_12_get_isteam_generic_interface: usize,
@@ -169,7 +165,7 @@ pub struct ISteamUserStats013 {
         unlock_time: *mut u32,
     ) -> bool,
     pub store_stats: unsafe extern "C" fn(this: *mut c_void) -> bool,
-    pub get_achievement_icon: unsafe extern "C" fn(this: *mut c_void, name: *const c_char) -> i32,
+    _reserved_10_get_achievement_icon: usize,
     pub get_achievement_display_attribute: unsafe extern "C" fn(
         this: *mut c_void,
         name: *const c_char,
@@ -211,11 +207,10 @@ pub struct ISteamUserStats013 {
     _reserved_30_upload_leaderboard_score: usize,
     _reserved_31_attach_leaderboard_ugc: usize,
     _reserved_32_get_number_of_current_players: usize,
-    pub request_global_achievement_percentages: unsafe extern "C" fn(this: *mut c_void) -> u64,
+    _reserved_33_request_global_achievement_percentages: usize,
     _reserved_34_get_most_achieved_achievement_info: usize,
     _reserved_35_get_next_most_achieved_achievement_info: usize,
-    pub get_achievement_achieved_percent:
-        unsafe extern "C" fn(this: *mut c_void, name: *const c_char, percent: *mut f32) -> bool,
+    _reserved_36_get_achievement_achieved_percent: usize,
     _reserved_37_request_global_stats: usize,
     _reserved_38_get_global_stat_float: usize,
     _reserved_39_get_global_stat_integer: usize,
@@ -299,42 +294,4 @@ pub struct ISteamApps008 {
     _reserved_25_get_file_details: usize,
     _reserved_26_get_launch_command_line: usize,
     _reserved_27_is_subscribed_from_family_sharing: usize,
-}
-
-/// `SteamUtils005` vtable — field order is load-bearing.
-#[repr(C)]
-pub struct ISteamUtils005 {
-    _reserved_00_get_seconds_since_app_active: usize,
-    _reserved_01_get_seconds_since_computer_active: usize,
-    _reserved_02_get_connected_universe: usize,
-    _reserved_03_get_server_real_time: usize,
-    _reserved_04_get_ip_country: usize,
-    pub get_image_size: unsafe extern "C" fn(
-        this: *mut c_void,
-        handle: i32,
-        width: *mut u32,
-        height: *mut u32,
-    ) -> bool,
-    pub get_image_rgba:
-        unsafe extern "C" fn(this: *mut c_void, handle: i32, dest: *mut u8, dest_size: i32) -> bool,
-    _reserved_07_get_cser_ip_port: usize,
-    _reserved_08_get_current_battery_power: usize,
-    _reserved_09_get_app_id: usize,
-    _reserved_10_set_overlay_notification_position: usize,
-    pub is_api_call_completed:
-        unsafe extern "C" fn(this: *mut c_void, handle: u64, failed: *mut bool) -> bool,
-    _reserved_12_get_api_call_failure_reason: usize,
-    pub get_api_call_result: unsafe extern "C" fn(
-        this: *mut c_void,
-        handle: u64,
-        callback: *mut c_void,
-        callback_size: i32,
-        callback_expected: i32,
-        failed: *mut bool,
-    ) -> bool,
-    _reserved_14_run_frame: usize,
-    _reserved_15_get_ipc_call_count: usize,
-    _reserved_16_set_warning_message_hook: usize,
-    _reserved_17_is_overlay_enabled: usize,
-    _reserved_18_overlay_needs_present: usize,
 }

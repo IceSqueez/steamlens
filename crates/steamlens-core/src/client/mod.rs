@@ -4,28 +4,24 @@ mod connection;
 mod friends;
 mod internal;
 mod user;
-mod utils;
 
+use crate::Image;
 use crate::error::{LibraryError, SteamError};
 use crate::library::{GameSummary, enumerate_owned_games_impl};
 use crate::stat_schema::{StatDescriptor, load as load_stat_descriptors};
 use crate::steam_callback::SteamCallback;
 use crate::user_stats::UserStats;
 
-pub use utils::Image;
-
 use apps::Apps;
 use callbacks::Callbacks;
 use connection::SteamConnection;
 use friends::Friends;
 use user::User;
-use utils::Utils;
 
 pub struct Client {
     conn: SteamConnection,
     apps: Apps,
     friends: Friends,
-    utils: Utils,
     callbacks: Callbacks,
     user: User,
 }
@@ -102,25 +98,6 @@ impl Client {
         UserStats::from_raw(self.conn.steam_user_stats)
     }
 
-    /// `Ok(None)` for handle 0 — Steam is still fetching; retry once
-    /// `AchievementIconFetched` (id 1408) fires.
-    pub fn get_image(&self, handle: i32) -> Result<Option<Image>, SteamError> {
-        self.utils.get_image(handle)
-    }
-
-    /// Per-call async result bound to a `SteamAPICall_t`; these do NOT
-    /// appear in the broadcast queue drained by [`Self::poll_callbacks`].
-    /// Returns `None` while pending — caller retries ~50 ms later.
-    pub fn poll_call_result(
-        &self,
-        handle: u64,
-        expected_callback_id: i32,
-        payload_size: usize,
-    ) -> Result<Option<Result<Vec<u8>, SteamError>>, SteamError> {
-        self.utils
-            .poll_call_result(handle, expected_callback_id, payload_size)
-    }
-
     /// Pure disk read of `appcache/stats/UserGameStatsSchema_<app_id>.bin`;
     /// `Ok(vec![])` when the file is missing (game never launched).
     pub fn stat_descriptors(&self, app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
@@ -148,9 +125,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         steam_friends: conn.steam_friends,
         steam_id: conn.steam_id,
     };
-    let utils = Utils {
-        steam_utils: conn.steam_utils,
-    };
     let callbacks = Callbacks { pipe: conn.pipe };
     let user = User {
         steam_user: conn.steam_user,
@@ -163,7 +137,6 @@ pub fn connect(app_id: u32) -> Result<Client, SteamError> {
         conn,
         apps,
         friends,
-        utils,
         callbacks,
         user,
     })

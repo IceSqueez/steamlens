@@ -14,7 +14,6 @@ pub(super) const STEAM_USER_023_VERSION: &str = "SteamUser023";
 pub(super) const STEAM_USER_STATS_VERSION: &str = "STEAMUSERSTATS_INTERFACE_VERSION013";
 pub(super) const STEAM_APPS_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION001";
 pub(super) const STEAM_APPS_008_VERSION: &str = "STEAMAPPS_INTERFACE_VERSION008";
-pub(super) const STEAM_UTILS_VERSION: &str = "SteamUtils005";
 pub(super) const STEAM_FRIENDS_VERSION: &str = "SteamFriends009";
 
 pub(super) struct SteamConnection {
@@ -24,7 +23,6 @@ pub(super) struct SteamConnection {
     pub(super) steam_user_stats: RawInterface,
     pub(super) steam_apps: RawInterface,
     pub(super) steam_apps_008: RawInterface,
-    pub(super) steam_utils: RawInterface,
     pub(super) steam_friends: RawInterface,
     pub(super) pipe: HSteamPipe,
     pub(super) user: HSteamUser,
@@ -163,34 +161,6 @@ impl SteamConnection {
         };
         tracing::info!(target: "establish", null = steam_apps_008.is_null(), "get_isteam_apps(VERSION008): returned");
 
-        let utils_version =
-            CString::new(STEAM_UTILS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
-                version: STEAM_UTILS_VERSION.to_owned(),
-            })?;
-
-        // SAFETY: `GetISteamUtils` takes (this, pipe, version) — no user
-        // handle — per slot 9 of ISteamClient018. Null is non-fatal.
-        //
-        // Windows: `steamclient64.dll` faults inside this call with an
-        // access violation rather than returning null. The interface
-        // pointer is consumed only for `ISteamUtils005::GetImageSize` /
-        // `GetImageRGBA` (avatars + achievement icons); skipping it
-        // leaves those features degraded but keeps the rest of the
-        // client functional. Linux/macOS unaffected.
-        let _ = &utils_version;
-        #[cfg(target_os = "windows")]
-        let steam_utils = core::ptr::null_mut();
-        #[cfg(not(target_os = "windows"))]
-        let steam_utils = {
-            tracing::info!(target: "establish", version = STEAM_UTILS_VERSION, "get_isteam_utils: calling");
-            let ptr = unsafe {
-                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-                ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
-            };
-            tracing::info!(target: "establish", null = ptr.is_null(), "get_isteam_utils: returned");
-            ptr
-        };
-
         let friends_version = CString::new(STEAM_FRIENDS_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
                 version: STEAM_FRIENDS_VERSION.to_owned(),
@@ -257,7 +227,6 @@ impl SteamConnection {
             steam_user_stats,
             steam_apps,
             steam_apps_008,
-            steam_utils,
             steam_friends,
             pipe,
             user,

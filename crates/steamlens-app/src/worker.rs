@@ -8,9 +8,7 @@ use steamlens_core::ipc::{
     FrameError, WorkerCommand, WorkerErrorKind, WorkerResponse, decode_frame, encode_frame,
     parse_header,
 };
-use steamlens_core::{
-    AchievementData, AchievementIcon, Client, StatKind, StatValue, SteamCallback,
-};
+use steamlens_core::{AchievementData, Client, StatKind, StatValue, SteamCallback};
 
 use crate::timeouts;
 
@@ -296,12 +294,6 @@ fn command_label(cmd: &WorkerCommand) -> &'static str {
     }
 }
 
-async fn poll_and_forward(client: &Client) {
-    if let Ok(callbacks) = client.poll_callbacks() {
-        forward_icon_callbacks(callbacks, client).await;
-    }
-}
-
 enum DispatchOutcome {
     Continue,
     Shutdown,
@@ -565,20 +557,6 @@ fn shm_response_for_count(payload: steamlens_core::AchievementCountPayload) -> W
 fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerResponse {
     match steamlens_core::write_payload(&payload) {
         Ok((path, region_bytes)) => WorkerResponse::GlobalPercentagesReady {
-            shm_path: path.to_string_lossy().into_owned(),
-            region_bytes,
-        },
-        Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
-            message: e.to_string(),
-        },
-    }
-}
-
-fn shm_response_for_icon(name: String, icon: AchievementIcon) -> WorkerResponse {
-    match steamlens_core::write_payload(&icon) {
-        Ok((path, region_bytes)) => WorkerResponse::IconUpdated {
-            name,
             shm_path: path.to_string_lossy().into_owned(),
             region_bytes,
         },
@@ -863,115 +841,22 @@ async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
 }
 
 async fn fetch_global_percentages(client: &Client) -> WorkerResponse {
-    use steamlens_core::{CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY, STEAM_RESULT_OK};
-    const PAYLOAD_SIZE: usize = 12;
-
-    let handle = match client.user_stats().request_global_achievement_percentages() {
-        Ok(h) => h,
-        Err(e) => {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::RequestGlobalPercentages,
-                message: e.to_string(),
-            };
-        }
-    };
-
-    let deadline = std::time::Instant::now() + timeouts::GLOBAL_PERCENTAGES;
-    loop {
-        poll_and_forward(client).await;
-
-        match client.poll_call_result(
-            handle,
-            CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY,
-            PAYLOAD_SIZE,
-        ) {
-            Err(e) => {
-                return WorkerResponse::Error {
-                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
-                    message: e.to_string(),
-                };
-            }
-            Ok(None) => {}
-            Ok(Some(Err(e))) => {
-                return WorkerResponse::Error {
-                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
-                    message: e.to_string(),
-                };
-            }
-            Ok(Some(Ok(bytes))) => {
-                poll_and_forward(client).await;
-                if bytes.len() < PAYLOAD_SIZE {
-                    return WorkerResponse::Error {
-                        kind: WorkerErrorKind::GlobalPercentagesReady,
-                        message: "payload too short".into(),
-                    };
-                }
-                let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
-                if result_code != STEAM_RESULT_OK {
-                    return WorkerResponse::Error {
-                        kind: WorkerErrorKind::GlobalPercentagesReady,
-                        message: format!("result code {result_code}"),
-                    };
-                }
-                return collect_global_percentages(client);
-            }
-        }
-
-        if std::time::Instant::now() >= deadline {
-            return WorkerResponse::Error {
-                kind: WorkerErrorKind::RequestGlobalPercentages,
-                message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
-            };
-        }
-        tokio::time::sleep(timeouts::POLL_INTERVAL).await;
-    }
-}
-
-fn collect_global_percentages(client: &Client) -> WorkerResponse {
-    let stats_iface = client.user_stats();
-    let num = stats_iface.num_achievements();
-    let mut map = HashMap::with_capacity(num as usize);
-    for i in 0..num {
-        let name = match stats_iface.achievement_name(i) {
-            Ok(n) => n,
-            Err(_) => continue,
-        };
-        if let Ok(pct) = stats_iface.achievement_achieved_percent(&name) {
-            map.insert(name, pct);
-        }
-    }
-    shm_response_for_pct(map)
-}
-
-fn build_icon_response(name: String, img: steamlens_core::Image) -> WorkerResponse {
-    shm_response_for_icon(
-        name,
-        AchievementIcon {
-            width: img.width,
-            height: img.height,
-            rgba: img.rgba,
+    let app_id = client.app_id();
+    match crate::cache::global_pct::load_or_fetch(app_id).await {
+        Ok(map) => shm_response_for_pct(map),
+        Err(e) => WorkerResponse::Error {
+            kind: WorkerErrorKind::RequestGlobalPercentages,
+            message: e.to_string(),
         },
-    )
-}
-
-async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client: &Client) {
-    for cb in callbacks {
-        if let SteamCallback::UserAchievementIconFetched {
-            achievement_name,
-            icon_handle,
-            ..
-        } = cb
-        {
-            if icon_handle == 0 {
-                continue;
-            }
-            if let Ok(Some(img)) = client.get_image(icon_handle) {
-                let resp = build_icon_response(achievement_name, img);
-                let _ = write_response(&resp).await;
-            }
-        }
     }
 }
+
+/// No-op since achievement icons now come from CDN (see
+/// `crate::cache::cdn_icons`). Steam still emits
+/// `UserAchievementIconFetched` for legacy reasons; we ignore it. Kept
+/// as a stable callsite for the dispatch loop until that loop is
+/// audited in a later cleanup chunk.
+async fn forward_icon_callbacks(_callbacks: Vec<SteamCallback>, _client: &Client) {}
 
 async fn read_command(
     stdin: &mut (impl AsyncReadExt + Unpin),
