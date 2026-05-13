@@ -1683,7 +1683,11 @@ fn view(app: &App) -> Element<'_, Message> {
         && app.library_cache_resolved
         && app.cache_classified
         && app.probe_done;
-    let base = if ready { with_toasts } else { splash_view() };
+    let base = if ready {
+        with_toasts
+    } else {
+        splash_view(splash_status_text(app))
+    };
 
     if app.about_open {
         let modal = ui::about_modal::about_modal(
@@ -1698,11 +1702,25 @@ fn view(app: &App) -> Element<'_, Message> {
     }
 }
 
-fn splash_view<'a>() -> Element<'a, Message> {
+fn splash_status_text(app: &App) -> &'static str {
+    if !app.splash_min_elapsed {
+        "starting up\u{2026}"
+    } else if !app.probe_done {
+        "connecting to Steam\u{2026}"
+    } else if !app.library_cache_resolved {
+        "loading library\u{2026}"
+    } else if !app.cache_classified {
+        "reading cache\u{2026}"
+    } else {
+        "almost ready\u{2026}"
+    }
+}
+
+fn splash_view<'a>(status: &'static str) -> Element<'a, Message> {
     let title = text("SteamLens")
         .size(40)
         .color(Color::from_rgb(0.741, 0.576, 0.976));
-    let subtitle = text("starting up…")
+    let subtitle = text(status)
         .size(13)
         .color(Color::from_rgba(0.7, 0.7, 0.78, 0.85));
 
