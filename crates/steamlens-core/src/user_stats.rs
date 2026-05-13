@@ -15,11 +15,10 @@ pub struct UserStats<'a> {
     _not_send: PhantomData<*const ()>,
 }
 
-// Every `unsafe` block in this impl shares an invariant: `self.raw` is
-// the live `ISteamUserStats013` vtable pointer vended against
-// `STEAMUSERSTATS_INTERFACE_VERSION013` with SysV-x64 dispatch (`this` in
-// RDI). Per-block SAFETY notes only call out the extra invariants
-// introduced by that block (argument lifetime, out-pointer validity).
+// Every `unsafe` block here shares one invariant: `self.raw` is the live
+// `ISteamUserStats013` vtable acquired in `establish`. Per-block SAFETY
+// notes only call out the extra invariants of each block (argument
+// lifetimes, out-pointer validity).
 impl<'a> UserStats<'a> {
     pub(crate) fn from_raw(raw: RawInterface) -> Self {
         Self {
