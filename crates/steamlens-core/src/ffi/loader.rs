@@ -132,15 +132,47 @@ impl SteamLibrary {
 unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
     #[cfg(target_os = "windows")]
     {
-        // steamclient64.dll depends on sibling DLLs that live in the
-        // Steam install directory (tier0_s64.dll, vstdlib_s64.dll, …).
-        // Default LoadLibraryExW search order does not include the DLL's
-        // own directory; LOAD_WITH_ALTERED_SEARCH_PATH adds it.
         use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WinLibrary};
-        // SAFETY: forwarded from the caller's unsafe contract.
-        return unsafe {
+        use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
+
+        if let Some(steam_root) = path.parent() {
+            let bin_dir = steam_root.join("bin");
+            let search_path = format!("{};{}", steam_root.display(), bin_dir.display());
+            let wide: Vec<u16> = search_path
+                .encode_utf16()
+                .chain(std::iter::once(0u16))
+                .collect();
+            // SAFETY: `wide` is a valid NUL-terminated UTF-16 string that we own
+            // on the stack; no aliasing; `SetDllDirectoryW` reads but does not
+            // retain the pointer after returning.
+            let ok = unsafe { SetDllDirectoryW(wide.as_ptr()) };
+            if ok != 0 {
+                tracing::info!(search_path, "loader: SetDllDirectoryW succeeded");
+            } else {
+                // SAFETY: `GetLastError` is always safe to call immediately
+                // after a failing Win32 API on the same thread.
+                let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+                tracing::warn!(
+                    search_path,
+                    last_error = err,
+                    "loader: SetDllDirectoryW failed (non-fatal)"
+                );
+            }
+        }
+
+        tracing::info!(path = %path.display(), "loader: LoadLibraryExW (LOAD_WITH_ALTERED_SEARCH_PATH)");
+        // SAFETY: forwarded from the caller's unsafe contract; path is a valid
+        // filesystem path to steamclient64.dll; LOAD_WITH_ALTERED_SEARCH_PATH
+        // instructs the loader to use the DLL's own directory as the first
+        // search root for direct dependencies.
+        let result = unsafe {
             WinLibrary::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH).map(Library::from)
         };
+        match &result {
+            Ok(_) => tracing::info!("loader: LoadLibraryExW succeeded"),
+            Err(e) => tracing::error!(error = %e, "loader: LoadLibraryExW failed"),
+        }
+        return result;
     }
     #[cfg(not(target_os = "windows"))]
     // SAFETY: forwarded from the caller's unsafe contract.
