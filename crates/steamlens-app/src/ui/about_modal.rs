@@ -6,45 +6,12 @@ use iced::{
     Alignment, Background, Border, Color, Element, Gradient, Length, Padding, Shadow, Vector,
 };
 
+use crate::ui::theme::{AppTheme, ThemePalette, palette};
+
 const MODAL_WIDTH: f32 = 480.0;
 const ICON_SIZE: f32 = 100.0;
 const BTN_ICON_SIZE: f32 = 13.0;
 
-const C_BG: Color = Color::from_rgb(
-    0x1a as f32 / 255.0,
-    0x18 as f32 / 255.0,
-    0x25 as f32 / 255.0,
-);
-const C_PANEL_BG: Color = Color::from_rgb(
-    0x22 as f32 / 255.0,
-    0x1f as f32 / 255.0,
-    0x30 as f32 / 255.0,
-);
-const C_BORDER: Color = Color::from_rgb(
-    0x2d as f32 / 255.0,
-    0x29 as f32 / 255.0,
-    0x40 as f32 / 255.0,
-);
-const C_TEXT_PRIMARY: Color = Color::from_rgb(
-    0xf0 as f32 / 255.0,
-    0xee as f32 / 255.0,
-    0xf8 as f32 / 255.0,
-);
-const C_ACCENT: Color = Color::from_rgb(
-    0xc9 as f32 / 255.0,
-    0xa6 as f32 / 255.0,
-    0xf0 as f32 / 255.0,
-);
-const C_MUTED: Color = Color::from_rgb(
-    0x8a as f32 / 255.0,
-    0x86 as f32 / 255.0,
-    0xa3 as f32 / 255.0,
-);
-const C_DIM: Color = Color::from_rgb(
-    0x6b as f32 / 255.0,
-    0x68 as f32 / 255.0,
-    0x84 as f32 / 255.0,
-);
 const C_BUILT_WITH: Color = Color::from_rgb(
     0xaa as f32 / 255.0,
     0xa6 as f32 / 255.0,
@@ -85,8 +52,10 @@ pub fn about_modal<M: 'static + Clone>(
     open_github: M,
     open_issues: M,
     open_releases: M,
+    theme: AppTheme,
 ) -> Element<'static, M> {
-    let modal = build_card(open_github, open_issues, open_releases);
+    let p = *palette(theme);
+    let modal = build_card(p, open_github, open_issues, open_releases);
 
     let centered = container(modal)
         .width(Length::Fill)
@@ -116,21 +85,22 @@ pub fn about_modal<M: 'static + Clone>(
 }
 
 fn build_card<M: 'static + Clone>(
+    p: ThemePalette,
     open_github: M,
     open_issues: M,
     open_releases: M,
 ) -> Element<'static, M> {
-    let hero = build_hero();
+    let hero = build_hero::<M>(p);
     let divider = container(Space::new())
         .width(Length::Fill)
         .height(Length::Fixed(1.0))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_BORDER)),
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(Background::Color(p.border)),
             ..container::Style::default()
         });
-    let actions = build_actions(open_github, open_issues, open_releases);
-    let built_with = build_built_with();
-    let footer = build_footer();
+    let actions = build_actions(p, open_github, open_issues, open_releases);
+    let built_with = build_built_with::<M>(p);
+    let footer = build_footer::<M>(p);
 
     let body = column![
         hero,
@@ -143,10 +113,10 @@ fn build_card<M: 'static + Clone>(
 
     container(body)
         .width(Length::Fixed(MODAL_WIDTH))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_BG)),
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(Background::Color(p.app)),
             border: Border {
-                color: C_BORDER,
+                color: p.border,
                 width: 1.0,
                 radius: 12.0.into(),
             },
@@ -156,7 +126,7 @@ fn build_card<M: 'static + Clone>(
         .into()
 }
 
-fn build_hero<M: 'static>() -> Element<'static, M> {
+fn build_hero<M: 'static>(p: ThemePalette) -> Element<'static, M> {
     let icon = img_widget(ABOUT_ICON.clone())
         .width(Length::Fixed(ICON_SIZE))
         .height(Length::Fixed(ICON_SIZE));
@@ -164,7 +134,7 @@ fn build_hero<M: 'static>() -> Element<'static, M> {
     let icon_with_glow = container(icon)
         .width(Length::Fixed(ICON_SIZE))
         .height(Length::Fixed(ICON_SIZE))
-        .style(|_: &iced::Theme| container::Style {
+        .style(move |_: &iced::Theme| container::Style {
             border: Border {
                 radius: 22.0.into(),
                 ..Border::default()
@@ -172,7 +142,7 @@ fn build_hero<M: 'static>() -> Element<'static, M> {
             shadow: Shadow {
                 color: Color {
                     a: 0.55,
-                    ..C_ACCENT
+                    ..p.accent
                 },
                 offset: Vector::new(0.0, 0.0),
                 blur_radius: 36.0,
@@ -180,13 +150,13 @@ fn build_hero<M: 'static>() -> Element<'static, M> {
             ..container::Style::default()
         });
 
-    let name = text("SteamLens").size(24).color(C_TEXT_PRIMARY);
+    let name = text("SteamLens").size(24).color(p.text_primary);
     let version = text(concat!("Version ", env!("CARGO_PKG_VERSION")))
         .size(13)
-        .color(C_ACCENT);
+        .color(p.accent);
     let tagline = text("A Steam achievement manager with rarity insights and library statistics.")
         .size(12)
-        .color(C_MUTED);
+        .color(p.text_muted);
 
     let content = column![
         container(icon_with_glow)
@@ -211,21 +181,21 @@ fn build_hero<M: 'static>() -> Element<'static, M> {
     container(content)
         .width(Length::Fill)
         .padding(Padding::default().left(32).right(32).top(36).bottom(24))
-        .style(|_: &iced::Theme| {
+        .style(move |_: &iced::Theme| {
             let gradient = Linear::new(0.0)
                 .add_stop(0.0, Color::TRANSPARENT)
                 .add_stop(
                     0.55,
                     Color {
                         a: 0.04,
-                        ..C_ACCENT
+                        ..p.accent
                     },
                 )
                 .add_stop(
                     1.0,
                     Color {
                         a: 0.18,
-                        ..C_ACCENT
+                        ..p.accent
                     },
                 );
             container::Style {
@@ -237,40 +207,41 @@ fn build_hero<M: 'static>() -> Element<'static, M> {
 }
 
 fn build_actions<M: 'static + Clone>(
+    p: ThemePalette,
     open_github: M,
     open_issues: M,
     open_releases: M,
 ) -> Element<'static, M> {
     let action_btn =
-        |icon_handle: svg::Handle, label: &'static str, msg: M| -> Element<'static, M> {
+        move |icon_handle: svg::Handle, label: &'static str, msg: M| -> Element<'static, M> {
             let svg_icon = svg(icon_handle)
                 .width(Length::Fixed(BTN_ICON_SIZE))
                 .height(Length::Fixed(BTN_ICON_SIZE));
 
-            let body = row![svg_icon, text(label).size(12).color(C_ACCENT),]
+            let body = row![svg_icon, text(label).size(12).color(p.accent),]
                 .spacing(6)
                 .align_y(Alignment::Center);
 
             button(body)
                 .on_press(msg)
                 .padding(Padding::default().left(14).right(14).top(7).bottom(7))
-                .style(|_t: &iced::Theme, status| {
+                .style(move |_t: &iced::Theme, status| {
                     let hovered =
                         matches!(status, button::Status::Hovered | button::Status::Pressed);
                     button::Style {
                         background: Some(Background::Color(Color {
                             a: if hovered { 0.18 } else { 0.10 },
-                            ..C_ACCENT
+                            ..p.accent
                         })),
                         border: Border {
                             color: Color {
                                 a: if hovered { 0.45 } else { 0.30 },
-                                ..C_ACCENT
+                                ..p.accent
                             },
                             width: 1.0,
                             radius: 6.0.into(),
                         },
-                        text_color: C_ACCENT,
+                        text_color: p.accent,
                         ..button::Style::default()
                     }
                 })
@@ -291,8 +262,8 @@ fn build_actions<M: 'static + Clone>(
         .into()
 }
 
-fn build_built_with<M: 'static>() -> Element<'static, M> {
-    let label = text("BUILT WITH").size(10).color(C_MUTED);
+fn build_built_with<M: 'static>(p: ThemePalette) -> Element<'static, M> {
+    let label = text("BUILT WITH").size(10).color(p.text_muted);
     let stack_line = text("Rust  ·  iced  ·  tokio").size(11).color(C_BUILT_WITH);
 
     let col = column![label, Space::new().height(Length::Fixed(8.0)), stack_line,];
@@ -300,8 +271,8 @@ fn build_built_with<M: 'static>() -> Element<'static, M> {
     container(col)
         .width(Length::Fill)
         .padding(Padding::default().left(14).right(14).top(12).bottom(12))
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(Background::Color(C_PANEL_BG)),
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(Background::Color(p.surface)),
             border: Border {
                 radius: 6.0.into(),
                 ..Border::default()
@@ -311,9 +282,9 @@ fn build_built_with<M: 'static>() -> Element<'static, M> {
         .into()
 }
 
-fn build_footer<M: 'static>() -> Element<'static, M> {
-    let left = text("\u{00A9} 2026 IceSqueez").size(10).color(C_DIM);
-    let right = text("MIT License").size(10).color(C_DIM);
+fn build_footer<M: 'static>(p: ThemePalette) -> Element<'static, M> {
+    let left = text("\u{00A9} 2026 IceSqueez").size(10).color(p.text_dim);
+    let right = text("MIT License").size(10).color(p.text_dim);
 
     row![left, Space::new().width(Length::Fill), right]
         .align_y(Alignment::Center)
