@@ -44,23 +44,30 @@ impl SteamConnection {
         }
 
         let library = loader::shared()?;
+
+        tracing::info!(target: "establish", version = STEAM_CLIENT_VERSION, "create_interface: calling");
         let steam_client = library.create_interface(STEAM_CLIENT_VERSION)?;
+        tracing::info!(target: "establish", ptr = ?steam_client, "create_interface: ok");
 
         // SAFETY: `CreateInterface("SteamClient018")` guarantees the returned
         // object exposes an `ISteamClient018` vtable at offset 0.
+        tracing::info!(target: "establish", "create_steam_pipe: calling");
         let pipe = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).create_steam_pipe)(steam_client)
         };
+        tracing::info!(target: "establish", pipe, "create_steam_pipe: returned");
         if pipe == 0 {
             return Err(SteamError::SteamNotRunning);
         }
 
         // SAFETY: `pipe` is the freshly-vended live handle.
+        tracing::info!(target: "establish", "connect_to_global_user: calling");
         let user = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).connect_to_global_user)(steam_client, pipe)
         };
+        tracing::info!(target: "establish", user, "connect_to_global_user: returned");
         if user == 0 {
             // SAFETY: release the pipe before bailing; otherwise IPC state
             // leaks in the steamclient process.
@@ -78,10 +85,12 @@ impl SteamConnection {
 
         // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the
         // call. Returned vtable shape = `ISteamUser012`.
+        tracing::info!(target: "establish", version = STEAM_USER_VERSION, "get_isteam_user(SteamUser012): calling");
         let steam_user = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_user)(steam_client, user, pipe, version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_user.is_null(), "get_isteam_user(SteamUser012): returned");
         if steam_user.is_null() {
             // SAFETY: release in reverse-init order.
             unsafe {
@@ -108,10 +117,12 @@ impl SteamConnection {
         })?;
 
         // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the call.
+        tracing::info!(target: "establish", version = STEAM_USER_STATS_VERSION, "get_isteam_user_stats: calling");
         let steam_user_stats = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_user_stats)(steam_client, user, pipe, stats_version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_user_stats.is_null(), "get_isteam_user_stats: returned");
         if steam_user_stats.is_null() {
             // SAFETY: release in reverse-init order.
             unsafe {
@@ -131,10 +142,12 @@ impl SteamConnection {
 
         // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the call.
         // Null return is non-fatal — callsites null-guard.
+        tracing::info!(target: "establish", version = STEAM_APPS_VERSION, "get_isteam_apps(VERSION001): calling");
         let steam_apps = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_apps.is_null(), "get_isteam_apps(VERSION001): returned");
 
         let apps_008_version = CString::new(STEAM_APPS_008_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
@@ -143,10 +156,12 @@ impl SteamConnection {
         })?;
 
         // SAFETY: same as apps001 above; null is non-fatal.
+        tracing::info!(target: "establish", version = STEAM_APPS_008_VERSION, "get_isteam_apps(VERSION008): calling");
         let steam_apps_008 = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_apps)(steam_client, user, pipe, apps_008_version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_apps_008.is_null(), "get_isteam_apps(VERSION008): returned");
 
         let utils_version =
             CString::new(STEAM_UTILS_VERSION).map_err(|_| SteamError::InvalidInterfaceVersion {
@@ -155,10 +170,12 @@ impl SteamConnection {
 
         // SAFETY: `GetISteamUtils` takes (this, pipe, version) — no user
         // handle — per slot 9 of ISteamClient018. Null is non-fatal.
+        tracing::info!(target: "establish", version = STEAM_UTILS_VERSION, "get_isteam_utils: calling");
         let steam_utils = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_utils)(steam_client, pipe, utils_version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_utils.is_null(), "get_isteam_utils: returned");
 
         let friends_version = CString::new(STEAM_FRIENDS_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
@@ -168,10 +185,12 @@ impl SteamConnection {
 
         // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the call.
         // Null is non-fatal — callsites null-guard.
+        tracing::info!(target: "establish", version = STEAM_FRIENDS_VERSION, "get_isteam_friends: calling");
         let steam_friends = unsafe {
             let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
             ((*vtbl).get_isteam_friends)(steam_client, user, pipe, friends_version.as_ptr())
         };
+        tracing::info!(target: "establish", null = steam_friends.is_null(), "get_isteam_friends: returned");
 
         let user_023_version = CString::new(STEAM_USER_023_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
@@ -182,11 +201,13 @@ impl SteamConnection {
         // SAFETY: live `user`/`pipe`; NUL-terminated version outlives the call.
         // Null is non-fatal — very old Steam clients may not expose SteamUser023;
         // stored as Option and null-guarded in the `User` sub-type.
+        tracing::info!(target: "establish", version = STEAM_USER_023_VERSION, "get_isteam_user(SteamUser023): calling");
         let steam_user_023 = {
             let raw = unsafe {
                 let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
                 ((*vtbl).get_isteam_user)(steam_client, user, pipe, user_023_version.as_ptr())
             };
+            tracing::info!(target: "establish", null = raw.is_null(), "get_isteam_user(SteamUser023): returned");
             if raw.is_null() { None } else { Some(raw) }
         };
 
@@ -199,10 +220,12 @@ impl SteamConnection {
             //   (see STEAM_NOTES.md → Vtable Offset Verifications).
             // - Called on the same thread that created the pipe; SteamConnection is `!Send`
             //   via `PhantomData<*const ()>`. SysV-x64 ABI: `this` in RDI, bool in AL.
+            tracing::info!(target: "establish", "b_logged_on: calling");
             let logged_on = unsafe {
                 let vtbl = opaque::vtable::<ISteamUser023>(u023);
                 ((*vtbl).b_logged_on)(u023)
             };
+            tracing::info!(target: "establish", logged_on, "b_logged_on: returned");
             if !logged_on {
                 unsafe {
                     let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
