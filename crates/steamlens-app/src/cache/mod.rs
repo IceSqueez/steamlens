@@ -1,4 +1,5 @@
 pub mod cached;
+pub mod cdn_icons;
 pub mod commands;
 pub mod icons;
 pub mod invalidate;
