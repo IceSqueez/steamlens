@@ -132,14 +132,15 @@ impl SteamLibrary {
 unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::ffi::OsStrExt;
+
         use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WinLibrary};
         use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
 
         if let Some(steam_root) = path.parent() {
-            let bin_dir = steam_root.join("bin");
-            let search_path = format!("{};{}", steam_root.display(), bin_dir.display());
-            let wide: Vec<u16> = search_path
-                .encode_utf16()
+            let wide: Vec<u16> = steam_root
+                .as_os_str()
+                .encode_wide()
                 .chain(std::iter::once(0u16))
                 .collect();
             // SAFETY: `wide` is a valid NUL-terminated UTF-16 string that we own
@@ -147,13 +148,13 @@ unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
             // retain the pointer after returning.
             let ok = unsafe { SetDllDirectoryW(wide.as_ptr()) };
             if ok != 0 {
-                tracing::info!(search_path, "loader: SetDllDirectoryW succeeded");
+                tracing::info!(steam_root = %steam_root.display(), "loader: SetDllDirectoryW succeeded");
             } else {
                 // SAFETY: `GetLastError` is always safe to call immediately
                 // after a failing Win32 API on the same thread.
                 let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
                 tracing::warn!(
-                    search_path,
+                    steam_root = %steam_root.display(),
                     last_error = err,
                     "loader: SetDllDirectoryW failed (non-fatal)"
                 );
