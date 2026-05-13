@@ -228,6 +228,17 @@ pub enum GameViewMessage {
     BarSliceHoverEnter(RarityTier),
     BarSliceHoverExit,
     InvalidateCacheClicked(u32),
+    CacheSeeded {
+        app_id: u32,
+        seeded: Box<SeededGameView>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SeededGameView {
+    pub game_name: String,
+    pub achievements: Vec<AchievementRow>,
+    pub stats: Vec<StatRow>,
 }
 
 #[derive(Debug, Clone)]
@@ -855,6 +866,16 @@ pub fn update(
 
         GameViewMessage::InvalidateCacheClicked(app_id) => {
             (Task::none(), GameViewEvent::InvalidateCache { app_id })
+        }
+
+        GameViewMessage::CacheSeeded { app_id, seeded } => {
+            if state.app_id == app_id {
+                state.game_name = seeded.game_name;
+                state.achievements = seeded.achievements;
+                state.stats = seeded.stats;
+                state.reveal_queue.clear();
+            }
+            (Task::none(), GameViewEvent::None)
         }
     }
 }
