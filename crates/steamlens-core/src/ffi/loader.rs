@@ -232,7 +232,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "requires a real Steam install or STEAMLENS_STEAM_ROOT env override"]
+    #[ignore = "requires a real Steam install"]
     fn steamclient_loads_smoke() {
         SteamLibrary::load().expect("steamclient must open");
     }

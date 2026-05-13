@@ -2,10 +2,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 pub fn steam_install_root_candidates() -> Vec<PathBuf> {
-    if let Some(root) = env::var_os("STEAMLENS_STEAM_ROOT") {
-        return vec![PathBuf::from(root)];
-    }
-
     #[cfg(target_os = "linux")]
     return steam_roots_linux(env::var_os("HOME"), env::var_os("XDG_DATA_HOME"));
 
