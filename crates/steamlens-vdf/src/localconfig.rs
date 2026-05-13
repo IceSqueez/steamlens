@@ -2,6 +2,64 @@ use std::collections::HashMap;
 
 use crate::text::parse as parse_text;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AppLocalState {
+    pub last_played: Option<u32>,
+    pub playtime_minutes: Option<u32>,
+}
+
+/// Parse `localconfig.vdf` and return `app_id → (LastPlayed, Playtime)` in a
+/// single pass. Zero `LastPlayed` collapses to `None`. Errors collapse to an
+/// empty map — this file is supplementary and must not block boot.
+pub fn parse_localconfig_states(content: &str) -> HashMap<u32, AppLocalState> {
+    let root = match parse_text(content) {
+        Ok(v) => v,
+        Err(_) => return HashMap::new(),
+    };
+
+    let Some(apps_section) =
+        root.path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"])
+    else {
+        return HashMap::new();
+    };
+
+    let Some(entries) = apps_section.as_block() else {
+        return HashMap::new();
+    };
+
+    let mut map = HashMap::new();
+
+    for (key, entry) in entries {
+        let app_id: u32 = match key.parse() {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+
+        let last_played = entry
+            .get("LastPlayed")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|&ts| ts != 0);
+
+        let playtime_minutes = entry
+            .get("Playtime")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u32>().ok());
+
+        if last_played.is_some() || playtime_minutes.is_some() {
+            map.insert(
+                app_id,
+                AppLocalState {
+                    last_played,
+                    playtime_minutes,
+                },
+            );
+        }
+    }
+
+    map
+}
+
 /// Parse `localconfig.vdf` and return `app_id → LastPlayed` Unix
 /// timestamps, dropping zero values. Errors collapse to an empty map —
 /// this file is supplementary and must not block boot.

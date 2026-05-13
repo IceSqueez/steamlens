@@ -505,8 +505,7 @@ fn drain_progress_results(
                     &data,
                     scan_app_id,
                     game_name.as_deref(),
-                    &ctx.steam_root,
-                    ctx.steamid3,
+                    &ctx.steam_state,
                 );
 
                 if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {

@@ -5,7 +5,7 @@ mod parser;
 pub mod text;
 
 pub use appinfo::{AppFlags, AppInfoError, parse_appinfo_flags};
-pub use localconfig::parse_localconfig_last_played;
+pub use localconfig::{AppLocalState, parse_localconfig_last_played, parse_localconfig_states};
 pub use packageinfo::{PackageInfoError, parse_packageinfo};
 pub use parser::{KeyValuePair, Value, VdfError};
 pub use text::{TextValue, TextVdfError, parse as parse_text};
