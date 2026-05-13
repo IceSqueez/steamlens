@@ -57,4 +57,5 @@ steamlens-vdf = { path = "crates/steamlens-vdf" }
 [profile.release]
 lto = "thin"
 codegen-units = 1
-strip = "symbols"
+strip = "none"
+debug = "limited"
