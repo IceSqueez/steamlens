@@ -14,8 +14,7 @@ pub const STEAMID64_INDIVIDUAL_MIN: u64 = 0x0110_0001_0000_0000;
 pub struct UserProfile {
     /// 64-bit Steam community ID (not Steam3).
     pub steam_id: u64,
-    pub persona_name: String,
-    pub account_name: String,
+    pub nickname: String,
     pub avatar_png_bytes: Option<Vec<u8>>,
 }
 
@@ -71,14 +70,8 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
         .parse()
         .map_err(|_| ProfileError::InvalidSteamId(id_str.clone()))?;
 
-    let persona_name = user_block
+    let nickname = user_block
         .get("PersonaName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_owned();
-
-    let account_name = user_block
-        .get("AccountName")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_owned();
@@ -92,8 +85,7 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
 
     Ok(UserProfile {
         steam_id,
-        persona_name,
-        account_name,
+        nickname,
         avatar_png_bytes,
     })
 }
@@ -175,8 +167,7 @@ mod tests {
         );
         let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(profile.steam_id, 22222);
-        assert_eq!(profile.account_name, "new_user");
-        assert_eq!(profile.persona_name, "New");
+        assert_eq!(profile.nickname, "New");
     }
 
     #[test]
@@ -203,7 +194,6 @@ mod tests {
         );
         let profile = load_profile_from_root(dir).unwrap();
         assert_eq!(profile.steam_id, 55555);
-        assert_eq!(profile.account_name, "first_user");
     }
 
     #[test]

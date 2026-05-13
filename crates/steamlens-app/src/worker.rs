@@ -106,7 +106,7 @@ async fn probe_main() -> i32 {
 
     let steam_id = client.steam_id();
 
-    let persona_name = match client.persona_name() {
+    let nickname = match client.nickname() {
         Some(n) => n,
         None => {
             let _ = write_response(&WorkerResponse::Error {
@@ -151,7 +151,7 @@ async fn probe_main() -> i32 {
 
     let resp = shm_response_for_probe(steamlens_core::ProbeResultPayload {
         steam_id,
-        persona_name,
+        nickname,
         avatar_png,
         game_summaries: games,
         steam_level,

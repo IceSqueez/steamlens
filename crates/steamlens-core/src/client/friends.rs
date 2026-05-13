@@ -8,7 +8,7 @@ pub(super) struct Friends {
 }
 
 impl Friends {
-    pub(super) fn persona_name(&self) -> Option<String> {
+    pub(super) fn nickname(&self) -> Option<String> {
         if self.steam_friends.is_null() {
             return None;
         }

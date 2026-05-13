@@ -5,15 +5,14 @@ use serde::{Deserialize, Serialize};
 use crate::cache::cached::Cached;
 use crate::cache::store::CacheIoError;
 
-const CURRENT_PROFILE_SCHEMA: u32 = 3;
+const CURRENT_PROFILE_SCHEMA: u32 = 4;
 const CURRENT_LIBRARY_SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedProfile {
     pub schema_version: u32,
     pub steam_id: u64,
-    pub persona_name: String,
-    pub account_name: String,
+    pub nickname: String,
     pub avatar_png_bytes: Option<Vec<u8>>,
     pub steam_root: Option<PathBuf>,
     pub cached_at: u64,
@@ -91,8 +90,7 @@ pub async fn load_library_cache() -> Option<CachedLibrary> {
 
 pub fn make_cached_profile(
     steam_id: u64,
-    persona_name: String,
-    account_name: String,
+    nickname: String,
     avatar_png_bytes: Option<Vec<u8>>,
     steam_root: Option<PathBuf>,
     steam_level: Option<u32>,
@@ -100,8 +98,7 @@ pub fn make_cached_profile(
     CachedProfile {
         schema_version: CURRENT_PROFILE_SCHEMA,
         steam_id,
-        persona_name,
-        account_name,
+        nickname,
         avatar_png_bytes,
         steam_root,
         cached_at: now_epoch(),
@@ -127,8 +124,7 @@ mod tests {
         CachedProfile {
             schema_version: CURRENT_PROFILE_SCHEMA,
             steam_id: 76561198000000042,
-            persona_name: "TestUser".to_owned(),
-            account_name: "test_login".to_owned(),
+            nickname: "TestUser".to_owned(),
             avatar_png_bytes: Some(vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
             steam_root: Some(PathBuf::from("/tmp/synthetic_steam_root")),
             cached_at: 1_777_926_953,
@@ -162,8 +158,7 @@ mod tests {
             .await
             .expect("must load");
         assert_eq!(restored.steam_id, original.steam_id);
-        assert_eq!(restored.persona_name, original.persona_name);
-        assert_eq!(restored.account_name, original.account_name);
+        assert_eq!(restored.nickname, original.nickname);
         assert_eq!(restored.avatar_png_bytes, original.avatar_png_bytes);
         assert_eq!(restored.steam_root, original.steam_root);
         assert_eq!(restored.cached_at, original.cached_at);
@@ -189,7 +184,7 @@ mod tests {
     async fn profile_cache_schema_mismatch_returns_none() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let path = dir.path().join("schema.json");
-        let bad = r#"{"schema_version":1,"steam_id":1,"persona_name":"X","account_name":"x","avatar_png_bytes":null,"cached_at":0}"#;
+        let bad = r#"{"schema_version":1,"steam_id":1,"nickname":"X","avatar_png_bytes":null,"cached_at":0}"#;
         std::fs::write(&path, bad).unwrap();
         let result = load_from_path::<CachedProfile>(&path).await;
         assert!(result.is_none(), "stale schema must be treated as miss");
@@ -241,7 +236,7 @@ mod tests {
 
     #[test]
     fn make_cached_profile_sets_schema_and_timestamp() {
-        let p = make_cached_profile(1, "u".into(), "l".into(), None, None, None);
+        let p = make_cached_profile(1, "u".into(), None, None, None);
         assert_eq!(p.schema_version, CURRENT_PROFILE_SCHEMA);
         assert!(p.cached_at > 0, "cached_at must be set to a real epoch");
     }

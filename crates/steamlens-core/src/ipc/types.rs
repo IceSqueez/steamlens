@@ -73,7 +73,7 @@ pub struct AchievementCountPayload {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProbeResultPayload {
     pub steam_id: u64,
-    pub persona_name: String,
+    pub nickname: String,
     pub avatar_png: Option<Vec<u8>>,
     pub game_summaries: Vec<crate::library::GameSummary>,
     pub steam_level: Option<u32>,

@@ -253,7 +253,7 @@ fn build_profile_info<'a>(
     steam_level: Option<u32>,
 ) -> Element<'a, ProfileViewMessage> {
     let persona = user_profile
-        .map(|p| p.persona_name.as_str())
+        .map(|p| p.nickname.as_str())
         .unwrap_or("Steam User");
 
     let nickname =
