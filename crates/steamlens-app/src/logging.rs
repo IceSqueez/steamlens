@@ -60,17 +60,26 @@ unsafe extern "system" fn seh_handler(
     // SAFETY: `STD_ERROR_HANDLE` is a process-wide pseudo-handle; `WriteFile`
     // accepts a borrowed handle and a borrowed buffer, writes synchronously,
     // and does not retain either pointer after returning.
+    let stderr = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
+    // SAFETY: same as above.
     unsafe {
-        let handle = GetStdHandle(STD_ERROR_HANDLE);
         let mut written: u32 = 0;
         WriteFile(
-            handle,
+            stderr,
             msg.as_ptr(),
             msg.len() as u32,
             &mut written,
             core::ptr::null_mut(),
         );
     }
+
+    // SAFETY: PSAPI's `EnumProcessModules` / `GetModuleInformation` /
+    // `GetModuleBaseNameW` are documented as safe to call from an SEH
+    // top-level filter — they take only kernel locks, not the process
+    // heap or any user-space mutex. We use stack-only buffers, no
+    // allocations. A failure of any PSAPI call is silently swallowed —
+    // we are dying anyway, the module list is best-effort diagnostic.
+    write_module_list(stderr);
 
     windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_EXECUTE_HANDLER
 }
@@ -82,6 +91,90 @@ fn format_seh_line<'a>(buf: &'a mut [u8; 64], code: u32, addr: usize) -> &'a [u8
     let _ = write!(cursor, "ERROR seh: code=0x{code:08X} addr=0x{addr:016X}\n");
     let pos = cursor.position() as usize;
     &buf[..pos]
+}
+
+#[cfg(target_os = "windows")]
+fn write_module_list(stderr: windows_sys::Win32::Foundation::HANDLE) {
+    use std::io::Write;
+    use windows_sys::Win32::Foundation::HMODULE;
+    use windows_sys::Win32::Storage::FileSystem::WriteFile;
+    use windows_sys::Win32::System::ProcessStatus::{
+        EnumProcessModules, GetModuleBaseNameW, GetModuleInformation, MODULEINFO,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    const MAX_MODULES: usize = 256;
+    let mut handles: [HMODULE; MAX_MODULES] = [core::ptr::null_mut(); MAX_MODULES];
+    let mut needed: u32 = 0;
+    // SAFETY: `handles` is a stack array of `HMODULE`; we pass its length
+    // in bytes; `needed` is a stack-owned `u32`.
+    let proc_h = unsafe { GetCurrentProcess() };
+    // SAFETY: same; the call writes into `handles` and `needed` only.
+    let enum_ok = unsafe {
+        EnumProcessModules(
+            proc_h,
+            handles.as_mut_ptr(),
+            (handles.len() * core::mem::size_of::<HMODULE>()) as u32,
+            &mut needed,
+        )
+    };
+    if enum_ok == 0 {
+        return;
+    }
+    let count = ((needed as usize) / core::mem::size_of::<HMODULE>()).min(MAX_MODULES);
+
+    let mut line = [0u8; 256];
+    let mut name_w = [0u16; 96];
+    for handle in handles.iter().take(count) {
+        let mut info: MODULEINFO = MODULEINFO {
+            lpBaseOfDll: core::ptr::null_mut(),
+            SizeOfImage: 0,
+            EntryPoint: core::ptr::null_mut(),
+        };
+        // SAFETY: stack-owned `info`; `*handle` is a live HMODULE in our process.
+        let info_ok = unsafe {
+            GetModuleInformation(
+                proc_h,
+                *handle,
+                &mut info,
+                core::mem::size_of::<MODULEINFO>() as u32,
+            )
+        };
+        if info_ok == 0 {
+            continue;
+        }
+        // SAFETY: `name_w` is a stack buffer of u16; passing length in chars.
+        let name_len = unsafe {
+            GetModuleBaseNameW(proc_h, *handle, name_w.as_mut_ptr(), name_w.len() as u32)
+        };
+        let mut cursor = std::io::Cursor::new(line.as_mut_slice());
+        let _ = write!(
+            cursor,
+            "ERROR seh module: base=0x{:016X} size=0x{:08X} name=",
+            info.lpBaseOfDll as usize, info.SizeOfImage
+        );
+        for ch in name_w.iter().take(name_len as usize) {
+            let b = if (0x20..0x7F).contains(ch) {
+                *ch as u8
+            } else {
+                b'?'
+            };
+            let _ = cursor.write_all(&[b]);
+        }
+        let _ = cursor.write_all(b"\n");
+        let pos = cursor.position() as usize;
+        // SAFETY: see SEH-handler comment — WriteFile is the lock-free path.
+        unsafe {
+            let mut written: u32 = 0;
+            WriteFile(
+                stderr,
+                line.as_ptr(),
+                pos as u32,
+                &mut written,
+                core::ptr::null_mut(),
+            );
+        }
+    }
 }
 
 pub(crate) fn init_with_path(path: &Path) -> io::Result<()> {
