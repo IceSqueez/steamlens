@@ -143,41 +143,65 @@ unsafe fn load_steamclient(path: &Path) -> Result<Library, libloading::Error> {
     {
         use std::os::windows::ffi::OsStrExt;
 
-        use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WinLibrary};
-        use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
+        use libloading::os::windows::{
+            LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_USER_DIRS, Library as WinLibrary,
+        };
+        use windows_sys::Win32::System::LibraryLoader::{
+            AddDllDirectory, SetDefaultDllDirectories,
+        };
+
+        // SAFETY: standard Win32 call; no pointer arguments. Sets the
+        // process-wide default search order to the modern flag set required
+        // by `AddDllDirectory`.
+        let default_ok =
+            unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS as u32) != 0 };
+        if !default_ok {
+            // SAFETY: `GetLastError` is always safe immediately after a
+            // failing Win32 call on the same thread.
+            let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            tracing::warn!(
+                last_error = err,
+                "loader: SetDefaultDllDirectories failed (non-fatal)"
+            );
+        }
 
         if let Some(steam_root) = path.parent() {
-            let wide: Vec<u16> = steam_root
-                .as_os_str()
-                .encode_wide()
-                .chain(std::iter::once(0u16))
-                .collect();
-            // SAFETY: `wide` is a valid NUL-terminated UTF-16 string that we own
-            // on the stack; no aliasing; `SetDllDirectoryW` reads but does not
-            // retain the pointer after returning.
-            let ok = unsafe { SetDllDirectoryW(wide.as_ptr()) };
-            if ok != 0 {
-                tracing::info!(steam_root = %steam_root.display(), "loader: SetDllDirectoryW succeeded");
-            } else {
-                // SAFETY: `GetLastError` is always safe to call immediately
-                // after a failing Win32 API on the same thread.
-                let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-                tracing::warn!(
-                    steam_root = %steam_root.display(),
-                    last_error = err,
-                    "loader: SetDllDirectoryW failed (non-fatal)"
-                );
+            for dir in [steam_root.to_path_buf(), steam_root.join("bin")] {
+                let wide: Vec<u16> = dir
+                    .as_os_str()
+                    .encode_wide()
+                    .chain(std::iter::once(0u16))
+                    .collect();
+                // SAFETY: `wide` is a valid NUL-terminated UTF-16 string we
+                // own on the stack. `AddDllDirectory` reads but does not
+                // retain the pointer after returning. The returned cookie is
+                // discarded — we never remove the directory.
+                let cookie = unsafe { AddDllDirectory(wide.as_ptr()) };
+                if !cookie.is_null() {
+                    tracing::info!(dir = %dir.display(), "loader: AddDllDirectory ok");
+                } else {
+                    // SAFETY: see above.
+                    let err = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+                    tracing::warn!(
+                        dir = %dir.display(),
+                        last_error = err,
+                        "loader: AddDllDirectory failed (non-fatal)"
+                    );
+                }
             }
         }
 
-        tracing::info!(path = %path.display(), "loader: LoadLibraryExW (LOAD_WITH_ALTERED_SEARCH_PATH)");
-        // SAFETY: forwarded from the caller's unsafe contract; path is a valid
-        // filesystem path to steamclient64.dll; LOAD_WITH_ALTERED_SEARCH_PATH
-        // instructs the loader to use the DLL's own directory as the first
-        // search root for direct dependencies.
-        let result = unsafe {
-            WinLibrary::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH).map(Library::from)
-        };
+        tracing::info!(
+            path = %path.display(),
+            "loader: LoadLibraryExW (LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS)"
+        );
+        // SAFETY: forwarded from the caller's unsafe contract; `path` is a
+        // valid filesystem path to steamclient64.dll. The combined flags
+        // make the loader search the application dir, System32, and every
+        // directory previously registered via `AddDllDirectory` — i.e.
+        // both Steam root and Steam\bin.
+        let flags = LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS;
+        let result = unsafe { WinLibrary::load_with_flags(path, flags).map(Library::from) };
         match &result {
             Ok(_) => tracing::info!("loader: LoadLibraryExW succeeded"),
             Err(e) => tracing::error!(error = %e, "loader: LoadLibraryExW failed"),
