@@ -51,6 +51,7 @@ impl SteamLibrary {
         // thread-safe to call concurrently (they do not require
         // synchronisation on their own code-path; Steam's internal locks
         // protect shared state inside the library).
+        tracing::info!(target: "loader", "loader: resolving Steam_BGetCallback");
         let b_get_callback_fn: BGetCallbackFn = unsafe {
             let sym: Symbol<BGetCallbackFn> =
                 handle.get(b"Steam_BGetCallback\0").map_err(|source| {
@@ -59,8 +60,12 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            *sym
+            tracing::info!(target: "loader", "loader: resolved Steam_BGetCallback");
+            let fn_ptr = *sym;
+            tracing::info!(target: "loader", "loader: copied Steam_BGetCallback fn ptr");
+            fn_ptr
         };
+        tracing::info!(target: "loader", "loader: resolving Steam_FreeLastCallback");
         let free_last_callback_fn: FreeLastCallbackFn = unsafe {
             let sym: Symbol<FreeLastCallbackFn> =
                 handle.get(b"Steam_FreeLastCallback\0").map_err(|source| {
@@ -69,9 +74,13 @@ impl SteamLibrary {
                         source,
                     }
                 })?;
-            *sym
+            tracing::info!(target: "loader", "loader: resolved Steam_FreeLastCallback");
+            let fn_ptr = *sym;
+            tracing::info!(target: "loader", "loader: copied Steam_FreeLastCallback fn ptr");
+            fn_ptr
         };
 
+        tracing::info!(target: "loader", "loader: SteamLibrary constructed");
         Ok(Self {
             handle,
             b_get_callback_fn,
