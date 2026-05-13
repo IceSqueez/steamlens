@@ -413,7 +413,7 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::GoBack => match &app.screen {
-            Screen::GameView(_) => update(app, Message::GameView(GameViewMessage::RequestGoBack)),
+            Screen::GameView(_) => Task::done(Message::GameView(GameViewMessage::RequestGoBack)),
             _ => Task::none(),
         },
 
@@ -777,16 +777,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             match event {
                 GameViewEvent::None => task,
                 GameViewEvent::AchievementsFullyLoaded { app_id } => {
-                    let sync_task = update(app, Message::PersistGameSummary(app_id));
-                    Task::batch([task, sync_task])
+                    Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
                 }
                 GameViewEvent::GoBack => {
                     go_back_to_profile(app);
                     task
                 }
                 GameViewEvent::InvalidateCache { app_id } => {
-                    let invalidate_task = update(app, Message::InvalidateGameCache(app_id));
-                    Task::batch([task, invalidate_task])
+                    Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
                 }
             }
         }
@@ -1109,12 +1107,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         task
                     }
                     GameViewEvent::AchievementsFullyLoaded { app_id } => {
-                        let sync_task = update(app, Message::PersistGameSummary(app_id));
-                        Task::batch([task, sync_task])
+                        Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
                     }
                     GameViewEvent::InvalidateCache { app_id } => {
-                        let invalidate_task = update(app, Message::InvalidateGameCache(app_id));
-                        Task::batch([task, invalidate_task])
+                        Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
                     }
                     GameViewEvent::None => task,
                 }
