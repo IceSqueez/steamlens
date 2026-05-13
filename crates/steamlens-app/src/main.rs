@@ -19,7 +19,6 @@ mod settings;
 mod settings_commands;
 mod splash_commands;
 mod steam_worker;
-mod theme;
 mod timeouts;
 mod ui;
 mod update_check;
