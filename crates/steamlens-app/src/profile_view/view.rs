@@ -154,12 +154,23 @@ fn profile_status_bar(
         return None;
     }
 
-    let scanned = state.games.iter().filter(|g| g.is_hydrated()).count();
+    let scanned_progress = state.games.iter().filter(|g| g.progress.is_some()).count();
+    let loaded_capsules = state
+        .games
+        .iter()
+        .filter(|g| !matches!(g.capsule, super::types::CapsuleAsset::Pending))
+        .count();
 
-    if scanned < total {
+    if scanned_progress < total {
         Some(
             status_bar::<ProfileViewMessage>()
-                .scanning("Scanning library", scanned, total)
+                .scanning("Scanning library", scanned_progress, total)
+                .into(),
+        )
+    } else if loaded_capsules < total {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .scanning("Downloading capsules", loaded_capsules, total)
                 .into(),
         )
     } else {
