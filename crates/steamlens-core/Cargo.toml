@@ -11,6 +11,7 @@ description = "Steam client interop layer for SteamLens"
 tag = false
 
 [dependencies]
+image = { workspace = true }
 libloading = { workspace = true }
 memmap2 = { workspace = true }
 postcard = { workspace = true }

@@ -41,6 +41,13 @@ pub fn appcache_stats_dir(steam_root: &Path) -> PathBuf {
     steam_root.join("appcache").join("stats")
 }
 
+pub fn avatar_cache_path(steam_root: &Path, steamid64: u64) -> PathBuf {
+    steam_root
+        .join("config")
+        .join("avatarcache")
+        .join(format!("{steamid64}.png"))
+}
+
 fn steamclient_lib_subpath() -> Vec<&'static str> {
     #[cfg(target_os = "linux")]
     return vec!["linux64", "steamclient.so"];
