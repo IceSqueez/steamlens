@@ -65,10 +65,6 @@ pub fn load_game_cache_blocking(app_id: u32) -> Option<GameCacheEntry> {
     Some(entry)
 }
 
-#[allow(
-    dead_code,
-    reason = "retained for rollback safety per cache migration plan; classify uses load_game_summary_from_path"
-)]
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
     let bytes = tokio::fs::read(path).await.ok()?;
     let entry: GameCacheEntry = serde_json::from_slice(&bytes)
@@ -88,10 +84,40 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
 }
 
 pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError> {
-    let bytes =
-        serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     let path = game_cache_path(entry.app_id);
+    let mut merged = entry.clone();
+    if let Some(old) = load_game_cache_from_path(&path).await {
+        merge_preserved_fields(&mut merged, &old);
+    }
+    let bytes =
+        serde_json::to_vec_pretty(&merged).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     atomic_write(&path, &bytes).await
+}
+
+pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEntry) {
+    use std::collections::HashMap;
+    let old_by_id: HashMap<&str, &crate::cache::types::CachedAchievement> = old
+        .achievements
+        .iter()
+        .map(|a| (a.api_name.as_str(), a))
+        .collect();
+    for ach in &mut new.achievements {
+        let Some(prev) = old_by_id.get(ach.api_name.as_str()) else {
+            continue;
+        };
+        if ach.display_name.is_empty() && !prev.display_name.is_empty() {
+            ach.display_name = prev.display_name.clone();
+        }
+        if ach.description.is_empty() && !prev.description.is_empty() {
+            ach.description = prev.description.clone();
+        }
+        if !ach.hidden && prev.hidden {
+            ach.hidden = true;
+        }
+    }
+    if new.genre.is_none() && old.genre.is_some() {
+        new.genre = old.genre.clone();
+    }
 }
 
 pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSummaryCache> {
@@ -520,5 +546,126 @@ mod tests {
         let restored: GameSummaryCache = serde_json::from_slice(&read_back).expect("deserialize");
         assert_eq!(restored.cached_change_number, 7);
         assert_eq!(restored.progress.total, 33);
+    }
+
+    fn empty_ach(api: &str) -> CachedAchievement {
+        CachedAchievement {
+            api_name: api.to_owned(),
+            display_name: String::new(),
+            description: String::new(),
+            hidden: false,
+            icon_path: None,
+            icon_locked_path: None,
+            earned: false,
+            earned_at: None,
+            global_percent: None,
+        }
+    }
+
+    fn filled_ach(api: &str, name: &str, desc: &str, hidden: bool) -> CachedAchievement {
+        CachedAchievement {
+            api_name: api.to_owned(),
+            display_name: name.to_owned(),
+            description: desc.to_owned(),
+            hidden,
+            icon_path: None,
+            icon_locked_path: None,
+            earned: false,
+            earned_at: None,
+            global_percent: None,
+        }
+    }
+
+    fn shell_entry(achievements: Vec<CachedAchievement>, genre: Option<String>) -> GameCacheEntry {
+        GameCacheEntry {
+            schema_version: CURRENT_SCHEMA_VERSION,
+            app_id: 1,
+            name: "X".to_owned(),
+            steam_last_played: 0,
+            cached_at: 0,
+            achievements,
+            stats: Vec::new(),
+            progress: CachedProgress {
+                earned: 0,
+                total: 0,
+            },
+            tier_breakdown: Vec::new(),
+            genre,
+            playtime_minutes: None,
+        }
+    }
+
+    #[test]
+    fn merge_keeps_old_display_when_new_empty() {
+        let old = shell_entry(
+            vec![filled_ach("ACH_A", "Boss Killer", "Defeat the boss.", true)],
+            Some("RPG".to_owned()),
+        );
+        let mut new = shell_entry(vec![empty_ach("ACH_A")], None);
+
+        merge_preserved_fields(&mut new, &old);
+
+        assert_eq!(new.achievements[0].display_name, "Boss Killer");
+        assert_eq!(new.achievements[0].description, "Defeat the boss.");
+        assert!(new.achievements[0].hidden);
+        assert_eq!(new.genre.as_deref(), Some("RPG"));
+    }
+
+    #[test]
+    fn merge_keeps_new_when_present() {
+        let old = shell_entry(
+            vec![filled_ach("ACH_A", "Old Name", "Old desc.", false)],
+            Some("Old".to_owned()),
+        );
+        let mut new = shell_entry(
+            vec![filled_ach("ACH_A", "New Name", "New desc.", true)],
+            Some("New".to_owned()),
+        );
+
+        merge_preserved_fields(&mut new, &old);
+
+        assert_eq!(new.achievements[0].display_name, "New Name");
+        assert_eq!(new.achievements[0].description, "New desc.");
+        assert!(new.achievements[0].hidden);
+        assert_eq!(new.genre.as_deref(), Some("New"));
+    }
+
+    #[test]
+    fn merge_skips_unknown_new_achievement() {
+        let old = shell_entry(vec![filled_ach("ACH_A", "Old", "Old.", false)], None);
+        let mut new = shell_entry(vec![empty_ach("ACH_B")], None);
+
+        merge_preserved_fields(&mut new, &old);
+
+        assert_eq!(new.achievements[0].api_name, "ACH_B");
+        assert!(new.achievements[0].display_name.is_empty());
+        assert!(new.achievements[0].description.is_empty());
+    }
+
+    #[test]
+    fn merge_ignores_dropped_old_achievement() {
+        let old = shell_entry(
+            vec![
+                filled_ach("ACH_A", "Kept", "k.", false),
+                filled_ach("ACH_DROPPED", "Gone", "g.", false),
+            ],
+            None,
+        );
+        let mut new = shell_entry(vec![empty_ach("ACH_A")], None);
+
+        merge_preserved_fields(&mut new, &old);
+
+        assert_eq!(new.achievements.len(), 1);
+        assert_eq!(new.achievements[0].display_name, "Kept");
+    }
+
+    #[test]
+    fn merge_keeps_new_genre_when_set() {
+        let old = shell_entry(Vec::new(), Some("Old".to_owned()));
+        let mut new = shell_entry(Vec::new(), Some("New".to_owned()));
+
+        merge_preserved_fields(&mut new, &old);
+
+        assert_eq!(new.genre.as_deref(), Some("New"));
     }
 }
