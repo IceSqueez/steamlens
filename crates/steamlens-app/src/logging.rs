@@ -14,7 +14,9 @@ static SEH_OUTPUT_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
 /// Host process only. Truncates `steamlens.log` and opens it as the writer.
 pub fn init() -> io::Result<()> {
-    init_with_path(&crate::paths::log_path())
+    init_with_path(&crate::paths::log_path())?;
+    install_panic_hook();
+    Ok(())
 }
 
 /// Subprocess only. Writes to stderr with a minimal `<LEVEL> <message>` format —
@@ -24,7 +26,25 @@ pub fn init_worker() -> io::Result<()> {
     install_worker_subscriber(std::io::stderr)?;
     #[cfg(target_os = "windows")]
     install_seh_handler();
+    install_panic_hook();
     Ok(())
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let payload = info.payload();
+        let msg = payload
+            .downcast_ref::<&'static str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("<non-string panic payload>");
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown location>".to_owned());
+        let backtrace = std::backtrace::Backtrace::capture();
+        tracing::error!(target: "panic", location, %backtrace, "panic: {msg}");
+    }));
 }
 
 #[cfg(target_os = "windows")]
