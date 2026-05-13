@@ -60,24 +60,8 @@ fn game_cache_path(app_id: u32) -> PathBuf {
         .join(format!("{app_id}.json"))
 }
 
-pub fn load_game_cache_blocking(app_id: u32) -> Option<GameCacheEntry> {
-    let path = game_cache_path(app_id);
-    let bytes = std::fs::read(&path).ok()?;
-    let entry: GameCacheEntry = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            tracing::warn!("cache: JSON parse error at {}: {e}", path.display());
-        })
-        .ok()?;
-    if entry.schema_version != CURRENT_SCHEMA_VERSION {
-        tracing::warn!(
-            "cache: schema version {} != expected {} at {}; treating as cache miss",
-            entry.schema_version,
-            CURRENT_SCHEMA_VERSION,
-            path.display()
-        );
-        return None;
-    }
-    Some(entry)
+pub async fn load_game_cache(app_id: u32) -> Option<GameCacheEntry> {
+    load_game_cache_from_path(&game_cache_path(app_id)).await
 }
 
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
