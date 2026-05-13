@@ -10,7 +10,7 @@ use crate::library::GameSummary;
 #[derive(Debug, Clone)]
 pub struct ProbedProfile {
     pub steam_id: u64,
-    pub persona_name: String,
+    pub nickname: String,
     pub avatar_image: Option<Vec<u8>>,
     pub game_summaries: Vec<GameSummary>,
     pub steam_level: Option<u32>,
@@ -117,7 +117,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
                     .map_err(|e| ProbeError::Worker(format!("ProbeResult shm: {e}")))?;
             Ok(ProbedProfile {
                 steam_id: payload.steam_id,
-                persona_name: payload.persona_name,
+                nickname: payload.nickname,
                 avatar_image: payload.avatar_png,
                 game_summaries: payload.game_summaries,
                 steam_level: payload.steam_level,

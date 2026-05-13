@@ -554,7 +554,7 @@ mod tests {
         let avatar_bytes = vec![137u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
         let p = ProbeResultPayload {
             steam_id: 76561198000000042,
-            persona_name: "TestUser".to_owned(),
+            nickname: "TestUser".to_owned(),
             avatar_png: Some(avatar_bytes.clone()),
             game_summaries: vec![crate::library::GameSummary {
                 app_id: 12345,
@@ -567,7 +567,7 @@ mod tests {
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
         assert_eq!(restored.steam_id, 76561198000000042);
-        assert_eq!(restored.persona_name, "TestUser");
+        assert_eq!(restored.nickname, "TestUser");
         assert_eq!(
             restored.avatar_png.as_deref(),
             Some(avatar_bytes.as_slice())
@@ -581,7 +581,7 @@ mod tests {
     fn probe_result_payload_roundtrip_no_avatar() {
         let p = ProbeResultPayload {
             steam_id: 1,
-            persona_name: "Ghost".to_owned(),
+            nickname: "Ghost".to_owned(),
             avatar_png: None,
             game_summaries: vec![],
             steam_level: None,
@@ -590,7 +590,7 @@ mod tests {
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");
         assert_eq!(restored.steam_id, 1);
-        assert_eq!(restored.persona_name, "Ghost");
+        assert_eq!(restored.nickname, "Ghost");
         assert!(restored.avatar_png.is_none());
         assert!(restored.game_summaries.is_empty());
         assert!(restored.steam_level.is_none());

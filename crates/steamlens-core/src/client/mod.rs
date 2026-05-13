@@ -44,8 +44,8 @@ impl Client {
         self.user.get_player_steam_level()
     }
 
-    pub fn persona_name(&self) -> Option<String> {
-        self.friends.persona_name()
+    pub fn nickname(&self) -> Option<String> {
+        self.friends.nickname()
     }
 
     pub fn user_avatar(&self) -> Option<Image> {

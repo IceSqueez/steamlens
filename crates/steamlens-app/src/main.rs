@@ -865,12 +865,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context
                         .messaging
                         .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-                    let account_name = app
-                        .context
-                        .user_profile
-                        .as_ref()
-                        .map(|u| u.account_name.clone())
-                        .unwrap_or_default();
                     app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
                     app.context.profile_avatar_handle = p
                         .avatar_image
@@ -883,8 +877,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     let cached = cache::make_cached_profile(
                         p.steam_id,
-                        p.persona_name.clone(),
-                        account_name.clone(),
+                        p.nickname.clone(),
                         p.avatar_image.clone(),
                         p.steam_root.clone(),
                         p.steam_level,
@@ -892,8 +885,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = p.steam_level;
                     app.context.user_profile = Some(UserProfile {
                         steam_id: p.steam_id,
-                        persona_name: p.persona_name,
-                        account_name,
+                        nickname: p.nickname,
                         avatar_png_bytes: p.avatar_image,
                     });
 
@@ -992,8 +984,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
             app.context.user_profile = Some(UserProfile {
                 steam_id: cached.steam_id,
-                persona_name: cached.persona_name,
-                account_name: cached.account_name,
+                nickname: cached.nickname,
                 avatar_png_bytes: cached.avatar_png_bytes,
             });
             Task::none()
@@ -1951,7 +1942,7 @@ mod tests {
         let mut app = make_app_probing();
         let probed = ProbedProfile {
             steam_id: 76561198000000042,
-            persona_name: "TestUser".to_owned(),
+            nickname: "TestUser".to_owned(),
             avatar_image: Some(vec![0x89, 0x50, 0x4E, 0x47]),
             game_summaries: vec![],
             steam_level: Some(17),
@@ -1967,7 +1958,7 @@ mod tests {
             .user_profile
             .as_ref()
             .expect("profile must be set");
-        assert_eq!(profile.persona_name, "TestUser");
+        assert_eq!(profile.nickname, "TestUser");
         assert_eq!(profile.steam_id, 76561198000000042);
         assert_eq!(
             app.context.steamid3,
@@ -1981,8 +1972,7 @@ mod tests {
         let mut app = make_app_probing();
         let prior = UserProfile {
             steam_id: 1,
-            persona_name: "DiskFallback".to_owned(),
-            account_name: "fallback".to_owned(),
+            nickname: "DiskFallback".to_owned(),
             avatar_png_bytes: None,
         };
         app.context.user_profile = Some(prior.clone());
@@ -1999,7 +1989,7 @@ mod tests {
             .user_profile
             .as_ref()
             .expect("profile must be preserved");
-        assert_eq!(profile.persona_name, "DiskFallback");
+        assert_eq!(profile.nickname, "DiskFallback");
         assert_eq!(profile.steam_id, 1);
     }
 
@@ -2138,10 +2128,9 @@ mod tests {
         let mut app = make_app_probing();
         app.context.connectivity.steam_running = Some(false);
         let cached = CachedProfile {
-            schema_version: 3,
+            schema_version: 4,
             steam_id: 76561198000000042,
-            persona_name: "FromCache".to_owned(),
-            account_name: "cache_login".to_owned(),
+            nickname: "FromCache".to_owned(),
             avatar_png_bytes: None,
             cached_at: 0,
             steam_root: None,
@@ -2153,8 +2142,7 @@ mod tests {
             .user_profile
             .as_ref()
             .expect("profile must be set");
-        assert_eq!(p.persona_name, "FromCache");
-        assert_eq!(p.account_name, "cache_login");
+        assert_eq!(p.nickname, "FromCache");
         assert_eq!(
             app.context.steamid3,
             76561198000000042 - STEAMID64_INDIVIDUAL_MIN
@@ -2167,15 +2155,13 @@ mod tests {
         app.context.connectivity.steam_running = Some(true);
         app.context.user_profile = Some(UserProfile {
             steam_id: 1,
-            persona_name: "LiveFromProbe".to_owned(),
-            account_name: "live".to_owned(),
+            nickname: "LiveFromProbe".to_owned(),
             avatar_png_bytes: None,
         });
         let cached = CachedProfile {
-            schema_version: 3,
+            schema_version: 4,
             steam_id: 999,
-            persona_name: "ShouldNotWin".to_owned(),
-            account_name: "stale".to_owned(),
+            nickname: "ShouldNotWin".to_owned(),
             avatar_png_bytes: None,
             steam_root: None,
             cached_at: 0,
@@ -2184,7 +2170,7 @@ mod tests {
         let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
         let p = app.context.user_profile.as_ref().unwrap();
         assert_eq!(
-            p.persona_name, "LiveFromProbe",
+            p.nickname, "LiveFromProbe",
             "probe-Ok profile must not be overwritten by cache"
         );
     }
@@ -2558,34 +2544,6 @@ mod tests {
         assert_eq!(
             app.context.connectivity.user_logged_in, None,
             "connectivity.user_logged_in reset to None during re-probe"
-        );
-    }
-
-    #[test]
-    fn account_name_preserved_when_probe_succeeds() {
-        let mut app = make_app_probing();
-        app.context.user_profile = Some(UserProfile {
-            steam_id: 1,
-            persona_name: "OldName".to_owned(),
-            account_name: "preserved_login".to_owned(),
-            avatar_png_bytes: None,
-        });
-
-        let probed = ProbedProfile {
-            steam_id: 76561198000000042,
-            persona_name: "LiveName".to_owned(),
-            avatar_image: None,
-            game_summaries: vec![],
-            steam_level: None,
-            steam_root: None,
-        };
-        let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
-
-        let p = app.context.user_profile.as_ref().unwrap();
-        assert_eq!(p.persona_name, "LiveName", "persona overridden by probe");
-        assert_eq!(
-            p.account_name, "preserved_login",
-            "account_name from disk preserved (probe doesn't fetch it)"
         );
     }
 
