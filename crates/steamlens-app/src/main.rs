@@ -683,10 +683,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 &app.context.steam_root,
                 app.context.steamid3,
             );
-            if let Some(existing) = app.context.cached_entries.get(&app_id)
-                && full_entry.genre.is_none()
-            {
-                full_entry.genre = existing.genre.clone();
+            if let Some(existing) = app.context.cached_entries.get(&app_id) {
+                cache::store::merge_preserved_fields(&mut full_entry, existing);
             }
             app.context
                 .cached_entries
