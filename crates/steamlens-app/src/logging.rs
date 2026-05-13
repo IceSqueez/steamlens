@@ -79,9 +79,54 @@ unsafe extern "system" fn seh_handler(
     // heap or any user-space mutex. We use stack-only buffers, no
     // allocations. A failure of any PSAPI call is silently swallowed —
     // we are dying anyway, the module list is best-effort diagnostic.
+    write_stack_trace(stderr);
     write_module_list(stderr);
 
     windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_EXECUTE_HANDLER
+}
+
+#[cfg(target_os = "windows")]
+fn write_stack_trace(stderr: windows_sys::Win32::Foundation::HANDLE) {
+    use std::io::Write;
+    use windows_sys::Win32::Storage::FileSystem::WriteFile;
+    use windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace;
+
+    const MAX_FRAMES: usize = 32;
+    let mut frames: [*mut core::ffi::c_void; MAX_FRAMES] = [core::ptr::null_mut(); MAX_FRAMES];
+    // SAFETY: `frames` is a stack array we own; `RtlCaptureStackBackTrace`
+    // walks the current thread's stack and writes return addresses into it.
+    // No allocation, no locks. Documented safe in any context including
+    // top-level SEH filters.
+    let captured = unsafe {
+        RtlCaptureStackBackTrace(
+            0,
+            MAX_FRAMES as u32,
+            frames.as_mut_ptr(),
+            core::ptr::null_mut(),
+        )
+    } as usize;
+
+    let mut line = [0u8; 96];
+    for (idx, frame) in frames.iter().take(captured).enumerate() {
+        let mut cursor = std::io::Cursor::new(line.as_mut_slice());
+        let _ = write!(
+            cursor,
+            "ERROR seh frame[{idx:02}]: 0x{:016X}\n",
+            *frame as usize
+        );
+        let pos = cursor.position() as usize;
+        // SAFETY: see SEH-handler comment — WriteFile is the lock-free path.
+        unsafe {
+            let mut written: u32 = 0;
+            WriteFile(
+                stderr,
+                line.as_ptr(),
+                pos as u32,
+                &mut written,
+                core::ptr::null_mut(),
+            );
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
