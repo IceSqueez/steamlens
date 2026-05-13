@@ -1110,6 +1110,35 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return Task::done(Message::FocusSearch);
                 }
             }
+            if let keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                ..
+            } = event
+            {
+                if app.about_open {
+                    return Task::done(Message::DismissAbout);
+                }
+                match &mut app.screen {
+                    Screen::ProfileView(state) if !state.search.is_empty() => {
+                        let (task, _event) = profile_view::update(
+                            state,
+                            ProfileViewMessage::SearchChanged(String::new()),
+                            &mut app.context,
+                        );
+                        return task.map(Message::ProfileView);
+                    }
+                    Screen::GameView(state) if !state.search_query.is_empty() => {
+                        let (task, event) = game_view::update(
+                            state,
+                            GameViewMessage::SearchChanged(String::new()),
+                            &mut app.context,
+                        );
+                        let task = task.map(Message::GameView);
+                        return dispatch_game_event(app, task, event);
+                    }
+                    _ => {}
+                }
+            }
             Task::none()
         }
 
