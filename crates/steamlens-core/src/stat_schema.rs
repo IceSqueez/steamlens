@@ -20,10 +20,6 @@ pub struct StatDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "consumed once switch to CDN-based icon path lands"
-)]
 pub struct AchievementIconRefs {
     pub icon: Option<String>,
     pub icon_gray: Option<String>,
@@ -39,11 +35,7 @@ pub(crate) fn load(app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
     Ok(extract_stats(&root, app_id))
 }
 
-#[allow(
-    dead_code,
-    reason = "consumed once switch to CDN-based icon path lands"
-)]
-pub(crate) fn load_achievement_icons(
+pub fn load_achievement_icons(
     app_id: u32,
 ) -> Result<std::collections::HashMap<String, AchievementIconRefs>, SteamError> {
     let bytes = match read_schema_bytes(app_id) {

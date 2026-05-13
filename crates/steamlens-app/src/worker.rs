@@ -435,7 +435,10 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
         });
     }
 
+    let icon_filenames = steamlens_core::load_achievement_icons(app_id).unwrap_or_default();
+
     let mut achievements = Vec::with_capacity(num as usize);
+    let mut pending_fetches = tokio::task::JoinSet::new();
     for i in 0..num {
         let id = match stats_iface.achievement_name(i) {
             Ok(n) => n,
@@ -460,22 +463,13 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
             Some(unlock_time)
         };
 
-        let icon = {
-            let handle = stats_iface.achievement_icon(&id).unwrap_or(0);
-            if handle == 0 {
-                None
-            } else {
-                client
-                    .get_image(handle)
-                    .ok()
-                    .flatten()
-                    .map(|img| AchievementIcon {
-                        width: img.width,
-                        height: img.height,
-                        rgba: img.rgba,
-                    })
-            }
-        };
+        if let Some(filename) = icon_filenames.get(&id).and_then(|r| r.icon.clone()) {
+            let id_for_task = id.clone();
+            pending_fetches.spawn(async move {
+                let result = crate::cache::cdn_icons::load_or_fetch(app_id, &filename).await;
+                (id_for_task, result)
+            });
+        }
 
         achievements.push(AchievementData {
             id,
@@ -485,8 +479,23 @@ async fn load_achievements_and_stats(client: &Client, app_id: u32) -> WorkerResp
             is_achieved,
             unlock_time,
             permission: 0,
-            icon,
+            icon: None,
         });
+    }
+
+    // Sync up CDN fetches before sending the payload back. Errors degrade
+    // gracefully to a missing icon (placeholder in the UI) — they never fail
+    // the whole scan.
+    while let Some(joined) = pending_fetches.join_next().await {
+        let Ok((ach_id, fetch_result)) = joined else {
+            continue;
+        };
+        let Ok(icon) = fetch_result else {
+            continue;
+        };
+        if let Some(slot) = achievements.iter_mut().find(|a| a.id == ach_id) {
+            slot.icon = Some(icon);
+        }
     }
 
     let descriptors = client.stat_descriptors(app_id).unwrap_or_default();

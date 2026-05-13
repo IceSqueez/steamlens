@@ -34,7 +34,7 @@ pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit, current_exe_resilient};
 pub use profile::{ProfileError, STEAMID64_INDIVIDUAL_MIN, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
-pub use stat_schema::{StatDescriptor, StatKind};
+pub use stat_schema::{AchievementIconRefs, StatDescriptor, StatKind, load_achievement_icons};
 pub use steam_callback::{
     CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY, CALLBACK_ID_USER_ACHIEVEMENT_ICON_FETCHED,
     CALLBACK_ID_USER_STATS_RECEIVED, CALLBACK_ID_USER_STATS_STORED, STEAM_RESULT_NO_STATS_SCHEMA,
