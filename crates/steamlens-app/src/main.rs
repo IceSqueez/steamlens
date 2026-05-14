@@ -412,8 +412,18 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         app.context.worker_rx = Some(rx);
     }
 
+    let portrait_assets = app
+        .context
+        .app_assets
+        .get(&app_id)
+        .cloned()
+        .unwrap_or_default();
     tasks.push(Task::perform(
-        capsule_cache::fetch_capsule(app_id, capsule_cache::CapsuleSize::Portrait),
+        capsule_cache::fetch_capsule(
+            app_id,
+            capsule_cache::CapsuleSize::Portrait,
+            portrait_assets,
+        ),
         move |result| match result {
             Ok((size, pixels)) => {
                 let handle = iced::widget::image::Handle::from_rgba(

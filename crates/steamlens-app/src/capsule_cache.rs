@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use image::{ColorType, ImageReader};
+use steamlens_core::AppLibraryAssets;
 use tokio::fs;
 
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -51,40 +52,25 @@ impl std::fmt::Display for CapsuleSize {
     }
 }
 
-fn fallback_chain(size: CapsuleSize) -> &'static [&'static str] {
-    match size {
-        CapsuleSize::Small => &[
-            "capsule_sm_120.jpg",
-            "capsule_231x87.jpg",
-            "header.jpg",
-            "library_hero.jpg",
-        ],
-        CapsuleSize::Medium => &[
-            "capsule_231x87.jpg",
-            "capsule_sm_120.jpg",
-            "header.jpg",
-            "library_hero.jpg",
-        ],
-        CapsuleSize::Large => &[
-            "header.jpg",
-            "library_hero.jpg",
-            "capsule_231x87.jpg",
-            "capsule_sm_120.jpg",
-        ],
-        CapsuleSize::Portrait => &[
-            "library_600x900_2x.jpg",
-            "library_600x900.jpg",
-            "header.jpg",
-        ],
-    }
-}
-
 fn size_suffix(size: CapsuleSize) -> &'static str {
     match size {
         CapsuleSize::Small => "small",
         CapsuleSize::Medium => "medium",
         CapsuleSize::Large => "large",
         CapsuleSize::Portrait => "portrait",
+    }
+}
+
+fn asset_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Option<(&'static str, &str)> {
+    match size {
+        CapsuleSize::Portrait => assets
+            .library_capsule
+            .as_deref()
+            .map(|h| ("library_capsule.jpg", h)),
+        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => assets
+            .library_header
+            .as_deref()
+            .map(|h| ("library_header.jpg", h)),
     }
 }
 
@@ -105,15 +91,34 @@ pub enum CapsuleError {
 impl std::fmt::Display for CapsuleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CapsuleError::NotFound => write!(f, "capsule not found (404 or unavailable)"),
+            CapsuleError::NotFound => write!(f, "capsule not found (no hash or 404)"),
             CapsuleError::Decode(e) => write!(f, "decode error: {e}"),
             CapsuleError::Http(e) => write!(f, "http error: {e}"),
         }
     }
 }
 
-fn cache_path(app_id: u32, size: CapsuleSize) -> PathBuf {
-    crate::paths::capsules_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
+fn cache_filename(app_id: u32, size: CapsuleSize, hash: &str) -> String {
+    format!("{app_id}_{}_{hash}.jpg", size_suffix(size))
+}
+
+fn cache_path(app_id: u32, size: CapsuleSize, hash: &str) -> PathBuf {
+    crate::paths::capsules_dir().join(cache_filename(app_id, size, hash))
+}
+
+async fn purge_stale_caches(app_id: u32, size: CapsuleSize, keep_filename: &str) {
+    let dir = crate::paths::capsules_dir();
+    let prefix = format!("{app_id}_{}_", size_suffix(size));
+    let Ok(mut entries) = fs::read_dir(&dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with(&prefix) && name_str.as_ref() != keep_filename {
+            let _ = fs::remove_file(entry.path()).await;
+        }
+    }
 }
 
 struct DecodedCapsule {
@@ -145,8 +150,14 @@ fn decode_jpeg(bytes: &[u8]) -> Result<DecodedCapsule, CapsuleError> {
 pub async fn fetch_capsule(
     app_id: u32,
     size: CapsuleSize,
+    assets: AppLibraryAssets,
 ) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
-    let path = cache_path(app_id, size);
+    let Some((filename, hash)) = asset_for_size(size, &assets) else {
+        return Err((size, CapsuleError::NotFound));
+    };
+
+    let target_filename = cache_filename(app_id, size, hash);
+    let path = cache_path(app_id, size, hash);
 
     if let Ok(bytes) = fs::read(&path).await {
         match decode_jpeg(&bytes) {
@@ -166,57 +177,45 @@ pub async fn fetch_capsule(
         ));
     };
 
-    let mut last_err = CapsuleError::NotFound;
-    for filename in fallback_chain(size) {
-        let url = format!(
-            "https://shared.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
-        );
-        match client.get(&url).send().await {
-            Ok(response) => {
-                if response.status() == reqwest::StatusCode::NOT_FOUND {
-                    last_err = CapsuleError::NotFound;
-                    continue;
-                }
-                if !response.status().is_success() {
-                    last_err = CapsuleError::Http(format!("HTTP {}", response.status().as_u16()));
-                    continue;
-                }
-                match response.bytes().await {
-                    Ok(bytes) => match decode_jpeg(&bytes) {
-                        Ok(decoded) if !decoded.is_placeholder => {
-                            if let Some(parent) = path.parent() {
-                                let _ = fs::create_dir_all(parent).await;
-                            }
-                            let _ = fs::write(&path, &bytes).await;
-                            return Ok((size, decoded.pixels));
-                        }
-                        Ok(_) => {
-                            tracing::trace!(
-                                target: "capsule",
-                                app_id,
-                                filename,
-                                "skip Steam placeholder (grayscale)"
-                            );
-                            last_err = CapsuleError::NotFound;
-                            continue;
-                        }
-                        Err(e) => {
-                            last_err = e;
-                            continue;
-                        }
-                    },
-                    Err(e) => {
-                        last_err = CapsuleError::Http(e.to_string());
-                        continue;
-                    }
-                }
+    let url = format!(
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/{hash}/{filename}"
+    );
+
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                return Err((size, CapsuleError::NotFound));
             }
-            Err(e) => {
-                last_err = CapsuleError::Http(e.to_string());
-                continue;
+            if !response.status().is_success() {
+                return Err((
+                    size,
+                    CapsuleError::Http(format!("HTTP {}", response.status().as_u16())),
+                ));
+            }
+            match response.bytes().await {
+                Ok(bytes) => match decode_jpeg(&bytes) {
+                    Ok(decoded) if !decoded.is_placeholder => {
+                        if let Some(parent) = path.parent() {
+                            let _ = fs::create_dir_all(parent).await;
+                        }
+                        let _ = fs::write(&path, &bytes).await;
+                        purge_stale_caches(app_id, size, &target_filename).await;
+                        Ok((size, decoded.pixels))
+                    }
+                    Ok(_) => {
+                        tracing::trace!(
+                            target: "capsule",
+                            app_id,
+                            filename,
+                            "hashed CDN returned a grayscale placeholder; treating as unavailable"
+                        );
+                        Err((size, CapsuleError::NotFound))
+                    }
+                    Err(e) => Err((size, e)),
+                },
+                Err(e) => Err((size, CapsuleError::Http(e.to_string()))),
             }
         }
+        Err(e) => Err((size, CapsuleError::Http(e.to_string()))),
     }
-
-    Err((size, last_err))
 }
