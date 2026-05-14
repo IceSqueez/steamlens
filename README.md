@@ -14,13 +14,23 @@ A Steam achievement manager with rarity insights and library statistics.
 
 ![Screenshot](./assets/screenshot.png)
 
+## Who is SteamLens for?
+
+SteamLens is built for **achievement collectors, completionists, and replayers** — players who care about the journey, want to track their progress in detail, and occasionally need to clean up after Steam itself.
+
+- **Recover stuck achievements.** Sometimes you meet every requirement for an achievement and Steam still doesn't grant it — a known bug in many games. SteamLens lets you unlock those manually so your collection reflects what you actually accomplished.
+- **Reset and replay.** Want to play a favourite game fresh, with the satisfaction of earning every achievement again? Lock them and start over — the perfect tool for an "I'll do another run, properly this time" mood.
+- **Inspect at depth.** Browse your library through the lens of rarity tiers, see how rare each unlock really is, and find the titles you're closest to completing.
+
+SteamLens is **not** a cheat utility. It doesn't touch competitive leaderboards or server-validated multiplayer stats — those are owned by the game server, not by your local Steam client. The Unlock feature is a recovery and personal-completion tool, not a shortcut around earning a title.
+
 ## Features
 
 ### Edit achievements and stats
 
 - **Unlock or re-lock any achievement** with a dirty-state Apply flow and bulk operations — unlock all, lock all, invert selection.
 - **Typed `confirmed` gate** before changes hit Steam, so a partial edit never lands by reflex.
-- **In-game statistics editor** — view and modify numeric stats (counters, progress trackers, currencies) with bulk Max-all / Reset-all or per-stat controls. Increment-only stats are detected and validated.
+- **Local stats editor** — view and modify the local copy of per-game stats (counters, progression trackers, in-game currencies) that the title exposes through its Steam schema. Bulk Max-all / Reset-all or per-stat controls; increment-only stats are detected and validated. Competitive leaderboards and server-validated multiplayer ranks are out of scope — SteamLens can't reach those.
 
 ### Rarity insights at a glance
 
@@ -44,7 +54,7 @@ A Steam achievement manager with rarity insights and library statistics.
 
 A few things worth knowing before you start:
 
-- **Single-player and personal use.** SteamLens is for inspecting and tweaking achievements on games you own. Think of it as a tool for tinkerers and curious players — not a competitive cheat utility.
+- **Built for collectors, not cheaters.** SteamLens is intended for completionists, replayers, and anyone who's hit the "all conditions met but Steam didn't grant the achievement" bug. It works on single-player titles in your own library — not as a shortcut around earning achievements you didn't play for.
 - **Not for VAC or server-side anti-cheat games.** Multiplayer titles protected by VAC or server-side validation are out of scope. The server has the final say there, and your changes may simply be ignored.
 - **Steam Cloud can overwrite your changes.** If the game was running or Cloud is syncing, the cloud copy can win. Quit the game first, give Cloud a moment to settle, then edit.
 - **Some games store progression in stats.** Editing stats can affect quest progress, item unlocks, or save state. The consent checkbox before a stats edit is there for that reason.
