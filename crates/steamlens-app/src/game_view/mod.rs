@@ -974,6 +974,7 @@ mod tests {
             no_ach_cache: crate::cache::NoAchievementsCache::new(),
             steam_state: std::collections::HashMap::new(),
             steam_state_mtime: None,
+            app_assets: std::collections::HashMap::new(),
             animation: AnimationState {
                 skeleton_phase: 0.0,
             },

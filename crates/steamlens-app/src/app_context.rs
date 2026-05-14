@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use std::time::{Instant, SystemTime};
 
 use iced::Task;
-use steamlens_core::SteamAppState;
+use steamlens_core::{AppLibraryAssets, SteamAppState};
 
 use crate::cache::{self, CacheHit, GameCacheEntry};
 use crate::messaging::MessagingCenter;
@@ -38,6 +38,7 @@ pub struct AppContext {
     pub no_ach_cache: cache::NoAchievementsCache,
     pub steam_state: HashMap<u32, SteamAppState>,
     pub steam_state_mtime: Option<SystemTime>,
+    pub app_assets: HashMap<u32, AppLibraryAssets>,
     pub animation: AnimationState,
 }
 
