@@ -18,9 +18,9 @@ A Steam achievement manager with rarity insights and library statistics.
 
 SteamLens is built for **achievement collectors, completionists, and replayers** — players who care about the journey, want to track their progress in detail, and occasionally need to clean up after Steam itself.
 
+- **Inspect at depth.** Browse your library through the lens of rarity tiers, see how rare each unlock really is, and find the titles you're closest to completing.
 - **Recover stuck achievements.** Sometimes you meet every requirement for an achievement and Steam still doesn't grant it — a known bug in many games. SteamLens lets you unlock those manually so your collection reflects what you actually accomplished.
 - **Reset and replay.** Want to play a favourite game fresh, with the satisfaction of earning every achievement again? Lock them and start over — the perfect tool for an "I'll do another run, properly this time" mood.
-- **Inspect at depth.** Browse your library through the lens of rarity tiers, see how rare each unlock really is, and find the titles you're closest to completing.
 
 SteamLens is **not** a cheat utility. It doesn't touch competitive leaderboards or server-validated multiplayer stats — those are owned by the game server, not by your local Steam client. The Unlock feature is a recovery and personal-completion tool, not a shortcut around earning a title.
 
@@ -35,7 +35,7 @@ SteamLens is **not** a cheat utility. It doesn't touch competitive leaderboards 
 ### Rarity insights at a glance
 
 - **Five rarity tiers** (Common, Uncommon, Rare, Mythical, Legendary) computed from Steam's live global unlock percentages, with a consistent color palette across every view.
-- **Per-game rarity breakdown bar** on every library card — at a glance you see how your unlocked achievements split across tiers; hover any segment for counts.
+- **Interactive rarity breakdown** on every library card — see at a glance how your unlocked achievements split across tiers, and hover any segment for exact counts.
 - **Profile-wide summary** in the library header — aggregate progress totals, rarity-card breakdown, and a "closest to 100%" tile spotlighting titles you're a few unlocks away from completing.
 
 ### Works offline, recovers gracefully
@@ -48,7 +48,7 @@ SteamLens is **not** a cheat utility. It doesn't touch competitive leaderboards 
 
 - **Dark and Light themes** — toggle from the app header; choice persists across restarts. Every widget (library cards, game view, modals, status bar, toasts) resolves colors through the active palette — no hardcoded constants leaking through.
 - **Update checker** — on startup, SteamLens checks GitHub for a newer release and surfaces an info banner with a one-click Download link.
-- **Live capsule artwork** at three preset sizes, smooth animations and skeleton placeholders during hydration, search and filter across library and achievements — the basics, kept fast and out of your way.
+- **Game cover art at three preset sizes**, smooth animations and skeleton placeholders during hydration, search and filter across library and achievements — the basics, kept fast and out of your way.
 
 ## Notes & Caveats
 
