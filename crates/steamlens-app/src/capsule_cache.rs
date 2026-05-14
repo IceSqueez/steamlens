@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use image::ImageReader;
+use image::{ColorType, ImageReader};
 use tokio::fs;
 
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -116,20 +116,29 @@ fn cache_path(app_id: u32, size: CapsuleSize) -> PathBuf {
     crate::paths::capsules_dir().join(format!("{app_id}_{}.jpg", size_suffix(size)))
 }
 
-fn decode_jpeg(bytes: &[u8]) -> Result<CapsulePixels, CapsuleError> {
+struct DecodedCapsule {
+    pixels: CapsulePixels,
+    is_placeholder: bool,
+}
+
+fn decode_jpeg(bytes: &[u8]) -> Result<DecodedCapsule, CapsuleError> {
     let reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| CapsuleError::Decode(e.to_string()))?;
     let img = reader
         .decode()
-        .map_err(|e| CapsuleError::Decode(e.to_string()))?
-        .to_rgba8();
+        .map_err(|e| CapsuleError::Decode(e.to_string()))?;
+    let is_placeholder = matches!(img.color(), ColorType::L8 | ColorType::La8);
+    let img = img.to_rgba8();
     let width = img.width();
     let height = img.height();
-    Ok(CapsulePixels {
-        rgba: img.into_raw(),
-        width,
-        height,
+    Ok(DecodedCapsule {
+        pixels: CapsulePixels {
+            rgba: img.into_raw(),
+            width,
+            height,
+        },
+        is_placeholder,
     })
 }
 
@@ -140,9 +149,14 @@ pub async fn fetch_capsule(
     let path = cache_path(app_id, size);
 
     if let Ok(bytes) = fs::read(&path).await {
-        return decode_jpeg(&bytes)
-            .map(|p| (size, p))
-            .map_err(|e| (size, e));
+        match decode_jpeg(&bytes) {
+            Ok(decoded) if !decoded.is_placeholder => {
+                return Ok((size, decoded.pixels));
+            }
+            _ => {
+                let _ = fs::remove_file(&path).await;
+            }
+        }
     }
 
     let Some(client) = http_client() else {
@@ -168,15 +182,29 @@ pub async fn fetch_capsule(
                     continue;
                 }
                 match response.bytes().await {
-                    Ok(bytes) => {
-                        if let Some(parent) = path.parent() {
-                            let _ = fs::create_dir_all(parent).await;
+                    Ok(bytes) => match decode_jpeg(&bytes) {
+                        Ok(decoded) if !decoded.is_placeholder => {
+                            if let Some(parent) = path.parent() {
+                                let _ = fs::create_dir_all(parent).await;
+                            }
+                            let _ = fs::write(&path, &bytes).await;
+                            return Ok((size, decoded.pixels));
                         }
-                        let _ = fs::write(&path, &bytes).await;
-                        return decode_jpeg(&bytes)
-                            .map(|p| (size, p))
-                            .map_err(|e| (size, e));
-                    }
+                        Ok(_) => {
+                            tracing::trace!(
+                                target: "capsule",
+                                app_id,
+                                filename,
+                                "skip Steam placeholder (grayscale)"
+                            );
+                            last_err = CapsuleError::NotFound;
+                            continue;
+                        }
+                        Err(e) => {
+                            last_err = e;
+                            continue;
+                        }
+                    },
                     Err(e) => {
                         last_err = CapsuleError::Http(e.to_string());
                         continue;
