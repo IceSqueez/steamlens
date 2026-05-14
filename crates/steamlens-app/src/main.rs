@@ -119,6 +119,7 @@ enum Message {
         )>,
     ),
     LocalProfileLoaded(Option<Box<steamlens_core::UserProfile>>),
+    AppAssetsLoaded(HashMap<u32, steamlens_core::AppLibraryAssets>),
 }
 
 impl std::fmt::Debug for GameViewState {
@@ -163,6 +164,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         no_ach_cache: cache::load_no_achievements_cache_blocking(),
         steam_state: HashMap::new(),
         steam_state_mtime: None,
+        app_assets: HashMap::new(),
         animation: AnimationState {
             skeleton_phase: 0.0,
         },
@@ -897,6 +899,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         app.context.steam_state_mtime,
                     ));
 
+                    tasks.push(spawn_app_assets_load(app.context.steam_root.clone()));
+
                     tasks.push(cache::commands::write_profile_cache(cached));
 
                     if !p.game_summaries.is_empty() {
@@ -1233,6 +1237,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::SteamStateRefreshed(None) => Task::none(),
 
+        Message::AppAssetsLoaded(assets) => {
+            tracing::info!(
+                count = assets.len(),
+                "app_assets: loaded library_assets_full hashes from appinfo.vdf"
+            );
+            app.context.app_assets = assets;
+            Task::none()
+        }
+
         Message::LocalProfileLoaded(profile) => {
             let profile = profile.map(|b| *b);
             app.context.profile_avatar_handle = profile
@@ -1375,6 +1388,20 @@ fn compute_seed_from_cache(cached: &GameCacheEntry) -> game_view::SeededGameView
         achievements,
         stats,
     }
+}
+
+fn spawn_app_assets_load(steam_root: std::path::PathBuf) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || steamlens_core::read_app_assets(&steam_root))
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "app_assets load task panicked");
+                    HashMap::new()
+                })
+        },
+        Message::AppAssetsLoaded,
+    )
 }
 
 fn spawn_steam_state_refresh(
@@ -1896,6 +1923,7 @@ mod tests {
                     no_ach_cache: cache::NoAchievementsCache::new(),
                     steam_state: HashMap::new(),
                     steam_state_mtime: None,
+                    app_assets: HashMap::new(),
                     animation: AnimationState {
                         skeleton_phase: 0.0,
                     },
