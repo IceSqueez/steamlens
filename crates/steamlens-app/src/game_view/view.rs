@@ -102,6 +102,7 @@ fn loaded_view(
         stats: state.stats.as_slice(),
         stats_search_query: state.stats_search_query.as_str(),
         capsule_handles: &state.capsule_handles,
+        capsule_unavailable: &state.capsule_unavailable,
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
     });

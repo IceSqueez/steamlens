@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use iced::widget::{button, column, container, image as image_widget, row, svg, text};
@@ -67,6 +67,7 @@ pub struct GameWidgetParams<'a> {
     pub stats: &'a [super::types::StatRow],
     pub stats_search_query: &'a str,
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub capsule_unavailable: &'a HashSet<(u32, CapsuleSize)>,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
 }
@@ -74,7 +75,12 @@ pub struct GameWidgetParams<'a> {
 pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMessage> {
     let summary = compute_game_summary(params.achievements);
 
-    let capsule_el = build_capsule(params.app_id, params.capsule_handles, params.skeleton_phase);
+    let capsule_el = build_capsule(
+        params.app_id,
+        params.capsule_handles,
+        params.capsule_unavailable,
+        params.skeleton_phase,
+    );
     let inner_col = build_left_column(
         params.app_id,
         params.game_name,
@@ -269,6 +275,7 @@ fn format_playtime(minutes: Option<u32>) -> String {
 fn build_capsule<'a>(
     app_id: u32,
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    capsule_unavailable: &'a HashSet<(u32, CapsuleSize)>,
     skeleton_phase: f32,
 ) -> Element<'a, GameViewMessage> {
     if let Some(stored) = capsule_handles.get(&(app_id, CapsuleSize::Portrait)) {
@@ -288,6 +295,28 @@ fn build_capsule<'a>(
                 color: Color::from_rgba(0.0, 0.0, 0.0, 0.55),
                 offset: Vector::new(0.0, 6.0),
                 blur_radius: 18.0,
+            },
+            ..container::Style::default()
+        })
+        .into();
+    }
+    if capsule_unavailable.contains(&(app_id, CapsuleSize::Portrait)) {
+        return container(text("no image").size(11).style(|t: &iced::Theme| {
+            iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }
+        }))
+        .width(Length::Fixed(CAPSULE_SLOT_W))
+        .height(Length::Fixed(CAPSULE_SLOT_H))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(|t: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(
+                palette(theme_from_iced(t)).placeholder,
+            )),
+            border: Border {
+                radius: CAPSULE_RADIUS.into(),
+                ..Border::default()
             },
             ..container::Style::default()
         })

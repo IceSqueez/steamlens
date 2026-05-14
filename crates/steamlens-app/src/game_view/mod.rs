@@ -297,6 +297,8 @@ pub struct GameViewState {
         crate::profile_view::types::StoredCapsule,
     >,
 
+    pub capsule_unavailable: HashSet<(u32, crate::capsule_cache::CapsuleSize)>,
+
     pub hovered_bar_slice: Option<RarityTier>,
 
     pub expected_total: u32,
@@ -333,6 +335,7 @@ impl GameViewState {
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
             capsule_handles: HashMap::new(),
+            capsule_unavailable: HashSet::new(),
             hovered_bar_slice: None,
             expected_total: 0,
             genre: None,
@@ -854,6 +857,7 @@ pub fn update(
         }
         GameViewMessage::CapsuleFailed { app_id, size } => {
             tracing::warn!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
+            state.capsule_unavailable.insert((app_id, size));
             (Task::none(), GameViewEvent::None)
         }
 
