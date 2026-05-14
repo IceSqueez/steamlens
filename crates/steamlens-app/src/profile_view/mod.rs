@@ -179,6 +179,8 @@ fn build_profile_genre_strip<'a>(
     }
 }
 
+use std::collections::HashMap;
+
 use iced::Task;
 
 use crate::app_context::AppContext;
@@ -217,7 +219,7 @@ pub fn update(
 
             let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
             (
-                spawn_capsule_queue(app_ids, state.capsule_size),
+                spawn_capsule_queue(app_ids, state.capsule_size, &ctx.app_assets),
                 ProfileEvent::None,
             )
         }
@@ -256,7 +258,7 @@ pub fn update(
             let task = if miss_ids.is_empty() {
                 Task::none()
             } else {
-                spawn_capsule_queue(miss_ids, new_size)
+                spawn_capsule_queue(miss_ids, new_size, &ctx.app_assets)
             };
             (task, ProfileEvent::None)
         }
@@ -560,7 +562,11 @@ fn drain_progress_results(
     (task, event)
 }
 
-fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileViewMessage> {
+fn spawn_capsule_queue(
+    app_ids: Vec<u32>,
+    size: CapsuleSize,
+    app_assets: &HashMap<u32, steamlens_core::AppLibraryAssets>,
+) -> Task<ProfileViewMessage> {
     let chunks: Vec<Vec<u32>> = app_ids
         .chunks(MAX_CONCURRENT_DOWNLOADS)
         .map(|c| c.to_vec())
@@ -571,7 +577,10 @@ fn spawn_capsule_queue(app_ids: Vec<u32>, size: CapsuleSize) -> Task<ProfileView
         .map(|chunk| {
             let batch: Vec<Task<ProfileViewMessage>> = chunk
                 .into_iter()
-                .map(|app_id| crate::capsule_commands::fetch_capsule(app_id, size))
+                .map(|app_id| {
+                    let assets = app_assets.get(&app_id).cloned().unwrap_or_default();
+                    crate::capsule_commands::fetch_capsule(app_id, size, assets)
+                })
                 .collect();
             Task::batch(batch)
         })
