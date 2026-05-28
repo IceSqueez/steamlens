@@ -1,6 +1,8 @@
 use std::io::{self, Read};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
@@ -14,7 +16,7 @@ pub struct ProbedProfile {
     pub avatar_image: Option<Vec<u8>>,
     pub game_summaries: Vec<GameSummary>,
     pub steam_level: Option<u32>,
-    pub steam_root: Option<std::path::PathBuf>,
+    pub steam_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -58,15 +60,14 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
     let stderr = child.stderr.take();
 
     let stderr_thread = stderr.map(|mut s| {
-        std::thread::spawn(move || {
-            use std::io::Read;
+        thread::spawn(move || {
             let mut buf = Vec::with_capacity(2048);
             let _ = s.read_to_end(&mut buf);
             String::from_utf8_lossy(&buf).into_owned()
         })
     });
 
-    let deadline = std::time::Instant::now() + timeout;
+    let deadline = Instant::now() + timeout;
 
     let result = read_one_frame_blocking(stdout, deadline);
 
@@ -111,7 +112,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
             shm_path,
             region_bytes,
         } => {
-            let path = std::path::PathBuf::from(&shm_path);
+            let path = PathBuf::from(&shm_path);
             let payload: crate::ipc::ProbeResultPayload =
                 crate::ipc::shm::read_payload(&path, region_bytes)
                     .map_err(|e| ProbeError::Worker(format!("ProbeResult shm: {e}")))?;
@@ -143,7 +144,7 @@ enum ProbeReadError {
 
 fn read_one_frame_blocking(
     mut reader: impl Read,
-    deadline: std::time::Instant,
+    deadline: Instant,
 ) -> Result<Vec<u8>, ProbeReadError> {
     let mut header = [0u8; 4];
     read_with_deadline(&mut reader, &mut header, deadline)?;
@@ -159,11 +160,11 @@ fn read_one_frame_blocking(
 fn read_with_deadline(
     reader: &mut impl Read,
     buf: &mut [u8],
-    deadline: std::time::Instant,
+    deadline: Instant,
 ) -> Result<(), ProbeReadError> {
     let mut filled = 0;
     while filled < buf.len() {
-        if std::time::Instant::now() >= deadline {
+        if Instant::now() >= deadline {
             return Err(ProbeReadError::TimedOut);
         }
         match reader.read(&mut buf[filled..]) {
@@ -222,7 +223,7 @@ mod tests {
     #[test]
     fn read_one_frame_blocking_eof_before_header_yields_io_error() {
         let empty: &[u8] = &[];
-        let deadline = std::time::Instant::now() + Duration::from_millis(50);
+        let deadline = Instant::now() + Duration::from_millis(50);
         let result = read_one_frame_blocking(empty, deadline);
         assert!(
             matches!(result, Err(ProbeReadError::Io(_))),
@@ -233,7 +234,7 @@ mod tests {
     #[test]
     fn read_one_frame_blocking_partial_header_yields_io_error() {
         let partial: &[u8] = &[0x00, 0x00];
-        let deadline = std::time::Instant::now() + Duration::from_millis(50);
+        let deadline = Instant::now() + Duration::from_millis(50);
         let result = read_one_frame_blocking(partial, deadline);
         assert!(
             matches!(result, Err(ProbeReadError::Io(_))),

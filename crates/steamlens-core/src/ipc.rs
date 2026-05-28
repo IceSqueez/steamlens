@@ -151,6 +151,8 @@ pub fn decode_frame<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, F
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem;
+    use std::path::PathBuf;
     use types::{AchievementData, StatValue};
 
     fn all_commands() -> Vec<WorkerCommand> {
@@ -275,7 +277,7 @@ mod tests {
                 }
                 other => panic!(
                     "expected WorkerResponse::Error, got {:?}",
-                    std::mem::discriminant(&other)
+                    mem::discriminant(&other)
                 ),
             }
         }
@@ -293,7 +295,7 @@ mod tests {
                 framed,
                 re_framed,
                 "round-trip must be stable: {:?}",
-                std::mem::discriminant(&cmd)
+                mem::discriminant(&cmd)
             );
         }
     }
@@ -310,7 +312,7 @@ mod tests {
                 framed,
                 re_framed,
                 "round-trip must be stable: {:?}",
-                std::mem::discriminant(&resp)
+                mem::discriminant(&resp)
             );
         }
     }
@@ -562,7 +564,7 @@ mod tests {
                 last_played: Some(1_700_000_000),
             }],
             steam_level: Some(42),
-            steam_root: Some(std::path::PathBuf::from("/tmp/synthetic_steam")),
+            steam_root: Some(PathBuf::from("/tmp/synthetic_steam")),
         };
         let bytes = postcard::to_allocvec(&p).expect("serialize");
         let restored: ProbeResultPayload = postcard::from_bytes(&bytes).expect("decode");

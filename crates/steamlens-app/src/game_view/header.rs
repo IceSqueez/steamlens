@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::state::GameViewState;
 use super::view::{
     achievement_search_id, build_back_leading, build_game_reload_button, tier_color,
@@ -9,7 +11,6 @@ pub fn header_content<'a>(
     theme: crate::ui::theme::AppTheme,
 ) -> crate::screen::AppHeaderContent<'a> {
     use crate::screen::{SegmentItem, SegmentedControlConfig};
-    use std::borrow::Cow;
     use types::AchievementSort;
 
     let sort_items: Vec<SegmentItem<'_>> = AchievementSort::ALL
@@ -50,7 +51,7 @@ fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::Filte
     ]
     .into_iter()
     .map(|(f, label)| crate::screen::FilterButton {
-        label: std::borrow::Cow::Borrowed(label),
+        label: Cow::Borrowed(label),
         selected: state.filter == f,
         on_press: crate::Message::GameView(GameViewMessage::FilterChanged(f)),
     })

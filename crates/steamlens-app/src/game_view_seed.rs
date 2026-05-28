@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use iced::Task;
 
 use crate::Message;
@@ -121,7 +124,7 @@ pub(crate) fn build_cache_entry_from_scan(
     scanned: &progress_scan::ScannedGameData,
     app_id: u32,
     entry_name: Option<&str>,
-    steam_state: &std::collections::HashMap<u32, steamlens_core::SteamAppState>,
+    steam_state: &HashMap<u32, steamlens_core::SteamAppState>,
 ) -> GameCacheEntry {
     use cache::types::{CachedAchievement, CachedProgress, CachedStat};
     use game_view::compute_tier_breakdown;
@@ -180,8 +183,8 @@ pub(crate) fn build_cache_entry_from_scan(
     let state_entry = steam_state.get(&app_id).copied().unwrap_or_default();
     let steam_last_played = state_entry.last_played.unwrap_or(0) as u64;
     let playtime_minutes = state_entry.playtime_minutes;
-    let cached_at = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    let cached_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
@@ -225,7 +228,7 @@ pub(crate) fn build_cache_entry_from_scan(
 pub(crate) fn build_game_view_cache_entry(
     state: &GameViewState,
     app_id: u32,
-    steam_state: &std::collections::HashMap<u32, steamlens_core::SteamAppState>,
+    steam_state: &HashMap<u32, steamlens_core::SteamAppState>,
 ) -> GameCacheEntry {
     use cache::types::{CachedAchievement, CachedProgress, CachedStat};
 
@@ -278,8 +281,8 @@ pub(crate) fn build_game_view_cache_entry(
     let steam_last_played = state_entry.last_played.unwrap_or(0) as u64;
     let playtime_minutes = state_entry.playtime_minutes;
 
-    let cached_at = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    let cached_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 

@@ -1,3 +1,6 @@
+use std::io;
+use std::path::PathBuf;
+
 /// Returned by [`associate_kill_on_parent_exit`]. Hold this for as long as
 /// the child should remain attached to the parent's lifetime. When this
 /// guard is dropped — or when the parent process is killed and the OS
@@ -42,8 +45,8 @@ impl Drop for ChildLifetimeGuard {
 /// same scenario.
 ///
 /// On Windows this performs three syscalls plus one OpenProcess; failures
-/// at any step propagate as `std::io::Error::last_os_error()`.
-pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeGuard> {
+/// at any step propagate as `io::Error::last_os_error()`.
+pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard> {
     #[cfg(target_os = "windows")]
     {
         use std::ffi::c_void;
@@ -63,14 +66,14 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
         // which we explicitly check.
         let proc_handle = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, FALSE, pid) };
         if proc_handle.is_null() {
-            return Err(std::io::Error::last_os_error());
+            return Err(io::Error::last_os_error());
         }
 
         // SAFETY: nulls are valid for both lpJobAttributes and lpName per MSDN
         // (anonymous job, default security descriptor).
         let job = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
         if job.is_null() {
-            let err = std::io::Error::last_os_error();
+            let err = io::Error::last_os_error();
             // SAFETY: proc_handle was successfully opened above.
             unsafe { CloseHandle(proc_handle) };
             return Err(err);
@@ -93,7 +96,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
             )
         };
         if ok == 0 {
-            let err = std::io::Error::last_os_error();
+            let err = io::Error::last_os_error();
             // SAFETY: both handles were opened above.
             unsafe {
                 CloseHandle(job);
@@ -111,7 +114,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
         unsafe { CloseHandle(proc_handle) };
 
         if assigned == 0 {
-            let err = std::io::Error::last_os_error();
+            let err = io::Error::last_os_error();
             // SAFETY: job handle still owned by us.
             unsafe { CloseHandle(job) };
             return Err(err);
@@ -135,10 +138,10 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> std::io::Result<ChildLifetimeG
 /// we fall back to `std::env::current_exe()` — both platforms keep the on-disk
 /// path stable (Windows locks the .exe; macOS preserves inode but
 /// `current_exe()` still resolves correctly in practice).
-pub fn current_exe_resilient() -> std::io::Result<std::path::PathBuf> {
+pub fn current_exe_resilient() -> io::Result<PathBuf> {
     #[cfg(target_os = "linux")]
     {
-        Ok(std::path::PathBuf::from("/proc/self/exe"))
+        Ok(PathBuf::from("/proc/self/exe"))
     }
     #[cfg(not(target_os = "linux"))]
     {

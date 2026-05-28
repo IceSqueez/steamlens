@@ -53,10 +53,11 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind};
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn send_checked_blocks_when_steam_not_running() {
-        let (reply_tx, _reply_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reply_tx, _reply_rx) = mpsc::unbounded_channel();
         let worker = SteamWorker::spawn(reply_tx);
         let err = worker
             .send_checked(SteamRequest::RequestUserStats, false, true)

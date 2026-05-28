@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use steamlens_core::Client;
 use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
+use tokio::sync::mpsc;
 
 use super::callbacks::forward_icon_callbacks;
 use super::commands::{
@@ -18,8 +19,7 @@ pub(super) enum DispatchOutcome {
 }
 
 pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
-    let (cmd_tx, mut cmd_rx) =
-        tokio::sync::mpsc::channel::<Result<Option<WorkerCommand>, WorkerError>>(1);
+    let (cmd_tx, mut cmd_rx) = mpsc::channel::<Result<Option<WorkerCommand>, WorkerError>>(1);
 
     tokio::spawn(async move {
         let mut stdin = tokio::io::stdin();

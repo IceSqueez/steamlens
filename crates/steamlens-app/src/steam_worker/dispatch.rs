@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
+
 use tokio::sync::mpsc;
 
 use steamlens_core::AchievementIcon;
@@ -71,7 +74,7 @@ fn read_shm<T: serde::de::DeserializeOwned>(
     shm_path: &str,
     region_bytes: u64,
 ) -> Result<T, String> {
-    let path = std::path::PathBuf::from(shm_path);
+    let path = PathBuf::from(shm_path);
     steamlens_core::read_payload::<T>(&path, region_bytes)
         .map_err(|e| format!("{label} shm read at {}: {e}", path.display()))
 }
@@ -115,7 +118,7 @@ pub(super) fn handle_worker_response(
         WorkerResponse::GlobalPercentagesReady {
             shm_path,
             region_bytes,
-        } => match read_shm::<std::collections::HashMap<String, f32>>(
+        } => match read_shm::<HashMap<String, f32>>(
             "GlobalPercentagesReady",
             &shm_path,
             region_bytes,
@@ -130,19 +133,19 @@ pub(super) fn handle_worker_response(
             shm_path,
             region_bytes: _,
         } => {
-            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+            steamlens_core::unlink_at(&PathBuf::from(shm_path));
         }
         WorkerResponse::ProbeResult {
             shm_path,
             region_bytes: _,
         } => {
-            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+            steamlens_core::unlink_at(&PathBuf::from(shm_path));
         }
         WorkerResponse::CardOnlyAchievements {
             shm_path,
             region_bytes: _,
         } => {
-            steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+            steamlens_core::unlink_at(&PathBuf::from(shm_path));
         }
         WorkerResponse::Error { kind, message } => {
             reply(rep_tx, error_reply(kind, message));

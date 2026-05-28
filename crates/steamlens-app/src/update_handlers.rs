@@ -1,4 +1,6 @@
-use std::time::Instant;
+use std::collections::HashMap;
+use std::mem;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use iced::Task;
 use iced::keyboard;
@@ -44,7 +46,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
         let pv_state =
             routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
         if !pv_state.library_name_map.is_empty() {
-            let name_map = std::mem::take(&mut pv_state.library_name_map);
+            let name_map = mem::take(&mut pv_state.library_name_map);
             for game in &mut pv_state.games {
                 if let Some(name) = name_map.get(&game.app_id) {
                     game.name = Some(name.clone());
@@ -260,8 +262,8 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
     let name = gv_state.game_name.clone();
     let tier_breakdown = gv_state.tier_breakdown.clone();
 
-    let now_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
@@ -578,7 +580,7 @@ pub(crate) fn handle_library_loaded(
             last_played: e.last_played,
         })
         .collect();
-    let name_map: std::collections::HashMap<u32, String> = cached
+    let name_map: HashMap<u32, String> = cached
         .games
         .into_iter()
         .filter(|e| !e.name.is_empty())

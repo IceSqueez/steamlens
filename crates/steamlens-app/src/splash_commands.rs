@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use iced::Task;
 
 use crate::ProbeFailure;
@@ -5,7 +7,7 @@ use crate::timeouts;
 
 pub fn min_splash_wait() -> Task<crate::Message> {
     Task::perform(
-        async { tokio::time::sleep(std::time::Duration::from_millis(750)).await },
+        async { tokio::time::sleep(Duration::from_millis(750)).await },
         |_| crate::Message::SplashMinElapsed,
     )
 }

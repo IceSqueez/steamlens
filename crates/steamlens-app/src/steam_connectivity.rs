@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::app_context::AppContext;
 use crate::messaging::{self, BannerSeverity};
 use crate::{App, Message, Screen};
@@ -45,7 +47,7 @@ pub(crate) fn mark_steam_offline_and_warn(app: &mut App) {
     app.context.connectivity.steam_running = Some(false);
     if let Screen::ProfileView(pv_state) = &mut app.screen {
         pv_state.stop_scan();
-        pv_state.last_scan_completed_at = Some(std::time::Instant::now());
+        pv_state.last_scan_completed_at = Some(Instant::now());
     }
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }

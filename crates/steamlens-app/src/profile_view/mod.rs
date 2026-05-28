@@ -12,7 +12,6 @@ pub fn header_content<'a>(
 ) -> crate::screen::AppHeaderContent<'a> {
     use crate::capsule_cache::CapsuleSize;
     use crate::screen::{SegmentItem, SegmentedControlConfig};
-    use std::borrow::Cow;
     use types::LibrarySort;
 
     let genres = state.available_genres();
@@ -79,28 +78,28 @@ fn build_profile_status_strip(state: &types::ProfileViewState) -> crate::screen:
     crate::screen::FilterStrip {
         buttons: vec![
             crate::screen::FilterButton {
-                label: std::borrow::Cow::Borrowed("All"),
+                label: Cow::Borrowed("All"),
                 selected: state.status_filter == GameStatusFilter::All,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::All),
                 ),
             },
             crate::screen::FilterButton {
-                label: std::borrow::Cow::Borrowed("Started"),
+                label: Cow::Borrowed("Started"),
                 selected: state.status_filter == GameStatusFilter::Started,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Started),
                 ),
             },
             crate::screen::FilterButton {
-                label: std::borrow::Cow::Borrowed("Completed"),
+                label: Cow::Borrowed("Completed"),
                 selected: state.status_filter == GameStatusFilter::Completed,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::Completed),
                 ),
             },
             crate::screen::FilterButton {
-                label: std::borrow::Cow::Borrowed("Not started"),
+                label: Cow::Borrowed("Not started"),
                 selected: state.status_filter == GameStatusFilter::NotStarted,
                 on_press: crate::Message::ProfileView(
                     types::ProfileViewMessage::StatusFilterChanged(GameStatusFilter::NotStarted),
@@ -179,16 +178,21 @@ fn build_profile_genre_strip<'a>(
     }
 }
 
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use iced::Task;
+use iced::futures::channel::mpsc as iced_mpsc;
 
 use crate::app_context::AppContext;
 use crate::capsule_cache::CapsuleSize;
 use crate::progress_scan::ProgressData;
 use types::{
     CapsuleAsset, GameEntry, ProfileEvent, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
-    StoredCapsule,
+    SharedProgressRx, StoredCapsule,
 };
 
 pub fn update(
@@ -316,7 +320,7 @@ pub fn update(
 
         ProfileViewMessage::ProgressScanDone => {
             types::sort_games_in_place(&mut state.games, state.sort, &ctx.settings.library.pinned);
-            let now = std::time::Instant::now();
+            let now = Instant::now();
             if let Some(started) = state.scan_started_at.take() {
                 let elapsed = now.duration_since(started);
                 let total = state.scan_target_count;
@@ -346,8 +350,6 @@ pub fn update(
         }
 
         ProfileViewMessage::LoaderPulseTick => {
-            use std::time::Instant;
-
             state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
 
             let steam_running = ctx.connectivity.steam_running;
@@ -567,15 +569,13 @@ pub fn subscription(
     use iced::time;
 
     let spinner_sub = if state.is_streaming() {
-        time::every(std::time::Duration::from_millis(80))
-            .map(|_| ProfileViewMessage::SpinnerTick(0.0))
+        time::every(Duration::from_millis(80)).map(|_| ProfileViewMessage::SpinnerTick(0.0))
     } else {
         iced::Subscription::none()
     };
 
     let loader_pulse_sub = if state.loader_needs_pulse_subscription(steam_running) {
-        time::every(std::time::Duration::from_millis(70))
-            .map(|_| ProfileViewMessage::LoaderPulseTick)
+        time::every(Duration::from_millis(70)).map(|_| ProfileViewMessage::LoaderPulseTick)
     } else {
         iced::Subscription::none()
     };
@@ -583,14 +583,14 @@ pub fn subscription(
     let progress_drain_sub = if state.progress_scanner.is_some() {
         iced::Subscription::run_with(
             ProgressRxHandle {
-                rx: std::sync::Arc::clone(&state.progress_rx),
+                rx: Arc::clone(&state.progress_rx),
                 generation: state.scan_generation,
             },
             |handle: &ProgressRxHandle| {
-                let rx_holder = std::sync::Arc::clone(&handle.rx);
+                let rx_holder = Arc::clone(&handle.rx);
                 iced::stream::channel(
                     64,
-                    |mut output: iced::futures::channel::mpsc::Sender<ProfileViewMessage>| async move {
+                    |mut output: iced_mpsc::Sender<ProfileViewMessage>| async move {
                         let Some(mut rx) = rx_holder.lock().expect("progress_rx poisoned").take()
                         else {
                             return;
@@ -616,12 +616,12 @@ pub fn subscription(
 }
 
 struct ProgressRxHandle {
-    rx: crate::profile_view::types::SharedProgressRx,
+    rx: SharedProgressRx,
     generation: u64,
 }
 
-impl std::hash::Hash for ProgressRxHandle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for ProgressRxHandle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.generation.hash(state);
     }
 }

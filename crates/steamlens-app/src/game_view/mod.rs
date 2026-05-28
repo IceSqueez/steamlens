@@ -23,6 +23,7 @@ pub fn view(
 
 pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage> {
     use iced::time;
+    use std::time::Duration;
 
     let needs_spinner = matches!(
         state.phase,
@@ -35,26 +36,26 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage
         || (state.phase == GameViewPhase::Ready && state.has_fading_cards());
 
     let spinner_sub = if needs_tick {
-        time::every(std::time::Duration::from_millis(33)).map(|_| GameViewMessage::SpinnerTick)
+        time::every(Duration::from_millis(33)).map(|_| GameViewMessage::SpinnerTick)
     } else {
         iced::Subscription::none()
     };
 
     let reveal_sub = if state.has_pending_reveals() {
-        time::every(std::time::Duration::from_millis(30)).map(|_| GameViewMessage::RevealTick)
+        time::every(Duration::from_millis(30)).map(|_| GameViewMessage::RevealTick)
     } else {
         iced::Subscription::none()
     };
 
     let fade_sub = if state.has_fading_cards() {
-        time::every(std::time::Duration::from_millis(33)).map(|_| GameViewMessage::GameViewFadeTick)
+        time::every(Duration::from_millis(33)).map(|_| GameViewMessage::GameViewFadeTick)
     } else {
         iced::Subscription::none()
     };
 
     let has_legendary = state.phase == GameViewPhase::Ready && state.derived.has_legendary_visible;
     let glow_sub = if has_legendary {
-        time::every(std::time::Duration::from_millis(40)).map(|_| GameViewMessage::RareGlowTick)
+        time::every(Duration::from_millis(40)).map(|_| GameViewMessage::RareGlowTick)
     } else {
         iced::Subscription::none()
     };
@@ -70,21 +71,24 @@ mod tests {
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
     use std::collections::{HashMap, VecDeque};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
     use steamlens_core::AchievementIcon;
+    use tokio::sync::mpsc;
     use types::{AchievementData, AchievementRow};
 
     fn make_test_ctx() -> AppContext {
-        let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reply_tx, reply_rx) = mpsc::unbounded_channel();
         AppContext {
             worker: None,
             worker_reply_tx: reply_tx,
-            worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
+            worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
             settings: Settings::default(),
             settings_dirty_since: None,
             messaging: MessagingCenter::new(),
             cached_entries: HashMap::new(),
             pending_hit_queue: VecDeque::new(),
-            steam_root: std::path::PathBuf::from("/tmp"),
+            steam_root: PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,
             profile_avatar_handle: None,
@@ -94,9 +98,9 @@ mod tests {
             },
             steam_level: None,
             no_ach_cache: crate::cache::NoAchievementsCache::new(),
-            steam_state: std::collections::HashMap::new(),
+            steam_state: HashMap::new(),
             steam_state_mtime: None,
-            app_assets: std::collections::HashMap::new(),
+            app_assets: HashMap::new(),
             animation: AnimationState {
                 skeleton_phase: 0.0,
             },

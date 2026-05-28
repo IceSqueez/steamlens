@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use tokio::sync::mpsc;
+
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
@@ -9,8 +11,7 @@ use crate::profile_view::widget::{compute_profile_summary, top6_closest_to_compl
 use crate::progress_scan::ProgressResult;
 use crate::ui::widgets::widget::WidgetSummary;
 
-pub type SharedProgressRx =
-    Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<ProgressResult>>>>;
+pub type SharedProgressRx = Arc<Mutex<Option<mpsc::UnboundedReceiver<ProgressResult>>>>;
 
 use super::entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 use super::filters::{GameStatusFilter, LibrarySort};

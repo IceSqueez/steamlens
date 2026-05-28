@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
 use steamlens_core::{Client, SteamCallback};
 
@@ -9,7 +11,7 @@ pub(super) async fn wait_for_stats_received(
     client: &Client,
     expected_user: u64,
 ) -> Option<WorkerResponse> {
-    let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
+    let deadline = Instant::now() + timeouts::STAT_RECEIVED;
     loop {
         if let Ok(callbacks) = client.poll_callbacks() {
             for cb in &callbacks {
@@ -52,7 +54,7 @@ pub(super) async fn wait_for_stats_received(
             forward_icon_callbacks(callbacks, client).await;
         }
 
-        if std::time::Instant::now() >= deadline {
+        if Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
                 kind: WorkerErrorKind::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
@@ -66,7 +68,7 @@ pub(super) async fn wait_for_stats_received_card_only(
     client: &Client,
     expected_user: u64,
 ) -> Option<WorkerResponse> {
-    let deadline = std::time::Instant::now() + timeouts::STAT_RECEIVED;
+    let deadline = Instant::now() + timeouts::STAT_RECEIVED;
     loop {
         if let Ok(callbacks) = client.poll_callbacks() {
             for cb in &callbacks {
@@ -108,7 +110,7 @@ pub(super) async fn wait_for_stats_received_card_only(
             forward_icon_callbacks(callbacks, client).await;
         }
 
-        if std::time::Instant::now() >= deadline {
+        if Instant::now() >= deadline {
             tracing::warn!(
                 "wait_for_stats_received_card_only TIMEOUT after {:?} (no callback fired)",
                 timeouts::STAT_RECEIVED
@@ -123,7 +125,7 @@ pub(super) async fn wait_for_stats_received_card_only(
 }
 
 pub(super) async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse {
-    let deadline = std::time::Instant::now() + timeouts::STORE_CONFIRMED;
+    let deadline = Instant::now() + timeouts::STORE_CONFIRMED;
     loop {
         if let Ok(callbacks) = client.poll_callbacks() {
             for cb in &callbacks {
@@ -143,7 +145,7 @@ pub(super) async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse 
             forward_icon_callbacks(callbacks, client).await;
         }
 
-        if std::time::Instant::now() >= deadline {
+        if Instant::now() >= deadline {
             return WorkerResponse::Error {
                 kind: WorkerErrorKind::StoreStats,
                 message: "timed out waiting for UserStatsStored".into(),

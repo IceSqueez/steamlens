@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use iced::widget::Id as WidgetId;
@@ -29,7 +30,7 @@ pub struct SearchConfig<'a> {
 }
 
 pub struct FilterButton<'a> {
-    pub label: std::borrow::Cow<'a, str>,
+    pub label: Cow<'a, str>,
     pub selected: bool,
     pub on_press: crate::Message,
 }
@@ -39,7 +40,7 @@ pub struct FilterStrip<'a> {
 }
 
 pub struct SegmentItem<'a> {
-    pub label: std::borrow::Cow<'a, str>,
+    pub label: Cow<'a, str>,
     pub tooltip: Option<&'a str>,
     pub selected: bool,
     pub on_press: crate::Message,
@@ -559,13 +560,13 @@ mod tests {
     fn build_segmented_control_with_label_and_items_compiles() {
         let items = vec![
             SegmentItem {
-                label: std::borrow::Cow::Borrowed("A"),
+                label: Cow::Borrowed("A"),
                 tooltip: Some("Option A"),
                 selected: true,
                 on_press: crate::Message::GoBack,
             },
             SegmentItem {
-                label: std::borrow::Cow::Borrowed("B"),
+                label: Cow::Borrowed("B"),
                 tooltip: None,
                 selected: false,
                 on_press: crate::Message::GoBack,

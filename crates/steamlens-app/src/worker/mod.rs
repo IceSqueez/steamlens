@@ -5,6 +5,9 @@ mod error;
 mod ipc_io;
 mod shm_responses;
 
+use std::process;
+use std::time::Instant;
+
 use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
 
 use commands::encode_avatar_png;
@@ -21,7 +24,7 @@ pub fn run_probe() -> ! {
         .expect("probe tokio runtime");
 
     let exit_code = rt.block_on(probe_main());
-    std::process::exit(exit_code);
+    process::exit(exit_code);
 }
 
 pub fn run(app_id: u32) -> ! {
@@ -32,11 +35,11 @@ pub fn run(app_id: u32) -> ! {
         .expect("worker tokio runtime");
 
     let exit_code = rt.block_on(worker_main(app_id));
-    std::process::exit(exit_code);
+    process::exit(exit_code);
 }
 
 async fn probe_main() -> i32 {
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     let candidates: Vec<String> = steamlens_core::steamclient_lib_candidates()
         .into_iter()
         .map(|p| p.display().to_string())
@@ -87,7 +90,7 @@ async fn probe_main() -> i32 {
         avatar_png.as_ref().map(|v| v.len()).unwrap_or(0)
     );
 
-    let t_enum = std::time::Instant::now();
+    let t_enum = Instant::now();
     let games = match client.enumerate_owned_games(true) {
         Ok(g) => g,
         Err(e) => {
@@ -124,7 +127,7 @@ async fn probe_main() -> i32 {
 }
 
 async fn worker_main(app_id: u32) -> i32 {
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     tracing::debug!("connect…");
     let client = match steamlens_core::connect(app_id) {
         Ok(c) => c,

@@ -33,8 +33,12 @@ mod worker_drain;
 mod worker_subprocess;
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::hash::{Hash, Hasher};
+use std::process::{self, Command};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
+use iced::futures::channel::mpsc as iced_mpsc;
 use iced::keyboard;
 use iced::widget::column;
 use iced::{Element, Subscription, Task};
@@ -99,7 +103,7 @@ pub(crate) enum Message {
     SteamStateRefreshed(
         Option<(
             HashMap<u32, steamlens_core::SteamAppState>,
-            Option<std::time::SystemTime>,
+            Option<SystemTime>,
         )>,
     ),
     LocalProfileLoaded(Option<Box<steamlens_core::UserProfile>>),
@@ -108,9 +112,9 @@ pub(crate) enum Message {
 
 struct WorkerReplyHandle(app_context::SharedWorkerRx);
 
-impl std::hash::Hash for WorkerReplyHandle {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::sync::Arc::as_ptr(&self.0).hash(state);
+impl Hash for WorkerReplyHandle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state);
     }
 }
 
@@ -328,13 +332,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
 fn open_url_in_browser(url: &str) {
     #[cfg(target_os = "linux")]
-    let cmd = std::process::Command::new("xdg-open").arg(url).spawn();
+    let cmd = Command::new("xdg-open").arg(url).spawn();
     #[cfg(target_os = "macos")]
-    let cmd = std::process::Command::new("open").arg(url).spawn();
+    let cmd = Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let cmd = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn();
+    let cmd = Command::new("cmd").args(["/C", "start", "", url]).spawn();
     if let Err(e) = cmd {
         tracing::warn!("failed to open url {url}: {e}");
     }
@@ -425,28 +427,25 @@ fn subscription(app: &App) -> Subscription<Message> {
     });
 
     let worker_reply_sub = Subscription::run_with(
-        WorkerReplyHandle(std::sync::Arc::clone(&app.context.worker_reply_rx)),
+        WorkerReplyHandle(Arc::clone(&app.context.worker_reply_rx)),
         |handle: &WorkerReplyHandle| {
-            let rx_holder = std::sync::Arc::clone(&handle.0);
-            iced::stream::channel(
-                64,
-                |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-                    let Some(mut rx) = rx_holder.lock().expect("worker_reply_rx poisoned").take()
-                    else {
-                        return;
-                    };
-                    while let Some(reply) = rx.recv().await {
-                        if output.try_send(Message::WorkerReply(reply)).is_err() {
-                            break;
-                        }
+            let rx_holder = Arc::clone(&handle.0);
+            iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
+                let Some(mut rx) = rx_holder.lock().expect("worker_reply_rx poisoned").take()
+                else {
+                    return;
+                };
+                while let Some(reply) = rx.recv().await {
+                    if output.try_send(Message::WorkerReply(reply)).is_err() {
+                        break;
                     }
-                },
-            )
+                }
+            })
         },
     );
 
     let skeleton_sub = if splash::has_active_skeletons(app) {
-        iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::SkeletonTick)
+        iced::time::every(Duration::from_millis(33)).map(|_| Message::SkeletonTick)
     } else {
         Subscription::none()
     };
@@ -505,7 +504,7 @@ fn main() -> iced::Result {
     };
     if let Err(e) = init_result {
         eprintln!("[steamlens] FATAL: logging init failed: {e}");
-        std::process::exit(1);
+        process::exit(1);
     }
 
     if args.len() == 2 && args[1] == "--probe" {
@@ -514,13 +513,13 @@ fn main() -> iced::Result {
     if args.len() == 3 && args[1] == "--worker" {
         let app_id: u32 = args[2].parse().unwrap_or_else(|_| {
             tracing::error!("invalid app_id: {}", args[2]);
-            std::process::exit(2);
+            process::exit(2);
         });
         worker::run(app_id);
     }
     if args.len() >= 2 && args[1].starts_with("--worker") {
         tracing::info!("usage: steamlens-app --worker <app_id>");
-        std::process::exit(2);
+        process::exit(2);
     }
 
     let swept = steamlens_core::sweep_orphans();
@@ -559,23 +558,26 @@ mod tests {
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
-    use std::collections::VecDeque;
+    use std::collections::{HashSet, VecDeque};
+    use std::path::PathBuf;
+    use std::sync::Mutex;
     use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
+    use tokio::sync::mpsc;
 
     impl Default for App {
         fn default() -> Self {
-            let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (reply_tx, reply_rx) = mpsc::unbounded_channel();
             Self {
                 context: AppContext {
                     worker: None,
                     worker_reply_tx: reply_tx,
-                    worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
+                    worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
                     settings: Settings::default(),
                     settings_dirty_since: None,
                     messaging: MessagingCenter::new(),
                     cached_entries: HashMap::new(),
                     pending_hit_queue: VecDeque::new(),
-                    steam_root: std::path::PathBuf::from("/tmp"),
+                    steam_root: PathBuf::from("/tmp"),
                     steamid3: 0,
                     user_profile: None,
                     profile_avatar_handle: None,
@@ -1004,7 +1006,6 @@ mod tests {
         app_name: Option<&str>,
         achievements: Vec<(String, bool, Option<f32>)>,
     ) -> progress_scan::ScannedGameData {
-        use std::collections::HashMap;
         use steamlens_core::CardOnlyAchievement;
 
         let mut percentages = HashMap::new();
@@ -1046,7 +1047,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
         );
         assert_eq!(entry.progress.earned, 2);
         assert_eq!(entry.progress.total, 3);
@@ -1065,7 +1066,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
         );
         assert_eq!(entry.name, "FallbackName");
     }
@@ -1086,7 +1087,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
         );
         assert!(
             !entry.tier_breakdown.is_empty(),
@@ -1105,7 +1106,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
         );
         assert!(
             entry.tier_breakdown.is_empty(),
@@ -1468,7 +1469,7 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            &std::collections::HashSet::new(),
+            &HashSet::new(),
             false,
         );
 
@@ -1518,7 +1519,7 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            &std::collections::HashSet::new(),
+            &HashSet::new(),
             false,
         );
 
@@ -1565,7 +1566,7 @@ mod tests {
             AchievementFilter::All,
             "",
             AchievementSort::RarityAndName,
-            &std::collections::HashSet::new(),
+            &HashSet::new(),
             false,
         );
 
@@ -1576,8 +1577,6 @@ mod tests {
 
     #[test]
     fn global_percentages_reply_populates_rarity() {
-        use std::collections::HashMap;
-
         use game_view::handle_steam_reply;
         use game_view::types::{AchievementData, AchievementRow};
         use steam_worker::SteamReply;

@@ -1,12 +1,16 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, mpsc};
+use tokio::task::JoinHandle;
 
 use crate::timeouts;
+use crate::worker_subprocess::{WorkerHandle, WorkerProtocolError};
 
 const MAX_CONCURRENT: usize = 4;
 
@@ -39,14 +43,12 @@ pub struct ProgressResult {
 }
 
 pub struct ProgressScanner {
-    handles: Vec<tokio::task::JoinHandle<()>>,
+    handles: Vec<JoinHandle<()>>,
 }
 
 impl ProgressScanner {
-    pub fn spawn(
-        app_ids: Vec<u32>,
-    ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<ProgressResult>) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    pub fn spawn(app_ids: Vec<u32>) -> (Self, mpsc::UnboundedReceiver<ProgressResult>) {
+        let (tx, rx) = mpsc::unbounded_channel();
         let permits = Arc::new(Semaphore::new(MAX_CONCURRENT));
         let handles = app_ids
             .into_iter()
@@ -106,7 +108,7 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
-    use crate::worker_subprocess::{WorkerHandle, WorkerMode};
+    use crate::worker_subprocess::WorkerMode;
 
     let total_timeout =
         timeouts::STEAM_CONNECT + timeouts::COLD_SCAN_LOAD + timeouts::GLOBAL_PERCENTAGES;
@@ -135,8 +137,7 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
 
     match result {
         Err(_) => Err((
-            Box::new(crate::worker_subprocess::WorkerProtocolError::Timeout)
-                as Box<dyn std::error::Error + Send>,
+            Box::new(WorkerProtocolError::Timeout) as Box<dyn std::error::Error + Send>,
             diag,
         )),
         Ok(Err(e)) => Err((Box::new(e) as Box<dyn std::error::Error + Send>, diag)),
@@ -145,7 +146,7 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
 }
 
 #[cfg(unix)]
-fn format_exit_status(status: Option<&std::process::ExitStatus>) -> String {
+fn format_exit_status(status: Option<&ExitStatus>) -> String {
     use std::os::unix::process::ExitStatusExt;
     let Some(s) = status else {
         return "exit status unavailable".to_owned();
@@ -160,7 +161,7 @@ fn format_exit_status(status: Option<&std::process::ExitStatus>) -> String {
 }
 
 #[cfg(not(unix))]
-fn format_exit_status(status: Option<&std::process::ExitStatus>) -> String {
+fn format_exit_status(status: Option<&ExitStatus>) -> String {
     let Some(s) = status else {
         return "exit status unavailable".to_owned();
     };
@@ -189,10 +190,8 @@ fn signal_name(sig: i32) -> &'static str {
 }
 
 async fn run_full_scan_protocol(
-    handle: &mut crate::worker_subprocess::WorkerHandle,
-) -> Result<ScannedGameData, crate::worker_subprocess::WorkerProtocolError> {
-    use crate::worker_subprocess::WorkerProtocolError;
-
+    handle: &mut WorkerHandle,
+) -> Result<ScannedGameData, WorkerProtocolError> {
     let connected = tokio::time::timeout(timeouts::STEAM_CONNECT, handle.recv())
         .await
         .map_err(|_| WorkerProtocolError::Timeout)??
@@ -208,7 +207,7 @@ async fn run_full_scan_protocol(
         }
     };
 
-    let t_card = std::time::Instant::now();
+    let t_card = Instant::now();
     tracing::debug!("scan: send LoadAchievementsAndStatsCardOnly");
     handle
         .send(&WorkerCommand::LoadAchievementsAndStatsCardOnly)
@@ -240,13 +239,10 @@ async fn run_full_scan_protocol(
 }
 
 async fn read_card_only_skipping_async(
-    handle: &mut crate::worker_subprocess::WorkerHandle,
+    handle: &mut WorkerHandle,
     total_timeout: Duration,
-) -> Result<
-    (Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>),
-    crate::worker_subprocess::WorkerProtocolError,
-> {
-    use crate::worker_subprocess::WorkerProtocolError;
+) -> Result<(Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>), WorkerProtocolError> {
+    use WorkerProtocolError;
 
     let deadline = tokio::time::Instant::now() + total_timeout;
     loop {
@@ -263,7 +259,7 @@ async fn read_card_only_skipping_async(
                 shm_path,
                 region_bytes,
             } => {
-                let path = std::path::PathBuf::from(&shm_path);
+                let path = PathBuf::from(&shm_path);
                 let payload: CardOnlyPayload = steamlens_core::read_payload(&path, region_bytes)
                     .map_err(|e| {
                         WorkerProtocolError::Decode(std::io::Error::other(format!(
@@ -273,14 +269,14 @@ async fn read_card_only_skipping_async(
                 return Ok((payload.achievements, Vec::new(), payload.genre));
             }
             WorkerResponse::IconUpdated { shm_path, .. } => {
-                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+                steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
             }
             WorkerResponse::AchievementsAndStats { shm_path, .. }
             | WorkerResponse::AchievementCount { shm_path, .. }
             | WorkerResponse::ProbeResult { shm_path, .. }
             | WorkerResponse::GlobalPercentagesReady { shm_path, .. } => {
-                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+                steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
             }
             WorkerResponse::Error { kind, message } => {
@@ -292,7 +288,7 @@ async fn read_card_only_skipping_async(
 }
 
 async fn read_percentages_skipping_async(
-    handle: &mut crate::worker_subprocess::WorkerHandle,
+    handle: &mut WorkerHandle,
     total_timeout: Duration,
 ) -> HashMap<String, f32> {
     let deadline = tokio::time::Instant::now() + total_timeout;
@@ -310,7 +306,7 @@ async fn read_percentages_skipping_async(
                 shm_path,
                 region_bytes,
             } => {
-                let path = std::path::PathBuf::from(&shm_path);
+                let path = PathBuf::from(&shm_path);
                 return steamlens_core::read_payload::<HashMap<String, f32>>(&path, region_bytes)
                     .unwrap_or_default();
             }
@@ -318,7 +314,7 @@ async fn read_percentages_skipping_async(
             | WorkerResponse::IconUpdated { shm_path, .. }
             | WorkerResponse::AchievementCount { shm_path, .. }
             | WorkerResponse::ProbeResult { shm_path, .. } => {
-                steamlens_core::unlink_at(&std::path::PathBuf::from(shm_path));
+                steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
             }
             WorkerResponse::Error { .. } => return HashMap::new(),

@@ -1,3 +1,6 @@
+use std::io;
+use std::path::PathBuf;
+
 use steamlens_vdf::Value;
 
 use crate::error::SteamError;
@@ -23,12 +26,12 @@ pub(crate) fn load(app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
     let root = paths::steam_install_root_candidates()
         .into_iter()
         .next()
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+        .unwrap_or_else(|| PathBuf::from("."));
     let path = paths::appcache_stats_dir(&root).join(format!("UserGameStatsSchema_{app_id}.bin"));
 
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(_) => return Ok(Vec::new()),
     };
 

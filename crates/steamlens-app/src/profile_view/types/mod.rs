@@ -16,6 +16,7 @@ mod tests {
     use crate::capsule_cache::CapsuleSize;
     use crate::progress_scan::ProgressData;
     use std::collections::{HashMap, HashSet};
+    use std::sync::{Arc, Mutex};
 
     fn make_entry(app_id: u32, name: &str, last_played: Option<u32>) -> GameEntry {
         GameEntry {
@@ -39,7 +40,7 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             spinner_angle: 0.0,
             progress_scanner: None,
-            progress_rx: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            progress_rx: Arc::new(Mutex::new(None)),
             scan_generation: 0,
             failed_app_ids: HashSet::new(),
             library_name_map: HashMap::new(),

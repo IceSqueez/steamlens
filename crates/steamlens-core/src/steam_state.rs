@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use steamlens_vdf::{AppLocalState, parse_localconfig_states};
@@ -26,7 +26,7 @@ pub fn read_steam_state_mtime(steam_root: &Path, steamid3: u64) -> Option<System
     std::fs::metadata(&path).ok()?.modified().ok()
 }
 
-fn localconfig_path(steam_root: &Path, steamid3: u64) -> std::path::PathBuf {
+fn localconfig_path(steam_root: &Path, steamid3: u64) -> PathBuf {
     steam_root
         .join("userdata")
         .join(steamid3.to_string())
@@ -37,6 +37,8 @@ fn localconfig_path(steam_root: &Path, steamid3: u64) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
+    use std::time::Duration;
 
     fn write_localconfig(steam_root: &Path, steamid3: u64, body: &str) {
         let config_dir = steam_root
@@ -102,7 +104,7 @@ mod tests {
             r#"                    "1" { "LastPlayed" "100" }"#,
         );
         let first = read_steam_state_mtime(tmp.path(), 1).unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(20));
         write_localconfig(
             tmp.path(),
             1,

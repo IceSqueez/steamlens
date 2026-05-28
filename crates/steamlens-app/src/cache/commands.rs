@@ -121,7 +121,6 @@ mod tests {
 
     #[test]
     fn classify_games_builds() {
-        let _: Task<crate::Message> =
-            classify_games(Vec::new(), std::path::PathBuf::from("/tmp/steam"), 0);
+        let _: Task<crate::Message> = classify_games(Vec::new(), PathBuf::from("/tmp/steam"), 0);
     }
 }

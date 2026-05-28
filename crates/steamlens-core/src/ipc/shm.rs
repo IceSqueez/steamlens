@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use memmap2::{Mmap, MmapMut};
 use tempfile::{Builder, NamedTempFile};
@@ -49,7 +49,7 @@ fn sweep_orphans_in(dir: &Path, min_age: Duration) -> usize {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return 0;
     };
-    let now = std::time::SystemTime::now();
+    let now = SystemTime::now();
     let mut count = 0;
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -193,6 +193,7 @@ fn shm_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::UNIX_EPOCH;
 
     fn synthetic_bytes(n: usize) -> Vec<u8> {
         (0..n).map(|i| (i % 251) as u8).collect()
@@ -295,8 +296,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "steamlens-sweep-test-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .subsec_nanos()
         ));
@@ -323,8 +324,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "steamlens-sweep-age-test-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .subsec_nanos()
         ));

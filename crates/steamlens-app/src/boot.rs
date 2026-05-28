@@ -1,6 +1,9 @@
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use iced::Task;
+use tokio::sync::mpsc;
 
 use crate::app_context::{AnimationState, AppContext, ConnectivityState};
 use crate::cache;
@@ -14,19 +17,19 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
     let mut pv_state = ProfileViewState::new();
     pv_state.sort = loaded_settings.library.sort;
 
-    let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (reply_tx, reply_rx) = mpsc::unbounded_channel();
     let worker = SteamWorker::spawn(reply_tx.clone());
 
     let context = AppContext {
         worker: Some(worker),
         worker_reply_tx: reply_tx,
-        worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
+        worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
         settings: loaded_settings,
         settings_dirty_since: None,
         messaging: MessagingCenter::new(),
         cached_entries: HashMap::new(),
         pending_hit_queue: VecDeque::new(),
-        steam_root: std::path::PathBuf::new(),
+        steam_root: PathBuf::new(),
         steamid3: 0,
         user_profile: None,
         profile_avatar_handle: None,

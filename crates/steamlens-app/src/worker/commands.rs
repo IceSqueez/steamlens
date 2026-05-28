@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
 use steamlens_core::{AchievementData, AchievementIcon, Client, StatKind, StatValue};
@@ -148,7 +149,7 @@ pub(super) async fn load_achievements_card_only(client: &Client, app_id: u32) ->
         .get_app_data(app_id, c"common/primary_genre")
         .and_then(|id| steamlens_core::primary_genre_name(&id).map(str::to_owned));
 
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     tracing::debug!("request_user_stats start");
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         tracing::error!("request_user_stats failed in {:?}: {e}", t0.elapsed());
@@ -162,7 +163,7 @@ pub(super) async fn load_achievements_card_only(client: &Client, app_id: u32) ->
         t0.elapsed()
     );
 
-    let t_wait = std::time::Instant::now();
+    let t_wait = Instant::now();
     if let Some(early) = wait_for_stats_received_card_only(client, steam_id).await {
         tracing::debug!(
             "stats wait returned early (likely error/no-schema) in {:?}",
@@ -257,7 +258,7 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
         }
     };
 
-    let deadline = std::time::Instant::now() + timeouts::GLOBAL_PERCENTAGES;
+    let deadline = Instant::now() + timeouts::GLOBAL_PERCENTAGES;
     loop {
         poll_and_forward(client).await;
 
@@ -298,7 +299,7 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
             }
         }
 
-        if std::time::Instant::now() >= deadline {
+        if Instant::now() >= deadline {
             return WorkerResponse::Error {
                 kind: WorkerErrorKind::RequestGlobalPercentages,
                 message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
