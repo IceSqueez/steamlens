@@ -1,3 +1,64 @@
+use iced::widget::{Column, Row, Space, column, container, responsive, row, scrollable};
+use iced::{Alignment, Element, Length, Padding};
+
+pub struct GridLayout {
+    pub card_w: f32,
+    pub min_gap: f32,
+    pub row_spacing: f32,
+    pub padding_top: f32,
+    pub padding_bottom: f32,
+}
+
+pub fn responsive_card_grid<'a, T, M, F>(
+    items: Vec<T>,
+    layout: GridLayout,
+    make_cell: F,
+) -> Element<'a, M>
+where
+    T: 'a,
+    M: 'a,
+    F: 'a + Fn(&T) -> Element<'a, M>,
+{
+    let GridLayout {
+        card_w,
+        min_gap,
+        row_spacing,
+        padding_top,
+        padding_bottom,
+    } = layout;
+
+    let grid = responsive(move |size| {
+        let (cols, gap) = compute_grid(size.width, card_w, min_gap);
+        let mut rows_col: Column<'_, M> = column![]
+            .spacing(row_spacing)
+            .padding(Padding::default().top(padding_top).bottom(padding_bottom));
+
+        for chunk in items.chunks(cols) {
+            let mut r: Row<'_, M> =
+                row![Space::new().width(Length::Fixed(gap))].align_y(Alignment::Start);
+            for item in chunk {
+                r = r.push(make_cell(item));
+                r = r.push(Space::new().width(Length::Fixed(gap)));
+            }
+            for _ in 0..(cols - chunk.len()) {
+                r = r.push(Space::new().width(Length::Fixed(card_w)));
+                r = r.push(Space::new().width(Length::Fixed(gap)));
+            }
+            rows_col = rows_col.push(r);
+        }
+
+        scrollable(rows_col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    });
+
+    container(grid)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
 pub fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
     let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
 

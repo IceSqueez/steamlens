@@ -5,19 +5,18 @@ mod dims;
 use std::collections::HashMap;
 
 use iced::widget::Id as WidgetId;
-use iced::widget::{column, container, responsive, row, scrollable, text};
-use iced::{Alignment, Element, Length, Padding};
+use iced::widget::{container, text};
+use iced::{Alignment, Element, Length};
 
 use crate::cache::GameCacheEntry;
 use crate::profile_view::ProfileViewState;
 use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase};
 use crate::profile_view::widget::{ProfileWidgetParams, profile_widget};
+use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{palette, theme_from_iced};
 
 use card::build_card;
 use dims::{CARD_GAP, MIN_GAP, card_width};
-
-use crate::ui::grid::compute_grid;
 
 pub struct ProfileViewProps<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
@@ -162,60 +161,40 @@ fn build_grid<'a>(
     let card_w = card_width(capsule_size);
     let hovered_card = state.hovered_card;
     let hovered_card_tier = state.hovered_card_tier;
+    let pinned_set: std::collections::HashSet<u32> = pinned.iter().copied().collect();
 
-    let entries: Vec<&'a GameEntry> = visible;
-
-    let grid = responsive(move |size| {
-        let (cols, gap) = compute_grid(size.width, card_w, MIN_GAP);
-
-        let mut rows_col: iced::widget::Column<'_, ProfileViewMessage> = column![]
-            .spacing(CARD_GAP as u32)
-            .padding(Padding::default().top(8).bottom(8));
-
-        for chunk in entries.chunks(cols) {
-            let mut r: iced::widget::Row<'_, ProfileViewMessage> =
-                row![iced::widget::Space::new().width(Length::Fixed(gap))];
-            for entry in chunk {
-                let app_id = entry.app_id;
-                let cached = cached_entries.get(&app_id);
-                let tier_breakdown = cached.map(|e| e.tier_breakdown.as_slice()).unwrap_or(&[]);
-                let genre = cached.and_then(|e| e.genre.as_deref());
-                let is_pinned = pinned.contains(&app_id);
-                let is_hovered = hovered_card == Some(app_id);
-                let hovered_tier = hovered_card_tier
-                    .filter(|(id, _)| *id == app_id)
-                    .map(|(_, t)| t);
-                r = r.push(build_card(
-                    entry,
-                    capsule_size,
-                    card_w,
-                    skeleton_phase,
-                    tier_breakdown,
-                    genre,
-                    is_pinned,
-                    is_hovered,
-                    hovered_tier,
-                ));
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
-            }
-            let needed = cols - chunk.len();
-            for _ in 0..needed {
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
-                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
-            }
-            rows_col = rows_col.push(r);
-        }
-
-        scrollable(rows_col)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    });
-
-    container(grid)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    responsive_card_grid(
+        visible,
+        GridLayout {
+            card_w,
+            min_gap: MIN_GAP,
+            row_spacing: CARD_GAP,
+            padding_top: 8.0,
+            padding_bottom: 8.0,
+        },
+        move |entry: &&'a GameEntry| {
+            let app_id = entry.app_id;
+            let cached = cached_entries.get(&app_id);
+            let tier_breakdown = cached.map(|e| e.tier_breakdown.as_slice()).unwrap_or(&[]);
+            let genre = cached.and_then(|e| e.genre.as_deref());
+            let is_pinned = pinned_set.contains(&app_id);
+            let is_hovered = hovered_card == Some(app_id);
+            let hovered_tier = hovered_card_tier
+                .filter(|(id, _)| *id == app_id)
+                .map(|(_, t)| t);
+            build_card(
+                entry,
+                capsule_size,
+                card_w,
+                skeleton_phase,
+                tier_breakdown,
+                genre,
+                is_pinned,
+                is_hovered,
+                hovered_tier,
+            )
+        },
+    )
 }
 
 fn center_text(msg: &str) -> Element<'_, ProfileViewMessage> {

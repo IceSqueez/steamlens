@@ -1,10 +1,10 @@
-use iced::widget::{button, column, container, responsive, row, scrollable, space, text};
+use iced::widget::{button, column, container, row, space, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use super::card::achievement_card_widget;
 use crate::game_view::types::{AchievementRow, BulkOp};
 use crate::game_view::{GameViewMessage, GameViewState};
-use crate::ui::grid::compute_grid;
+use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 
@@ -99,107 +99,63 @@ pub(super) fn achievement_list(
 
     let query_owned = state.search_query.clone();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
-    let tier_map = &state.derived.tier_map;
+    let tier_map = state.derived.tier_map.clone();
     let cache_only = state.cache_only;
 
-    let grid = responsive(move |size| {
-        let (cols, gap) = compute_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
-
-        let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
-            .spacing(ACH_CARD_GAP as u32)
-            .padding(Padding::default().top(8).bottom(4));
-
-        for chunk in cards.chunks(cols) {
-            let mut r: iced::widget::Row<'_, GameViewMessage> =
-                row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
-            for entry in chunk {
-                let tier = tier_map.get(&entry.data.id).copied();
-                let is_ready = entry.is_spoiler_hidden()
-                    || cache_only
-                    || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
-                let card: Element<'_, GameViewMessage> = if is_ready {
-                    achievement_card_widget(
-                        entry,
-                        ACH_CARD_WIDTH,
-                        query_owned.clone(),
-                        glow_pulse,
-                        tier,
-                        skeleton_phase,
-                        app_theme,
-                    )
-                } else {
-                    build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase)
-                };
-                r = r.push(card);
-                r = r.push(space().width(Length::Fixed(gap)));
+    responsive_card_grid(
+        cards,
+        GridLayout {
+            card_w: ACH_CARD_WIDTH,
+            min_gap: ACH_MIN_GAP,
+            row_spacing: ACH_CARD_GAP,
+            padding_top: 8.0,
+            padding_bottom: 4.0,
+        },
+        move |entry: &&AchievementRow| {
+            let tier = tier_map.get(&entry.data.id).copied();
+            let is_ready = entry.is_spoiler_hidden()
+                || cache_only
+                || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
+            if is_ready {
+                achievement_card_widget(
+                    entry,
+                    ACH_CARD_WIDTH,
+                    query_owned.clone(),
+                    glow_pulse,
+                    tier,
+                    skeleton_phase,
+                    app_theme,
+                )
+            } else {
+                build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase)
             }
-            let needed = cols - chunk.len();
-            for _ in 0..needed {
-                r = r.push(space().width(Length::Fixed(ACH_CARD_WIDTH)));
-                r = r.push(space().width(Length::Fixed(gap)));
-            }
-            rows_col = rows_col.push(r);
-        }
-
-        scrollable(rows_col)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    });
-
-    container(grid)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        },
+    )
 }
 
 pub(super) fn build_skeleton_ach_grid(
     state: &GameViewState,
     skeleton_phase: f32,
-) -> Element<'_, GameViewMessage> {
+) -> Element<'static, GameViewMessage> {
     let count = state
         .achievements
         .len()
         .max(state.expected_total as usize)
         .max(6);
 
-    let grid = responsive(move |size| {
-        let (cols, gap) = compute_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
+    let placeholders: Vec<()> = (0..count).map(|_| ()).collect();
 
-        let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
-            .spacing(ACH_CARD_GAP as u32)
-            .padding(Padding::default().top(8).bottom(4));
-
-        let total_cards = count;
-        let mut rendered = 0;
-
-        while rendered < total_cards {
-            let chunk_size = (total_cards - rendered).min(cols);
-            let mut r: iced::widget::Row<'_, GameViewMessage> =
-                row![space().width(Length::Fixed(gap))].align_y(Alignment::Start);
-            for _ in 0..chunk_size {
-                r = r.push(build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase));
-                r = r.push(space().width(Length::Fixed(gap)));
-            }
-            let needed = cols - chunk_size;
-            for _ in 0..needed {
-                r = r.push(space().width(Length::Fixed(ACH_CARD_WIDTH)));
-                r = r.push(space().width(Length::Fixed(gap)));
-            }
-            rows_col = rows_col.push(r);
-            rendered += chunk_size;
-        }
-
-        scrollable(rows_col)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    });
-
-    container(grid)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    responsive_card_grid(
+        placeholders,
+        GridLayout {
+            card_w: ACH_CARD_WIDTH,
+            min_gap: ACH_MIN_GAP,
+            row_spacing: ACH_CARD_GAP,
+            padding_top: 8.0,
+            padding_bottom: 4.0,
+        },
+        move |_: &()| build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase),
+    )
 }
 
 pub(super) fn build_skeleton_ach_card(
