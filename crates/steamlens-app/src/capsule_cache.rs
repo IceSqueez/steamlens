@@ -191,7 +191,7 @@ async fn try_cache_candidate(
     let bytes = match fs::read(&path).await {
         Ok(b) => b,
         Err(_) => {
-            tracing::trace!(target: "capsule", app_id, %size, cache_key, "cache miss");
+            tracing::trace!(app_id, %size, cache_key, "cache miss");
             return None;
         }
     };
@@ -199,7 +199,7 @@ async fn try_cache_candidate(
     match decode_jpeg(&bytes) {
         Some(decoded) if !decoded.is_placeholder => {
             tracing::trace!(
-                target: "capsule",
+
                 app_id, %size, cache_key,
                 w = decoded.pixels.width, h = decoded.pixels.height,
                 "cache hit"
@@ -208,7 +208,7 @@ async fn try_cache_candidate(
         }
         Some(_) => {
             tracing::warn!(
-                target: "capsule",
+
                 app_id, %size, cache_key,
                 path = %path.display(),
                 "cached file decoded as grayscale placeholder; removing"
@@ -218,7 +218,7 @@ async fn try_cache_candidate(
         }
         None => {
             tracing::warn!(
-                target: "capsule",
+
                 app_id, %size, cache_key,
                 path = %path.display(),
                 "cached file failed to JPEG-decode; removing"
@@ -242,13 +242,13 @@ async fn try_http_candidate(
     let client = http_client()?;
     let _permit = http_semaphore().acquire().await.ok()?;
 
-    tracing::debug!(target: "capsule", app_id, %size, %url, "HTTP fetch start");
+    tracing::debug!(app_id, %size, %url, "HTTP fetch start");
 
     let response = match client.get(&url).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::trace!(
-                target: "capsule",
+
                 app_id, %url, error = %e,
                 "transport error; retrying once after backoff"
             );
@@ -257,7 +257,7 @@ async fn try_http_candidate(
                 Ok(r) => r,
                 Err(e2) => {
                     tracing::warn!(
-                        target: "capsule",
+
                         app_id, %url, error = %e2,
                         "HTTP send failed after one retry"
                     );
@@ -270,7 +270,7 @@ async fn try_http_candidate(
     let status = response.status();
     if !status.is_success() {
         tracing::debug!(
-            target: "capsule",
+
             app_id, %url, status = status.as_u16(),
             "CDN non-success response; trying next candidate"
         );
@@ -281,7 +281,7 @@ async fn try_http_candidate(
         Ok(b) => b,
         Err(e) => {
             tracing::warn!(
-                target: "capsule",
+
                 app_id, %url, error = %e,
                 "failed to read HTTP body bytes"
             );
@@ -293,7 +293,7 @@ async fn try_http_candidate(
         Some(d) => d,
         None => {
             tracing::warn!(
-                target: "capsule",
+
                 app_id, %url, bytes_len = bytes.len(),
                 "downloaded bytes failed JPEG decode"
             );
@@ -303,7 +303,7 @@ async fn try_http_candidate(
 
     if decoded.is_placeholder {
         tracing::debug!(
-            target: "capsule",
+
             app_id, %url,
             "CDN returned grayscale placeholder; trying next candidate"
         );
@@ -315,13 +315,13 @@ async fn try_http_candidate(
     }
     if let Err(e) = fs::write(&path, &bytes).await {
         tracing::warn!(
-            target: "capsule",
+
             app_id, path = %path.display(), error = %e,
             "cache write failed; capsule will refetch next restart"
         );
     } else {
         tracing::trace!(
-            target: "capsule",
+
             app_id, %size, cache_key,
             "wrote capsule to cache"
         );
@@ -329,7 +329,7 @@ async fn try_http_candidate(
     purge_stale_caches(app_id, size, &target_filename).await;
 
     tracing::debug!(
-        target: "capsule",
+
         app_id, %size, %url,
         w = decoded.pixels.width, h = decoded.pixels.height,
         "capsule resolved via HTTP"
@@ -345,7 +345,7 @@ pub async fn fetch_capsule(
     let chain = asset_chain_for_size(size, &assets);
     if chain.is_empty() {
         tracing::debug!(
-            target: "capsule",
+
             app_id, %size,
             "no asset candidates in appinfo; capsule unavailable"
         );
@@ -359,7 +359,7 @@ pub async fn fetch_capsule(
     }
 
     tracing::debug!(
-        target: "capsule",
+
         app_id, %size, candidates = chain.len(),
         "cache empty for all candidates; starting HTTP chain"
     );
@@ -371,7 +371,7 @@ pub async fn fetch_capsule(
     }
 
     tracing::warn!(
-        target: "capsule",
+
         app_id, %size, candidates = chain.len(),
         "all candidates exhausted; capsule unavailable"
     );
