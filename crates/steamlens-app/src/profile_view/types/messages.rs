@@ -53,6 +53,7 @@ pub enum ProfileViewMessage {
     RequestToggleGamePin(u32),
     RequestOpenGame(u32),
     ProgressResultReceived(Box<crate::progress_scan::ProgressResult>),
+    GridScrolled(f32),
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +116,7 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::StatusFilterChanged(f2) => write!(f, "StatusFilterChanged({f2:?})"),
             ProfileViewMessage::GenreFilterToggled(g) => write!(f, "GenreFilterToggled({g:?})"),
             ProfileViewMessage::GenreFilterCleared => write!(f, "GenreFilterCleared"),
+            ProfileViewMessage::GridScrolled(y) => write!(f, "GridScrolled({y:.1})"),
         }
     }
 }

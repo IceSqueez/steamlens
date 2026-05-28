@@ -3,6 +3,7 @@ mod card_parts;
 mod dims;
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use iced::widget::Id as WidgetId;
 use iced::widget::{container, text};
@@ -17,7 +18,10 @@ use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{palette, theme_from_iced};
 
 use card::build_card;
-use dims::{CARD_GAP, MIN_GAP, card_width};
+use dims::{CARD_GAP, MIN_GAP, card_height, card_width};
+
+static PROFILE_GRID_SCROLL_ID: LazyLock<iced::widget::Id> =
+    LazyLock::new(|| iced::widget::Id::new("profile-grid"));
 
 pub struct ProfileViewProps<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
@@ -141,6 +145,7 @@ fn build_grid<'a>(
 ) -> Element<'a, ProfileViewMessage> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
+    let card_h = card_height(capsule_size);
     let hovered_card = state.hovered_card;
     let hovered_card_tier = state.hovered_card_tier;
     let pinned_set: std::collections::HashSet<u32> = pinned.iter().copied().collect();
@@ -149,11 +154,15 @@ fn build_grid<'a>(
         visible,
         GridLayout {
             card_w,
+            card_h,
             min_gap: MIN_GAP,
             row_spacing: CARD_GAP,
             padding_top: 8.0,
             padding_bottom: 8.0,
         },
+        PROFILE_GRID_SCROLL_ID.clone(),
+        state.grid_scroll_y,
+        ProfileViewMessage::GridScrolled,
         move |entry: &&'a GameEntry| {
             let app_id = entry.app_id;
             let cached = cached_entries.get(&app_id);

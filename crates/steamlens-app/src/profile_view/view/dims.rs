@@ -49,6 +49,11 @@ pub(super) fn card_width(size: CapsuleSize) -> f32 {
 pub(super) fn total_card_height(capsule_h: f32) -> f32 {
     capsule_h + 8.0 + 9.0 + 24.0 + 8.0 + 8.0 + 32.0 + 8.0
 }
+
+pub(super) fn card_height(size: CapsuleSize) -> f32 {
+    let (_, capsule_h) = capsule_dims(size);
+    total_card_height(capsule_h)
+}
 pub(super) fn completion_tier_color(pct: f32) -> Option<Color> {
     if pct >= 100.0 {
         Some(C_RARITY_LEGENDARY)

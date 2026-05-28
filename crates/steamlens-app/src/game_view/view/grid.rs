@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use iced::widget::{button, column, container, row, space, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -19,6 +21,9 @@ pub(super) const ACH_CARD_DESCRIPTION_TEXT_SIZE: f32 = 11.0;
 pub(super) const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
 pub(super) const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
 pub(super) const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
+
+static ACH_GRID_SCROLL_ID: LazyLock<iced::widget::Id> =
+    LazyLock::new(|| iced::widget::Id::new("achievement-grid"));
 
 pub(super) fn achievements_tab<'a>(
     state: &'a GameViewState,
@@ -106,11 +111,15 @@ pub(super) fn achievement_list(
         cards,
         GridLayout {
             card_w: ACH_CARD_WIDTH,
+            card_h: ACH_CARD_HEIGHT,
             min_gap: ACH_MIN_GAP,
             row_spacing: ACH_CARD_GAP,
             padding_top: 8.0,
             padding_bottom: 4.0,
         },
+        ACH_GRID_SCROLL_ID.clone(),
+        state.achievement_grid_scroll_y,
+        GameViewMessage::AchievementGridScrolled,
         move |entry: &&AchievementRow| {
             let tier = tier_map.get(&entry.data.id).copied();
             let is_ready = entry.is_spoiler_hidden()
@@ -149,11 +158,15 @@ pub(super) fn build_skeleton_ach_grid(
         placeholders,
         GridLayout {
             card_w: ACH_CARD_WIDTH,
+            card_h: ACH_CARD_HEIGHT,
             min_gap: ACH_MIN_GAP,
             row_spacing: ACH_CARD_GAP,
             padding_top: 8.0,
             padding_bottom: 4.0,
         },
+        ACH_GRID_SCROLL_ID.clone(),
+        state.achievement_grid_scroll_y,
+        GameViewMessage::AchievementGridScrolled,
         move |_: &()| build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase),
     )
 }

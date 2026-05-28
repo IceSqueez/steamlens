@@ -79,6 +79,8 @@ pub struct GameViewState {
 
     pub cache_only: bool,
 
+    pub achievement_grid_scroll_y: f32,
+
     pub derived: DerivedGameView,
 }
 
@@ -112,6 +114,7 @@ impl GameViewState {
             genre: None,
             playtime_minutes: None,
             cache_only: false,
+            achievement_grid_scroll_y: 0.0,
             derived: DerivedGameView::default(),
         }
     }

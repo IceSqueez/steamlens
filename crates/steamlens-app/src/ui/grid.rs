@@ -1,26 +1,33 @@
 use iced::widget::{Column, Row, Space, column, container, responsive, row, scrollable};
-use iced::{Alignment, Element, Length, Padding};
+use iced::{Alignment, Element, Length};
 
 pub struct GridLayout {
     pub card_w: f32,
+    pub card_h: f32,
     pub min_gap: f32,
     pub row_spacing: f32,
     pub padding_top: f32,
     pub padding_bottom: f32,
 }
 
+const VIRT_BUFFER_ROWS: usize = 2;
+
 pub fn responsive_card_grid<'a, T, M, F>(
     items: Vec<T>,
     layout: GridLayout,
+    scroll_id: iced::widget::Id,
+    scroll_y: f32,
+    on_scroll: impl Fn(f32) -> M + Clone + 'a,
     make_cell: F,
 ) -> Element<'a, M>
 where
     T: 'a,
-    M: 'a,
+    M: 'a + Clone,
     F: 'a + Fn(&T) -> Element<'a, M>,
 {
     let GridLayout {
         card_w,
+        card_h,
         min_gap,
         row_spacing,
         padding_top,
@@ -29,11 +36,31 @@ where
 
     let grid = responsive(move |size| {
         let (cols, gap) = compute_grid(size.width, card_w, min_gap);
-        let mut rows_col: Column<'_, M> = column![]
-            .spacing(row_spacing)
-            .padding(Padding::default().top(padding_top).bottom(padding_bottom));
+        let row_h = card_h + row_spacing;
+        let total_rows = items.len().div_ceil(cols);
 
-        for chunk in items.chunks(cols) {
+        let first_row = if scroll_y > 0.0 {
+            ((scroll_y / row_h).floor() as usize).saturating_sub(VIRT_BUFFER_ROWS)
+        } else {
+            0
+        };
+
+        let viewport_rows = ((size.height / row_h).ceil() as usize).max(1);
+        let last_row =
+            (first_row + viewport_rows + VIRT_BUFFER_ROWS * 2).min(total_rows.saturating_sub(1));
+
+        let top_pad = first_row as f32 * row_h + padding_top;
+        let bottom_rows = total_rows.saturating_sub(last_row + 1);
+        let bottom_pad = bottom_rows as f32 * row_h + padding_bottom;
+
+        let mut rows_col: Column<'_, M> = column![].spacing(row_spacing);
+
+        rows_col = rows_col.push(Space::new().height(Length::Fixed(top_pad)));
+
+        let render_start = first_row * cols;
+        let render_end = ((last_row + 1) * cols).min(items.len());
+
+        for chunk in items[render_start..render_end].chunks(cols) {
             let mut r: Row<'_, M> =
                 row![Space::new().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for item in chunk {
@@ -47,7 +74,12 @@ where
             rows_col = rows_col.push(r);
         }
 
+        rows_col = rows_col.push(Space::new().height(Length::Fixed(bottom_pad)));
+
+        let on_scroll_clone = on_scroll.clone();
         scrollable(rows_col)
+            .id(scroll_id.clone())
+            .on_scroll(move |vp| on_scroll_clone(vp.absolute_offset().y))
             .width(Length::Fill)
             .height(Length::Fill)
             .into()

@@ -497,5 +497,10 @@ pub fn update(
             }
             (Task::none(), GameViewEvent::None)
         }
+
+        GameViewMessage::AchievementGridScrolled(y) => {
+            state.achievement_grid_scroll_y = y;
+            (Task::none(), GameViewEvent::None)
+        }
     }
 }

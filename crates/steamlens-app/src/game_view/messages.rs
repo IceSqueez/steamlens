@@ -44,6 +44,7 @@ pub enum GameViewMessage {
         app_id: u32,
         seeded: Box<SeededGameView>,
     },
+    AchievementGridScrolled(f32),
 }
 
 #[derive(Debug, Clone)]

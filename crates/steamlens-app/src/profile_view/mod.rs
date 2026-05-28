@@ -423,6 +423,11 @@ pub fn update(
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
+
+        ProfileViewMessage::GridScrolled(y) => {
+            state.grid_scroll_y = y;
+            (Task::none(), ProfileEvent::None)
+        }
     }
 }
 
