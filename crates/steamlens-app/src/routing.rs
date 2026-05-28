@@ -40,7 +40,7 @@ pub(crate) fn dispatch_game_event(
 }
 
 pub(crate) fn go_back_to_profile(app: &mut App) {
-    crate::disconnect_worker(app);
+    crate::worker_drain::disconnect_worker(app);
     if let Some(mut prev) = app.preserved_profile_state.take() {
         prev.search.clear();
         app.screen = Screen::ProfileView(prev);
@@ -110,11 +110,11 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
                 },
             ));
         }
-        crate::disconnect_worker(app);
+        crate::worker_drain::disconnect_worker(app);
         state.cache_only = true;
         state.phase = game_view::GameViewPhase::Ready;
     } else {
-        crate::disconnect_worker(app);
+        crate::worker_drain::disconnect_worker(app);
         let (worker, rx) = SteamWorker::spawn();
         worker.send(SteamRequest::ConnectWithApp(app_id));
         app.context.worker = Some(worker);
