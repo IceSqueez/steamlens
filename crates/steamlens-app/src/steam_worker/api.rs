@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use iced::Task;
 use tokio::sync::mpsc;
 
 use steamlens_core::AchievementIcon;
@@ -53,19 +54,22 @@ impl SteamWorker {
         SteamWorker { request_tx: req_tx }
     }
 
-    pub fn send(&self, req: SteamRequest) {
-        let _ = self.request_tx.send(req);
+    pub fn dispatch<M: 'static + Send>(&self, req: SteamRequest, noop: M) -> Task<M> {
+        let tx = self.request_tx.clone();
+        Task::future(async move {
+            let _ = tx.send(req);
+            noop
+        })
     }
 
-    /// Sync because the underlying mpsc send is sync; pre-flight runs before any pipe touch.
-    pub fn send_checked(
+    pub fn dispatch_checked<M: 'static + Send>(
         &self,
         req: SteamRequest,
         steam_running: bool,
         user_logged_in: bool,
-    ) -> Result<(), crate::worker_subprocess::ConnectivityError> {
+        noop: M,
+    ) -> Result<Task<M>, crate::worker_subprocess::ConnectivityError> {
         crate::worker_subprocess::preflight(steam_running, user_logged_in)?;
-        let _ = self.request_tx.send(req);
-        Ok(())
+        Ok(self.dispatch(req, noop))
     }
 }

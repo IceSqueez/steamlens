@@ -29,22 +29,20 @@ pub(crate) fn dispatch_game_event(
         GameViewEvent::AchievementsFullyLoaded { app_id } => {
             Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
         }
-        GameViewEvent::GoBack => {
-            go_back_to_profile(app);
-            task
-        }
+        GameViewEvent::GoBack => Task::batch([task, go_back_to_profile(app)]),
         GameViewEvent::InvalidateCache { app_id } => {
             Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
         }
     }
 }
 
-pub(crate) fn go_back_to_profile(app: &mut App) {
-    crate::worker_drain::disconnect_worker(app);
+pub(crate) fn go_back_to_profile(app: &mut App) -> Task<Message> {
+    let disconnect_task = crate::worker_drain::disconnect_worker(app);
     if let Some(mut prev) = app.preserved_profile_state.take() {
         prev.search.clear();
         app.screen = Screen::ProfileView(prev);
     }
+    disconnect_task
 }
 
 pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
@@ -113,13 +111,13 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
                 },
             ));
         }
-        crate::worker_drain::disconnect_worker(app);
+        tasks.push(crate::worker_drain::disconnect_worker(app));
         state.cache_only = true;
         state.phase = game_view::GameViewPhase::Ready;
     } else {
-        crate::worker_drain::disconnect_worker(app);
+        tasks.push(crate::worker_drain::disconnect_worker(app));
         let worker = SteamWorker::spawn(app.context.worker_reply_tx.clone());
-        worker.send(SteamRequest::ConnectWithApp(app_id));
+        tasks.push(worker.dispatch(SteamRequest::ConnectWithApp(app_id), Message::Noop));
         app.context.worker = Some(worker);
     }
 

@@ -78,28 +78,11 @@ fn profile_status_bar(
     state: &ProfileViewState,
     steam_running: Option<bool>,
 ) -> Option<Element<'_, ProfileViewMessage>> {
-    use crate::ui::widgets::status_bar::status_bar;
+    use crate::ui::widgets::status_bar::{StatusContext, derive_status_bar};
 
     let total = state.games.len();
-
-    if steam_running == Some(false) {
-        if total == 0 {
-            return None;
-        }
-        let failed = state.failed_app_ids.len();
-        let hydrated = state.games.iter().filter(|g| g.is_hydrated()).count();
-        return Some(
-            status_bar::<ProfileViewMessage>()
-                .offline(hydrated.max(total - failed), "games")
-                .failed(failed)
-                .into(),
-        );
-    }
-
-    if total == 0 {
-        return None;
-    }
-
+    let failed = state.failed_app_ids.len();
+    let hydrated = state.games.iter().filter(|g| g.is_hydrated()).count();
     let scanned_progress = state.games.iter().filter(|g| g.progress.is_some()).count();
     let loaded_capsules = state
         .games
@@ -107,25 +90,20 @@ fn profile_status_bar(
         .filter(|g| !matches!(g.capsule, super::types::CapsuleAsset::Pending))
         .count();
 
-    if scanned_progress < total {
-        Some(
-            status_bar::<ProfileViewMessage>()
-                .scanning("Scanning library", scanned_progress, total)
-                .into(),
-        )
-    } else if loaded_capsules < total {
-        Some(
-            status_bar::<ProfileViewMessage>()
-                .scanning("Downloading capsules", loaded_capsules, total)
-                .into(),
-        )
-    } else {
-        Some(
-            status_bar::<ProfileViewMessage>()
-                .connected(total, "games", state.last_scan_completed_at)
-                .into(),
-        )
-    }
+    derive_status_bar(
+        StatusContext {
+            total,
+            noun: "games",
+            steam_running,
+            failed,
+            offline_cached_count: hydrated.max(total - failed),
+            last_sync: state.last_scan_completed_at,
+        },
+        &[
+            ("Scanning library", scanned_progress),
+            ("Downloading capsules", loaded_capsules),
+        ],
+    )
 }
 
 fn build_profile_section<'a>(

@@ -171,6 +171,8 @@ pub fn update(
 ) -> (Task<GameViewMessage>, GameViewEvent) {
     let worker = ctx.worker.as_ref();
     match message {
+        GameViewMessage::Noop => (Task::none(), GameViewEvent::None),
+
         GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
                 if row.data.permission != 0 {
@@ -334,27 +336,36 @@ pub fn update(
             state.stats.clear();
             state.reveal_queue.clear();
             state.recompute_derived();
+            let mut tasks: Vec<Task<GameViewMessage>> = Vec::new();
             if let Some(w) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                if let Err(e) = w.send_checked(
+                match w.dispatch_checked(
                     SteamRequest::RequestUserStats,
                     steam_running,
                     user_logged_in,
+                    GameViewMessage::Noop,
                 ) {
-                    surface_connectivity_error(ctx, e);
-                    return (Task::none(), GameViewEvent::None);
+                    Ok(t) => tasks.push(t),
+                    Err(e) => {
+                        surface_connectivity_error(ctx, e);
+                        return (Task::none(), GameViewEvent::None);
+                    }
                 }
-                if let Err(e) = w.send_checked(
+                match w.dispatch_checked(
                     SteamRequest::RequestGlobalPercentages,
                     steam_running,
                     user_logged_in,
+                    GameViewMessage::Noop,
                 ) {
-                    surface_connectivity_error(ctx, e);
-                    return (Task::none(), GameViewEvent::None);
+                    Ok(t) => tasks.push(t),
+                    Err(e) => {
+                        surface_connectivity_error(ctx, e);
+                        return (Task::none(), GameViewEvent::None);
+                    }
                 }
             }
-            (Task::none(), GameViewEvent::None)
+            (Task::batch(tasks), GameViewEvent::None)
         }
         GameViewMessage::ApplyClicked => {
             if state.cache_only || state.dirty_count() == 0 || state.has_stat_errors() {
@@ -387,7 +398,7 @@ pub fn update(
             if let Some(w) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                if let Err(e) = w.send_checked(
+                match w.dispatch_checked(
                     SteamRequest::ApplyChanges {
                         achievements_to_set: payload.achievements_to_set,
                         achievements_to_clear: payload.achievements_to_clear,
@@ -396,15 +407,19 @@ pub fn update(
                     },
                     steam_running,
                     user_logged_in,
+                    GameViewMessage::Noop,
                 ) {
-                    surface_connectivity_error(ctx, e);
-                    state.phase = GameViewPhase::Ready;
-                    return (
-                        Task::none(),
-                        GameViewEvent::AchievementsFullyLoaded {
-                            app_id: state.app_id,
-                        },
-                    );
+                    Ok(t) => return (t, GameViewEvent::None),
+                    Err(e) => {
+                        surface_connectivity_error(ctx, e);
+                        state.phase = GameViewPhase::Ready;
+                        return (
+                            Task::none(),
+                            GameViewEvent::AchievementsFullyLoaded {
+                                app_id: state.app_id,
+                            },
+                        );
+                    }
                 }
             }
             (Task::none(), GameViewEvent::None)

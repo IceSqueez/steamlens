@@ -56,11 +56,11 @@ mod tests {
     use tokio::sync::mpsc;
 
     #[tokio::test]
-    async fn send_checked_blocks_when_steam_not_running() {
+    async fn dispatch_checked_blocks_when_steam_not_running() {
         let (reply_tx, _reply_rx) = mpsc::unbounded_channel();
         let worker = SteamWorker::spawn(reply_tx);
         let err = worker
-            .send_checked(SteamRequest::RequestUserStats, false, true)
+            .dispatch_checked(SteamRequest::RequestUserStats, false, true, ())
             .unwrap_err();
         assert!(matches!(
             err,
