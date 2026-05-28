@@ -166,7 +166,6 @@ use std::collections::{HashSet, VecDeque};
 
 use iced::Task;
 
-use crate::profile_view::types::ProfileViewState;
 use crate::steam_worker::{SteamReply, SteamRequest};
 
 use types::{
@@ -296,8 +295,6 @@ pub struct GameViewState {
 
     pub error_message: String,
 
-    pub prev_profile_state: Box<ProfileViewState>,
-
     pub pending_icons: HashMap<String, steamlens_core::AchievementIcon>,
     pub pending_rarity_percent: Option<HashMap<String, f32>>,
 
@@ -340,7 +337,6 @@ impl GameViewState {
             fade_in: 0.0,
             rare_glow_phase: 0.0,
             error_message: String::new(),
-            prev_profile_state: Box::new(ProfileViewState::new()),
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
             capsule_handles: HashMap::new(),
@@ -351,11 +347,6 @@ impl GameViewState {
             playtime_minutes: None,
             cache_only: false,
         }
-    }
-
-    pub fn with_prev_profile(mut self, prev: Box<ProfileViewState>) -> Self {
-        self.prev_profile_state = prev;
-        self
     }
 
     pub fn dirty_count(&self) -> usize {
