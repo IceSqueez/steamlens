@@ -549,25 +549,37 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileView
             .into(),
 
         CapsuleAsset::Unavailable => {
-            container(text("no image").size(10).style(|t: &iced::Theme| {
-                iced::widget::text::Style {
-                    color: Some(palette(theme_from_iced(t)).text_muted),
-                }
-            }))
+            let label = entry.name.as_deref().unwrap_or("no image").to_owned();
+            container(
+                container(text(label).size(12).align_x(Alignment::Center).style(
+                    |t: &iced::Theme| iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_muted),
+                    },
+                ))
+                .width(Length::Fixed(capsule_w))
+                .height(Length::Fixed(capsule_h))
+                .padding(Padding::default().left(8).right(8))
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .style(|t: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(
+                        palette(theme_from_iced(t)).placeholder,
+                    )),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..iced::Border::default()
+                    },
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(2.0, 2.0),
+                        blur_radius: 4.0,
+                    },
+                    ..container::Style::default()
+                }),
+            )
             .width(Length::Fixed(card_w))
             .height(Length::Fixed(capsule_h))
             .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .style(|t: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(
-                    palette(theme_from_iced(t)).placeholder,
-                )),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            })
             .into()
         }
     };
