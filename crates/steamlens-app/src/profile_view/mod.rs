@@ -560,7 +560,7 @@ fn drain_progress_results(
     (task, event)
 }
 
-fn spawn_capsule_queue(
+pub(crate) fn spawn_capsule_queue(
     app_ids: Vec<u32>,
     size: CapsuleSize,
     app_assets: &HashMap<u32, steamlens_core::AppLibraryAssets>,
