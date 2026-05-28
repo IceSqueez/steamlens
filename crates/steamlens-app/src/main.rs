@@ -17,6 +17,7 @@ mod progress_scan;
 mod screen;
 mod settings;
 mod settings_commands;
+mod splash;
 mod splash_commands;
 mod steam_connectivity;
 mod steam_worker;
@@ -30,8 +31,8 @@ use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use iced::keyboard;
-use iced::widget::{column, container, text};
-use iced::{Color, Element, Subscription, Task};
+use iced::widget::column;
+use iced::{Element, Subscription, Task};
 
 use app_context::{AnimationState, AppContext, ConnectivityState};
 use cache::{CachedLibraryEntry, ClassifyResult, GameCacheEntry};
@@ -1673,7 +1674,7 @@ fn view(app: &App) -> Element<'_, Message> {
     let base = if ready {
         with_toasts
     } else {
-        splash_view(splash_status_text(app))
+        splash::splash_view(splash::splash_status_text(app))
     };
 
     if app.modals.about_open {
@@ -1687,65 +1688,6 @@ fn view(app: &App) -> Element<'_, Message> {
         iced::widget::stack![base, modal].into()
     } else {
         base
-    }
-}
-
-fn splash_status_text(app: &App) -> &'static str {
-    if !app.boot.splash_min_elapsed {
-        "starting up\u{2026}"
-    } else if !app.boot.probe_done {
-        "connecting to Steam\u{2026}"
-    } else if !app.boot.library_cache_resolved {
-        "loading library\u{2026}"
-    } else if !app.boot.cache_classified {
-        "reading cache\u{2026}"
-    } else {
-        "almost ready\u{2026}"
-    }
-}
-
-fn splash_view<'a>(status: &'static str) -> Element<'a, Message> {
-    let title = text("SteamLens")
-        .size(40)
-        .color(Color::from_rgb(0.741, 0.576, 0.976));
-    let subtitle = text(status)
-        .size(13)
-        .color(Color::from_rgba(0.7, 0.7, 0.78, 0.85));
-
-    let content = column![title, subtitle]
-        .spacing(8)
-        .align_x(iced::Alignment::Center);
-
-    container(content)
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .center_x(iced::Length::Fill)
-        .center_y(iced::Length::Fill)
-        .style(|_theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(Color::from_rgb(0.10, 0.08, 0.16))),
-            ..Default::default()
-        })
-        .into()
-}
-
-fn has_active_skeletons(app: &App) -> bool {
-    match &app.screen {
-        Screen::ProfileView(pv) => pv.games.iter().any(|g| !g.is_hydrated()),
-        Screen::GameView(state) => {
-            if state.cache_only {
-                return state.achievements.is_empty();
-            }
-            matches!(
-                state.phase,
-                game_view::GameViewPhase::Connecting | game_view::GameViewPhase::WaitingStats
-            ) || state.achievements.is_empty()
-                || state.achievements.iter().any(|r| {
-                    if r.is_spoiler_hidden() {
-                        return false;
-                    }
-                    r.data.icon.is_none() || r.rarity_percent.is_none()
-                })
-        }
     }
 }
 
@@ -1764,7 +1706,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let skeleton_sub = if has_active_skeletons(app) {
+    let skeleton_sub = if splash::has_active_skeletons(app) {
         iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::SkeletonTick)
     } else {
         Subscription::none()
@@ -3200,7 +3142,7 @@ mod tests {
     fn has_active_skeletons_true_for_game_view_waiting_stats() {
         let app = make_app_with_game_view_phase(game_view::GameViewPhase::WaitingStats);
         assert!(
-            has_active_skeletons(&app),
+            splash::has_active_skeletons(&app),
             "WaitingStats must activate skeleton subscription"
         );
     }
@@ -3209,7 +3151,7 @@ mod tests {
     fn has_active_skeletons_true_for_game_view_connecting() {
         let app = make_app_with_game_view_phase(game_view::GameViewPhase::Connecting);
         assert!(
-            has_active_skeletons(&app),
+            splash::has_active_skeletons(&app),
             "Connecting must activate skeleton subscription"
         );
     }
@@ -3238,7 +3180,7 @@ mod tests {
             state.achievements = vec![row];
         }
         assert!(
-            !has_active_skeletons(&app),
+            !splash::has_active_skeletons(&app),
             "Ready phase with hydrated achievements must NOT activate skeleton subscription"
         );
     }
