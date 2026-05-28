@@ -55,7 +55,29 @@ pub(crate) async fn classify_games_with_root(
 
     let cached_app_ids = scan_cached_app_ids(cache_root).await;
 
-    for game in game_summaries {
+    let mut load_set: tokio::task::JoinSet<(usize, Option<crate::cache::types::GameSummaryCache>)> =
+        tokio::task::JoinSet::new();
+    for (idx, game) in game_summaries.iter().enumerate() {
+        if !cached_app_ids.contains(&game.app_id) {
+            continue;
+        }
+        let path = cache_root
+            .join(game.app_id.to_string())
+            .join("summary.json");
+        load_set.spawn(async move { (idx, load_game_summary_from_path(&path).await) });
+    }
+
+    let mut loaded: std::collections::HashMap<
+        usize,
+        Option<crate::cache::types::GameSummaryCache>,
+    > = std::collections::HashMap::with_capacity(load_set.len());
+    while let Some(res) = load_set.join_next().await {
+        if let Ok((idx, summary)) = res {
+            loaded.insert(idx, summary);
+        }
+    }
+
+    for (idx, game) in game_summaries.iter().enumerate() {
         let app_id = game.app_id;
 
         if !cached_app_ids.contains(&app_id) {
@@ -64,8 +86,7 @@ pub(crate) async fn classify_games_with_root(
             continue;
         }
 
-        let summary_path = cache_root.join(app_id.to_string()).join("summary.json");
-        let Some(summary) = load_game_summary_from_path(&summary_path).await else {
+        let Some(Some(summary)) = loaded.remove(&idx) else {
             tracing::info!(
                 "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::SchemaVersion
