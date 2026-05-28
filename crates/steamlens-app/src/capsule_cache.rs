@@ -160,7 +160,7 @@ struct DecodedCapsule {
     is_placeholder: bool,
 }
 
-fn decode_jpeg(bytes: &[u8]) -> Option<DecodedCapsule> {
+fn decode_jpeg_sync(bytes: &[u8]) -> Option<DecodedCapsule> {
     let img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .ok()?
@@ -180,6 +180,13 @@ fn decode_jpeg(bytes: &[u8]) -> Option<DecodedCapsule> {
     })
 }
 
+async fn decode_jpeg_async(bytes: Vec<u8>) -> Option<DecodedCapsule> {
+    tokio::task::spawn_blocking(move || decode_jpeg_sync(&bytes))
+        .await
+        .ok()
+        .flatten()
+}
+
 async fn try_cache_candidate(
     app_id: u32,
     size: CapsuleSize,
@@ -196,10 +203,9 @@ async fn try_cache_candidate(
         }
     };
 
-    match decode_jpeg(&bytes) {
+    match decode_jpeg_async(bytes).await {
         Some(decoded) if !decoded.is_placeholder => {
             tracing::trace!(
-
                 app_id, %size, cache_key,
                 w = decoded.pixels.width, h = decoded.pixels.height,
                 "cache hit"
@@ -208,7 +214,6 @@ async fn try_cache_candidate(
         }
         Some(_) => {
             tracing::warn!(
-
                 app_id, %size, cache_key,
                 path = %path.display(),
                 "cached file decoded as grayscale placeholder; removing"
@@ -218,7 +223,6 @@ async fn try_cache_candidate(
         }
         None => {
             tracing::warn!(
-
                 app_id, %size, cache_key,
                 path = %path.display(),
                 "cached file failed to JPEG-decode; removing"
@@ -289,11 +293,11 @@ async fn try_http_candidate(
         }
     };
 
-    let decoded = match decode_jpeg(&bytes) {
+    let bytes_for_decode = bytes.to_vec();
+    let decoded = match decode_jpeg_async(bytes_for_decode).await {
         Some(d) => d,
         None => {
             tracing::warn!(
-
                 app_id, %url, bytes_len = bytes.len(),
                 "downloaded bytes failed JPEG decode"
             );
