@@ -18,6 +18,7 @@ mod screen;
 mod settings;
 mod settings_commands;
 mod splash_commands;
+mod steam_connectivity;
 mod steam_worker;
 mod timeouts;
 mod ui;
@@ -43,7 +44,7 @@ use steam_worker::{SteamReply, SteamRequest, SteamWorker};
 use steamlens_core::{ProbeError, ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 #[derive(Debug)]
-enum Screen {
+pub(crate) enum Screen {
     ProfileView(Box<ProfileViewState>),
     GameView(Box<GameViewState>),
 }
@@ -66,7 +67,7 @@ impl From<ProbeError> for ProbeFailure {
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+pub(crate) enum Message {
     GoBack,
     ProfileView(ProfileViewMessage),
     GameView(GameViewMessage),
@@ -116,12 +117,12 @@ struct Modals {
     about_open: bool,
 }
 
-struct App {
-    context: AppContext,
-    screen: Screen,
-    preserved_profile_state: Option<Box<ProfileViewState>>,
-    boot: BootStage,
-    modals: Modals,
+pub(crate) struct App {
+    pub(crate) context: AppContext,
+    pub(crate) screen: Screen,
+    pub(crate) preserved_profile_state: Option<Box<ProfileViewState>>,
+    pub(crate) boot: BootStage,
+    pub(crate) modals: Modals,
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
@@ -204,7 +205,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
                 go_back_to_profile(app);
             }
             disconnect_worker(app);
-            mark_steam_offline_and_warn(app);
+            steam_connectivity::mark_steam_offline_and_warn(app);
             return Task::none();
         }
 
@@ -237,55 +238,6 @@ fn disconnect_worker(app: &mut App) {
     }
     app.context.worker = None;
     app.context.worker_rx = None;
-}
-
-fn looks_like_steam_died(reason: &str) -> bool {
-    let r = reason.to_lowercase();
-    r.contains("steam client is not running")
-        || r.contains("steam is not running")
-        || r.contains("timed out waiting for userstatsreceived")
-        || r.contains("connect:")
-        || r.contains("unexpectedeof")
-        || r.contains("worker killed by signal")
-}
-
-#[derive(Debug, Clone, Copy)]
-enum SteamUnavailable {
-    NotRunning,
-    NotLoggedIn,
-}
-
-fn surface_steam_unavailable(ctx: &mut crate::app_context::AppContext, state: SteamUnavailable) {
-    let body: &'static str = match state {
-        SteamUnavailable::NotRunning => "Steam is not running \u{2014} reconnect to load live data",
-        SteamUnavailable::NotLoggedIn => {
-            "Steam is running but no user is signed in \u{2014} showing cached data"
-        }
-    };
-    if ctx.messaging.banners.iter().any(|b| b.body == body) {
-        return;
-    }
-    ctx.messaging
-        .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-    ctx.messaging.push_banner(
-        BannerSeverity::Warning,
-        body,
-        Some(messaging::BannerAction {
-            label: "Reconnect",
-            message: Message::RetrySteamConnect,
-        }),
-        false,
-    );
-}
-
-fn mark_steam_offline_and_warn(app: &mut App) {
-    app.context.connectivity.steam_running = Some(false);
-    if let Screen::ProfileView(pv_state) = &mut app.screen {
-        pv_state.progress_scanner = None;
-        pv_state.progress_rx = None;
-        pv_state.last_scan_completed_at = Some(std::time::Instant::now());
-    }
-    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
 
 fn current_pv_state_mut<'a>(
@@ -502,8 +454,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 Task::batch(tasks)
             } else if is_scan_failed {
                 if let Some((app_id, reason)) = scan_failed_details {
-                    if looks_like_steam_died(&reason) {
-                        mark_steam_offline_and_warn(app);
+                    if steam_connectivity::looks_like_steam_died(&reason) {
+                        steam_connectivity::mark_steam_offline_and_warn(app);
                     } else {
                         let name = app
                             .context
@@ -947,7 +899,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe: connectivity.user_logged_in = false");
 
-                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotLoggedIn);
+                    steam_connectivity::surface_steam_unavailable(
+                        &mut app.context,
+                        steam_connectivity::SteamUnavailable::NotLoggedIn,
+                    );
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
@@ -960,7 +915,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe: steam_running = false");
 
-                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
+                    steam_connectivity::surface_steam_unavailable(
+                        &mut app.context,
+                        steam_connectivity::SteamUnavailable::NotRunning,
+                    );
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
@@ -973,7 +931,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.context.steam_level = None;
                     tracing::warn!("probe failed: {reason}");
 
-                    surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
+                    steam_connectivity::surface_steam_unavailable(
+                        &mut app.context,
+                        steam_connectivity::SteamUnavailable::NotRunning,
+                    );
 
                     Task::batch([
                         cache::commands::load_profile_cache(),
