@@ -26,6 +26,7 @@ mod timeouts;
 mod ui;
 mod update_check;
 mod worker;
+mod worker_drain;
 mod worker_subprocess;
 
 use std::collections::{HashMap, VecDeque};
@@ -42,7 +43,7 @@ use messaging::{BannerSeverity, MessagingCenter, ToastKind};
 use profile_view::types::ProfileEvent;
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use settings::Settings;
-use steam_worker::{SteamReply, SteamRequest, SteamWorker};
+use steam_worker::SteamWorker;
 use steamlens_core::{ProbeError, ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 #[derive(Debug)]
@@ -190,56 +191,6 @@ fn spawn_local_profile_load() -> Task<Message> {
         },
         |profile| Message::LocalProfileLoaded(profile.map(Box::new)),
     )
-}
-
-fn drain_worker_replies(app: &mut App) -> Task<Message> {
-    let Some(rx) = &app.context.worker_rx else {
-        return Task::none();
-    };
-
-    let replies: Vec<SteamReply> = rx.try_iter().collect();
-    let mut tasks: Vec<Task<Message>> = Vec::new();
-
-    for reply in replies {
-        if let SteamReply::ConnectFailed(reason) = &reply {
-            tracing::error!("worker: connect failed: {reason}");
-            if matches!(app.screen, Screen::GameView(_)) {
-                routing::go_back_to_profile(app);
-            }
-            disconnect_worker(app);
-            steam_connectivity::mark_steam_offline_and_warn(app);
-            return Task::none();
-        }
-
-        if let SteamReply::Connected { .. } = &reply
-            && let Some(w) = &app.context.worker
-        {
-            w.send(SteamRequest::RequestUserStats);
-            w.send(SteamRequest::RequestGlobalPercentages);
-        }
-
-        let Screen::GameView(state) = &mut app.screen else {
-            continue;
-        };
-
-        let t =
-            game_view::handle_steam_reply(state, reply, &mut app.context).map(Message::GameView);
-        tasks.push(t);
-    }
-
-    if tasks.is_empty() {
-        Task::none()
-    } else {
-        Task::batch(tasks)
-    }
-}
-
-pub(crate) fn disconnect_worker(app: &mut App) {
-    if let Some(w) = &app.context.worker {
-        w.send(SteamRequest::Disconnect);
-    }
-    app.context.worker = None;
-    app.context.worker_rx = None;
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -650,7 +601,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             routing::dispatch_game_event(app, task, event)
         }
 
-        Message::PollWorker => drain_worker_replies(app),
+        Message::PollWorker => worker_drain::drain_worker_replies(app),
 
         Message::SettingsFlushTick => {
             if let Some(since) = app.context.settings_dirty_since
