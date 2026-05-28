@@ -1,11 +1,64 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-rc.1] - 2026-05-28
+### ⚡ Performance
+- *(cache)* Parallelize per-game summary reads during classify
+- *(capsule)* Offload JPEG decode to tokio blocking pool for real parallelism
+- *(cache)* Increase timeout for game information loading
+
+### 🐛 Bug Fixes
+- *(ui)* Detect Steam grayscale placeholder capsules
+- *(ui)* Render "no image" placeholder in game-view widget on capsule fetch failure
+- *(ui)* Preload app_assets in parallel with probe to avoid capsule fetch race
+- *(ui)* Throttle parallel capsule HTTP fetches to avoid TLS storm
+- *(ui)* Retry capsule HTTP send once on transport error
+- *(ui)* Prefer library_hero over legacy header_image as landscape fallback
+- *(ui)* Try landscape capsule candidates in order until one returns real artwork
+- *(ui)* Scan capsule cache across all candidates before any HTTP attempt
+- *(capsule)* Drop tracing target override so logs match STEAMLENS_LOG whitelist
+- *(logging)* Whitelist loader target so steamclient.dll diagnostics are visible
+- *(cache)* Refetch capsule artwork after game cache is invalidated
+- *(ui)* Snap capsule shadow to rendered image size instead of slot bounds
+
+### 📚 Documentation
+- *(readme)* Clarify intent as collector tool, not cheat utility
+- *(readme)* Polish feature bullets clarity
+
+### 🚀 Features
+- *(core)* Load library_assets_full hashes from appinfo.vdf at boot
+- *(ui)* Fetch capsules via Steam's hashed CDN paths
+
+### 🚜 Refactor
+- *(assets)* Rename image to Steam-Library terminology
+- *(app)* Move impl Debug for GameViewState from main.rs to game_view module
+- *(app)* Hoist preserved profile state out of GameViewState into App
+- *(app)* Group boot flags into BootStage and modals into Modals sub-structs
+- *(app)* Bundle cache and messaging variants into Cache/Messaging sub-enums
+- *(app)* Extract steam_connectivity module from main.rs
+- *(app)* Extract splash module from main.rs
+- *(app)* Extract routing module from main.rs
+- *(app)* Extract worker_drain module from main.rs
+- *(app)* Extract game_view_seed module from main.rs
+- *(app)* Extract boot module from main.rs
+- *(ui)* Split monolithic widgets/widget.rs into 7 cohesive sub-modules
+- *(game_view)* Split monolithic types.rs into 5 cohesive sub-modules
+- *(profile_view)* Split monolithic types.rs into 5 cohesive sub-modules
+- *(worker)* Split monolithic worker.rs subprocess binary into 7 cohesive sub-modules
+- *(steam_worker)* Split monolithic steam_worker.rs into 5 cohesive sub-modules
+- *(cache)* Split monolithic store.rs into 5 cohesive sub-modules
+- *(game_view)* Split monolithic view.rs into mod/grid/card/footer_modal
+- *(profile_view)* Split monolithic view.rs into mod/card/card_parts/dims
+- *(game_view)* Split monolithic mod.rs into mod/state/messages/header/update
+- *(app)* Extract update() message arms into update_handlers module
+- *(ui)* Extract shared compute_grid into ui::grid
+
 ## [1.0.0-beta.3] - 2026-05-13
 ### ⚙️ Miscellaneous Tasks
 - *(timeouts)* Bump cache invalidate grace to 30s and stats timeout to 10s
 - *(profile)* Drop account_name field and rename persona_name -> nickname
 - *(core)* Drop STEAMLENS_STEAM_ROOT env override
+- Release
 
 ### ⚡ Performance
 - *(app)* Off-load game-view cache seed to spawn_blocking
@@ -26,6 +79,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(readme)* Updates readme, adds troubleshooting section
+- *(release)* Release v1.0.0-beta.3
 
 ### 🚀 Features
 - *(ffi)* Upgrade ISteamUtils to v010 and ISteamUser to v023 with MSVC ABI (#11)
