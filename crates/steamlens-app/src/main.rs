@@ -14,6 +14,7 @@ mod messaging;
 mod paths;
 mod profile_view;
 mod progress_scan;
+mod routing;
 mod screen;
 mod settings;
 mod settings_commands;
@@ -36,7 +37,7 @@ use iced::{Element, Subscription, Task};
 
 use app_context::{AnimationState, AppContext, ConnectivityState};
 use cache::{CachedLibraryEntry, ClassifyResult, GameCacheEntry};
-use game_view::{GameViewEvent, GameViewMessage, GameViewState};
+use game_view::{GameViewMessage, GameViewState};
 use messaging::{BannerSeverity, MessagingCenter, ToastKind};
 use profile_view::types::ProfileEvent;
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
@@ -203,7 +204,7 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
         if let SteamReply::ConnectFailed(reason) = &reply {
             tracing::error!("worker: connect failed: {reason}");
             if matches!(app.screen, Screen::GameView(_)) {
-                go_back_to_profile(app);
+                routing::go_back_to_profile(app);
             }
             disconnect_worker(app);
             steam_connectivity::mark_steam_offline_and_warn(app);
@@ -233,159 +234,12 @@ fn drain_worker_replies(app: &mut App) -> Task<Message> {
     }
 }
 
-fn disconnect_worker(app: &mut App) {
+pub(crate) fn disconnect_worker(app: &mut App) {
     if let Some(w) = &app.context.worker {
         w.send(SteamRequest::Disconnect);
     }
     app.context.worker = None;
     app.context.worker_rx = None;
-}
-
-fn current_pv_state_mut<'a>(
-    screen: &'a mut Screen,
-    preserved: &'a mut Option<Box<ProfileViewState>>,
-) -> &'a mut ProfileViewState {
-    match screen {
-        Screen::ProfileView(state) => state.as_mut(),
-        Screen::GameView(_) => preserved
-            .as_mut()
-            .expect("GameView screen must have preserved profile state")
-            .as_mut(),
-    }
-}
-
-fn dispatch_game_event(app: &mut App, task: Task<Message>, event: GameViewEvent) -> Task<Message> {
-    match event {
-        GameViewEvent::None => task,
-        GameViewEvent::AchievementsFullyLoaded { app_id } => {
-            Task::batch([task, Task::done(Message::PersistGameSummary(app_id))])
-        }
-        GameViewEvent::GoBack => {
-            go_back_to_profile(app);
-            task
-        }
-        GameViewEvent::InvalidateCache { app_id } => {
-            Task::batch([task, Task::done(Message::InvalidateGameCache(app_id))])
-        }
-    }
-}
-
-fn go_back_to_profile(app: &mut App) {
-    disconnect_worker(app);
-    if let Some(mut prev) = app.preserved_profile_state.take() {
-        prev.search.clear();
-        app.screen = Screen::ProfileView(prev);
-    }
-}
-
-fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
-    let prev = if let Screen::ProfileView(pv_state) = std::mem::replace(
-        &mut app.screen,
-        Screen::ProfileView(Box::new(ProfileViewState::new())),
-    ) {
-        pv_state
-    } else {
-        Box::new(ProfileViewState::new())
-    };
-    app.preserved_profile_state = Some(prev);
-
-    let steam_off = app.context.connectivity.steam_running == Some(false);
-
-    let mut state = GameViewState::new(app_id);
-    state.achievement_sort = app.context.settings.manager.sort;
-    state.rarity_tier_set = app
-        .context
-        .settings
-        .manager
-        .rarity_tiers
-        .iter()
-        .copied()
-        .collect();
-    state.include_hidden = app.context.settings.manager.include_hidden;
-
-    let mut tasks: Vec<Task<Message>> = Vec::new();
-
-    if !app.context.steam_root.as_os_str().is_empty() {
-        tasks.push(spawn_steam_state_refresh(
-            app.context.steam_root.clone(),
-            app.context.steamid3,
-            app.context.steam_state_mtime,
-        ));
-    }
-
-    if let Some(cached) = app.context.cached_entries.get(&app_id) {
-        state.expected_total = cached.progress.total;
-        state.genre = cached.genre.clone();
-        state.playtime_minutes = cached.playtime_minutes;
-        if !cached.achievements.is_empty() {
-            tasks.push(spawn_seed_task(app_id, cached.clone()));
-        }
-    }
-    if state.playtime_minutes.is_none() {
-        state.playtime_minutes = app
-            .context
-            .steam_state
-            .get(&app_id)
-            .and_then(|s| s.playtime_minutes);
-    }
-
-    if steam_off {
-        if state.achievements.is_empty() && !app.context.cached_entries.contains_key(&app_id) {
-            tasks.push(Task::perform(
-                cache::store::load_game_cache(app_id),
-                move |entry| {
-                    Message::Cache(cache::CacheEvent::OfflineLoaded {
-                        app_id,
-                        entry: entry.map(Box::new),
-                    })
-                },
-            ));
-        }
-        disconnect_worker(app);
-        state.cache_only = true;
-        state.phase = game_view::GameViewPhase::Ready;
-    } else {
-        disconnect_worker(app);
-        let (worker, rx) = SteamWorker::spawn();
-        worker.send(SteamRequest::ConnectWithApp(app_id));
-        app.context.worker = Some(worker);
-        app.context.worker_rx = Some(rx);
-    }
-
-    let portrait_assets = app
-        .context
-        .app_assets
-        .get(&app_id)
-        .cloned()
-        .unwrap_or_default();
-    tasks.push(Task::perform(
-        capsule_cache::fetch_capsule(
-            app_id,
-            capsule_cache::CapsuleSize::Portrait,
-            portrait_assets,
-        ),
-        move |result| match result {
-            Ok((size, pixels)) => {
-                let handle = iced::widget::image::Handle::from_rgba(
-                    pixels.width,
-                    pixels.height,
-                    pixels.rgba,
-                );
-                Message::GameView(GameViewMessage::CapsuleLoaded {
-                    app_id,
-                    size,
-                    handle,
-                    width: pixels.width,
-                    height: pixels.height,
-                })
-            }
-            Err((size, _)) => Message::GameView(GameViewMessage::CapsuleFailed { app_id, size }),
-        },
-    ));
-
-    app.screen = Screen::GameView(Box::new(state));
-
-    Task::batch(tasks)
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -396,7 +250,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         },
 
         Message::ProfileView(msg) => {
-            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
             let is_scan_complete = matches!(msg, ProfileViewMessage::ScanComplete(_));
             let is_scan_failed = matches!(msg, ProfileViewMessage::ScanFailed { .. });
@@ -425,8 +280,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                 let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
 
-                let pv_state =
-                    current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+                let pv_state = routing::current_pv_state_mut(
+                    &mut app.screen,
+                    &mut app.preserved_profile_state,
+                );
                 if !pv_state.library_name_map.is_empty() {
                     let name_map = std::mem::take(&mut pv_state.library_name_map);
                     for game in &mut pv_state.games {
@@ -489,7 +346,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             match event {
                 ProfileEvent::None => extra,
                 ProfileEvent::OpenGame(app_id) => {
-                    let open_task = open_game_view(app, app_id);
+                    let open_task = routing::open_game_view(app, app_id);
                     Task::batch([extra, open_task])
                 }
                 ProfileEvent::ToggleGamePin(id) => {
@@ -542,7 +399,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_off = app.context.connectivity.steam_running == Some(false);
 
-            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
             if !dirty.is_empty() && !steam_off {
                 pv_state.scan_target_count = dirty.len();
@@ -734,7 +592,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_on = app.context.connectivity.steam_running == Some(true);
 
-            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = None;
                 entry.capsule = profile_view::types::CapsuleAsset::Pending;
@@ -770,7 +629,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return Task::none();
                 }
             }
-            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             let size = pv_state.capsule_size;
             profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.app_assets)
                 .map(Message::ProfileView)
@@ -787,7 +647,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let (task, event) = game_view::update(state, m, &mut app.context);
             let task = task.map(Message::GameView);
-            dispatch_game_event(app, task, event)
+            routing::dispatch_game_event(app, task, event)
         }
 
         Message::PollWorker => drain_worker_replies(app),
@@ -1094,7 +954,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             &mut app.context,
                         );
                         let task = task.map(Message::GameView);
-                        return dispatch_game_event(app, task, event);
+                        return routing::dispatch_game_event(app, task, event);
                     }
                     _ => {}
                 }
@@ -1127,16 +987,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     &mut app.context,
                 );
                 let task = task.map(Message::GameView);
-                dispatch_game_event(app, task, event)
+                routing::dispatch_game_event(app, task, event)
             }
         },
 
         Message::GlobalSortChanged(sort) => {
-            route_to_profile(app, ProfileViewMessage::SortChanged(sort))
+            routing::route_to_profile(app, ProfileViewMessage::SortChanged(sort))
         }
 
         Message::GlobalCapsuleSizeChanged(size) => {
-            route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
+            routing::route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
         }
 
         Message::ShowAbout => {
@@ -1264,14 +1124,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-fn route_to_profile(app: &mut App, msg: ProfileViewMessage) -> Task<Message> {
-    let Screen::ProfileView(state) = &mut app.screen else {
-        return Task::none();
-    };
-    let (task, _event) = profile_view::update(state, msg, &mut app.context);
-    task.map(Message::ProfileView)
-}
-
 fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
     use game_view::compute_tier_breakdown;
     use game_view::types::{AchievementData, AchievementRow};
@@ -1375,7 +1227,7 @@ fn spawn_app_assets_load() -> Task<Message> {
     )
 }
 
-fn spawn_steam_state_refresh(
+pub(crate) fn spawn_steam_state_refresh(
     steam_root: std::path::PathBuf,
     steamid3: u64,
     known_mtime: Option<std::time::SystemTime>,
@@ -1398,7 +1250,7 @@ fn spawn_steam_state_refresh(
     )
 }
 
-fn spawn_seed_task(app_id: u32, cached: GameCacheEntry) -> Task<Message> {
+pub(crate) fn spawn_seed_task(app_id: u32, cached: GameCacheEntry) -> Task<Message> {
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || compute_seed_from_cache(&cached))
