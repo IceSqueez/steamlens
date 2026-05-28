@@ -60,6 +60,14 @@ fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
     }
 }
 
+fn fit_contain(natural_w: f32, natural_h: f32, max_w: f32, max_h: f32) -> (f32, f32) {
+    if natural_w <= 0.0 || natural_h <= 0.0 {
+        return (max_w, max_h);
+    }
+    let scale = (max_w / natural_w).min(max_h / natural_h);
+    (natural_w * scale, natural_h * scale)
+}
+
 fn capsule_dims(size: CapsuleSize) -> (f32, f32) {
     match size {
         CapsuleSize::Small => (120.0, 45.0),
@@ -513,25 +521,34 @@ fn build_hydrated_card<'a>(p: HydratedCardParams<'a>) -> Element<'a, ProfileView
         hovered_tier,
     } = p;
     let capsule_area: Element<'_, ProfileViewMessage> = match &entry.capsule {
-        CapsuleAsset::Loaded { handle, .. } => container(
+        CapsuleAsset::Loaded {
+            handle,
+            width,
+            height,
+        } => {
+            let (rendered_w, rendered_h) =
+                fit_contain(*width as f32, *height as f32, capsule_w, capsule_h);
             container(
-                img_widget(handle.clone())
-                    .width(Length::Fixed(capsule_w))
-                    .height(Length::Fixed(capsule_h)),
+                container(
+                    img_widget(handle.clone())
+                        .width(Length::Fixed(rendered_w))
+                        .height(Length::Fixed(rendered_h)),
+                )
+                .style(|_: &iced::Theme| container::Style {
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(2.0, 2.0),
+                        blur_radius: 4.0,
+                    },
+                    ..container::Style::default()
+                }),
             )
-            .style(|_: &iced::Theme| container::Style {
-                shadow: iced::Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                    offset: iced::Vector::new(2.0, 2.0),
-                    blur_radius: 4.0,
-                },
-                ..container::Style::default()
-            }),
-        )
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(capsule_h))
-        .align_x(Alignment::Center)
-        .into(),
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .into()
+        }
 
         CapsuleAsset::Pending => container(iced::widget::Space::new())
             .width(Length::Fixed(card_w))
