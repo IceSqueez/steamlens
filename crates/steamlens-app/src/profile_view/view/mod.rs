@@ -11,9 +11,7 @@ use iced::{Alignment, Element, Length, Padding};
 use crate::cache::GameCacheEntry;
 use crate::profile_view::ProfileViewState;
 use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase};
-use crate::profile_view::widget::{
-    ProfileWidgetParams, compute_profile_summary, profile_widget, top6_closest_to_complete,
-};
+use crate::profile_view::widget::{ProfileWidgetParams, profile_widget};
 use crate::ui::theme::{palette, theme_from_iced};
 
 use card::build_card;
@@ -39,7 +37,6 @@ pub fn render<'a>(
         state,
         props.user_profile,
         props.avatar_handle,
-        props.cached_entries,
         props.skeleton_phase,
         props.steam_level,
     );
@@ -47,11 +44,15 @@ pub fn render<'a>(
     let body: Element<'_, ProfileViewMessage> = match &state.phase {
         ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
         ProfileViewPhase::Loaded => {
-            let visible = state.visible_games(props.pinned);
-
-            if visible.is_empty() {
+            if state.derived.visible_indices.is_empty() {
                 center_text("No games found.")
             } else {
+                let visible: Vec<&GameEntry> = state
+                    .derived
+                    .visible_indices
+                    .iter()
+                    .map(|&i| &state.games[i])
+                    .collect();
                 build_grid(
                     state,
                     visible,
@@ -129,17 +130,14 @@ fn build_profile_section<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
-    cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     steam_level: Option<u32>,
 ) -> Element<'a, ProfileViewMessage> {
-    let summary = compute_profile_summary(cached_entries);
-    let top6 = top6_closest_to_complete(&state.games, cached_entries);
     profile_widget(ProfileWidgetParams {
         user_profile,
         avatar_handle,
-        summary,
-        top6,
+        summary: state.derived.summary,
+        top6: state.derived.top6.clone(),
         games_count: state.games.len(),
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,

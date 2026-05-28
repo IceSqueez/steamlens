@@ -2,7 +2,7 @@ use iced::widget::{button, column, container, responsive, row, scrollable, space
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use super::card::achievement_card_widget;
-use crate::game_view::types::{AchievementRow, BulkOp, compute_tier_map, visible_achievement_ids};
+use crate::game_view::types::{AchievementRow, BulkOp};
 use crate::game_view::{GameViewMessage, GameViewState};
 use crate::ui::grid::compute_grid;
 use crate::ui::theme::{palette, theme_from_iced};
@@ -90,29 +90,16 @@ pub(super) fn achievement_list(
         return build_skeleton_ach_grid(state, skeleton_phase);
     }
 
-    let visible_ids = visible_achievement_ids(
-        &state.achievements,
-        state.filter,
-        &state.search_query,
-        state.achievement_sort,
-        &state.rarity_tier_set,
-        state.include_hidden,
-    );
-
-    let by_id: std::collections::HashMap<&str, &AchievementRow> = state
-        .achievements
+    let cards: Vec<&AchievementRow> = state
+        .derived
+        .visible_indices
         .iter()
-        .map(|r| (r.data.id.as_str(), r))
-        .collect();
-
-    let cards: Vec<&AchievementRow> = visible_ids
-        .iter()
-        .filter_map(|id| by_id.get(id).copied())
+        .map(|&i| &state.achievements[i])
         .collect();
 
     let query_owned = state.search_query.clone();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
-    let tier_map = compute_tier_map(&state.achievements);
+    let tier_map = &state.derived.tier_map;
     let cache_only = state.cache_only;
 
     let grid = responsive(move |size| {

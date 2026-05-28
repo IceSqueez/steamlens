@@ -1,12 +1,22 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
+use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
+use crate::profile_view::widget::{compute_profile_summary, top6_closest_to_complete};
+use crate::ui::widgets::widget::WidgetSummary;
 
-use super::entries::{CapsuleAsset, GameEntry, StoredCapsule};
+use super::entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 use super::filters::{GameStatusFilter, LibrarySort};
-use super::sort::sort_entries;
+use super::sort::cmp_by_sort;
+
+#[derive(Debug, Default)]
+pub struct DerivedProfileView {
+    pub visible_indices: Vec<usize>,
+    pub summary: WidgetSummary,
+    pub top6: Vec<TopEntry>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProfileViewPhase {
@@ -37,6 +47,7 @@ pub struct ProfileViewState {
     pub last_scan_completed_at: Option<Instant>,
     pub scan_started_at: Option<Instant>,
     pub scan_target_count: usize,
+    pub derived: DerivedProfileView,
 }
 
 impl std::fmt::Debug for ProfileViewState {
@@ -74,7 +85,30 @@ impl ProfileViewState {
             last_scan_completed_at: None,
             scan_started_at: None,
             scan_target_count: 0,
+            derived: DerivedProfileView::default(),
         }
+    }
+
+    pub fn recompute_derived(
+        &mut self,
+        cached_entries: &HashMap<u32, GameCacheEntry>,
+        pinned: &[u32],
+    ) {
+        let visible_indices = compute_visible_indices(
+            &self.games,
+            &self.search,
+            self.status_filter,
+            &self.genre_filter,
+            self.sort,
+            pinned,
+        );
+        let summary = compute_profile_summary(cached_entries);
+        let top6 = top6_closest_to_complete(&self.games, cached_entries);
+        self.derived = DerivedProfileView {
+            visible_indices,
+            summary,
+            top6,
+        };
     }
 
     pub fn is_streaming(&self) -> bool {
@@ -84,59 +118,19 @@ impl ProfileViewState {
             || self.progress_scanner.is_some()
     }
 
+    #[cfg(test)]
     pub fn visible_games<'a>(&'a self, pinned: &[u32]) -> Vec<&'a GameEntry> {
-        let query = self.search.to_lowercase();
-        let status = self.status_filter;
-        let genre_filter = &self.genre_filter;
-
-        let mut result: Vec<&GameEntry> = self
-            .games
-            .iter()
-            .filter(|g| {
-                if !query.is_empty()
-                    && !g
-                        .name
-                        .as_deref()
-                        .map(|n| n.to_lowercase().contains(&query))
-                        .unwrap_or(false)
-                {
-                    return false;
-                }
-
-                let status_ok = match status {
-                    GameStatusFilter::All => true,
-                    GameStatusFilter::Started => g
-                        .progress
-                        .as_ref()
-                        .map(|p| p.earned > 0 && p.earned < p.total)
-                        .unwrap_or(false),
-                    GameStatusFilter::Completed => g
-                        .progress
-                        .as_ref()
-                        .map(|p| p.total > 0 && p.earned == p.total)
-                        .unwrap_or(false),
-                    GameStatusFilter::NotStarted => {
-                        g.progress.as_ref().map(|p| p.earned == 0).unwrap_or(true)
-                    }
-                };
-                if !status_ok {
-                    return false;
-                }
-
-                if !genre_filter.is_empty() {
-                    return g
-                        .genre
-                        .as_deref()
-                        .map(|genre_str| genre_filter.contains(genre_str))
-                        .unwrap_or(false);
-                }
-
-                true
-            })
-            .collect();
-
-        sort_entries(&mut result, self.sort, pinned);
-        result
+        compute_visible_indices(
+            &self.games,
+            &self.search,
+            self.status_filter,
+            &self.genre_filter,
+            self.sort,
+            pinned,
+        )
+        .into_iter()
+        .map(|i| &self.games[i])
+        .collect()
     }
 
     pub fn available_genres(&self) -> Vec<String> {
@@ -178,6 +172,79 @@ impl ProfileViewState {
                 .unwrap_or(true),
         }
     }
+}
+
+fn compute_visible_indices(
+    games: &[GameEntry],
+    search: &str,
+    status: GameStatusFilter,
+    genre_filter: &HashSet<String>,
+    sort: LibrarySort,
+    pinned: &[u32],
+) -> Vec<usize> {
+    let query = search.to_lowercase();
+    let mut indices: Vec<usize> = games
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| {
+            if !query.is_empty()
+                && !g
+                    .name
+                    .as_deref()
+                    .map(|n| n.to_lowercase().contains(&query))
+                    .unwrap_or(false)
+            {
+                return false;
+            }
+
+            let status_ok = match status {
+                GameStatusFilter::All => true,
+                GameStatusFilter::Started => g
+                    .progress
+                    .as_ref()
+                    .map(|p| p.earned > 0 && p.earned < p.total)
+                    .unwrap_or(false),
+                GameStatusFilter::Completed => g
+                    .progress
+                    .as_ref()
+                    .map(|p| p.total > 0 && p.earned == p.total)
+                    .unwrap_or(false),
+                GameStatusFilter::NotStarted => {
+                    g.progress.as_ref().map(|p| p.earned == 0).unwrap_or(true)
+                }
+            };
+            if !status_ok {
+                return false;
+            }
+
+            if !genre_filter.is_empty() {
+                return g
+                    .genre
+                    .as_deref()
+                    .map(|genre_str| genre_filter.contains(genre_str))
+                    .unwrap_or(false);
+            }
+
+            true
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    indices.sort_by(|&ia, &ib| {
+        let a = &games[ia];
+        let b = &games[ib];
+        let pa = pinned.iter().position(|&pid| pid == a.app_id);
+        let pb = pinned.iter().position(|&pid| pid == b.app_id);
+        match (pa, pb) {
+            (Some(ipa), Some(ipb)) => return ipa.cmp(&ipb),
+            (Some(_), None) => return std::cmp::Ordering::Less,
+            (None, Some(_)) => return std::cmp::Ordering::Greater,
+            (None, None) => {}
+        }
+        cmp_by_sort(a, b, sort)
+    });
+
+    indices
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

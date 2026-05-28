@@ -12,7 +12,9 @@ use crate::ui::widgets::widget::{
 };
 
 use super::GameViewMessage;
-use super::types::{AchievementRow, RarityTier, compute_tier_map};
+#[cfg(test)]
+use super::types::compute_tier_map;
+use super::types::{AchievementRow, RarityTier};
 use crate::profile_view::types::StoredCapsule;
 
 static SVG_CLOCK: LazyLock<svg::Handle> = LazyLock::new(|| {
@@ -34,8 +36,16 @@ static SVG_INVALIDATE: LazyLock<svg::Handle> = LazyLock::new(|| {
 const CAPSULE_SLOT_W: f32 = 184.0;
 const CAPSULE_SLOT_H: f32 = 276.0;
 const CAPSULE_RADIUS: f32 = 10.0;
+#[cfg(test)]
 pub fn compute_game_summary(achievements: &[AchievementRow]) -> WidgetSummary {
     let tier_map = compute_tier_map(achievements);
+    compute_game_summary_with_tier_map(achievements, &tier_map)
+}
+
+pub fn compute_game_summary_with_tier_map(
+    achievements: &[AchievementRow],
+    tier_map: &HashMap<String, RarityTier>,
+) -> WidgetSummary {
     let mut s = WidgetSummary {
         earned_total: achievements.iter().filter(|r| r.data.is_achieved).count() as u32,
         achievement_total: achievements.len() as u32,
@@ -63,18 +73,16 @@ pub struct GameWidgetParams<'a> {
     pub game_name: &'a str,
     pub genre: Option<&'a str>,
     pub playtime_minutes: Option<u32>,
-    pub achievements: &'a [AchievementRow],
     pub stats: &'a [super::types::StatRow],
     pub stats_search_query: &'a str,
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub capsule_unavailable: &'a HashSet<(u32, CapsuleSize)>,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
+    pub summary: WidgetSummary,
 }
 
 pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMessage> {
-    let summary = compute_game_summary(params.achievements);
-
     let capsule_el = build_capsule(
         params.app_id,
         params.capsule_handles,
@@ -86,7 +94,7 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
         params.game_name,
         params.genre,
         params.playtime_minutes,
-        &summary,
+        &params.summary,
         params.hovered_bar_slice,
     );
     let left_content: Element<'a, GameViewMessage> = row![capsule_el, inner_col]

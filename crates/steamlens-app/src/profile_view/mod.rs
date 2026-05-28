@@ -214,6 +214,7 @@ pub fn update(
             state.progress_scanner = None;
             state.progress_rx = None;
             state.phase = ProfileViewPhase::Loaded;
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
 
             let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
             (
@@ -226,12 +227,14 @@ pub fn update(
 
         ProfileViewMessage::SearchChanged(query) => {
             state.search = query;
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::SortChanged(sort) => {
             let _ = ctx.update_settings(|s| s.library.sort = sort);
             state.sort = sort;
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -307,6 +310,7 @@ pub fn update(
         } => {
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
+                state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             }
             (Task::none(), ProfileEvent::None)
         }
@@ -327,6 +331,7 @@ pub fn update(
             state.last_scan_completed_at = Some(now);
             state.progress_scanner = None;
             state.progress_rx = None;
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -410,10 +415,15 @@ pub fn update(
 
         ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
 
-        ProfileViewMessage::DrainProgressResults => drain_progress_results(state, ctx),
+        ProfileViewMessage::DrainProgressResults => {
+            let result = drain_progress_results(state, ctx);
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            result
+        }
 
         ProfileViewMessage::StatusFilterChanged(filter) => {
             state.status_filter = filter;
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -423,11 +433,13 @@ pub fn update(
             } else {
                 state.genre_filter.insert(genre);
             }
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::GenreFilterCleared => {
             state.genre_filter.clear();
+            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
     }

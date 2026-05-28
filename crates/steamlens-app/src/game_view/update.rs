@@ -4,9 +4,7 @@ use iced::Task;
 
 use super::messages::{GameViewEvent, GameViewMessage};
 use super::state::{GameViewPhase, GameViewState, compute_tier_breakdown};
-use super::types::{
-    AchievementRow, BulkOp, StatRow, StatValue, build_apply_payload, visible_achievement_ids,
-};
+use super::types::{AchievementRow, BulkOp, StatRow, StatValue, build_apply_payload};
 use crate::steam_worker::{SteamReply, SteamRequest};
 
 const MANAGER_FADE_DELTA: f32 = 0.2;
@@ -100,6 +98,7 @@ pub fn handle_steam_reply(
                 .collect();
 
             state.tier_breakdown = compute_tier_breakdown(&state.achievements);
+            state.recompute_derived();
 
             Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
@@ -122,6 +121,7 @@ pub fn handle_steam_reply(
                 }
             }
             state.phase = GameViewPhase::Ready;
+            state.recompute_derived();
             ctx.messaging.push_toast(
                 crate::messaging::ToastKind::Success,
                 "Changes saved to Steam".to_owned(),
@@ -158,6 +158,7 @@ pub fn handle_steam_reply(
                     }
                 }
                 state.tier_breakdown = compute_tier_breakdown(&state.achievements);
+                state.recompute_derived();
                 Task::done(GameViewMessage::AchievementsFullyLoaded)
             }
         }
@@ -182,12 +183,14 @@ pub fn update(
                     );
                 } else {
                     row.is_dirty = !row.is_dirty;
+                    state.recompute_derived();
                 }
             }
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::FilterChanged(f) => {
             state.filter = f;
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityTierToggled(tier) => {
@@ -202,6 +205,7 @@ pub fn update(
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::HiddenPillToggled => {
@@ -212,6 +216,7 @@ pub fn update(
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityFilterCleared => {
@@ -221,16 +226,19 @@ pub fn update(
                 s.manager.rarity_tiers = Vec::new();
                 s.manager.include_hidden = false;
             });
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::AchievementSortChanged(s) => {
             let sort = s;
             let _ = ctx.update_settings(|s| s.manager.sort = sort);
             state.achievement_sort = s;
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::SearchChanged(q) => {
             state.search_query = q;
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatsSearchChanged(q) => {
@@ -297,23 +305,14 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::BulkAction(op) => {
-            let visible: std::collections::HashSet<String> = visible_achievement_ids(
-                &state.achievements,
-                state.filter,
-                &state.search_query,
-                state.achievement_sort,
-                &state.rarity_tier_set,
-                state.include_hidden,
-            )
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect();
+            let visible: std::collections::HashSet<usize> =
+                state.derived.visible_indices.iter().copied().collect();
 
-            for row in &mut state.achievements {
+            for (i, row) in state.achievements.iter_mut().enumerate() {
                 if row.data.permission != 0 {
                     continue;
                 }
-                if !visible.contains(&row.data.id) {
+                if !visible.contains(&i) {
                     continue;
                 }
                 match op {
@@ -328,6 +327,7 @@ pub fn update(
                     }
                 }
             }
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ReloadRequested => {
@@ -335,6 +335,7 @@ pub fn update(
             state.achievements.clear();
             state.stats.clear();
             state.reveal_queue.clear();
+            state.recompute_derived();
             if let Some(w) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
@@ -420,6 +421,7 @@ pub fn update(
                 row.is_dirty = false;
                 row.edit_error = None;
             }
+            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RevealHidden(id) => {
@@ -440,6 +442,7 @@ pub fn update(
                 && let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id)
             {
                 row.appeared = true;
+                state.recompute_derived();
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -508,6 +511,7 @@ pub fn update(
                 state.achievements = seeded.achievements;
                 state.stats = seeded.stats;
                 state.reveal_queue.clear();
+                state.recompute_derived();
             }
             (Task::none(), GameViewEvent::None)
         }

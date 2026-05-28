@@ -15,7 +15,7 @@ pub(crate) fn sort_games_in_place(games: &mut [GameEntry], sort: LibrarySort, pi
     });
 }
 
-fn cmp_by_sort(a: &GameEntry, b: &GameEntry, sort: LibrarySort) -> std::cmp::Ordering {
+pub(super) fn cmp_by_sort(a: &GameEntry, b: &GameEntry, sort: LibrarySort) -> std::cmp::Ordering {
     is_skeleton(a)
         .cmp(&is_skeleton(b))
         .then_with(|| match sort {
@@ -45,77 +45,12 @@ fn cmp_by_sort(a: &GameEntry, b: &GameEntry, sort: LibrarySort) -> std::cmp::Ord
         })
 }
 
-pub(super) fn sort_entries(entries: &mut Vec<&GameEntry>, sort: LibrarySort, pinned: &[u32]) {
-    if pinned.is_empty() {
-        sort_by_mode(entries, sort);
-        return;
-    }
-
-    let (mut pinned_entries, mut rest): (Vec<&GameEntry>, Vec<&GameEntry>) =
-        entries.iter().partition(|g| pinned.contains(&g.app_id));
-
-    pinned_entries.sort_by_key(|g| {
-        pinned
-            .iter()
-            .position(|&pid| pid == g.app_id)
-            .unwrap_or(usize::MAX)
-    });
-
-    sort_by_mode(&mut rest, sort);
-
-    *entries = pinned_entries.into_iter().chain(rest).collect();
-}
-
 fn entry_name(entry: &GameEntry) -> &str {
     entry.name.as_deref().unwrap_or("")
 }
 
 fn is_skeleton(entry: &GameEntry) -> bool {
     entry.progress.is_none()
-}
-
-fn sort_by_mode(entries: &mut Vec<&GameEntry>, sort: LibrarySort) {
-    match sort {
-        LibrarySort::LastPlayed => {
-            entries.sort_by(|a, b| {
-                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
-                    match (a.last_played, b.last_played) {
-                        (Some(ta), Some(tb)) => tb.cmp(&ta),
-                        (Some(_), None) => std::cmp::Ordering::Less,
-                        (None, Some(_)) => std::cmp::Ordering::Greater,
-                        (None, None) => entry_name(a)
-                            .to_lowercase()
-                            .cmp(&entry_name(b).to_lowercase()),
-                    }
-                })
-            });
-        }
-        LibrarySort::NameAsc => {
-            entries.sort_by(|a, b| {
-                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
-                    entry_name(a)
-                        .to_lowercase()
-                        .cmp(&entry_name(b).to_lowercase())
-                })
-            });
-        }
-        LibrarySort::Completion => {
-            entries.sort_by(|a, b| {
-                is_skeleton(a).cmp(&is_skeleton(b)).then_with(|| {
-                    let pct_b = completion_pct(b);
-                    let pct_a = completion_pct(a);
-                    pct_b
-                        .partial_cmp(&pct_a)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| {
-                            entry_name(a)
-                                .to_lowercase()
-                                .cmp(&entry_name(b).to_lowercase())
-                        })
-                })
-            });
-        }
-    }
 }
 
 fn completion_pct(entry: &GameEntry) -> f32 {

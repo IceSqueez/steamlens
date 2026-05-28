@@ -14,8 +14,6 @@ pub use state::{GameViewPhase, GameViewState, SeededGameView};
 pub use update::{handle_steam_reply, update};
 pub use view::{GameViewProps, achievement_search_id};
 
-use types::compute_tier_map;
-
 pub fn view(
     state: &GameViewState,
     props: view::GameViewProps,
@@ -54,14 +52,7 @@ pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage
         iced::Subscription::none()
     };
 
-    let tier_map = compute_tier_map(&state.achievements);
-    let has_legendary = state.phase == GameViewPhase::Ready
-        && state.achievements.iter().any(|r| {
-            r.appeared
-                && tier_map
-                    .get(&r.data.id)
-                    .is_some_and(|&t| t == types::RarityTier::Legendary)
-        });
+    let has_legendary = state.phase == GameViewPhase::Ready && state.derived.has_legendary_visible;
     let glow_sub = if has_legendary {
         time::every(std::time::Duration::from_millis(40)).map(|_| GameViewMessage::RareGlowTick)
     } else {

@@ -52,6 +52,7 @@ mod tests {
             last_scan_completed_at: None,
             scan_started_at: None,
             scan_target_count: 0,
+            derived: Default::default(),
         }
     }
 

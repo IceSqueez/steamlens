@@ -67,6 +67,10 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             );
             tasks.push(cache::commands::write_library_cache(cached));
         }
+        pv_state.recompute_derived(
+            &app.context.cached_entries,
+            &app.context.settings.library.pinned,
+        );
 
         Task::batch(tasks)
     } else if is_scan_failed {
@@ -114,6 +118,10 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
                     s.library.pinned.push(id);
                 }
             });
+            let pinned = app.context.settings.library.pinned.clone();
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            pv_state.recompute_derived(&app.context.cached_entries, &pinned);
             Task::batch([extra, pin_task])
         }
         ProfileEvent::DrainedProgress {
@@ -189,6 +197,7 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
 
 pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
     const HITS_PER_TICK: usize = 8;
+    let mut touched = false;
     for _ in 0..HITS_PER_TICK {
         let Some(hit) = app.context.pending_hit_queue.pop_front() else {
             break;
@@ -207,6 +216,13 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
             game.genre = entry.genre.clone();
         }
         app.context.cached_entries.insert(hit.app_id, entry);
+        touched = true;
+    }
+    if touched {
+        let pinned = app.context.settings.library.pinned.clone();
+        let pv_state =
+            routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+        pv_state.recompute_derived(&app.context.cached_entries, &pinned);
     }
     Task::none()
 }
@@ -289,6 +305,13 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         .cached_entries
         .insert(app_id, full_entry.clone());
 
+    let pinned = app.context.settings.library.pinned.clone();
+    let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+
+    let Screen::GameView(gv_state) = &app.screen else {
+        return Task::none();
+    };
     let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = gv_state
         .achievements
         .iter()
@@ -339,6 +362,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
 
+    let pinned = app.context.settings.library.pinned.clone();
     let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
     if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
         entry.progress = None;
@@ -350,6 +374,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
         pv_state.progress_rx = scanner.take_receiver();
         pv_state.progress_scanner = Some(scanner);
     }
+    pv_state.recompute_derived(&app.context.cached_entries, &pinned);
 
     cache::commands::invalidate_game_cache(app_id, name)
 }

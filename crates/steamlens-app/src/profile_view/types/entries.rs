@@ -65,6 +65,7 @@ impl std::fmt::Debug for GameEntry {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TopEntry {
     pub app_id: u32,
     pub game_name: String,

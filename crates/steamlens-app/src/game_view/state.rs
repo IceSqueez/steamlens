@@ -2,8 +2,18 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::types::{
     AchievementFilter, AchievementRow, AchievementSort, RarityTier, StatRow, compute_tier_map,
-    dirty_count, has_stat_errors,
+    dirty_count, has_stat_errors, visible_achievement_indices,
 };
+use super::widget::compute_game_summary_with_tier_map;
+use crate::ui::widgets::widget::WidgetSummary;
+
+#[derive(Debug, Default)]
+pub struct DerivedGameView {
+    pub tier_map: HashMap<String, RarityTier>,
+    pub visible_indices: Vec<usize>,
+    pub summary: WidgetSummary,
+    pub has_legendary_visible: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct SeededGameView {
@@ -74,6 +84,8 @@ pub struct GameViewState {
     pub playtime_minutes: Option<u32>,
 
     pub cache_only: bool,
+
+    pub derived: DerivedGameView,
 }
 
 impl GameViewState {
@@ -107,7 +119,34 @@ impl GameViewState {
             genre: None,
             playtime_minutes: None,
             cache_only: false,
+            derived: DerivedGameView::default(),
         }
+    }
+
+    pub fn recompute_derived(&mut self) {
+        let tier_map = compute_tier_map(&self.achievements);
+        let visible_indices = visible_achievement_indices(
+            &self.achievements,
+            &tier_map,
+            self.filter,
+            &self.search_query,
+            self.achievement_sort,
+            &self.rarity_tier_set,
+            self.include_hidden,
+        );
+        let summary = compute_game_summary_with_tier_map(&self.achievements, &tier_map);
+        let has_legendary_visible = self.achievements.iter().any(|r| {
+            r.appeared
+                && tier_map
+                    .get(&r.data.id)
+                    .is_some_and(|&t| t == RarityTier::Legendary)
+        });
+        self.derived = DerivedGameView {
+            tier_map,
+            visible_indices,
+            summary,
+            has_legendary_visible,
+        };
     }
 
     pub fn dirty_count(&self) -> usize {

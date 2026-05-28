@@ -66,13 +66,13 @@ fn build_rarity_tier_strip(
     use crate::ui::widgets::pill::pill;
     use iced::widget::{Space, row, text};
     use iced::{Alignment, Color, Length};
-    use types::{RarityTier, compute_tier_map};
+    use types::RarityTier;
 
     const TIER_PILL_RADIUS: f32 = 14.0;
     const TIER_PILL_PAD_H: u32 = 9;
     const TIER_PILL_PAD_V: u32 = 4;
 
-    let tier_map = compute_tier_map(&state.achievements);
+    let tier_map = &state.derived.tier_map;
     let hidden_count = state
         .achievements
         .iter()

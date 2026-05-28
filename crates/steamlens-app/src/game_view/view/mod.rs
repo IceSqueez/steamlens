@@ -106,13 +106,13 @@ fn loaded_view(
         game_name: state.game_name.as_str(),
         genre: state.genre.as_deref(),
         playtime_minutes: state.playtime_minutes,
-        achievements: state.achievements.as_slice(),
         stats: state.stats.as_slice(),
         stats_search_query: state.stats_search_query.as_str(),
         capsule_handles: &state.capsule_handles,
         capsule_unavailable: &state.capsule_unavailable,
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
+        summary: state.derived.summary,
     });
     let body = achievements_tab(state, skeleton_phase, app_theme);
 

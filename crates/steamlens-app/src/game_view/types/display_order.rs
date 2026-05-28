@@ -2,7 +2,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use super::filters::{AchievementFilter, AchievementSort};
-use super::rarity::{RarityTier, compute_tier_map};
+use super::rarity::RarityTier;
+#[cfg(test)]
+use super::rarity::compute_tier_map;
 use super::rows::AchievementRow;
 
 fn display_group(row: &AchievementRow) -> u8 {
@@ -26,78 +28,20 @@ fn tier_rank(tier: Option<RarityTier>) -> u8 {
     }
 }
 
-fn sort_for_display<'a>(
-    rows: Vec<&'a AchievementRow>,
+pub fn visible_achievement_indices(
+    achievements: &[AchievementRow],
     tier_map: &HashMap<String, RarityTier>,
-    sort: AchievementSort,
-) -> Vec<&'a AchievementRow> {
-    let mut sorted = rows;
-    match sort {
-        AchievementSort::UnlockChance => {
-            sorted.sort_by(|a, b| {
-                display_group(a)
-                    .cmp(&display_group(b))
-                    .then_with(|| {
-                        let pa = a.rarity_percent;
-                        let pb = b.rarity_percent;
-                        match (pa, pb) {
-                            (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(Ordering::Equal),
-                            (Some(_), None) => Ordering::Less,
-                            (None, Some(_)) => Ordering::Greater,
-                            (None, None) => Ordering::Equal,
-                        }
-                    })
-                    .then_with(|| {
-                        a.data
-                            .display_name
-                            .to_lowercase()
-                            .cmp(&b.data.display_name.to_lowercase())
-                    })
-            });
-        }
-        AchievementSort::RarityAndName => {
-            sorted.sort_by(|a, b| {
-                display_group(a)
-                    .cmp(&display_group(b))
-                    .then_with(|| {
-                        tier_rank(tier_map.get(&a.data.id).copied())
-                            .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
-                    })
-                    .then_with(|| {
-                        a.data
-                            .display_name
-                            .to_lowercase()
-                            .cmp(&b.data.display_name.to_lowercase())
-                    })
-            });
-        }
-        AchievementSort::Name => {
-            sorted.sort_by(|a, b| {
-                display_group(a).cmp(&display_group(b)).then_with(|| {
-                    a.data
-                        .display_name
-                        .to_lowercase()
-                        .cmp(&b.data.display_name.to_lowercase())
-                })
-            });
-        }
-    }
-    sorted
-}
-
-pub fn visible_achievement_ids<'a>(
-    achievements: &'a [AchievementRow],
     filter: AchievementFilter,
     search: &str,
     sort: AchievementSort,
     rarity_tier_set: &std::collections::HashSet<RarityTier>,
     include_hidden: bool,
-) -> Vec<&'a str> {
-    let tier_map = compute_tier_map(achievements);
+) -> Vec<usize> {
     let query = search.to_lowercase();
-    let filtered: Vec<&AchievementRow> = achievements
+    let mut filtered: Vec<(usize, &AchievementRow)> = achievements
         .iter()
-        .filter(|row| {
+        .enumerate()
+        .filter(|(_, row)| {
             if !row.appeared {
                 return false;
             }
@@ -127,10 +71,89 @@ pub fn visible_achievement_ids<'a>(
             filter_ok && search_ok && rarity_ok
         })
         .collect();
-    sort_for_display(filtered, &tier_map, sort)
-        .into_iter()
-        .map(|row| row.data.id.as_str())
-        .collect()
+    sort_indexed_for_display(&mut filtered, tier_map, sort);
+    filtered.into_iter().map(|(i, _)| i).collect()
+}
+
+fn sort_indexed_for_display(
+    rows: &mut [(usize, &AchievementRow)],
+    tier_map: &HashMap<String, RarityTier>,
+    sort: AchievementSort,
+) {
+    match sort {
+        AchievementSort::UnlockChance => {
+            rows.sort_by(|(_, a), (_, b)| {
+                display_group(a)
+                    .cmp(&display_group(b))
+                    .then_with(|| {
+                        let pa = a.rarity_percent;
+                        let pb = b.rarity_percent;
+                        match (pa, pb) {
+                            (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(Ordering::Equal),
+                            (Some(_), None) => Ordering::Less,
+                            (None, Some(_)) => Ordering::Greater,
+                            (None, None) => Ordering::Equal,
+                        }
+                    })
+                    .then_with(|| {
+                        a.data
+                            .display_name
+                            .to_lowercase()
+                            .cmp(&b.data.display_name.to_lowercase())
+                    })
+            });
+        }
+        AchievementSort::RarityAndName => {
+            rows.sort_by(|(_, a), (_, b)| {
+                display_group(a)
+                    .cmp(&display_group(b))
+                    .then_with(|| {
+                        tier_rank(tier_map.get(&a.data.id).copied())
+                            .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
+                    })
+                    .then_with(|| {
+                        a.data
+                            .display_name
+                            .to_lowercase()
+                            .cmp(&b.data.display_name.to_lowercase())
+                    })
+            });
+        }
+        AchievementSort::Name => {
+            rows.sort_by(|(_, a), (_, b)| {
+                display_group(a).cmp(&display_group(b)).then_with(|| {
+                    a.data
+                        .display_name
+                        .to_lowercase()
+                        .cmp(&b.data.display_name.to_lowercase())
+                })
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+pub fn visible_achievement_ids<'a>(
+    achievements: &'a [AchievementRow],
+    filter: AchievementFilter,
+    search: &str,
+    sort: AchievementSort,
+    rarity_tier_set: &std::collections::HashSet<RarityTier>,
+    include_hidden: bool,
+) -> Vec<&'a str> {
+    let tier_map = compute_tier_map(achievements);
+    visible_achievement_indices(
+        achievements,
+        &tier_map,
+        filter,
+        search,
+        sort,
+        rarity_tier_set,
+        include_hidden,
+    )
+    .into_iter()
+    .map(|i| achievements[i].data.id.as_str())
+    .collect()
 }
 
 #[cfg(test)]
