@@ -4,6 +4,7 @@
 )]
 
 mod app_context;
+mod boot;
 mod cache;
 mod capsule_cache;
 mod capsule_commands;
@@ -30,21 +31,19 @@ mod worker;
 mod worker_drain;
 mod worker_subprocess;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::time::Duration;
 
 use iced::keyboard;
 use iced::widget::column;
 use iced::{Element, Subscription, Task};
 
-use app_context::{AnimationState, AppContext, ConnectivityState};
+use app_context::{AppContext, ConnectivityState};
 use cache::{CachedLibraryEntry, ClassifyResult};
 use game_view::{GameViewMessage, GameViewState};
-use messaging::{BannerSeverity, MessagingCenter, ToastKind};
+use messaging::{BannerSeverity, ToastKind};
 use profile_view::types::ProfileEvent;
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
-use settings::Settings;
-use steam_worker::SteamWorker;
 use steamlens_core::{ProbeError, ProbedProfile, STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 #[derive(Debug)]
@@ -127,71 +126,6 @@ pub(crate) struct App {
     pub(crate) preserved_profile_state: Option<Box<ProfileViewState>>,
     pub(crate) boot: BootStage,
     pub(crate) modals: Modals,
-}
-
-fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
-    let mut pv_state = ProfileViewState::new();
-    pv_state.sort = loaded_settings.library.sort;
-
-    let (worker, rx) = SteamWorker::spawn();
-
-    let context = AppContext {
-        worker: Some(worker),
-        worker_rx: Some(rx),
-        settings: loaded_settings,
-        settings_dirty_since: None,
-        messaging: MessagingCenter::new(),
-        cached_entries: HashMap::new(),
-        pending_hit_queue: VecDeque::new(),
-        steam_root: std::path::PathBuf::new(),
-        steamid3: 0,
-        user_profile: None,
-        profile_avatar_handle: None,
-        connectivity: ConnectivityState::default(),
-        steam_level: None,
-        no_ach_cache: cache::load_no_achievements_cache_blocking(),
-        steam_state: HashMap::new(),
-        steam_state_mtime: None,
-        app_assets: HashMap::new(),
-        animation: AnimationState {
-            skeleton_phase: 0.0,
-        },
-    };
-    tracing::info!(
-        "no_ach: cache loaded with {} entries",
-        context.no_ach_cache.entries.len()
-    );
-
-    let app = App {
-        context,
-        screen: Screen::ProfileView(Box::new(pv_state)),
-        preserved_profile_state: None,
-        boot: BootStage::default(),
-        modals: Modals::default(),
-    };
-
-    (
-        app,
-        Task::batch([
-            splash_commands::min_splash_wait(),
-            splash_commands::probe_steam_boot(),
-            spawn_local_profile_load(),
-            spawn_app_assets_load(),
-            Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
-        ]),
-    )
-}
-
-fn spawn_local_profile_load() -> Task<Message> {
-    Task::perform(
-        async {
-            tokio::task::spawn_blocking(|| steamlens_core::load_local_profile().ok())
-                .await
-                .ok()
-                .flatten()
-        },
-        |profile| Message::LocalProfileLoaded(profile.map(Box::new)),
-    )
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -676,7 +610,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                     let mut tasks: Vec<Task<Message>> = Vec::new();
 
-                    tasks.push(spawn_steam_state_refresh(
+                    tasks.push(boot::spawn_steam_state_refresh(
                         app.context.steam_root.clone(),
                         app.context.steamid3,
                         app.context.steam_state_mtime,
@@ -1079,43 +1013,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     }
 }
 
-fn spawn_app_assets_load() -> Task<Message> {
-    Task::perform(
-        async {
-            tokio::task::spawn_blocking(steamlens_core::discover_app_assets)
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "app_assets load task panicked");
-                    HashMap::new()
-                })
-        },
-        Message::AppAssetsLoaded,
-    )
-}
-
-pub(crate) fn spawn_steam_state_refresh(
-    steam_root: std::path::PathBuf,
-    steamid3: u64,
-    known_mtime: Option<std::time::SystemTime>,
-) -> Task<Message> {
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || {
-                let current_mtime = steamlens_core::read_steam_state_mtime(&steam_root, steamid3);
-                if current_mtime.is_some() && current_mtime == known_mtime {
-                    return None;
-                }
-                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, steamid3);
-                Some((map, mtime))
-            })
-            .await
-            .ok()
-            .flatten()
-        },
-        Message::SteamStateRefreshed,
-    )
-}
-
 fn open_url_in_browser(url: &str) {
     #[cfg(target_os = "linux")]
     let cmd = std::process::Command::new("xdg-open").arg(url).spawn();
@@ -1310,23 +1207,31 @@ fn main() -> iced::Result {
     const WINDOW_ICON_BYTES: &[u8] = include_bytes!("../../../assets/icon-256.png");
     let window_icon = iced::window::icon::from_file_data(WINDOW_ICON_BYTES, None).ok();
 
-    iced::application(move || boot_with_settings(loaded.clone()), update, view)
-        .title("SteamLens")
-        .theme(theme)
-        .subscription(subscription)
-        .window(iced::window::Settings {
-            size: iced::Size::new(window_w.max(896.0), window_h.max(504.0)),
-            min_size: Some(iced::Size::new(896.0, 504.0)),
-            icon: window_icon,
-            ..iced::window::Settings::default()
-        })
-        .run()
+    iced::application(
+        move || boot::boot_with_settings(loaded.clone()),
+        update,
+        view,
+    )
+    .title("SteamLens")
+    .theme(theme)
+    .subscription(subscription)
+    .window(iced::window::Settings {
+        size: iced::Size::new(window_w.max(896.0), window_h.max(504.0)),
+        min_size: Some(iced::Size::new(896.0, 504.0)),
+        icon: window_icon,
+        ..iced::window::Settings::default()
+    })
+    .run()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_context::AnimationState;
     use crate::cache::{CachedLibrary, CachedProfile};
+    use crate::messaging::MessagingCenter;
+    use crate::settings::Settings;
+    use std::collections::VecDeque;
 
     impl Default for App {
         fn default() -> Self {
@@ -1371,7 +1276,7 @@ mod tests {
 
     #[tokio::test]
     async fn boot_starts_in_profile_view() {
-        let (app, _task) = boot_with_settings(Settings::default());
+        let (app, _task) = boot::boot_with_settings(Settings::default());
         assert!(matches!(app.screen, Screen::ProfileView(_)));
         assert!(
             app.context.worker.is_some(),

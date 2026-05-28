@@ -75,7 +75,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     let mut tasks: Vec<Task<Message>> = Vec::new();
 
     if !app.context.steam_root.as_os_str().is_empty() {
-        tasks.push(crate::spawn_steam_state_refresh(
+        tasks.push(crate::boot::spawn_steam_state_refresh(
             app.context.steam_root.clone(),
             app.context.steamid3,
             app.context.steam_state_mtime,
