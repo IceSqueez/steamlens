@@ -123,15 +123,25 @@ enum Message {
     AppAssetsLoaded(HashMap<u32, steamlens_core::AppLibraryAssets>),
 }
 
-struct App {
-    context: AppContext,
-    screen: Screen,
-    preserved_profile_state: Option<Box<ProfileViewState>>,
+#[derive(Default)]
+struct BootStage {
     splash_min_elapsed: bool,
     library_cache_resolved: bool,
     cache_classified: bool,
     probe_done: bool,
+}
+
+#[derive(Default)]
+struct Modals {
     about_open: bool,
+}
+
+struct App {
+    context: AppContext,
+    screen: Screen,
+    preserved_profile_state: Option<Box<ProfileViewState>>,
+    boot: BootStage,
+    modals: Modals,
 }
 
 fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
@@ -171,11 +181,8 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
         context,
         screen: Screen::ProfileView(Box::new(pv_state)),
         preserved_profile_state: None,
-        splash_min_elapsed: false,
-        library_cache_resolved: false,
-        cache_classified: false,
-        probe_done: false,
-        about_open: false,
+        boot: BootStage::default(),
+        modals: Modals::default(),
     };
 
     (
@@ -474,7 +481,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let task = task.map(Message::ProfileView);
 
             let extra = if is_scan_complete {
-                app.library_cache_resolved = true;
+                app.boot.library_cache_resolved = true;
                 tracing::info!("library_cache_resolved = true (ScanComplete)");
                 let games = enumerated_games.unwrap_or_default();
                 let steam_root = app.context.steam_root.clone();
@@ -585,7 +592,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::CacheClassified(result) => {
-            app.cache_classified = true;
+            app.boot.cache_classified = true;
             tracing::info!("cache_classified = true (CacheClassified)");
 
             let ClassifyResult {
@@ -868,7 +875,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::SplashMinElapsed => {
-            app.splash_min_elapsed = true;
+            app.boot.splash_min_elapsed = true;
             Task::none()
         }
 
@@ -881,7 +888,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ProbeResult(result) => {
-            app.probe_done = true;
+            app.boot.probe_done = true;
             match result {
                 Ok(p) => {
                     app.context.connectivity.steam_running = Some(true);
@@ -1046,7 +1053,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Screen::ProfileView(pv_state) = &mut app.screen {
                 pv_state.library_name_map = name_map;
             }
-            app.library_cache_resolved = true;
+            app.boot.library_cache_resolved = true;
             tracing::info!("library_cache_resolved = true (LibraryCacheLoaded)");
             Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
                 summary,
@@ -1124,7 +1131,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 ..
             } = event
             {
-                if app.about_open {
+                if app.modals.about_open {
                     return Task::done(Message::DismissAbout);
                 }
                 match &mut app.screen {
@@ -1189,12 +1196,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ShowAbout => {
-            app.about_open = true;
+            app.modals.about_open = true;
             Task::none()
         }
 
         Message::DismissAbout => {
-            app.about_open = false;
+            app.modals.about_open = false;
             Task::none()
         }
 
@@ -1716,17 +1723,17 @@ fn view(app: &App) -> Element<'_, Message> {
 
     let with_toasts = messaging::wrap_with_toasts(shell, &app.context.messaging);
 
-    let ready = app.splash_min_elapsed
-        && app.library_cache_resolved
-        && app.cache_classified
-        && app.probe_done;
+    let ready = app.boot.splash_min_elapsed
+        && app.boot.library_cache_resolved
+        && app.boot.cache_classified
+        && app.boot.probe_done;
     let base = if ready {
         with_toasts
     } else {
         splash_view(splash_status_text(app))
     };
 
-    if app.about_open {
+    if app.modals.about_open {
         let modal = ui::about_modal::about_modal(
             Message::DismissAbout,
             Message::OpenUrl("https://github.com/IceSqueez/steamlens".to_owned()),
@@ -1741,13 +1748,13 @@ fn view(app: &App) -> Element<'_, Message> {
 }
 
 fn splash_status_text(app: &App) -> &'static str {
-    if !app.splash_min_elapsed {
+    if !app.boot.splash_min_elapsed {
         "starting up\u{2026}"
-    } else if !app.probe_done {
+    } else if !app.boot.probe_done {
         "connecting to Steam\u{2026}"
-    } else if !app.library_cache_resolved {
+    } else if !app.boot.library_cache_resolved {
         "loading library\u{2026}"
-    } else if !app.cache_classified {
+    } else if !app.boot.cache_classified {
         "reading cache\u{2026}"
     } else {
         "almost ready\u{2026}"
@@ -1950,11 +1957,13 @@ mod tests {
                 },
                 screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
                 preserved_profile_state: None,
-                splash_min_elapsed: true,
-                library_cache_resolved: true,
-                cache_classified: true,
-                probe_done: true,
-                about_open: false,
+                boot: BootStage {
+                    splash_min_elapsed: true,
+                    library_cache_resolved: true,
+                    cache_classified: true,
+                    probe_done: true,
+                },
+                modals: Modals::default(),
             }
         }
     }
@@ -1973,11 +1982,8 @@ mod tests {
         App {
             screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
             preserved_profile_state: None,
-            splash_min_elapsed: false,
-            library_cache_resolved: false,
-            cache_classified: false,
-            probe_done: false,
-            about_open: false,
+            boot: BootStage::default(),
+            modals: Modals::default(),
             context: AppContext {
                 connectivity: ConnectivityState::default(),
                 user_profile: None,
@@ -2002,7 +2008,7 @@ mod tests {
 
         assert_eq!(app.context.connectivity.steam_running, Some(true));
         assert_eq!(app.context.connectivity.user_logged_in, Some(true));
-        assert!(app.probe_done);
+        assert!(app.boot.probe_done);
         let profile = app
             .context
             .user_profile
@@ -2033,7 +2039,7 @@ mod tests {
         );
 
         assert_eq!(app.context.connectivity.steam_running, Some(false));
-        assert!(app.probe_done);
+        assert!(app.boot.probe_done);
         let profile = app
             .context
             .user_profile
@@ -2057,7 +2063,7 @@ mod tests {
         );
 
         assert_eq!(app.context.connectivity.steam_running, None);
-        assert!(app.probe_done);
+        assert!(app.boot.probe_done);
         assert!(
             app.context.user_profile.is_none(),
             "no profile should remain None on probe error without disk fallback"
@@ -2065,10 +2071,10 @@ mod tests {
     }
 
     fn splash_visible(app: &App) -> bool {
-        !(app.splash_min_elapsed
-            && app.library_cache_resolved
-            && app.cache_classified
-            && app.probe_done)
+        !(app.boot.splash_min_elapsed
+            && app.boot.library_cache_resolved
+            && app.boot.cache_classified
+            && app.boot.probe_done)
     }
 
     #[test]
@@ -2076,31 +2082,31 @@ mod tests {
         let mut app = make_app_probing();
         assert!(splash_visible(&app), "all four pending → splash visible");
 
-        app.splash_min_elapsed = true;
+        app.boot.splash_min_elapsed = true;
         assert!(splash_visible(&app), "only min-elapsed → splash visible");
 
-        app.library_cache_resolved = true;
+        app.boot.library_cache_resolved = true;
         assert!(
             splash_visible(&app),
             "min+library but no classify+probe → splash visible"
         );
 
-        app.cache_classified = true;
+        app.boot.cache_classified = true;
         assert!(
             splash_visible(&app),
             "min+library+classify but no probe → splash visible"
         );
 
-        app.probe_done = true;
+        app.boot.probe_done = true;
         assert!(!splash_visible(&app), "all four done → splash hidden");
     }
 
     #[test]
     fn splash_hidden_only_after_library_cache_classify_and_probe_resolve() {
         let mut app = make_app_probing();
-        app.splash_min_elapsed = true;
-        app.library_cache_resolved = true;
-        app.cache_classified = true;
+        app.boot.splash_min_elapsed = true;
+        app.boot.library_cache_resolved = true;
+        app.boot.cache_classified = true;
         assert!(splash_visible(&app), "missing probe → still visible");
 
         let _t = update(
@@ -2108,7 +2114,7 @@ mod tests {
             Message::ProbeResult(Err(ProbeFailure::SteamNotRunning)),
         );
         assert!(
-            app.probe_done,
+            app.boot.probe_done,
             "probe_done must be set immediately on ProbeResult"
         );
         assert!(
@@ -2120,16 +2126,19 @@ mod tests {
     #[test]
     fn splash_does_not_dismiss_on_probe_failure_until_library_cache_loaded() {
         let mut app = make_app_probing();
-        app.splash_min_elapsed = true;
+        app.boot.splash_min_elapsed = true;
 
         let _t = update(
             &mut app,
             Message::ProbeResult(Err(ProbeFailure::SteamNotRunning)),
         );
 
-        assert!(app.probe_done, "probe_done must be set on ProbeResult(Err)");
         assert!(
-            !app.library_cache_resolved,
+            app.boot.probe_done,
+            "probe_done must be set on ProbeResult(Err)"
+        );
+        assert!(
+            !app.boot.library_cache_resolved,
             "library_cache_resolved must NOT be set synchronously on probe failure"
         );
         assert!(
@@ -2151,7 +2160,7 @@ mod tests {
         let _t2 = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
 
         assert!(
-            app.library_cache_resolved,
+            app.boot.library_cache_resolved,
             "library_cache_resolved must be set after LibraryCacheLoaded"
         );
         assert!(
@@ -2164,7 +2173,7 @@ mod tests {
             Message::CacheClassified(crate::cache::ClassifyResult::default()),
         );
         assert!(
-            app.cache_classified,
+            app.boot.cache_classified,
             "cache_classified must be set after CacheClassified"
         );
         assert!(
