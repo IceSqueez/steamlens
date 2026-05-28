@@ -7,8 +7,9 @@ use image::{ColorType, ImageReader};
 use steamlens_core::{AppLibraryAssets, ImageAsset};
 use tokio::fs;
 
-const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_CONCURRENT_HTTP_FETCHES: usize = 8;
 
 fn http_client() -> Option<&'static reqwest::Client> {
     static CLIENT: OnceLock<Option<reqwest::Client>> = OnceLock::new();
@@ -30,6 +31,11 @@ fn http_client() -> Option<&'static reqwest::Client> {
             }
         })
         .as_ref()
+}
+
+fn http_semaphore() -> &'static tokio::sync::Semaphore {
+    static SEM: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    SEM.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_HTTP_FETCHES))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -200,6 +206,11 @@ pub async fn fetch_capsule(
     };
 
     let url = cdn_url(app_id, asset);
+
+    let _permit = http_semaphore()
+        .acquire()
+        .await
+        .expect("capsule HTTP semaphore never closed");
 
     match client.get(&url).send().await {
         Ok(response) => {

@@ -191,8 +191,6 @@ use types::{
     StoredCapsule,
 };
 
-const MAX_CONCURRENT_DOWNLOADS: usize = 8;
-
 pub fn update(
     state: &mut ProfileViewState,
     message: ProfileViewMessage,
@@ -567,25 +565,13 @@ fn spawn_capsule_queue(
     size: CapsuleSize,
     app_assets: &HashMap<u32, steamlens_core::AppLibraryAssets>,
 ) -> Task<ProfileViewMessage> {
-    let chunks: Vec<Vec<u32>> = app_ids
-        .chunks(MAX_CONCURRENT_DOWNLOADS)
-        .map(|c| c.to_vec())
-        .collect();
-
-    let tasks: Vec<Task<ProfileViewMessage>> = chunks
+    let tasks: Vec<Task<ProfileViewMessage>> = app_ids
         .into_iter()
-        .map(|chunk| {
-            let batch: Vec<Task<ProfileViewMessage>> = chunk
-                .into_iter()
-                .map(|app_id| {
-                    let assets = app_assets.get(&app_id).cloned().unwrap_or_default();
-                    crate::capsule_commands::fetch_capsule(app_id, size, assets)
-                })
-                .collect();
-            Task::batch(batch)
+        .map(|app_id| {
+            let assets = app_assets.get(&app_id).cloned().unwrap_or_default();
+            crate::capsule_commands::fetch_capsule(app_id, size, assets)
         })
         .collect();
-
     Task::batch(tasks)
 }
 
