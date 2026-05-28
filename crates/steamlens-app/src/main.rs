@@ -82,7 +82,7 @@ pub(crate) enum Message {
     WorkerReply(steam_worker::SteamReply),
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
-    ProbeResult(Result<ProbedProfile, ProbeFailure>),
+    ProbeResult(Result<Box<ProbedProfile>, ProbeFailure>),
     RetrySteamConnect,
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
@@ -637,7 +637,7 @@ mod tests {
             steam_level: Some(17),
             steam_root: None,
         };
-        let _t = update(&mut app, Message::ProbeResult(Ok(probed)));
+        let _t = update(&mut app, Message::ProbeResult(Ok(Box::new(probed))));
 
         assert_eq!(app.context.connectivity.steam_running, Some(true));
         assert_eq!(app.context.connectivity.user_logged_in, Some(true));
@@ -1128,11 +1128,13 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(ProgressResult {
-                app_id: 105600,
-                data: None,
-                error: None,
-            })),
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(Box::new(
+                ProgressResult {
+                    app_id: 105600,
+                    data: None,
+                    error: None,
+                },
+            ))),
         );
 
         if let Screen::ProfileView(pv) = &app.screen {
@@ -1678,7 +1680,7 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(Box::new(
                 progress_scan::ProgressResult {
                     app_id,
                     data: Some(progress_scan::ScannedGameData {
@@ -1693,7 +1695,7 @@ mod tests {
                     }),
                     error: None,
                 },
-            )),
+            ))),
         );
 
         assert!(
@@ -1730,7 +1732,7 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(Box::new(
                 progress_scan::ProgressResult {
                     app_id,
                     data: Some(progress_scan::ScannedGameData {
@@ -1742,7 +1744,7 @@ mod tests {
                     }),
                     error: None,
                 },
-            )),
+            ))),
         );
 
         assert_eq!(
@@ -1777,13 +1779,13 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(Box::new(
                 progress_scan::ProgressResult {
                     app_id,
                     data: None,
                     error: None,
                 },
-            )),
+            ))),
         );
 
         if let Screen::ProfileView(pv) = &app.screen {

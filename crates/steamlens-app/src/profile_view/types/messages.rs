@@ -52,7 +52,7 @@ pub enum ProfileViewMessage {
     },
     RequestToggleGamePin(u32),
     RequestOpenGame(u32),
-    ProgressResultReceived(crate::progress_scan::ProgressResult),
+    ProgressResultReceived(Box<crate::progress_scan::ProgressResult>),
 }
 
 #[derive(Debug, Clone)]

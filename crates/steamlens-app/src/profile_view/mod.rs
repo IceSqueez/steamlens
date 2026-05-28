@@ -393,7 +393,7 @@ pub fn update(
         ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
 
         ProfileViewMessage::ProgressResultReceived(result) => {
-            let outcome = handle_progress_result(state, ctx, result);
+            let outcome = handle_progress_result(state, ctx, *result);
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             outcome
         }
@@ -564,7 +564,9 @@ pub fn subscription(
                         };
                         while let Some(result) = rx.recv().await {
                             if output
-                                .try_send(ProfileViewMessage::ProgressResultReceived(result))
+                                .try_send(ProfileViewMessage::ProgressResultReceived(Box::new(
+                                    result,
+                                )))
                                 .is_err()
                             {
                                 break;

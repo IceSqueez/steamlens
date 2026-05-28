@@ -17,6 +17,7 @@ pub fn probe_steam_boot() -> Task<crate::Message> {
         async {
             steamlens_core::probe_steam(timeouts::PROBE_STEAM_BOOT)
                 .await
+                .map(Box::new)
                 .map_err(ProbeFailure::from)
         },
         crate::Message::ProbeResult,
@@ -28,6 +29,7 @@ pub fn probe_steam_reconnect() -> Task<crate::Message> {
         async {
             steamlens_core::probe_steam(timeouts::PROBE_STEAM_RECONNECT)
                 .await
+                .map(Box::new)
                 .map_err(ProbeFailure::from)
         },
         crate::Message::ProbeResult,

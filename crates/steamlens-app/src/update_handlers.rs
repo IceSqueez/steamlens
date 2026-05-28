@@ -407,11 +407,12 @@ pub(crate) fn handle_game_invalidated(
 
 pub(crate) fn handle_probe_result(
     app: &mut App,
-    result: Result<steamlens_core::ProbedProfile, ProbeFailure>,
+    result: Result<Box<steamlens_core::ProbedProfile>, ProbeFailure>,
 ) -> Task<Message> {
     app.boot.probe_done = true;
     match result {
         Ok(p) => {
+            let p = *p;
             app.context.connectivity.steam_running = Some(true);
             app.context.connectivity.user_logged_in = Some(true);
             app.context
