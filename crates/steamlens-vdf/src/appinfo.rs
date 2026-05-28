@@ -19,11 +19,11 @@ pub enum ImageAsset {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct AppLibraryAssets {
-    pub library_capsule: Option<ImageAsset>,
-    pub library_hero: Option<ImageAsset>,
-    pub library_logo: Option<ImageAsset>,
-    pub library_header: Option<ImageAsset>,
-    pub header_image_legacy: Option<ImageAsset>,
+    pub cover: Option<ImageAsset>,
+    pub background: Option<ImageAsset>,
+    pub logo: Option<ImageAsset>,
+    pub wide_cover: Option<ImageAsset>,
+    pub wide_cover_legacy: Option<ImageAsset>,
 }
 
 pub fn parse_appinfo_assets(bytes: &[u8]) -> Result<HashMap<u32, AppLibraryAssets>, AppInfoError> {
@@ -389,8 +389,8 @@ fn emit_assets(
     found_laf: bool,
     header_image_value: Option<ImageAsset>,
 ) -> Option<AppLibraryAssets> {
-    assets.header_image_legacy = header_image_value;
-    if found_laf || assets.header_image_legacy.is_some() {
+    assets.wide_cover_legacy = header_image_value;
+    if found_laf || assets.wide_cover_legacy.is_some() {
         Some(assets)
     } else {
         None
@@ -415,10 +415,10 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
     let mut assets = AppLibraryAssets::default();
     let mut found_laf = false;
 
-    const SLOT_CAPSULE: u8 = 1;
-    const SLOT_HERO: u8 = 2;
+    const SLOT_COVER: u8 = 1;
+    const SLOT_BACKGROUND: u8 = 2;
     const SLOT_LOGO: u8 = 3;
-    const SLOT_HEADER: u8 = 4;
+    const SLOT_WIDE_COVER: u8 = 4;
 
     while i < blob.len() {
         let tag = blob[i];
@@ -469,13 +469,13 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                     }
                 } else if in_laf && !in_slot && depth == laf_depth + 1 {
                     current_slot = if key_bytes.eq_ignore_ascii_case(b"library_capsule") {
-                        SLOT_CAPSULE
+                        SLOT_COVER
                     } else if key_bytes.eq_ignore_ascii_case(b"library_hero") {
-                        SLOT_HERO
+                        SLOT_BACKGROUND
                     } else if key_bytes.eq_ignore_ascii_case(b"library_logo") {
                         SLOT_LOGO
                     } else if key_bytes.eq_ignore_ascii_case(b"library_header") {
-                        SLOT_HEADER
+                        SLOT_WIDE_COVER
                     } else {
                         0
                     };
@@ -499,10 +499,10 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                     })?;
                 if in_image && depth == image_depth && key_bytes.eq_ignore_ascii_case(b"english") {
                     let slot_ref = match current_slot {
-                        SLOT_CAPSULE => Some(&mut assets.library_capsule),
-                        SLOT_HERO => Some(&mut assets.library_hero),
-                        SLOT_LOGO => Some(&mut assets.library_logo),
-                        SLOT_HEADER => Some(&mut assets.library_header),
+                        SLOT_COVER => Some(&mut assets.cover),
+                        SLOT_BACKGROUND => Some(&mut assets.background),
+                        SLOT_LOGO => Some(&mut assets.logo),
+                        SLOT_WIDE_COVER => Some(&mut assets.wide_cover),
                         _ => None,
                     };
                     if let Some(dest) = slot_ref
@@ -562,10 +562,10 @@ fn scan_indexed_blob_assets(
     let mut assets = AppLibraryAssets::default();
     let mut found_laf = false;
 
-    const SLOT_CAPSULE: u8 = 1;
-    const SLOT_HERO: u8 = 2;
+    const SLOT_COVER: u8 = 1;
+    const SLOT_BACKGROUND: u8 = 2;
     const SLOT_LOGO: u8 = 3;
-    const SLOT_HEADER: u8 = 4;
+    const SLOT_WIDE_COVER: u8 = 4;
 
     while i < blob.len() {
         let tag = blob[i];
@@ -621,13 +621,13 @@ fn scan_indexed_blob_assets(
                     }
                 } else if in_laf && !in_slot && depth == laf_depth + 1 {
                     current_slot = if key.eq_ignore_ascii_case("library_capsule") {
-                        SLOT_CAPSULE
+                        SLOT_COVER
                     } else if key.eq_ignore_ascii_case("library_hero") {
-                        SLOT_HERO
+                        SLOT_BACKGROUND
                     } else if key.eq_ignore_ascii_case("library_logo") {
                         SLOT_LOGO
                     } else if key.eq_ignore_ascii_case("library_header") {
-                        SLOT_HEADER
+                        SLOT_WIDE_COVER
                     } else {
                         0
                     };
@@ -651,10 +651,10 @@ fn scan_indexed_blob_assets(
                     })?;
                 if in_image && depth == image_depth && key.eq_ignore_ascii_case("english") {
                     let slot_ref = match current_slot {
-                        SLOT_CAPSULE => Some(&mut assets.library_capsule),
-                        SLOT_HERO => Some(&mut assets.library_hero),
-                        SLOT_LOGO => Some(&mut assets.library_logo),
-                        SLOT_HEADER => Some(&mut assets.library_header),
+                        SLOT_COVER => Some(&mut assets.cover),
+                        SLOT_BACKGROUND => Some(&mut assets.background),
+                        SLOT_LOGO => Some(&mut assets.logo),
+                        SLOT_WIDE_COVER => Some(&mut assets.wide_cover),
                         _ => None,
                     };
                     if let Some(dest) = slot_ref
@@ -1640,10 +1640,10 @@ mod tests {
         let file = build_v8_file(&[(20001, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20001).unwrap();
-        assert_eq!(assets.library_capsule, hashed(0xAA, "library_capsule.jpg"));
-        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
-        assert_eq!(assets.library_logo, hashed(0xCC, "logo.png"));
-        assert_eq!(assets.library_header, hashed(0xDD, "library_header.jpg"));
+        assert_eq!(assets.cover, hashed(0xAA, "library_capsule.jpg"));
+        assert_eq!(assets.background, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.logo, hashed(0xCC, "logo.png"));
+        assert_eq!(assets.wide_cover, hashed(0xDD, "library_header.jpg"));
     }
 
     #[test]
@@ -1652,10 +1652,10 @@ mod tests {
         let file = build_v8_file(&[(20002, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20002).unwrap();
-        assert_eq!(assets.library_capsule, hashed(0x11, "library_capsule.jpg"));
-        assert_eq!(assets.library_hero, None);
-        assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.cover, hashed(0x11, "library_capsule.jpg"));
+        assert_eq!(assets.background, None);
+        assert_eq!(assets.logo, None);
+        assert_eq!(assets.wide_cover, None);
     }
 
     #[test]
@@ -1699,10 +1699,10 @@ mod tests {
         let file = build_v8_file(&[(20005, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20005).unwrap();
-        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
-        assert_eq!(assets.library_hero, None);
-        assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.cover, plain("library_600x900.jpg"));
+        assert_eq!(assets.background, None);
+        assert_eq!(assets.logo, None);
+        assert_eq!(assets.wide_cover, None);
     }
 
     #[test]
@@ -1737,10 +1737,10 @@ mod tests {
         let file = build_v8_file(&[(20006, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20006).unwrap();
-        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
-        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
-        assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.cover, plain("library_600x900.jpg"));
+        assert_eq!(assets.background, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.logo, None);
+        assert_eq!(assets.wide_cover, None);
     }
 
     #[test]
@@ -1759,10 +1759,10 @@ mod tests {
         let file = build_v9_assets_file(&[(20010, blob)], &[]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20010).unwrap();
-        assert_eq!(assets.library_capsule, hashed(0xAA, "library_capsule.jpg"));
-        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
-        assert_eq!(assets.library_logo, hashed(0xCC, "logo.png"));
-        assert_eq!(assets.library_header, hashed(0xDD, "library_header.jpg"));
+        assert_eq!(assets.cover, hashed(0xAA, "library_capsule.jpg"));
+        assert_eq!(assets.background, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.logo, hashed(0xCC, "logo.png"));
+        assert_eq!(assets.wide_cover, hashed(0xDD, "library_header.jpg"));
     }
 
     #[test]
@@ -1813,27 +1813,27 @@ mod tests {
         let map = parse_appinfo_assets(&bytes).expect("parse failed");
         let assets = map.get(&2807960).expect("app 2807960 not found in map");
         assert_eq!(
-            assets.library_capsule,
+            assets.cover,
             Some(ImageAsset::Hashed {
                 hash: "f94d928537ac1813f07baf86bbdc1b899fba7ddc".to_owned(),
                 filename: "library_capsule.jpg".to_owned(),
             }),
         );
         assert_eq!(
-            assets.library_logo,
+            assets.logo,
             Some(ImageAsset::Hashed {
                 hash: "3a5184881210f52887f766f92a313bd0902e7918".to_owned(),
                 filename: "logo.png".to_owned(),
             }),
         );
         assert_eq!(
-            assets.library_header,
+            assets.wide_cover,
             Some(ImageAsset::Hashed {
                 hash: "1b277e018090ce15d169e22a6eca284338e3ce15".to_owned(),
                 filename: "library_header.jpg".to_owned(),
             }),
         );
-        let hero = assets.library_hero.as_ref().expect("library_hero absent");
+        let hero = assets.background.as_ref().expect("library_hero absent");
         let ImageAsset::Hashed { hash, .. } = hero else {
             panic!("library_hero should be Hashed for app 2807960");
         };
@@ -1849,23 +1849,17 @@ mod tests {
         let bytes = std::fs::read(&path).expect("appinfo.vdf not found");
         let map = parse_appinfo_assets(&bytes).expect("parse failed");
         let assets = map.get(&400).expect("app 400 not found in map");
-        let capsule = assets
-            .library_capsule
-            .as_ref()
-            .expect("library_capsule absent");
+        let capsule = assets.cover.as_ref().expect("library_capsule absent");
         assert!(
             matches!(capsule, ImageAsset::Plain { filename } if filename == "library_600x900.jpg"),
             "expected Plain(library_600x900.jpg), got {capsule:?}",
         );
-        let hero = assets.library_hero.as_ref().expect("library_hero absent");
+        let hero = assets.background.as_ref().expect("library_hero absent");
         assert!(
             matches!(hero, ImageAsset::Plain { filename } if filename == "library_hero.jpg"),
             "expected Plain(library_hero.jpg), got {hero:?}",
         );
-        let header = assets
-            .library_header
-            .as_ref()
-            .expect("library_header absent");
+        let header = assets.wide_cover.as_ref().expect("library_header absent");
         assert!(
             matches!(header, ImageAsset::Plain { filename } if filename == "header.jpg"),
             "expected Plain(header.jpg), got {header:?}",
@@ -1879,7 +1873,7 @@ mod tests {
             std::path::Path::new(env!("HOME")).join(".local/share/Steam/appcache/appinfo.vdf");
         let bytes = std::fs::read(&path).expect("appinfo.vdf not found");
         let map = parse_appinfo_assets(&bytes).expect("parse failed");
-        let with_header = map.values().filter(|a| a.library_header.is_some()).count();
+        let with_header = map.values().filter(|a| a.wide_cover.is_some()).count();
         assert!(
             with_header >= 750,
             "expected >=750 apps with library_header, got {with_header}"
@@ -1895,14 +1889,14 @@ mod tests {
         let map = parse_appinfo_assets(&bytes).expect("parse failed");
         let assets = map.get(&249650).expect("app 249650 not in map");
         assert!(
-            matches!(&assets.library_header, Some(ImageAsset::Plain { filename }) if filename == "header.jpg"),
+            matches!(&assets.wide_cover, Some(ImageAsset::Plain { filename }) if filename == "header.jpg"),
             "expected Plain(header.jpg), got {:?}",
-            assets.library_header
+            assets.wide_cover
         );
         assert!(
-            matches!(&assets.library_capsule, Some(ImageAsset::Plain { filename }) if filename == "library_600x900.jpg"),
+            matches!(&assets.cover, Some(ImageAsset::Plain { filename }) if filename == "library_600x900.jpg"),
             "expected Plain(library_600x900.jpg), got {:?}",
-            assets.library_capsule
+            assets.cover
         );
     }
 
@@ -1939,12 +1933,12 @@ mod tests {
         let file = build_v8_file(&[(400, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&400).unwrap();
-        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
-        assert_eq!(assets.library_hero, None);
-        assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.cover, plain("library_600x900.jpg"));
+        assert_eq!(assets.background, None);
+        assert_eq!(assets.logo, None);
+        assert_eq!(assets.wide_cover, None);
         assert_eq!(
-            assets.header_image_legacy,
+            assets.wide_cover_legacy,
             plain("header.jpg"),
             "common/header_image must populate header_image_legacy"
         );
@@ -1985,7 +1979,7 @@ mod tests {
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&9001).unwrap();
         assert_eq!(
-            assets.library_header,
+            assets.wide_cover,
             hashed(0xDD, "library_header.jpg"),
             "LAF library_header must take priority over header_image fallback"
         );
@@ -2009,11 +2003,11 @@ mod tests {
         let assets = map
             .get(&215)
             .expect("app 215 must be in map via header_image");
-        assert_eq!(assets.library_capsule, None);
-        assert_eq!(assets.library_hero, None);
-        assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, None);
-        assert_eq!(assets.header_image_legacy, plain("header.jpg"));
+        assert_eq!(assets.cover, None);
+        assert_eq!(assets.background, None);
+        assert_eq!(assets.logo, None);
+        assert_eq!(assets.wide_cover, None);
+        assert_eq!(assets.wide_cover_legacy, plain("header.jpg"));
     }
 
     #[test]
@@ -2063,8 +2057,8 @@ mod tests {
         let file = build_v9_assets_file(&[(400, blob)], &["header_image"]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&400).unwrap();
-        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
-        assert_eq!(assets.library_header, None);
-        assert_eq!(assets.header_image_legacy, plain("header.jpg"));
+        assert_eq!(assets.cover, plain("library_600x900.jpg"));
+        assert_eq!(assets.wide_cover, None);
+        assert_eq!(assets.wide_cover_legacy, plain("header.jpg"));
     }
 }

@@ -69,21 +69,24 @@ fn size_suffix(size: CapsuleSize) -> &'static str {
 }
 
 fn asset_chain_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Vec<&ImageAsset> {
-    let mut chain = Vec::with_capacity(3);
+    let mut chain = Vec::with_capacity(4);
     match size {
         CapsuleSize::Portrait => {
-            if let Some(a) = assets.library_capsule.as_ref() {
+            if let Some(a) = assets.cover.as_ref() {
                 chain.push(a);
             }
         }
         CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => {
-            if let Some(a) = assets.library_header.as_ref() {
+            if let Some(a) = assets.wide_cover.as_ref() {
                 chain.push(a);
             }
-            if let Some(a) = assets.library_hero.as_ref() {
+            if let Some(a) = assets.wide_cover_legacy.as_ref() {
                 chain.push(a);
             }
-            if let Some(a) = assets.header_image_legacy.as_ref() {
+            if let Some(a) = assets.logo.as_ref() {
+                chain.push(a);
+            }
+            if let Some(a) = assets.background.as_ref() {
                 chain.push(a);
             }
         }
