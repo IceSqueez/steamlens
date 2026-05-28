@@ -6,7 +6,7 @@ use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
 
 use crate::timeouts;
 
-const MAX_CONCURRENT: usize = 5;
+const MAX_CONCURRENT: usize = 4;
 
 pub use steamlens_core::AchievementCountPayload as ProgressData;
 
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn scanner_max_concurrent_cap() {
         assert_eq!(
-            MAX_CONCURRENT, 5,
+            MAX_CONCURRENT, 4,
             "temporary diagnostic value; revert to 1 if parallel scan triggers Steam IPC errors or out-of-order card render"
         );
     }
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn max_concurrent_is_documented_value() {
         assert_eq!(
-            MAX_CONCURRENT, 5,
+            MAX_CONCURRENT, 4,
             "temporary parallel-scan diagnostic; raising MAX_CONCURRENT above 1 re-opens the \
              cards-render-out-of-order race closed in Phase A.2 (see ALPHA_6_HARDENING.md B.6) — \
              revert if test surfaces issues"
