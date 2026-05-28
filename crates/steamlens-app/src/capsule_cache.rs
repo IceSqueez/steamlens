@@ -9,6 +9,7 @@ use tokio::fs;
 
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const HTTP_RETRY_BACKOFF: Duration = Duration::from_millis(200);
 const MAX_CONCURRENT_HTTP_FETCHES: usize = 8;
 
 fn http_client() -> Option<&'static reqwest::Client> {
@@ -212,7 +213,15 @@ pub async fn fetch_capsule(
         .await
         .expect("capsule HTTP semaphore never closed");
 
-    match client.get(&url).send().await {
+    let response = match client.get(&url).send().await {
+        Ok(r) => Ok(r),
+        Err(_) => {
+            tokio::time::sleep(HTTP_RETRY_BACKOFF).await;
+            client.get(&url).send().await
+        }
+    };
+
+    match response {
         Ok(response) => {
             if response.status() == reqwest::StatusCode::NOT_FOUND {
                 return Err((size, CapsuleError::NotFound));
