@@ -1,4 +1,4 @@
-use iced::widget::{column, container, image as img_widget, mouse_area, row, stack, text};
+use iced::widget::{column, container, image as img_widget, lazy, mouse_area, row, stack, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
 use super::card_parts::{
@@ -37,9 +37,19 @@ pub(super) fn build_card<'a>(
             .into();
     }
 
-    let inner = build_hydrated_card(HydratedCardParams {
+    let deps = HydratedCardDeps::new(
         entry,
-        app_id,
+        capsule_size,
+        card_w,
+        tier_breakdown,
+        genre,
+        is_pinned,
+        is_hovered,
+        hovered_tier,
+    );
+
+    let owned = HydratedCardOwned::new(
+        entry,
         card_w,
         capsule_w,
         capsule_h,
@@ -49,11 +59,281 @@ pub(super) fn build_card<'a>(
         is_pinned,
         is_hovered,
         hovered_tier,
-    });
+    );
 
-    mouse_area(inner)
+    let lazy_inner = lazy(deps, move |_| render_hydrated_card(&owned));
+
+    mouse_area(lazy_inner)
         .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
         .on_exit(ProfileViewMessage::CardHoverExit(app_id))
+        .into()
+}
+
+#[derive(Hash, PartialEq, Eq)]
+struct HydratedCardDeps {
+    app_id: u32,
+    capsule_size: CapsuleSize,
+    card_w_bits: u32,
+    capsule_state: u8,
+    img_w: u32,
+    img_h: u32,
+    is_hovered: bool,
+    is_pinned: bool,
+    hovered_tier: Option<RarityTier>,
+    progress_earned: Option<u32>,
+    progress_total: Option<u32>,
+    name_len: usize,
+    tier_hash: u64,
+    genre_hash: u64,
+}
+
+impl HydratedCardDeps {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        entry: &GameEntry,
+        capsule_size: CapsuleSize,
+        card_w: f32,
+        tier_breakdown: &[(RarityTier, u32)],
+        genre: Option<&str>,
+        is_pinned: bool,
+        is_hovered: bool,
+        hovered_tier: Option<RarityTier>,
+    ) -> Self {
+        let (capsule_state, img_w, img_h) = match &entry.capsule {
+            CapsuleAsset::Pending => (0u8, 0u32, 0u32),
+            CapsuleAsset::Loaded { width, height, .. } => (1u8, *width, *height),
+            CapsuleAsset::Unavailable => (2u8, 0u32, 0u32),
+        };
+
+        let tier_hash = hash_tier_breakdown(tier_breakdown);
+        let genre_hash = hash_str_opt(genre);
+
+        Self {
+            app_id: entry.app_id,
+            capsule_size,
+            card_w_bits: card_w.to_bits(),
+            capsule_state,
+            img_w,
+            img_h,
+            is_hovered,
+            is_pinned,
+            hovered_tier,
+            progress_earned: entry.progress.as_ref().map(|p| p.earned),
+            progress_total: entry.progress.as_ref().map(|p| p.total),
+            name_len: entry.name.as_deref().map(str::len).unwrap_or(0),
+            tier_hash,
+            genre_hash,
+        }
+    }
+}
+
+fn hash_tier_breakdown(breakdown: &[(RarityTier, u32)]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for (t, count) in breakdown {
+        h = h.wrapping_mul(0x100000001b3);
+        h ^= (*t as u64).wrapping_mul(0x9e3779b97f4a7c15);
+        h = h.wrapping_mul(0x100000001b3);
+        h ^= *count as u64;
+    }
+    h
+}
+
+fn hash_str_opt(s: Option<&str>) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    if let Some(g) = s {
+        for b in g.bytes() {
+            h = h.wrapping_mul(0x100000001b3);
+            h ^= b as u64;
+        }
+    }
+    h
+}
+
+struct HydratedCardOwned {
+    entry: GameEntry,
+    card_w: f32,
+    capsule_w: f32,
+    capsule_h: f32,
+    total_h: f32,
+    tier_breakdown: Vec<(RarityTier, u32)>,
+    genre: Option<String>,
+    is_pinned: bool,
+    is_hovered: bool,
+    hovered_tier: Option<RarityTier>,
+}
+
+impl HydratedCardOwned {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        entry: &GameEntry,
+        card_w: f32,
+        capsule_w: f32,
+        capsule_h: f32,
+        total_h: f32,
+        tier_breakdown: &[(RarityTier, u32)],
+        genre: Option<&str>,
+        is_pinned: bool,
+        is_hovered: bool,
+        hovered_tier: Option<RarityTier>,
+    ) -> Self {
+        Self {
+            entry: entry.clone(),
+            card_w,
+            capsule_w,
+            capsule_h,
+            total_h,
+            tier_breakdown: tier_breakdown.to_vec(),
+            genre: genre.map(str::to_owned),
+            is_pinned,
+            is_hovered,
+            hovered_tier,
+        }
+    }
+}
+
+fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMessage> {
+    let entry = &p.entry;
+    let app_id = entry.app_id;
+    let card_w = p.card_w;
+    let capsule_h = p.capsule_h;
+    let total_h = p.total_h;
+    let is_hovered = p.is_hovered;
+    let is_pinned = p.is_pinned;
+    let hovered_tier = p.hovered_tier;
+
+    let capsule_area: Element<'static, ProfileViewMessage> = match &entry.capsule {
+        CapsuleAsset::Loaded {
+            handle,
+            width,
+            height,
+        } => {
+            let (rendered_w, rendered_h) =
+                fit_contain(*width as f32, *height as f32, p.capsule_w, capsule_h);
+            let handle = handle.clone();
+            container(
+                container(
+                    img_widget(handle)
+                        .width(Length::Fixed(rendered_w))
+                        .height(Length::Fixed(rendered_h)),
+                )
+                .style(|_: &iced::Theme| container::Style {
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(2.0, 2.0),
+                        blur_radius: 4.0,
+                    },
+                    ..container::Style::default()
+                }),
+            )
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .into()
+        }
+
+        CapsuleAsset::Pending => container(iced::widget::Space::new())
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .style(|t: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(
+                    palette(theme_from_iced(t)).placeholder,
+                )),
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            })
+            .into(),
+
+        CapsuleAsset::Unavailable => {
+            let label = entry.name.as_deref().unwrap_or("no image").to_owned();
+            container(
+                container(text(label).size(12).align_x(Alignment::Center).style(
+                    |t: &iced::Theme| iced::widget::text::Style {
+                        color: Some(palette(theme_from_iced(t)).text_muted),
+                    },
+                ))
+                .width(Length::Fixed(p.capsule_w))
+                .height(Length::Fixed(capsule_h))
+                .padding(Padding::default().left(8).right(8))
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+                .style(|t: &iced::Theme| container::Style {
+                    background: Some(iced::Background::Color(
+                        palette(theme_from_iced(t)).placeholder,
+                    )),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..iced::Border::default()
+                    },
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: iced::Vector::new(2.0, 2.0),
+                        blur_radius: 4.0,
+                    },
+                    ..container::Style::default()
+                }),
+            )
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .align_x(Alignment::Center)
+            .into()
+        }
+    };
+
+    let hover_overlay: Element<'static, ProfileViewMessage> = if is_hovered || is_pinned {
+        build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fixed(card_w))
+            .height(Length::Fixed(capsule_h))
+            .into()
+    };
+
+    let capsule_stack = stack![capsule_area, hover_overlay];
+
+    let separator = container(iced::widget::rule::horizontal(1))
+        .padding(Padding::default().left(8).right(8).top(8).bottom(0))
+        .width(Length::Fixed(card_w));
+
+    let name_row = build_name_row(entry, card_w);
+
+    let tier_bar = build_tier_stacked_bar(
+        app_id,
+        &p.tier_breakdown,
+        entry.progress.as_ref().map(|pr| pr.earned).unwrap_or(0),
+        entry.progress.as_ref().map(|pr| pr.total).unwrap_or(0),
+        card_w,
+        hovered_tier,
+    );
+
+    let tags_row = build_tags_row(entry, card_w, p.genre.as_deref());
+
+    let card_inner = column![
+        capsule_stack,
+        separator,
+        name_row,
+        tier_bar,
+        iced::widget::Space::new().height(Length::Fill),
+        tags_row,
+    ]
+    .spacing(0);
+
+    let is_gold = entry
+        .progress
+        .as_ref()
+        .is_some_and(|pr| pr.total > 0 && pr.earned >= pr.total);
+
+    card(card_inner)
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(total_h))
+        .padding(Padding::default().top(8))
+        .radius(6.0)
+        .hovered(is_hovered)
+        .gold_when(is_gold)
+        .on_press(ProfileViewMessage::GameSelected(app_id))
         .into()
 }
 
@@ -191,168 +471,3 @@ pub(super) fn build_skeleton_card<'a>(
         .into()
 }
 const C_SKELETON_BG: Color = Color::from_rgb(0.267, 0.278, 0.353);
-
-pub(super) struct HydratedCardParams<'a> {
-    entry: &'a GameEntry,
-    app_id: u32,
-    card_w: f32,
-    capsule_w: f32,
-    capsule_h: f32,
-    total_h: f32,
-    tier_breakdown: &'a [(RarityTier, u32)],
-    genre: Option<&'a str>,
-    is_pinned: bool,
-    is_hovered: bool,
-    hovered_tier: Option<RarityTier>,
-}
-
-pub(super) fn build_hydrated_card<'a>(
-    p: HydratedCardParams<'a>,
-) -> Element<'a, ProfileViewMessage> {
-    let HydratedCardParams {
-        entry,
-        app_id,
-        card_w,
-        capsule_w,
-        capsule_h,
-        total_h,
-        tier_breakdown,
-        genre,
-        is_pinned,
-        is_hovered,
-        hovered_tier,
-    } = p;
-    let capsule_area: Element<'_, ProfileViewMessage> = match &entry.capsule {
-        CapsuleAsset::Loaded {
-            handle,
-            width,
-            height,
-        } => {
-            let (rendered_w, rendered_h) =
-                fit_contain(*width as f32, *height as f32, capsule_w, capsule_h);
-            container(
-                container(
-                    img_widget(handle.clone())
-                        .width(Length::Fixed(rendered_w))
-                        .height(Length::Fixed(rendered_h)),
-                )
-                .style(|_: &iced::Theme| container::Style {
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: iced::Vector::new(2.0, 2.0),
-                        blur_radius: 4.0,
-                    },
-                    ..container::Style::default()
-                }),
-            )
-            .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .into()
-        }
-
-        CapsuleAsset::Pending => container(iced::widget::Space::new())
-            .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .style(|t: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(
-                    palette(theme_from_iced(t)).placeholder,
-                )),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..iced::Border::default()
-                },
-                ..container::Style::default()
-            })
-            .into(),
-
-        CapsuleAsset::Unavailable => {
-            let label = entry.name.as_deref().unwrap_or("no image").to_owned();
-            container(
-                container(text(label).size(12).align_x(Alignment::Center).style(
-                    |t: &iced::Theme| iced::widget::text::Style {
-                        color: Some(palette(theme_from_iced(t)).text_muted),
-                    },
-                ))
-                .width(Length::Fixed(capsule_w))
-                .height(Length::Fixed(capsule_h))
-                .padding(Padding::default().left(8).right(8))
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
-                .style(|t: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(
-                        palette(theme_from_iced(t)).placeholder,
-                    )),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..iced::Border::default()
-                    },
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: iced::Vector::new(2.0, 2.0),
-                        blur_radius: 4.0,
-                    },
-                    ..container::Style::default()
-                }),
-            )
-            .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .align_x(Alignment::Center)
-            .into()
-        }
-    };
-
-    let hover_overlay: Element<'_, ProfileViewMessage> = if is_hovered || is_pinned {
-        build_hover_overlay(app_id, is_pinned, card_w, capsule_h)
-    } else {
-        iced::widget::Space::new()
-            .width(Length::Fixed(card_w))
-            .height(Length::Fixed(capsule_h))
-            .into()
-    };
-
-    let capsule_stack = stack![capsule_area, hover_overlay];
-
-    let separator = container(iced::widget::rule::horizontal(1))
-        .padding(Padding::default().left(8).right(8).top(8).bottom(0))
-        .width(Length::Fixed(card_w));
-
-    let name_row = build_name_row(entry, card_w);
-
-    let tier_bar = build_tier_stacked_bar(
-        app_id,
-        tier_breakdown,
-        entry.progress.as_ref().map(|p| p.earned).unwrap_or(0),
-        entry.progress.as_ref().map(|p| p.total).unwrap_or(0),
-        card_w,
-        hovered_tier,
-    );
-
-    let tags_row = build_tags_row(entry, card_w, genre);
-
-    let card_inner = column![
-        capsule_stack,
-        separator,
-        name_row,
-        tier_bar,
-        iced::widget::Space::new().height(Length::Fill),
-        tags_row,
-    ]
-    .spacing(0);
-
-    let is_gold = entry
-        .progress
-        .as_ref()
-        .is_some_and(|p| p.total > 0 && p.earned >= p.total);
-
-    card(card_inner)
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(total_h))
-        .padding(Padding::default().top(8))
-        .radius(6.0)
-        .hovered(is_hovered)
-        .gold_when(is_gold)
-        .on_press(ProfileViewMessage::GameSelected(app_id))
-        .into()
-}

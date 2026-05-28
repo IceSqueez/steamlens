@@ -132,7 +132,6 @@ pub(super) fn achievement_list(
                     query_owned.clone(),
                     glow_pulse,
                     tier,
-                    skeleton_phase,
                     app_theme,
                 )
             } else {

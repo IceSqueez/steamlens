@@ -1,4 +1,6 @@
-use iced::widget::{button, column, container, image, rich_text, row, space, span, stack, text};
+use iced::widget::{
+    button, column, container, image, lazy, rich_text, row, space, span, stack, text,
+};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use super::grid::{
@@ -15,22 +17,102 @@ use crate::ui::widgets::pill::pill;
 const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
 const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 
+#[derive(Hash, PartialEq, Eq)]
+struct AchievementCardDeps {
+    id_hash: u64,
+    is_dirty: bool,
+    revealed: bool,
+    is_achieved: bool,
+    is_hidden: bool,
+    permission: u32,
+    icon_present: bool,
+    icon_len: usize,
+    rarity_bits: u32,
+    has_rarity: bool,
+    display_name_hash: u64,
+    description_hash: u64,
+    search_hash: u64,
+    tier: Option<RarityTier>,
+    glow_quantized: Option<u8>,
+    card_w_bits: u32,
+}
+
+impl AchievementCardDeps {
+    fn new(
+        row: &AchievementRow,
+        card_w: f32,
+        search_query: &str,
+        glow_pulse: f32,
+        tier: Option<RarityTier>,
+    ) -> Self {
+        let glow_quantized = if matches!(tier, Some(RarityTier::Legendary)) {
+            Some((glow_pulse.clamp(0.0, 1.0) * 20.0) as u8)
+        } else {
+            None
+        };
+
+        Self {
+            id_hash: fnv64(row.data.id.as_bytes()),
+            is_dirty: row.is_dirty,
+            revealed: row.revealed,
+            is_achieved: row.data.is_achieved,
+            is_hidden: row.data.is_hidden,
+            permission: row.data.permission,
+            icon_present: row.data.icon.is_some(),
+            icon_len: row.data.icon.as_ref().map(|i| i.rgba.len()).unwrap_or(0),
+            rarity_bits: row.rarity_percent.map(|f| f.to_bits()).unwrap_or(0),
+            has_rarity: row.rarity_percent.is_some(),
+            display_name_hash: fnv64(row.data.display_name.as_bytes()),
+            description_hash: fnv64(row.data.description.as_bytes()),
+            search_hash: fnv64(search_query.as_bytes()),
+            tier,
+            glow_quantized,
+            card_w_bits: card_w.to_bits(),
+        }
+    }
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &b in bytes {
+        h = h.wrapping_mul(0x100000001b3);
+        h ^= b as u64;
+    }
+    h
+}
+
 pub(super) fn achievement_card_widget<'a>(
     row: &'a AchievementRow,
     card_w: f32,
     search_query: String,
     glow_pulse: f32,
     tier: Option<RarityTier>,
-    _skeleton_phase: f32,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
+    let deps = AchievementCardDeps::new(row, card_w, &search_query, glow_pulse, tier);
+
+    let entry = row.clone();
+    lazy(deps, move |_| {
+        render_achievement_card(&entry, card_w, &search_query, glow_pulse, tier, app_theme)
+    })
+    .into()
+}
+
+fn render_achievement_card(
+    row: &AchievementRow,
+    card_w: f32,
+    search_query: &str,
+    glow_pulse: f32,
+    tier: Option<RarityTier>,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'static, GameViewMessage> {
     let p = *palette(app_theme);
     let fg = p.text_primary;
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
     let is_hidden_meta = row.data.is_hidden;
 
-    let icon_el: Element<'_, GameViewMessage> = if spoiler_hidden {
+    let icon_el: Element<'static, GameViewMessage> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
             .width(Length::Fixed(ACH_CARD_ICON))
             .height(Length::Fixed(ACH_CARD_ICON))
@@ -86,7 +168,7 @@ pub(super) fn achievement_card_widget<'a>(
         .into()
     };
 
-    let icon_el: Element<'_, GameViewMessage> = if is_hidden_meta && !spoiler_hidden {
+    let icon_el: Element<'static, GameViewMessage> = if is_hidden_meta && !spoiler_hidden {
         let badge = container(text("H").size(11).color(C_LOCKED_DESC))
             .width(Length::Fixed(18.0))
             .height(Length::Fixed(18.0))
@@ -124,9 +206,9 @@ pub(super) fn achievement_card_widget<'a>(
     };
 
     let name_color = if row.is_dirty { C_YELLOW } else { fg };
-    let name_label: Element<'_, GameViewMessage> =
+    let name_label: Element<'static, GameViewMessage> =
         if !row.is_dirty && !spoiler_hidden && !search_query.is_empty() {
-            if let Some((before, matched, after)) = highlight_split(&display_name, &search_query) {
+            if let Some((before, matched, after)) = highlight_split(&display_name, search_query) {
                 let before = before.to_owned();
                 let matched = matched.to_owned();
                 let after = after.to_owned();
@@ -183,26 +265,38 @@ pub(super) fn achievement_card_widget<'a>(
         C_LOCKED_DESC
     };
 
-    let desc_label: Element<'_, GameViewMessage> = if !spoiler_hidden && !search_query.is_empty() {
-        if let Some((before, matched, after)) = highlight_split(&description, &search_query) {
-            let before = before.to_owned();
-            let matched = matched.to_owned();
-            let after = after.to_owned();
-            container(
-                rich_text![
-                    span(before).color(desc_color),
-                    span(matched)
-                        .color(C_YELLOW)
-                        .background(Color { a: 0.2, ..C_YELLOW }),
-                    span(after).color(desc_color),
-                ]
-                .on_link_click(iced::never)
-                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .wrapping(text::Wrapping::Word),
-            )
-            .width(Length::Fill)
-            .height(Length::Fixed(30.0))
-            .into()
+    let desc_label: Element<'static, GameViewMessage> =
+        if !spoiler_hidden && !search_query.is_empty() {
+            if let Some((before, matched, after)) = highlight_split(&description, search_query) {
+                let before = before.to_owned();
+                let matched = matched.to_owned();
+                let after = after.to_owned();
+                container(
+                    rich_text![
+                        span(before).color(desc_color),
+                        span(matched)
+                            .color(C_YELLOW)
+                            .background(Color { a: 0.2, ..C_YELLOW }),
+                        span(after).color(desc_color),
+                    ]
+                    .on_link_click(iced::never)
+                    .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                    .wrapping(text::Wrapping::Word),
+                )
+                .width(Length::Fill)
+                .height(Length::Fixed(30.0))
+                .into()
+            } else {
+                container(
+                    text(description)
+                        .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                        .color(desc_color)
+                        .wrapping(text::Wrapping::Word),
+                )
+                .width(Length::Fill)
+                .height(Length::Fixed(30.0))
+                .into()
+            }
         } else {
             container(
                 text(description)
@@ -213,18 +307,7 @@ pub(super) fn achievement_card_widget<'a>(
             .width(Length::Fill)
             .height(Length::Fixed(30.0))
             .into()
-        }
-    } else {
-        container(
-            text(description)
-                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .color(desc_color)
-                .wrapping(text::Wrapping::Word),
-        )
-        .width(Length::Fill)
-        .height(Length::Fixed(30.0))
-        .into()
-    };
+        };
 
     let text_col = column![name_label, desc_label].spacing(ACH_CARD_TEXT_COL_SPACING);
 
@@ -264,7 +347,7 @@ pub(super) fn achievement_card_widget<'a>(
     };
     let _ = is_locked_badge;
 
-    let rarity_badge: Option<Element<'_, GameViewMessage>> = if spoiler_hidden {
+    let rarity_badge: Option<Element<'static, GameViewMessage>> = if spoiler_hidden {
         None
     } else if let (Some(t), Some(pct)) = (tier, row.rarity_percent) {
         let tc = tier_color(t, app_theme);
@@ -278,7 +361,7 @@ pub(super) fn achievement_card_widget<'a>(
         None
     };
 
-    let bottom_row: Element<'_, GameViewMessage> = if spoiler_hidden {
+    let bottom_row: Element<'static, GameViewMessage> = if spoiler_hidden {
         let reveal_id = row.data.id.clone();
         let reveal_btn = button(text("Reveal").size(ACH_CARD_DESCRIPTION_TEXT_SIZE).style(
             |t: &iced::Theme| iced::widget::text::Style {
@@ -314,7 +397,7 @@ pub(super) fn achievement_card_widget<'a>(
             .padding(Padding::default().left(8).right(8).bottom(8))
             .into()
     } else {
-        let mut bottom: iced::widget::Row<'_, GameViewMessage> =
+        let mut bottom: iced::widget::Row<'static, GameViewMessage> =
             row![].spacing(6).align_y(Alignment::Center);
         if let Some(rb) = rarity_badge {
             bottom = bottom.push(rb);

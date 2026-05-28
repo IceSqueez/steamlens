@@ -10,14 +10,14 @@ use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::tooltip_box::tooltip_box;
 use crate::ui::widgets::widget::{C_RARITY_COMMON, C_RARITY_LEGENDARY};
 
-pub(super) fn build_tier_stacked_bar<'a>(
+pub(super) fn build_tier_stacked_bar(
     app_id: u32,
-    tier_breakdown: &'a [(RarityTier, u32)],
+    tier_breakdown: &[(RarityTier, u32)],
     total_earned: u32,
     total_achievements: u32,
     card_w: f32,
     hovered_tier: Option<RarityTier>,
-) -> Element<'a, ProfileViewMessage> {
+) -> Element<'static, ProfileViewMessage> {
     const BAR_H: f32 = 8.0;
     const TIER_ORDER: [RarityTier; 5] = [
         RarityTier::Common,
@@ -73,7 +73,7 @@ pub(super) fn build_tier_stacked_bar<'a>(
     let tier_lookup = tier_at.clone();
     let tip_lookup = tooltips.clone();
 
-    let bar: Element<'a, ProfileViewMessage> =
+    let bar: Element<'static, ProfileViewMessage> =
         segmented_bar(segments, Length::Fixed(inner_w), BAR_H)
             .hovered(hovered_idx)
             .on_hover(move |idx| {
@@ -90,12 +90,12 @@ pub(super) fn build_tier_stacked_bar<'a>(
         .into()
 }
 
-pub(super) fn build_hover_overlay<'a>(
+pub(super) fn build_hover_overlay(
     app_id: u32,
     is_pinned: bool,
     card_w: f32,
     capsule_h: f32,
-) -> Element<'a, ProfileViewMessage> {
+) -> Element<'static, ProfileViewMessage> {
     let pin_label = if is_pinned {
         "\u{2299} Unpin"
     } else {
@@ -149,16 +149,16 @@ pub(super) fn build_hover_overlay<'a>(
         .padding(Padding::default().top(4).right(12))
         .into()
 }
-pub(super) fn build_name_row<'a>(
-    entry: &'a GameEntry,
+pub(super) fn build_name_row(
+    entry: &GameEntry,
     card_w: f32,
-) -> Element<'a, ProfileViewMessage> {
+) -> Element<'static, ProfileViewMessage> {
     const NAME_CHAR_W_PX: f32 = 7.0;
     const COUNTER_CHAR_W_PX: f32 = 6.5;
     const ROW_SPACING_PX: f32 = 4.0;
 
-    let name_str = entry.name.as_deref().unwrap_or("");
-    let name_text = text(name_str)
+    let name_str: String = entry.name.as_deref().unwrap_or("").to_owned();
+    let name_text = text(name_str.clone())
         .size(12)
         .style(|t: &iced::Theme| iced::widget::text::Style {
             color: Some(palette(theme_from_iced(t)).text_primary),
@@ -175,8 +175,8 @@ pub(super) fn build_name_row<'a>(
         .map(|s| s.chars().count() as f32 * COUNTER_CHAR_W_PX)
         .unwrap_or(0.0);
 
-    let counter: Element<'_, ProfileViewMessage> = match &counter_str {
-        Some(s) => text(s.clone())
+    let counter: Element<'static, ProfileViewMessage> = match counter_str {
+        Some(s) => text(s)
             .size(11)
             .style(|t: &iced::Theme| iced::widget::text::Style {
                 color: Some(palette(theme_from_iced(t)).text_muted),
@@ -191,12 +191,8 @@ pub(super) fn build_name_row<'a>(
     let estimated_name_w = name_str.chars().count() as f32 * NAME_CHAR_W_PX;
     let truncated = estimated_name_w > available_for_name;
 
-    let name_node: Element<'a, ProfileViewMessage> = if truncated && !name_str.is_empty() {
-        tooltip_box(
-            name_clipped,
-            name_str.to_owned(),
-            iced::widget::tooltip::Position::Top,
-        )
+    let name_node: Element<'static, ProfileViewMessage> = if truncated && !name_str.is_empty() {
+        tooltip_box(name_clipped, name_str, iced::widget::tooltip::Position::Top)
     } else {
         name_clipped.into()
     };
@@ -218,14 +214,14 @@ pub(super) fn build_name_row<'a>(
         )
         .into()
 }
-pub(super) fn build_tags_row<'a>(
-    entry: &'a GameEntry,
+pub(super) fn build_tags_row(
+    entry: &GameEntry,
     card_w: f32,
-    genre: Option<&'a str>,
-) -> Element<'a, ProfileViewMessage> {
+    genre: Option<&str>,
+) -> Element<'static, ProfileViewMessage> {
     let progress = entry.progress.as_ref();
 
-    let completion_tag: Option<Element<'_, ProfileViewMessage>> = progress.and_then(|p| {
+    let completion_tag: Option<Element<'static, ProfileViewMessage>> = progress.and_then(|p| {
         if p.total == 0 {
             return None;
         }
@@ -252,21 +248,22 @@ pub(super) fn build_tags_row<'a>(
         Some(pill_el.into())
     });
 
-    let genre_tag: Option<Element<'_, ProfileViewMessage>> = genre.map(|g| {
+    let genre_tag: Option<Element<'static, ProfileViewMessage>> = genre.map(|g| {
         let tint = crate::ui::genre_color::genre_color(g);
-        pill(text(g).size(11).color(tint), tint).into()
+        pill(text(g.to_owned()).size(11).color(tint), tint).into()
     });
 
-    let mut left_tags: iced::widget::Row<'_, ProfileViewMessage> =
+    let mut left_tags: iced::widget::Row<'static, ProfileViewMessage> =
         row![].spacing(6).align_y(Alignment::Center);
 
     if let Some(gtag) = genre_tag {
         left_tags = left_tags.push(gtag);
     }
 
-    let mut tags = row![left_tags, iced::widget::Space::new().width(Length::Fill)]
-        .spacing(0)
-        .align_y(Alignment::Center);
+    let mut tags: iced::widget::Row<'static, ProfileViewMessage> =
+        row![left_tags, iced::widget::Space::new().width(Length::Fill)]
+            .spacing(0)
+            .align_y(Alignment::Center);
 
     if let Some(ctag) = completion_tag {
         tags = tags.push(ctag);
