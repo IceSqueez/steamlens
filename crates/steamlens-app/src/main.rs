@@ -123,15 +123,6 @@ enum Message {
     AppAssetsLoaded(HashMap<u32, steamlens_core::AppLibraryAssets>),
 }
 
-impl std::fmt::Debug for GameViewState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GameViewState")
-            .field("app_id", &self.app_id)
-            .field("phase", &self.phase)
-            .finish()
-    }
-}
-
 struct App {
     context: AppContext,
     screen: Screen,
