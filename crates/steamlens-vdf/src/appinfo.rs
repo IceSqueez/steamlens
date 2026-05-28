@@ -23,6 +23,7 @@ pub struct AppLibraryAssets {
     pub library_hero: Option<ImageAsset>,
     pub library_logo: Option<ImageAsset>,
     pub library_header: Option<ImageAsset>,
+    pub header_image_legacy: Option<ImageAsset>,
 }
 
 pub fn parse_appinfo_assets(bytes: &[u8]) -> Result<HashMap<u32, AppLibraryAssets>, AppInfoError> {
@@ -388,10 +389,8 @@ fn emit_assets(
     found_laf: bool,
     header_image_value: Option<ImageAsset>,
 ) -> Option<AppLibraryAssets> {
-    if assets.library_header.is_none() {
-        assets.library_header = header_image_value;
-    }
-    if found_laf || assets.library_header.is_some() {
+    assets.header_image_legacy = header_image_value;
+    if found_laf || assets.header_image_legacy.is_some() {
         Some(assets)
     } else {
         None
@@ -1943,10 +1942,11 @@ mod tests {
         assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
         assert_eq!(assets.library_hero, None);
         assert_eq!(assets.library_logo, None);
+        assert_eq!(assets.library_header, None);
         assert_eq!(
-            assets.library_header,
+            assets.header_image_legacy,
             plain("header.jpg"),
-            "header_image fallback must populate library_header"
+            "common/header_image must populate header_image_legacy"
         );
     }
 
@@ -2012,7 +2012,8 @@ mod tests {
         assert_eq!(assets.library_capsule, None);
         assert_eq!(assets.library_hero, None);
         assert_eq!(assets.library_logo, None);
-        assert_eq!(assets.library_header, plain("header.jpg"));
+        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.header_image_legacy, plain("header.jpg"));
     }
 
     #[test]
@@ -2063,6 +2064,7 @@ mod tests {
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&400).unwrap();
         assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
-        assert_eq!(assets.library_header, plain("header.jpg"));
+        assert_eq!(assets.library_header, None);
+        assert_eq!(assets.header_image_legacy, plain("header.jpg"));
     }
 }
