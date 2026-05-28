@@ -180,7 +180,56 @@ fn decode_jpeg(bytes: &[u8]) -> Option<DecodedCapsule> {
     })
 }
 
-async fn try_candidate(
+async fn try_cache_candidate(
+    app_id: u32,
+    size: CapsuleSize,
+    asset: &ImageAsset,
+) -> Option<CapsulePixels> {
+    let cache_key = cdn_cache_key(asset);
+    let path = cache_path(app_id, size, cache_key);
+
+    let bytes = match fs::read(&path).await {
+        Ok(b) => b,
+        Err(_) => {
+            tracing::trace!(target: "capsule", app_id, %size, cache_key, "cache miss");
+            return None;
+        }
+    };
+
+    match decode_jpeg(&bytes) {
+        Some(decoded) if !decoded.is_placeholder => {
+            tracing::trace!(
+                target: "capsule",
+                app_id, %size, cache_key,
+                w = decoded.pixels.width, h = decoded.pixels.height,
+                "cache hit"
+            );
+            Some(decoded.pixels)
+        }
+        Some(_) => {
+            tracing::warn!(
+                target: "capsule",
+                app_id, %size, cache_key,
+                path = %path.display(),
+                "cached file decoded as grayscale placeholder; removing"
+            );
+            let _ = fs::remove_file(&path).await;
+            None
+        }
+        None => {
+            tracing::warn!(
+                target: "capsule",
+                app_id, %size, cache_key,
+                path = %path.display(),
+                "cached file failed to JPEG-decode; removing"
+            );
+            let _ = fs::remove_file(&path).await;
+            None
+        }
+    }
+}
+
+async fn try_http_candidate(
     app_id: u32,
     size: CapsuleSize,
     asset: &ImageAsset,
@@ -188,48 +237,75 @@ async fn try_candidate(
     let cache_key = cdn_cache_key(asset);
     let target_filename = cache_filename(app_id, size, cache_key);
     let path = cache_path(app_id, size, cache_key);
-
-    if let Ok(bytes) = fs::read(&path).await {
-        match decode_jpeg(&bytes) {
-            Some(decoded) if !decoded.is_placeholder => return Some(decoded.pixels),
-            _ => {
-                let _ = fs::remove_file(&path).await;
-            }
-        }
-    }
-
-    let client = http_client()?;
     let url = cdn_url(app_id, asset);
 
+    let client = http_client()?;
     let _permit = http_semaphore().acquire().await.ok()?;
+
+    tracing::debug!(target: "capsule", app_id, %size, %url, "HTTP fetch start");
 
     let response = match client.get(&url).send().await {
         Ok(r) => r,
-        Err(_) => {
+        Err(e) => {
+            tracing::trace!(
+                target: "capsule",
+                app_id, %url, error = %e,
+                "transport error; retrying once after backoff"
+            );
             tokio::time::sleep(HTTP_RETRY_BACKOFF).await;
-            client.get(&url).send().await.ok()?
+            match client.get(&url).send().await {
+                Ok(r) => r,
+                Err(e2) => {
+                    tracing::warn!(
+                        target: "capsule",
+                        app_id, %url, error = %e2,
+                        "HTTP send failed after one retry"
+                    );
+                    return None;
+                }
+            }
         }
     };
 
-    if !response.status().is_success() {
-        tracing::trace!(
+    let status = response.status();
+    if !status.is_success() {
+        tracing::debug!(
             target: "capsule",
-            app_id,
-            url = %url,
-            status = response.status().as_u16(),
-            "CDN non-success; trying next candidate"
+            app_id, %url, status = status.as_u16(),
+            "CDN non-success response; trying next candidate"
         );
         return None;
     }
 
-    let bytes = response.bytes().await.ok()?;
-    let decoded = decode_jpeg(&bytes)?;
+    let bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(
+                target: "capsule",
+                app_id, %url, error = %e,
+                "failed to read HTTP body bytes"
+            );
+            return None;
+        }
+    };
+
+    let decoded = match decode_jpeg(&bytes) {
+        Some(d) => d,
+        None => {
+            tracing::warn!(
+                target: "capsule",
+                app_id, %url, bytes_len = bytes.len(),
+                "downloaded bytes failed JPEG decode"
+            );
+            return None;
+        }
+    };
+
     if decoded.is_placeholder {
-        tracing::trace!(
+        tracing::debug!(
             target: "capsule",
-            app_id,
-            url = %url,
-            "CDN returned a grayscale placeholder; trying next candidate"
+            app_id, %url,
+            "CDN returned grayscale placeholder; trying next candidate"
         );
         return None;
     }
@@ -237,8 +313,27 @@ async fn try_candidate(
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent).await;
     }
-    let _ = fs::write(&path, &bytes).await;
+    if let Err(e) = fs::write(&path, &bytes).await {
+        tracing::warn!(
+            target: "capsule",
+            app_id, path = %path.display(), error = %e,
+            "cache write failed; capsule will refetch next restart"
+        );
+    } else {
+        tracing::trace!(
+            target: "capsule",
+            app_id, %size, cache_key,
+            "wrote capsule to cache"
+        );
+    }
     purge_stale_caches(app_id, size, &target_filename).await;
+
+    tracing::debug!(
+        target: "capsule",
+        app_id, %size, %url,
+        w = decoded.pixels.width, h = decoded.pixels.height,
+        "capsule resolved via HTTP"
+    );
     Some(decoded.pixels)
 }
 
@@ -249,12 +344,36 @@ pub async fn fetch_capsule(
 ) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
     let chain = asset_chain_for_size(size, &assets);
     if chain.is_empty() {
+        tracing::debug!(
+            target: "capsule",
+            app_id, %size,
+            "no asset candidates in appinfo; capsule unavailable"
+        );
         return Err((size, CapsuleError::NotFound));
     }
-    for asset in chain {
-        if let Some(pixels) = try_candidate(app_id, size, asset).await {
+
+    for asset in &chain {
+        if let Some(pixels) = try_cache_candidate(app_id, size, asset).await {
             return Ok((size, pixels));
         }
     }
+
+    tracing::debug!(
+        target: "capsule",
+        app_id, %size, candidates = chain.len(),
+        "cache empty for all candidates; starting HTTP chain"
+    );
+
+    for asset in &chain {
+        if let Some(pixels) = try_http_candidate(app_id, size, asset).await {
+            return Ok((size, pixels));
+        }
+    }
+
+    tracing::warn!(
+        target: "capsule",
+        app_id, %size, candidates = chain.len(),
+        "all candidates exhausted; capsule unavailable"
+    );
     Err((size, CapsuleError::NotFound))
 }
