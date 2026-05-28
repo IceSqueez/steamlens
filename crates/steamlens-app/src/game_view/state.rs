@@ -70,13 +70,6 @@ pub struct GameViewState {
     pub pending_icons: HashMap<String, steamlens_core::AchievementIcon>,
     pub pending_rarity_percent: Option<HashMap<String, f32>>,
 
-    pub capsule_handles: HashMap<
-        (u32, crate::capsule_cache::CapsuleSize),
-        crate::profile_view::types::StoredCapsule,
-    >,
-
-    pub capsule_unavailable: HashSet<(u32, crate::capsule_cache::CapsuleSize)>,
-
     pub hovered_bar_slice: Option<RarityTier>,
 
     pub expected_total: u32,
@@ -114,8 +107,6 @@ impl GameViewState {
             error_message: String::new(),
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
-            capsule_handles: HashMap::new(),
-            capsule_unavailable: HashSet::new(),
             hovered_bar_slice: None,
             expected_total: 0,
             genre: None,

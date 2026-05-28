@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -39,6 +39,8 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         steam_state: HashMap::new(),
         steam_state_mtime: None,
         app_assets: HashMap::new(),
+        capsule_handles: HashMap::new(),
+        capsule_unavailable: HashSet::new(),
         animation: AnimationState::new(),
     };
     tracing::info!(

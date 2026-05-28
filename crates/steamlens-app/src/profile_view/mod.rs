@@ -214,7 +214,8 @@ pub fn update(
                     genre: None,
                 })
                 .collect();
-            state.capsule_handles.clear();
+            ctx.capsule_handles.clear();
+            ctx.capsule_unavailable.clear();
             state.stop_scan();
             state.phase = ProfileViewPhase::Loaded;
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
@@ -247,12 +248,14 @@ pub fn update(
             let mut miss_ids: Vec<u32> = Vec::new();
             for entry in &mut state.games {
                 let key = (entry.app_id, new_size);
-                if let Some(cached) = state.capsule_handles.get(&key) {
+                if let Some(cached) = ctx.capsule_handles.get(&key) {
                     entry.capsule = CapsuleAsset::Loaded {
                         handle: cached.handle.clone(),
                         width: cached.width,
                         height: cached.height,
                     };
+                } else if ctx.capsule_unavailable.contains(&key) {
+                    entry.capsule = CapsuleAsset::Unavailable;
                 } else {
                     entry.capsule = CapsuleAsset::Pending;
                     miss_ids.push(entry.app_id);
@@ -274,7 +277,7 @@ pub fn update(
             width,
             height,
         } => {
-            state.capsule_handles.insert(
+            ctx.capsule_handles.insert(
                 (app_id, size),
                 StoredCapsule {
                     handle: handle.clone(),
@@ -297,6 +300,7 @@ pub fn update(
         }
 
         ProfileViewMessage::CapsuleFailed { app_id, size } => {
+            ctx.capsule_unavailable.insert((app_id, size));
             if size != state.capsule_size {
                 return (Task::none(), ProfileEvent::None);
             }

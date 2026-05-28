@@ -13,7 +13,7 @@ use crate::ui::widgets::widget::WidgetSummary;
 
 pub type SharedProgressRx = Arc<Mutex<Option<mpsc::UnboundedReceiver<ProgressResult>>>>;
 
-use super::entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
+use super::entries::{CapsuleAsset, GameEntry, TopEntry};
 use super::filters::{GameStatusFilter, LibrarySort};
 use super::sort::cmp_by_sort;
 
@@ -33,7 +33,6 @@ pub enum ProfileViewPhase {
 pub struct ProfileViewState {
     pub phase: ProfileViewPhase,
     pub games: Vec<GameEntry>,
-    pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
@@ -72,7 +71,6 @@ impl ProfileViewState {
         Self {
             phase: ProfileViewPhase::Scanning,
             games: Vec::new(),
-            capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),

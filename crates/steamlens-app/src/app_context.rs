@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
@@ -7,7 +7,9 @@ use steamlens_core::{AppLibraryAssets, SteamAppState};
 use tokio::sync::mpsc;
 
 use crate::cache::{self, CacheHit, GameCacheEntry};
+use crate::capsule_cache::CapsuleSize;
 use crate::messaging::MessagingCenter;
+use crate::profile_view::types::StoredCapsule;
 use crate::settings::Settings;
 use crate::steam_worker::{SteamReply, SteamWorker};
 
@@ -53,6 +55,8 @@ pub struct AppContext {
     pub steam_state: HashMap<u32, SteamAppState>,
     pub steam_state_mtime: Option<SystemTime>,
     pub app_assets: HashMap<u32, AppLibraryAssets>,
+    pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub capsule_unavailable: HashSet<(u32, CapsuleSize)>,
     pub animation: AnimationState,
 }
 

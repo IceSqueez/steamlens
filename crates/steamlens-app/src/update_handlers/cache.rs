@@ -223,14 +223,20 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
     app.context.cached_entries.remove(&app_id);
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
-
     let pinned = app.context.settings.library.pinned.clone();
+
+    app.context
+        .capsule_handles
+        .retain(|(id, _), _| *id != app_id);
+    app.context
+        .capsule_unavailable
+        .retain(|(id, _)| *id != app_id);
+
     let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
     if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
         entry.progress = None;
         entry.capsule = profile_view::types::CapsuleAsset::Pending;
     }
-    pv_state.capsule_handles.retain(|(id, _), _| *id != app_id);
     if steam_on {
         pv_state.start_scan(vec![app_id]);
     }

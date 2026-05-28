@@ -14,10 +14,10 @@ pub use state::{GameViewPhase, GameViewState, SeededGameView};
 pub use update::{handle_steam_reply, update};
 pub use view::{GameViewProps, achievement_search_id};
 
-pub fn view(
-    state: &GameViewState,
-    props: view::GameViewProps,
-) -> iced::Element<'_, GameViewMessage> {
+pub fn view<'a>(
+    state: &'a GameViewState,
+    props: view::GameViewProps<'a>,
+) -> iced::Element<'a, GameViewMessage> {
     view::render(state, props)
 }
 
@@ -63,6 +63,8 @@ mod tests {
             steam_state: HashMap::new(),
             steam_state_mtime: None,
             app_assets: HashMap::new(),
+            capsule_handles: HashMap::new(),
+            capsule_unavailable: std::collections::HashSet::new(),
             animation: AnimationState::new(),
         }
     }

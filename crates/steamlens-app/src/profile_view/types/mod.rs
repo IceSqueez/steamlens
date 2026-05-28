@@ -36,7 +36,6 @@ mod tests {
         ProfileViewState {
             phase: ProfileViewPhase::Loaded,
             games,
-            capsule_handles: HashMap::new(),
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
@@ -310,13 +309,12 @@ mod tests {
         let entry = make_entry(app_id, "Terraria", None);
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;
-        state
-            .capsule_handles
-            .insert((app_id, CapsuleSize::Small), stored);
+        let mut capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule> = HashMap::new();
+        capsule_handles.insert((app_id, CapsuleSize::Small), stored);
 
         for entry in &mut state.games {
             let key = (entry.app_id, state.capsule_size);
-            if let Some(cached) = state.capsule_handles.get(&key) {
+            if let Some(cached) = capsule_handles.get(&key) {
                 entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
                     width: cached.width,
@@ -340,10 +338,11 @@ mod tests {
         let entry = make_entry(app_id, "Terraria", None);
         let mut state = make_state_with_games(vec![entry]);
         state.capsule_size = CapsuleSize::Small;
+        let capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule> = HashMap::new();
 
         for entry in &mut state.games {
             let key = (entry.app_id, state.capsule_size);
-            if let Some(cached) = state.capsule_handles.get(&key) {
+            if let Some(cached) = capsule_handles.get(&key) {
                 entry.capsule = CapsuleAsset::Loaded {
                     handle: cached.handle.clone(),
                     width: cached.width,
