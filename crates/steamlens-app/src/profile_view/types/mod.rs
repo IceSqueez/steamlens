@@ -8,7 +8,7 @@ pub use entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 pub use filters::{GameStatusFilter, LibrarySort};
 pub use messages::{ProfileEvent, ProfileViewMessage};
 pub(crate) use sort::sort_games_in_place;
-pub use state::{LoaderPhase, ProfileViewPhase, ProfileViewState};
+pub use state::{LoaderPhase, ProfileViewPhase, ProfileViewState, SharedProgressRx};
 
 #[cfg(test)]
 mod tests {
@@ -39,7 +39,8 @@ mod tests {
             capsule_size: CapsuleSize::default(),
             spinner_angle: 0.0,
             progress_scanner: None,
-            progress_rx: None,
+            progress_rx: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            scan_generation: 0,
             failed_app_ids: HashSet::new(),
             library_name_map: HashMap::new(),
             loader_pulse_phase: 0.0,

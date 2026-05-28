@@ -169,9 +169,7 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
     if !dirty.is_empty() && !steam_off {
         pv_state.scan_target_count = dirty.len();
         pv_state.scan_started_at = Some(Instant::now());
-        let mut scanner = crate::progress_scan::ProgressScanner::new(dirty);
-        pv_state.progress_rx = scanner.take_receiver();
-        pv_state.progress_scanner = Some(scanner);
+        pv_state.start_scan(dirty);
     } else {
         pv_state.last_scan_completed_at = Some(Instant::now());
     }
@@ -370,9 +368,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
     }
     pv_state.capsule_handles.retain(|(id, _), _| *id != app_id);
     if steam_on {
-        let mut scanner = crate::progress_scan::ProgressScanner::new(vec![app_id]);
-        pv_state.progress_rx = scanner.take_receiver();
-        pv_state.progress_scanner = Some(scanner);
+        pv_state.start_scan(vec![app_id]);
     }
     pv_state.recompute_derived(&app.context.cached_entries, &pinned);
 

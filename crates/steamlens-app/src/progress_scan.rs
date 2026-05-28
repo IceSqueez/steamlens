@@ -1,8 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
+use tokio::sync::Semaphore;
 
 use crate::timeouts;
 
@@ -37,67 +39,37 @@ pub struct ProgressResult {
 }
 
 pub struct ProgressScanner {
-    queue: VecDeque<u32>,
-    in_flight: Vec<tokio::task::JoinHandle<ProgressResult>>,
-    result_tx: tokio::sync::mpsc::UnboundedSender<ProgressResult>,
-    result_rx: Option<tokio::sync::mpsc::UnboundedReceiver<ProgressResult>>,
+    handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl ProgressScanner {
-    pub fn new(app_ids: Vec<u32>) -> Self {
-        let (result_tx, result_rx) = tokio::sync::mpsc::unbounded_channel();
-        Self {
-            queue: VecDeque::from(app_ids),
-            in_flight: Vec::new(),
-            result_tx,
-            result_rx: Some(result_rx),
-        }
-    }
-
-    pub fn take_receiver(
-        &mut self,
-    ) -> Option<tokio::sync::mpsc::UnboundedReceiver<ProgressResult>> {
-        self.result_rx.take()
-    }
-
-    pub fn poll(&mut self) -> bool {
-        self.retire_finished();
-        self.spawn_pending();
-        !self.in_flight.is_empty() || !self.queue.is_empty()
-    }
-
-    #[cfg(test)]
-    pub fn is_done(&self) -> bool {
-        self.queue.is_empty() && self.in_flight.is_empty()
-    }
-
-    fn retire_finished(&mut self) {
-        self.in_flight.retain(|h| !h.is_finished());
-    }
-
-    fn spawn_pending(&mut self) {
-        while self.in_flight.len() < MAX_CONCURRENT {
-            let Some(app_id) = self.queue.pop_front() else {
-                break;
-            };
-            let tx = self.result_tx.clone();
-            let handle = tokio::spawn(async move {
-                let result = scan_one_app(app_id).await;
-                let _ = tx.send(result);
-                ProgressResult {
-                    app_id,
-                    data: None,
-                    error: None,
-                }
-            });
-            self.in_flight.push(handle);
-        }
+    pub fn spawn(
+        app_ids: Vec<u32>,
+    ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<ProgressResult>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT));
+        let handles = app_ids
+            .into_iter()
+            .map(|app_id| {
+                let tx = tx.clone();
+                let permits = Arc::clone(&permits);
+                tokio::spawn(async move {
+                    let _permit = match permits.acquire().await {
+                        Ok(p) => p,
+                        Err(_) => return,
+                    };
+                    let result = scan_one_app(app_id).await;
+                    let _ = tx.send(result);
+                })
+            })
+            .collect();
+        (Self { handles }, rx)
     }
 }
 
 impl Drop for ProgressScanner {
     fn drop(&mut self) {
-        for handle in self.in_flight.drain(..) {
+        for handle in self.handles.drain(..) {
             handle.abort();
         }
     }
@@ -366,21 +338,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn scanner_new_empty_is_done() {
-        let scanner = ProgressScanner::new(vec![]);
-        assert!(scanner.is_done(), "empty scanner must be done immediately");
-    }
-
-    #[test]
-    fn scanner_new_with_ids_not_done() {
-        let scanner = ProgressScanner::new(vec![105600, 570]);
+    #[tokio::test]
+    async fn scanner_spawn_empty_closes_rx_immediately() {
+        let (_scanner, mut rx) = ProgressScanner::spawn(vec![]);
         assert!(
-            !scanner.is_done(),
-            "scanner with queued games must not be done"
+            rx.recv().await.is_none(),
+            "empty scanner must close receiver immediately"
         );
-        assert_eq!(scanner.queue.len(), 2, "queue must hold both ids");
-        assert!(scanner.in_flight.is_empty(), "no tasks spawned before poll");
     }
 
     #[test]
@@ -408,27 +372,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn scanner_poll_spawns_up_to_max_concurrent() {
-        let ids: Vec<u32> = (1..=10).collect();
-        let mut scanner = ProgressScanner::new(ids);
-        let has_more = scanner.poll();
-        assert!(has_more, "poll on 10 games must return true");
-        assert!(
-            scanner.in_flight.len() <= MAX_CONCURRENT,
-            "must not exceed MAX_CONCURRENT in-flight tasks"
-        );
-        assert_eq!(
-            scanner.queue.len(),
-            10 - scanner.in_flight.len(),
-            "queue must shrink by the number of spawned tasks"
-        );
-        for h in scanner.in_flight.drain(..) {
-            h.abort();
-        }
-        scanner.queue.clear();
-    }
-
     #[test]
     fn max_concurrent_is_documented_value() {
         assert_eq!(
@@ -437,15 +380,6 @@ mod tests {
              cards-render-out-of-order race closed in Phase A.2 (see ALPHA_6_HARDENING.md B.6) — \
              revert if test surfaces issues"
         );
-    }
-
-    #[test]
-    fn take_receiver_gives_channel_once() {
-        let mut scanner = ProgressScanner::new(vec![1]);
-        let rx1 = scanner.take_receiver();
-        let rx2 = scanner.take_receiver();
-        assert!(rx1.is_some(), "first take must return Some");
-        assert!(rx2.is_none(), "second take must return None");
     }
 
     #[test]

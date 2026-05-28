@@ -56,7 +56,8 @@ mod tests {
 
     #[tokio::test]
     async fn send_checked_blocks_when_steam_not_running() {
-        let (worker, _rx) = SteamWorker::spawn();
+        let (reply_tx, _reply_rx) = tokio::sync::mpsc::unbounded_channel();
+        let worker = SteamWorker::spawn(reply_tx);
         let err = worker
             .send_checked(SteamRequest::RequestUserStats, false, true)
             .unwrap_err();

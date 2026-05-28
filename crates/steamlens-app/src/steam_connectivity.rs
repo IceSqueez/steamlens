@@ -44,8 +44,7 @@ pub(crate) fn surface_steam_unavailable(ctx: &mut AppContext, state: SteamUnavai
 pub(crate) fn mark_steam_offline_and_warn(app: &mut App) {
     app.context.connectivity.steam_running = Some(false);
     if let Screen::ProfileView(pv_state) = &mut app.screen {
-        pv_state.progress_scanner = None;
-        pv_state.progress_rx = None;
+        pv_state.stop_scan();
         pv_state.last_scan_completed_at = Some(std::time::Instant::now());
     }
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);

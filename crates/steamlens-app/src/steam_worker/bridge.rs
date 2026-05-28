@@ -1,5 +1,5 @@
-use std::sync::mpsc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 use tokio::sync::mpsc as async_mpsc;
 
@@ -15,7 +15,7 @@ type ConnectError = crate::worker_subprocess::WorkerProtocolError;
 async fn await_steam_connected(
     handle: &mut WorkerHandle,
     timeout: Duration,
-    rep_tx: &mpsc::Sender<SteamReply>,
+    rep_tx: &mpsc::UnboundedSender<SteamReply>,
 ) -> Result<(), ConnectError> {
     match tokio::time::timeout(timeout, handle.recv()).await {
         Ok(Ok(Some(WorkerResponse::SteamConnected { app_name, .. }))) => {
@@ -38,7 +38,7 @@ fn spawn_error_message(e: WorkerSpawnError) -> String {
 
 pub(super) async fn bridge_loop(
     mut req_rx: async_mpsc::UnboundedReceiver<SteamRequest>,
-    rep_tx: mpsc::Sender<SteamReply>,
+    rep_tx: mpsc::UnboundedSender<SteamReply>,
 ) {
     let connect_timeout = timeouts::STEAM_CONNECT;
 

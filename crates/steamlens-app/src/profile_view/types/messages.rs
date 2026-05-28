@@ -54,7 +54,7 @@ pub enum ProfileViewMessage {
     },
     RequestToggleGamePin(u32),
     RequestOpenGame(u32),
-    DrainProgressResults,
+    ProgressResultReceived(crate::progress_scan::ProgressResult),
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +113,9 @@ impl std::fmt::Debug for ProfileViewMessage {
             ProfileViewMessage::RetrySingleFailedScan(id) => {
                 write!(f, "RetrySingleFailedScan({id})")
             }
-            ProfileViewMessage::DrainProgressResults => write!(f, "DrainProgressResults"),
+            ProfileViewMessage::ProgressResultReceived(r) => {
+                write!(f, "ProgressResultReceived(app={})", r.app_id)
+            }
             ProfileViewMessage::StatusFilterChanged(f2) => write!(f, "StatusFilterChanged({f2:?})"),
             ProfileViewMessage::GenreFilterToggled(g) => write!(f, "GenreFilterToggled({g:?})"),
             ProfileViewMessage::GenreFilterCleared => write!(f, "GenreFilterCleared"),

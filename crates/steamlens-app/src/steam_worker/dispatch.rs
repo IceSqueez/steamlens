@@ -1,5 +1,5 @@
-use std::sync::mpsc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
@@ -9,7 +9,7 @@ use super::apply::run_apply_sequence;
 use crate::timeouts;
 use crate::worker_subprocess::WorkerHandle;
 
-pub(super) fn reply(tx: &mpsc::Sender<SteamReply>, r: SteamReply) {
+pub(super) fn reply(tx: &mpsc::UnboundedSender<SteamReply>, r: SteamReply) {
     let _ = tx.send(r);
 }
 
@@ -42,7 +42,7 @@ pub(super) async fn round_trip(
     handle: &mut WorkerHandle,
     cmd: &WorkerCommand,
     timeout: Duration,
-    rep_tx: &mpsc::Sender<SteamReply>,
+    rep_tx: &mpsc::UnboundedSender<SteamReply>,
 ) -> Option<WorkerResponse> {
     if handle.send(cmd).await.is_err() {
         return None;
@@ -76,7 +76,10 @@ fn read_shm<T: serde::de::DeserializeOwned>(
         .map_err(|e| format!("{label} shm read at {}: {e}", path.display()))
 }
 
-pub(super) fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender<SteamReply>) {
+pub(super) fn handle_worker_response(
+    resp: WorkerResponse,
+    rep_tx: &mpsc::UnboundedSender<SteamReply>,
+) {
     match resp {
         WorkerResponse::SteamConnected { app_name, .. } => {
             reply(rep_tx, SteamReply::Connected { app_name });
@@ -153,7 +156,7 @@ pub(super) fn handle_worker_response(resp: WorkerResponse, rep_tx: &mpsc::Sender
 pub(super) async fn handle_request(
     req: super::api::SteamRequest,
     handle: &mut WorkerHandle,
-    rep_tx: &mpsc::Sender<SteamReply>,
+    rep_tx: &mpsc::UnboundedSender<SteamReply>,
 ) {
     use super::api::SteamRequest;
     match req {

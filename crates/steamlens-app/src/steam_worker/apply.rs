@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::mpsc;
+use tokio::sync::mpsc;
 
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 
@@ -14,7 +14,7 @@ pub(super) async fn run_apply_sequence(
     stats_int: HashMap<String, i32>,
     stats_float: HashMap<String, f32>,
     handle: &mut WorkerHandle,
-    rep_tx: &mpsc::Sender<SteamReply>,
+    rep_tx: &mpsc::UnboundedSender<SteamReply>,
 ) {
     let staging_timeout = timeouts::STAGING;
 

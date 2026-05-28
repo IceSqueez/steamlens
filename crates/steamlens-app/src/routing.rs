@@ -118,10 +118,9 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         state.phase = game_view::GameViewPhase::Ready;
     } else {
         crate::worker_drain::disconnect_worker(app);
-        let (worker, rx) = SteamWorker::spawn();
+        let worker = SteamWorker::spawn(app.context.worker_reply_tx.clone());
         worker.send(SteamRequest::ConnectWithApp(app_id));
         app.context.worker = Some(worker);
-        app.context.worker_rx = Some(rx);
     }
 
     let portrait_assets = app

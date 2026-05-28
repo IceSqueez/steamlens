@@ -14,11 +14,13 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
     let mut pv_state = ProfileViewState::new();
     pv_state.sort = loaded_settings.library.sort;
 
-    let (worker, rx) = SteamWorker::spawn();
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
+    let worker = SteamWorker::spawn(reply_tx.clone());
 
     let context = AppContext {
         worker: Some(worker),
-        worker_rx: Some(rx),
+        worker_reply_tx: reply_tx,
+        worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
         settings: loaded_settings,
         settings_dirty_since: None,
         messaging: MessagingCenter::new(),

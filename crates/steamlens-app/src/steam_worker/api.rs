@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::sync::mpsc;
 
-use tokio::sync::mpsc as async_mpsc;
+use tokio::sync::mpsc;
 
 use steamlens_core::AchievementIcon;
 
@@ -44,17 +43,14 @@ pub enum SteamReply {
 }
 
 pub struct SteamWorker {
-    request_tx: async_mpsc::UnboundedSender<SteamRequest>,
+    request_tx: mpsc::UnboundedSender<SteamRequest>,
 }
 
 impl SteamWorker {
-    pub fn spawn() -> (Self, mpsc::Receiver<SteamReply>) {
-        let (req_tx, req_rx) = async_mpsc::unbounded_channel::<SteamRequest>();
-        let (rep_tx, rep_rx) = mpsc::channel::<SteamReply>();
-
-        tokio::spawn(bridge_loop(req_rx, rep_tx));
-
-        (SteamWorker { request_tx: req_tx }, rep_rx)
+    pub fn spawn(reply_tx: mpsc::UnboundedSender<SteamReply>) -> Self {
+        let (req_tx, req_rx) = mpsc::unbounded_channel::<SteamRequest>();
+        tokio::spawn(bridge_loop(req_rx, reply_tx));
+        SteamWorker { request_tx: req_tx }
     }
 
     pub fn send(&self, req: SteamRequest) {

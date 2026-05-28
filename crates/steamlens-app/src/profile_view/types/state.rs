@@ -1,11 +1,16 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::cache::GameCacheEntry;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::profile_view::widget::{compute_profile_summary, top6_closest_to_complete};
+use crate::progress_scan::ProgressResult;
 use crate::ui::widgets::widget::WidgetSummary;
+
+pub type SharedProgressRx =
+    Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<ProgressResult>>>>;
 
 use super::entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 use super::filters::{GameStatusFilter, LibrarySort};
@@ -33,8 +38,8 @@ pub struct ProfileViewState {
     pub capsule_size: CapsuleSize,
     pub spinner_angle: f32,
     pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
-    pub progress_rx:
-        Option<tokio::sync::mpsc::UnboundedReceiver<crate::progress_scan::ProgressResult>>,
+    pub progress_rx: SharedProgressRx,
+    pub scan_generation: u64,
     pub failed_app_ids: HashSet<u32>,
     pub library_name_map: HashMap<u32, String>,
     pub loader_pulse_phase: f32,
@@ -72,7 +77,8 @@ impl ProfileViewState {
             capsule_size: CapsuleSize::default(),
             spinner_angle: 0.0,
             progress_scanner: None,
-            progress_rx: None,
+            progress_rx: Arc::new(Mutex::new(None)),
+            scan_generation: 0,
             failed_app_ids: HashSet::new(),
             library_name_map: HashMap::new(),
             loader_pulse_phase: 0.0,
@@ -87,6 +93,18 @@ impl ProfileViewState {
             scan_target_count: 0,
             derived: DerivedProfileView::default(),
         }
+    }
+
+    pub fn start_scan(&mut self, app_ids: Vec<u32>) {
+        let (scanner, rx) = crate::progress_scan::ProgressScanner::spawn(app_ids);
+        self.scan_generation = self.scan_generation.wrapping_add(1);
+        *self.progress_rx.lock().expect("progress_rx poisoned") = Some(rx);
+        self.progress_scanner = Some(scanner);
+    }
+
+    pub fn stop_scan(&mut self) {
+        self.progress_scanner = None;
+        *self.progress_rx.lock().expect("progress_rx poisoned") = None;
     }
 
     pub fn recompute_derived(

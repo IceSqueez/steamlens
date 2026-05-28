@@ -211,8 +211,7 @@ pub fn update(
                 })
                 .collect();
             state.capsule_handles.clear();
-            state.progress_scanner = None;
-            state.progress_rx = None;
+            state.stop_scan();
             state.phase = ProfileViewPhase::Loaded;
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
 
@@ -329,8 +328,7 @@ pub fn update(
             }
             state.scan_target_count = 0;
             state.last_scan_completed_at = Some(now);
-            state.progress_scanner = None;
-            state.progress_rx = None;
+            state.stop_scan();
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
@@ -379,18 +377,14 @@ pub fn update(
             let ids: Vec<u32> = state.failed_app_ids.iter().copied().collect();
             state.failed_app_ids.clear();
             if !ids.is_empty() {
-                let mut scanner = crate::progress_scan::ProgressScanner::new(ids);
-                state.progress_rx = scanner.take_receiver();
-                state.progress_scanner = Some(scanner);
+                state.start_scan(ids);
             }
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::RetrySingleFailedScan(app_id) => {
             state.failed_app_ids.remove(&app_id);
-            let mut scanner = crate::progress_scan::ProgressScanner::new(vec![app_id]);
-            state.progress_rx = scanner.take_receiver();
-            state.progress_scanner = Some(scanner);
+            state.start_scan(vec![app_id]);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -415,10 +409,10 @@ pub fn update(
 
         ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
 
-        ProfileViewMessage::DrainProgressResults => {
-            let result = drain_progress_results(state, ctx);
+        ProfileViewMessage::ProgressResultReceived(result) => {
+            let outcome = handle_progress_result(state, ctx, result);
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
-            result
+            outcome
         }
 
         ProfileViewMessage::StatusFilterChanged(filter) => {
@@ -445,131 +439,110 @@ pub fn update(
     }
 }
 
-fn drain_progress_results(
+fn handle_progress_result(
     state: &mut ProfileViewState,
     ctx: &mut AppContext,
+    result: crate::progress_scan::ProgressResult,
 ) -> (Task<ProfileViewMessage>, ProfileEvent) {
-    if let Some(scanner) = &mut state.progress_scanner {
-        let _still_going = scanner.poll();
-    }
+    let scan_app_id = result.app_id;
 
-    let Some(rx) = &mut state.progress_rx else {
-        return (Task::none(), ProfileEvent::None);
+    let Some(data) = result.data else {
+        state.failed_app_ids.insert(scan_app_id);
+        let reason = result
+            .error
+            .unwrap_or_else(|| format!("Scan failed for app {scan_app_id}"));
+        return (
+            Task::done(ProfileViewMessage::ScanFailed {
+                app_id: scan_app_id,
+                reason,
+            }),
+            ProfileEvent::None,
+        );
     };
 
-    let mut cache_entries: Vec<crate::cache::GameCacheEntry> = Vec::new();
-    let mut summary_entries: Vec<crate::cache::types::GameSummaryCache> = Vec::new();
-    let mut no_ach_events: Vec<(u32, u32)> = Vec::new();
-    let mut tasks: Vec<Task<ProfileViewMessage>> = Vec::new();
-
-    loop {
-        match rx.try_recv() {
-            Ok(result) => {
-                let scan_app_id = result.app_id;
-                let Some(data) = result.data else {
-                    state.failed_app_ids.insert(scan_app_id);
-                    let reason = result
-                        .error
-                        .unwrap_or_else(|| format!("Scan failed for app {scan_app_id}"));
-                    tasks.push(Task::done(ProfileViewMessage::ScanFailed {
-                        app_id: scan_app_id,
-                        reason,
-                    }));
-                    continue;
-                };
-
-                if data.achievements.is_empty() {
-                    let change_number = state
-                        .games
-                        .iter()
-                        .find(|g| g.app_id == scan_app_id)
-                        .map(|g| g.change_number);
-                    state.games.retain(|g| g.app_id != scan_app_id);
-                    ctx.cached_entries.remove(&scan_app_id);
-                    if let Some(cn) = change_number {
-                        ctx.no_ach_cache.insert(scan_app_id, cn);
-                        no_ach_events.push((scan_app_id, cn));
-                    }
-                    continue;
-                }
-
-                let earned = data.earned_count();
-                let total = data.total_count();
-                tasks.push(Task::done(ProfileViewMessage::ProgressFetched {
-                    app_id: scan_app_id,
-                    earned,
-                    total,
-                }));
-
-                if let Some(scanned_name) = &data.app_name
-                    && let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id)
-                {
-                    game.name = Some(scanned_name.clone());
-                }
-
-                let game_name = state
-                    .games
-                    .iter()
-                    .find(|g| g.app_id == scan_app_id)
-                    .and_then(|g| g.name.as_deref().map(str::to_owned));
-
-                let entry = crate::game_view_seed::build_cache_entry_from_scan(
-                    &data,
-                    scan_app_id,
-                    game_name.as_deref(),
-                    &ctx.steam_state,
-                );
-
-                if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {
-                    game.genre.clone_from(&entry.genre);
-                }
-
-                let change_number = state
-                    .games
-                    .iter()
-                    .find(|g| g.app_id == scan_app_id)
-                    .map(|g| g.change_number)
-                    .unwrap_or(0);
-                summary_entries.push(crate::cache::types::GameSummaryCache {
-                    schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
-                    app_id: scan_app_id,
-                    name: entry.name.clone(),
-                    cached_change_number: change_number,
-                    cached_at: entry.cached_at,
-                    progress: entry.progress,
-                    tier_breakdown: entry.tier_breakdown.clone(),
-                    genre: entry.genre.clone(),
-                    playtime_minutes: entry.playtime_minutes,
-                });
-
-                ctx.cached_entries.insert(scan_app_id, entry.clone());
-                cache_entries.push(entry);
-            }
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
-            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                tasks.push(Task::done(ProfileViewMessage::ProgressScanDone));
-                break;
-            }
-        }
+    if data.achievements.is_empty() {
+        let change_number = state
+            .games
+            .iter()
+            .find(|g| g.app_id == scan_app_id)
+            .map(|g| g.change_number);
+        state.games.retain(|g| g.app_id != scan_app_id);
+        ctx.cached_entries.remove(&scan_app_id);
+        let no_ach_entries = if let Some(cn) = change_number {
+            ctx.no_ach_cache.insert(scan_app_id, cn);
+            vec![(scan_app_id, cn)]
+        } else {
+            Vec::new()
+        };
+        return (
+            Task::none(),
+            ProfileEvent::DrainedProgress {
+                cache_entries: Vec::new(),
+                summary_entries: Vec::new(),
+                no_ach_entries,
+            },
+        );
     }
 
-    let task = if tasks.is_empty() {
-        Task::none()
-    } else {
-        Task::batch(tasks)
+    let earned = data.earned_count();
+    let total = data.total_count();
+    let progress_task = Task::done(ProfileViewMessage::ProgressFetched {
+        app_id: scan_app_id,
+        earned,
+        total,
+    });
+
+    if let Some(scanned_name) = &data.app_name
+        && let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id)
+    {
+        game.name = Some(scanned_name.clone());
+    }
+
+    let game_name = state
+        .games
+        .iter()
+        .find(|g| g.app_id == scan_app_id)
+        .and_then(|g| g.name.as_deref().map(str::to_owned));
+
+    let entry = crate::game_view_seed::build_cache_entry_from_scan(
+        &data,
+        scan_app_id,
+        game_name.as_deref(),
+        &ctx.steam_state,
+    );
+
+    if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {
+        game.genre.clone_from(&entry.genre);
+    }
+
+    let change_number = state
+        .games
+        .iter()
+        .find(|g| g.app_id == scan_app_id)
+        .map(|g| g.change_number)
+        .unwrap_or(0);
+    let summary = crate::cache::types::GameSummaryCache {
+        schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
+        app_id: scan_app_id,
+        name: entry.name.clone(),
+        cached_change_number: change_number,
+        cached_at: entry.cached_at,
+        progress: entry.progress,
+        tier_breakdown: entry.tier_breakdown.clone(),
+        genre: entry.genre.clone(),
+        playtime_minutes: entry.playtime_minutes,
     };
 
-    let event = if cache_entries.is_empty() && no_ach_events.is_empty() {
-        ProfileEvent::None
-    } else {
+    ctx.cached_entries.insert(scan_app_id, entry.clone());
+
+    (
+        progress_task,
         ProfileEvent::DrainedProgress {
-            cache_entries,
-            summary_entries,
-            no_ach_entries: no_ach_events,
-        }
-    };
-
-    (task, event)
+            cache_entries: vec![entry],
+            summary_entries: vec![summary],
+            no_ach_entries: Vec::new(),
+        },
+    )
 }
 
 pub(crate) fn spawn_capsule_queue(
@@ -608,13 +581,49 @@ pub fn subscription(
     };
 
     let progress_drain_sub = if state.progress_scanner.is_some() {
-        time::every(std::time::Duration::from_millis(200))
-            .map(|_| ProfileViewMessage::DrainProgressResults)
+        iced::Subscription::run_with(
+            ProgressRxHandle {
+                rx: std::sync::Arc::clone(&state.progress_rx),
+                generation: state.scan_generation,
+            },
+            |handle: &ProgressRxHandle| {
+                let rx_holder = std::sync::Arc::clone(&handle.rx);
+                iced::stream::channel(
+                    64,
+                    |mut output: iced::futures::channel::mpsc::Sender<ProfileViewMessage>| async move {
+                        let Some(mut rx) = rx_holder.lock().expect("progress_rx poisoned").take()
+                        else {
+                            return;
+                        };
+                        while let Some(result) = rx.recv().await {
+                            if output
+                                .try_send(ProfileViewMessage::ProgressResultReceived(result))
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        let _ = output.try_send(ProfileViewMessage::ProgressScanDone);
+                    },
+                )
+            },
+        )
     } else {
         iced::Subscription::none()
     };
 
     iced::Subscription::batch([spinner_sub, loader_pulse_sub, progress_drain_sub])
+}
+
+struct ProgressRxHandle {
+    rx: crate::profile_view::types::SharedProgressRx,
+    generation: u64,
+}
+
+impl std::hash::Hash for ProgressRxHandle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.generation.hash(state);
+    }
 }
 
 pub fn render<'a>(

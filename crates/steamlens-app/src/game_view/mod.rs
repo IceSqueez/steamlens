@@ -74,9 +74,11 @@ mod tests {
     use types::{AchievementData, AchievementRow};
 
     fn make_test_ctx() -> AppContext {
+        let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
         AppContext {
             worker: None,
-            worker_rx: None,
+            worker_reply_tx: reply_tx,
+            worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
             settings: Settings::default(),
             settings_dirty_since: None,
             messaging: MessagingCenter::new(),

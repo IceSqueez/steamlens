@@ -1,14 +1,17 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
 use iced::Task;
 use steamlens_core::{AppLibraryAssets, SteamAppState};
+use tokio::sync::mpsc;
 
 use crate::cache::{self, CacheHit, GameCacheEntry};
 use crate::messaging::MessagingCenter;
 use crate::settings::Settings;
 use crate::steam_worker::{SteamReply, SteamWorker};
+
+pub type SharedWorkerRx = Arc<Mutex<Option<mpsc::UnboundedReceiver<SteamReply>>>>;
 
 pub struct AnimationState {
     pub skeleton_phase: f32,
@@ -23,7 +26,8 @@ pub struct ConnectivityState {
 
 pub struct AppContext {
     pub worker: Option<SteamWorker>,
-    pub worker_rx: Option<mpsc::Receiver<SteamReply>>,
+    pub worker_reply_tx: mpsc::UnboundedSender<SteamReply>,
+    pub worker_reply_rx: SharedWorkerRx,
     pub settings: Settings,
     pub settings_dirty_since: Option<Instant>,
     pub messaging: MessagingCenter,

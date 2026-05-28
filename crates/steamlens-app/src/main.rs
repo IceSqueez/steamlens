@@ -75,7 +75,7 @@ pub(crate) enum Message {
     GameView(GameViewMessage),
     Cache(cache::CacheEvent),
     Messaging(messaging::MessagingEvent),
-    PollWorker,
+    WorkerReply(steam_worker::SteamReply),
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, ProbeFailure>),
@@ -104,6 +104,14 @@ pub(crate) enum Message {
     ),
     LocalProfileLoaded(Option<Box<steamlens_core::UserProfile>>),
     AppAssetsLoaded(HashMap<u32, steamlens_core::AppLibraryAssets>),
+}
+
+struct WorkerReplyHandle(app_context::SharedWorkerRx);
+
+impl std::hash::Hash for WorkerReplyHandle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::sync::Arc::as_ptr(&self.0).hash(state);
+    }
 }
 
 #[derive(Default)]
@@ -165,7 +173,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::GameView(m) => update_handlers::handle_game_view_message(app, m),
 
-        Message::PollWorker => worker_drain::drain_worker_replies(app),
+        Message::WorkerReply(reply) => worker_drain::handle_worker_reply(app, reply),
 
         Message::SettingsFlushTick => {
             if let Some(since) = app.context.settings_dirty_since
@@ -416,11 +424,26 @@ fn subscription(app: &App) -> Subscription<Message> {
         }
     });
 
-    let poll_sub = if app.context.worker.is_some() {
-        iced::time::every(std::time::Duration::from_millis(100)).map(|_| Message::PollWorker)
-    } else {
-        Subscription::none()
-    };
+    let worker_reply_sub = Subscription::run_with(
+        WorkerReplyHandle(std::sync::Arc::clone(&app.context.worker_reply_rx)),
+        |handle: &WorkerReplyHandle| {
+            let rx_holder = std::sync::Arc::clone(&handle.0);
+            iced::stream::channel(
+                64,
+                |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                    let Some(mut rx) = rx_holder.lock().expect("worker_reply_rx poisoned").take()
+                    else {
+                        return;
+                    };
+                    while let Some(reply) = rx.recv().await {
+                        if output.try_send(Message::WorkerReply(reply)).is_err() {
+                            break;
+                        }
+                    }
+                },
+            )
+        },
+    );
 
     let skeleton_sub = if splash::has_active_skeletons(app) {
         iced::time::every(std::time::Duration::from_millis(33)).map(|_| Message::SkeletonTick)
@@ -457,7 +480,7 @@ fn subscription(app: &App) -> Subscription<Message> {
 
     Subscription::batch([
         keyboard_sub,
-        poll_sub,
+        worker_reply_sub,
         skeleton_sub,
         settings_flush_sub,
         toast_sub,
@@ -541,10 +564,12 @@ mod tests {
 
     impl Default for App {
         fn default() -> Self {
+            let (reply_tx, reply_rx) = tokio::sync::mpsc::unbounded_channel();
             Self {
                 context: AppContext {
                     worker: None,
-                    worker_rx: None,
+                    worker_reply_tx: reply_tx,
+                    worker_reply_rx: std::sync::Arc::new(std::sync::Mutex::new(Some(reply_rx))),
                     settings: Settings::default(),
                     settings_dirty_since: None,
                     messaging: MessagingCenter::new(),
@@ -1089,7 +1114,7 @@ mod tests {
     }
 
     #[test]
-    fn drain_progress_results_failure_records_failed_app_id() {
+    fn progress_result_failure_records_failed_app_id() {
         use crate::profile_view::types::{CapsuleAsset, GameEntry};
         use crate::progress_scan::ProgressResult;
 
@@ -1104,20 +1129,15 @@ mod tests {
                 progress: None,
                 genre: None,
             });
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-            tx.send(ProgressResult {
-                app_id: 105600,
-                data: None,
-                error: None,
-            })
-            .unwrap();
-            drop(tx);
-            pv.progress_rx = Some(rx);
         }
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(ProgressResult {
+                app_id: 105600,
+                data: None,
+                error: None,
+            })),
         );
 
         if let Screen::ProfileView(pv) = &app.screen {
@@ -1186,8 +1206,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn retry_failed_scans_clears_set_and_spawns_scanner() {
+    #[tokio::test]
+    async fn retry_failed_scans_clears_set_and_spawns_scanner() {
         let mut app = make_app_probing();
         if let Screen::ProfileView(pv) = &mut app.screen {
             pv.failed_app_ids.insert(105600);
@@ -1206,7 +1226,10 @@ mod tests {
             );
             assert!(pv.progress_scanner.is_some(), "new scanner must be spawned");
             assert!(
-                pv.progress_rx.is_some(),
+                pv.progress_rx
+                    .lock()
+                    .expect("progress_rx poisoned")
+                    .is_some(),
                 "progress_rx must be wired to new scanner"
             );
         } else {
@@ -1647,40 +1670,37 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn drain_progress_success_path_inserts_cached_entry() {
+    #[test]
+    fn progress_result_success_path_inserts_cached_entry() {
         use steamlens_core::CardOnlyAchievement;
 
         let app_id: u32 = 105600;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
         let mut pv_state = ProfileViewState::new();
         pv_state.games.push(make_game_entry(app_id, 7));
-        pv_state.progress_rx = Some(rx);
 
         let mut app = App {
             screen: Screen::ProfileView(Box::new(pv_state)),
             ..App::default()
         };
 
-        tx.send(progress_scan::ProgressResult {
-            app_id,
-            data: Some(progress_scan::ScannedGameData {
-                app_name: Some("Terraria".to_owned()),
-                achievements: vec![CardOnlyAchievement {
-                    id: "ACH_KILL_BOSS".to_owned(),
-                    is_achieved: true,
-                }],
-                stats: vec![],
-                global_percentages: HashMap::new(),
-                genre: None,
-            }),
-            error: None,
-        })
-        .expect("send result");
-
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+                progress_scan::ProgressResult {
+                    app_id,
+                    data: Some(progress_scan::ScannedGameData {
+                        app_name: Some("Terraria".to_owned()),
+                        achievements: vec![CardOnlyAchievement {
+                            id: "ACH_KILL_BOSS".to_owned(),
+                            is_achieved: true,
+                        }],
+                        stats: vec![],
+                        global_percentages: HashMap::new(),
+                        genre: None,
+                    }),
+                    error: None,
+                },
+            )),
         );
 
         assert!(
@@ -1703,36 +1723,33 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn drain_progress_empty_achievements_marks_no_ach_cache() {
+    #[test]
+    fn progress_result_empty_achievements_marks_no_ach_cache() {
         let app_id: u32 = 99999;
         let change_number: u32 = 42;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
         let mut pv_state = ProfileViewState::new();
         pv_state.games.push(make_game_entry(app_id, change_number));
-        pv_state.progress_rx = Some(rx);
 
         let mut app = App {
             screen: Screen::ProfileView(Box::new(pv_state)),
             ..App::default()
         };
 
-        tx.send(progress_scan::ProgressResult {
-            app_id,
-            data: Some(progress_scan::ScannedGameData {
-                app_name: None,
-                achievements: vec![],
-                stats: vec![],
-                global_percentages: HashMap::new(),
-                genre: None,
-            }),
-            error: None,
-        })
-        .expect("send result");
-
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+                progress_scan::ProgressResult {
+                    app_id,
+                    data: Some(progress_scan::ScannedGameData {
+                        app_name: None,
+                        achievements: vec![],
+                        stats: vec![],
+                        global_percentages: HashMap::new(),
+                        genre: None,
+                    }),
+                    error: None,
+                },
+            )),
         );
 
         assert_eq!(
@@ -1754,29 +1771,26 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn drain_progress_failed_scan_records_failed_app_id() {
+    #[test]
+    fn progress_result_failed_scan_records_failed_app_id() {
         let app_id: u32 = 12345;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<progress_scan::ProgressResult>();
         let mut pv_state = ProfileViewState::new();
         pv_state.games.push(make_game_entry(app_id, 0));
-        pv_state.progress_rx = Some(rx);
 
         let mut app = App {
             screen: Screen::ProfileView(Box::new(pv_state)),
             ..App::default()
         };
 
-        tx.send(progress_scan::ProgressResult {
-            app_id,
-            data: None,
-            error: None,
-        })
-        .expect("send result");
-
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::DrainProgressResults),
+            Message::ProfileView(ProfileViewMessage::ProgressResultReceived(
+                progress_scan::ProgressResult {
+                    app_id,
+                    data: None,
+                    error: None,
+                },
+            )),
         );
 
         if let Screen::ProfileView(pv) = &app.screen {
