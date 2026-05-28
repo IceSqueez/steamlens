@@ -126,6 +126,7 @@ enum Message {
 struct App {
     context: AppContext,
     screen: Screen,
+    preserved_profile_state: Option<Box<ProfileViewState>>,
     splash_min_elapsed: bool,
     library_cache_resolved: bool,
     cache_classified: bool,
@@ -169,6 +170,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
     let app = App {
         context,
         screen: Screen::ProfileView(Box::new(pv_state)),
+        preserved_profile_state: None,
         splash_min_elapsed: false,
         library_cache_resolved: false,
         cache_classified: false,
@@ -299,10 +301,16 @@ fn mark_steam_offline_and_warn(app: &mut App) {
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
 
-fn current_pv_state_mut(screen: &mut Screen) -> &mut ProfileViewState {
+fn current_pv_state_mut<'a>(
+    screen: &'a mut Screen,
+    preserved: &'a mut Option<Box<ProfileViewState>>,
+) -> &'a mut ProfileViewState {
     match screen {
         Screen::ProfileView(state) => state.as_mut(),
-        Screen::GameView(state) => state.prev_profile_state.as_mut(),
+        Screen::GameView(_) => preserved
+            .as_mut()
+            .expect("GameView screen must have preserved profile state")
+            .as_mut(),
     }
 }
 
@@ -324,11 +332,7 @@ fn dispatch_game_event(app: &mut App, task: Task<Message>, event: GameViewEvent)
 
 fn go_back_to_profile(app: &mut App) {
     disconnect_worker(app);
-    if let Screen::GameView(gv_state) = std::mem::replace(
-        &mut app.screen,
-        Screen::ProfileView(Box::new(ProfileViewState::new())),
-    ) {
-        let mut prev = gv_state.prev_profile_state;
+    if let Some(mut prev) = app.preserved_profile_state.take() {
         prev.search.clear();
         app.screen = Screen::ProfileView(prev);
     }
@@ -343,10 +347,11 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     } else {
         Box::new(ProfileViewState::new())
     };
+    app.preserved_profile_state = Some(prev);
 
     let steam_off = app.context.connectivity.steam_running == Some(false);
 
-    let mut state = GameViewState::new(app_id).with_prev_profile(prev);
+    let mut state = GameViewState::new(app_id);
     state.achievement_sort = app.context.settings.manager.sort;
     state.rarity_tier_set = app
         .context
@@ -449,7 +454,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         },
 
         Message::ProfileView(msg) => {
-            let pv_state = current_pv_state_mut(&mut app.screen);
+            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
             let is_scan_complete = matches!(msg, ProfileViewMessage::ScanComplete(_));
             let is_scan_failed = matches!(msg, ProfileViewMessage::ScanFailed { .. });
@@ -478,7 +483,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
                 let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
 
-                let pv_state = current_pv_state_mut(&mut app.screen);
+                let pv_state =
+                    current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
                 if !pv_state.library_name_map.is_empty() {
                     let name_map = std::mem::take(&mut pv_state.library_name_map);
                     for game in &mut pv_state.games {
@@ -594,7 +600,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_off = app.context.connectivity.steam_running == Some(false);
 
-            let pv_state = current_pv_state_mut(&mut app.screen);
+            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
             if !dirty.is_empty() && !steam_off {
                 pv_state.scan_target_count = dirty.len();
@@ -671,12 +677,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 .count() as u32;
             let total = gv_state.achievements.len() as u32;
 
-            let change_number = gv_state
-                .prev_profile_state
-                .games
-                .iter()
-                .find(|g| g.app_id == app_id)
-                .map(|g| g.change_number)
+            let change_number = app
+                .preserved_profile_state
+                .as_ref()
+                .and_then(|pv| {
+                    pv.games
+                        .iter()
+                        .find(|g| g.app_id == app_id)
+                        .map(|g| g.change_number)
+                })
                 .unwrap_or(0);
 
             let genre = app
@@ -779,7 +788,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
             let steam_on = app.context.connectivity.steam_running == Some(true);
 
-            let pv_state = current_pv_state_mut(&mut app.screen);
+            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = None;
                 entry.capsule = profile_view::types::CapsuleAsset::Pending;
@@ -815,7 +824,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     return Task::none();
                 }
             }
-            let pv_state = current_pv_state_mut(&mut app.screen);
+            let pv_state = current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             let size = pv_state.capsule_size;
             profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.app_assets)
                 .map(Message::ProfileView)
@@ -1940,6 +1949,7 @@ mod tests {
                     },
                 },
                 screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
+                preserved_profile_state: None,
                 splash_min_elapsed: true,
                 library_cache_resolved: true,
                 cache_classified: true,
@@ -1962,6 +1972,7 @@ mod tests {
     fn make_app_probing() -> App {
         App {
             screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
+            preserved_profile_state: None,
             splash_min_elapsed: false,
             library_cache_resolved: false,
             cache_classified: false,
@@ -3176,10 +3187,10 @@ mod tests {
             "cached entry must survive RequestOpenGame"
         );
 
-        if let Screen::GameView(gv) = &app.screen {
+        if let Screen::GameView(_) = &app.screen {
             assert!(
-                gv.prev_profile_state.games.is_empty(),
-                "prev_profile_state must be stored in GameViewState"
+                app.preserved_profile_state.is_some(),
+                "preserved_profile_state must be stored at App level when navigating to GameView"
             );
         } else {
             panic!("expected GameView screen");
