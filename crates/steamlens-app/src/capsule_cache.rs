@@ -140,6 +140,24 @@ fn cache_path(app_id: u32, size: CapsuleSize, hash: &str) -> PathBuf {
     crate::paths::capsules_dir().join(cache_filename(app_id, size, hash))
 }
 
+pub async fn purge_for_app(app_id: u32) {
+    let dir = crate::paths::capsules_dir();
+    let prefix = format!("{app_id}_");
+    let Ok(mut entries) = fs::read_dir(&dir).await else {
+        return;
+    };
+    let mut deleted = 0u32;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with(&prefix)
+            && fs::remove_file(entry.path()).await.is_ok()
+        {
+            deleted += 1;
+        }
+    }
+    tracing::debug!(app_id, deleted, "purged all capsule cache files for app");
+}
+
 async fn purge_stale_caches(app_id: u32, size: CapsuleSize, keep_filename: &str) {
     let dir = crate::paths::capsules_dir();
     let prefix_new = format!("{app_id}_{}_", size_suffix(size));

@@ -109,6 +109,7 @@ enum Message {
         entry: Option<Box<GameCacheEntry>>,
     },
     CacheInvalidated {
+        app_id: u32,
         name: String,
         result: Result<(), String>,
     },
@@ -790,7 +791,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let pv_state = current_pv_state_mut(&mut app.screen);
             if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = None;
+                entry.capsule = profile_view::types::CapsuleAsset::Pending;
             }
+            pv_state.capsule_handles.retain(|(id, _), _| *id != app_id);
             if steam_on {
                 let mut scanner = crate::progress_scan::ProgressScanner::new(vec![app_id]);
                 pv_state.progress_rx = scanner.take_receiver();
@@ -800,7 +803,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             cache::commands::invalidate_game_cache(app_id, name)
         }
 
-        Message::CacheInvalidated { name, result } => {
+        Message::CacheInvalidated {
+            app_id,
+            name,
+            result,
+        } => {
             match result {
                 Ok(()) => app.context.messaging.push_toast(
                     ToastKind::Success,
@@ -814,9 +821,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         format!("Failed to clear cache for {name}"),
                         None,
                     );
+                    return Task::none();
                 }
             }
-            Task::none()
+            let pv_state = current_pv_state_mut(&mut app.screen);
+            let size = pv_state.capsule_size;
+            profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.app_assets)
+                .map(Message::ProfileView)
         }
 
         Message::GameView(m) => {
