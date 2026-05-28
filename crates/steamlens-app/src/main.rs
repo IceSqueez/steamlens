@@ -33,7 +33,7 @@ use iced::widget::{column, container, text};
 use iced::{Color, Element, Subscription, Task};
 
 use app_context::{AnimationState, AppContext, ConnectivityState};
-use cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult, GameCacheEntry};
+use cache::{CachedLibraryEntry, ClassifyResult, GameCacheEntry};
 use game_view::{GameViewEvent, GameViewMessage, GameViewState};
 use messaging::{BannerSeverity, MessagingCenter, ToastKind};
 use profile_view::types::ProfileEvent;
@@ -70,29 +70,18 @@ enum Message {
     GoBack,
     ProfileView(ProfileViewMessage),
     GameView(GameViewMessage),
+    Cache(cache::CacheEvent),
+    Messaging(messaging::MessagingEvent),
     PollWorker,
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
     ProbeResult(Result<ProbedProfile, ProbeFailure>),
     RetrySteamConnect,
-    ProfileCacheLoaded(Option<CachedProfile>),
-    LibraryCacheLoaded(Option<CachedLibrary>),
-    PersistentCacheWritten(&'static str, Result<(), String>),
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
-    ToastTick,
-    ToastHovered(u32, bool),
-    DismissToast(u32),
-    DismissBanner(u32),
-    CacheClassified(ClassifyResult),
     DrainHitQueue,
-    CacheWritten {
-        app_id: u32,
-        result: Result<(), String>,
-    },
     SkeletonTick,
     FocusSearch,
-    NoAchCacheWritten(Result<(), String>),
     GlobalSearchChanged(String),
     GlobalSortChanged(profile_view::types::LibrarySort),
     GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
@@ -104,15 +93,6 @@ enum Message {
     OpenUrl(String),
     ToggleTheme,
     UpdateCheckResult(Result<Option<update_check::UpdateInfo>, String>),
-    OfflineCacheLoaded {
-        app_id: u32,
-        entry: Option<Box<GameCacheEntry>>,
-    },
-    CacheInvalidated {
-        app_id: u32,
-        name: String,
-        result: Result<(), String>,
-    },
     SteamStateRefreshed(
         Option<(
             HashMap<u32, steamlens_core::SteamAppState>,
@@ -400,9 +380,11 @@ fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         if state.achievements.is_empty() && !app.context.cached_entries.contains_key(&app_id) {
             tasks.push(Task::perform(
                 cache::store::load_game_cache(app_id),
-                move |entry| Message::OfflineCacheLoaded {
-                    app_id,
-                    entry: entry.map(Box::new),
+                move |entry| {
+                    Message::Cache(cache::CacheEvent::OfflineLoaded {
+                        app_id,
+                        entry: entry.map(Box::new),
+                    })
                 },
             ));
         }
@@ -591,7 +573,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
 
-        Message::CacheClassified(result) => {
+        Message::Cache(cache::CacheEvent::Classified(result)) => {
             app.boot.cache_classified = true;
             tracing::info!("cache_classified = true (CacheClassified)");
 
@@ -662,7 +644,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::CacheWritten { app_id, result } => {
+        Message::Cache(cache::CacheEvent::GameWritten { app_id, result }) => {
             if let Err(e) = result {
                 tracing::error!("cache: write failed for app {app_id}: {e}");
             }
@@ -766,17 +748,21 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     .await
                     .map_err(|e| e.to_string())
                 },
-                move |result| Message::CacheWritten {
-                    app_id,
-                    result: result.map(|_| ()),
+                move |result| {
+                    Message::Cache(cache::CacheEvent::GameWritten {
+                        app_id,
+                        result: result.map(|_| ()),
+                    })
                 },
             );
 
             let summary_task = Task::perform(
                 async move { crate::cache::store::write_game_summary(&summary).await },
-                move |result| Message::CacheWritten {
-                    app_id,
-                    result: result.map_err(|e| e.to_string()),
+                move |result| {
+                    Message::Cache(cache::CacheEvent::GameWritten {
+                        app_id,
+                        result: result.map_err(|e| e.to_string()),
+                    })
                 },
             );
             let game_task = cache::commands::write_game_cache(full_entry);
@@ -810,11 +796,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             cache::commands::invalidate_game_cache(app_id, name)
         }
 
-        Message::CacheInvalidated {
+        Message::Cache(cache::CacheEvent::GameInvalidated {
             app_id,
             name,
             result,
-        } => {
+        }) => {
             match result {
                 Ok(()) => app.context.messaging.push_toast(
                     ToastKind::Success,
@@ -997,7 +983,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
 
-        Message::ProfileCacheLoaded(maybe) => {
+        Message::Cache(cache::CacheEvent::ProfileLoaded(maybe)) => {
             let Some(cached) = maybe else {
                 return Task::none();
             };
@@ -1021,7 +1007,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::LibraryCacheLoaded(maybe) => {
+        Message::Cache(cache::CacheEvent::LibraryLoaded(maybe)) => {
             let games_present = if let Screen::ProfileView(pv) = &app.screen {
                 !pv.games.is_empty()
             } else {
@@ -1060,14 +1046,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             )))
         }
 
-        Message::NoAchCacheWritten(result) => {
+        Message::Cache(cache::CacheEvent::NoAchWritten(result)) => {
             if let Err(e) = result {
                 tracing::error!("no_achievements cache: write failed: {e}");
             }
             Task::none()
         }
 
-        Message::PersistentCacheWritten(label, result) => {
+        Message::Cache(cache::CacheEvent::PersistentWritten(label, result)) => {
             if let Err(e) = result {
                 tracing::error!("{label} cache: write failed: {e}");
                 app.context.messaging.push_toast(
@@ -1079,23 +1065,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::ToastTick => {
-            app.context.messaging.tick_toasts();
-            Task::none()
-        }
-
-        Message::ToastHovered(id, hovered) => {
-            app.context.messaging.set_toast_hovered(id, hovered);
-            Task::none()
-        }
-
-        Message::DismissToast(id) => {
-            app.context.messaging.dismiss_toast(id);
-            Task::none()
-        }
-
-        Message::DismissBanner(id) => {
-            app.context.messaging.dismiss_banner(id);
+        Message::Messaging(msg) => {
+            match msg {
+                messaging::MessagingEvent::ToastTick => app.context.messaging.tick_toasts(),
+                messaging::MessagingEvent::ToastHovered(id, hovered) => {
+                    app.context.messaging.set_toast_hovered(id, hovered);
+                }
+                messaging::MessagingEvent::DismissToast(id) => {
+                    app.context.messaging.dismiss_toast(id);
+                }
+                messaging::MessagingEvent::DismissBanner(id) => {
+                    app.context.messaging.dismiss_banner(id);
+                }
+            }
             Task::none()
         }
 
@@ -1286,7 +1268,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::OfflineCacheLoaded { app_id, entry } => {
+        Message::Cache(cache::CacheEvent::OfflineLoaded { app_id, entry }) => {
             let Some(full) = entry.map(|b| *b) else {
                 if let Screen::GameView(state) = &mut app.screen
                     && state.app_id == app_id
@@ -1834,7 +1816,8 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let toast_sub = if app.context.messaging.has_active_toasts() {
-        iced::time::every(Duration::from_millis(500)).map(|_| Message::ToastTick)
+        iced::time::every(Duration::from_millis(500))
+            .map(|_| Message::Messaging(messaging::MessagingEvent::ToastTick))
     } else {
         Subscription::none()
     };
@@ -1926,6 +1909,7 @@ fn main() -> iced::Result {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CachedLibrary, CachedProfile};
 
     impl Default for App {
         fn default() -> Self {
@@ -2157,7 +2141,10 @@ mod tests {
             }],
             cached_at: 0,
         };
-        let _t2 = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+        let _t2 = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::LibraryLoaded(Some(cached))),
+        );
 
         assert!(
             app.boot.library_cache_resolved,
@@ -2170,7 +2157,9 @@ mod tests {
 
         let _t3 = update(
             &mut app,
-            Message::CacheClassified(crate::cache::ClassifyResult::default()),
+            Message::Cache(cache::CacheEvent::Classified(
+                crate::cache::ClassifyResult::default(),
+            )),
         );
         assert!(
             app.boot.cache_classified,
@@ -2195,7 +2184,10 @@ mod tests {
             steam_root: None,
             steam_level: None,
         };
-        let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::ProfileLoaded(Some(cached))),
+        );
         let p = app
             .context
             .user_profile
@@ -2226,7 +2218,10 @@ mod tests {
             cached_at: 0,
             steam_level: None,
         };
-        let _t = update(&mut app, Message::ProfileCacheLoaded(Some(cached)));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::ProfileLoaded(Some(cached))),
+        );
         let p = app.context.user_profile.as_ref().unwrap();
         assert_eq!(
             p.nickname, "LiveFromProbe",
@@ -2238,7 +2233,10 @@ mod tests {
     fn profile_cache_loaded_none_is_noop() {
         let mut app = make_app_probing();
         app.context.connectivity.steam_running = Some(false);
-        let _t = update(&mut app, Message::ProfileCacheLoaded(None));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::ProfileLoaded(None)),
+        );
         assert!(app.context.user_profile.is_none());
         assert_eq!(app.context.connectivity.steam_running, Some(false));
     }
@@ -2258,7 +2256,10 @@ mod tests {
             }],
             cached_at: 0,
         };
-        let _t = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::LibraryLoaded(Some(cached))),
+        );
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(pv.games.is_empty(), "precondition: games empty");
         } else {
@@ -2292,7 +2293,10 @@ mod tests {
             }],
             cached_at: 0,
         };
-        let _t = update(&mut app, Message::LibraryCacheLoaded(Some(cached)));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::LibraryLoaded(Some(cached))),
+        );
         if let Screen::ProfileView(pv) = &app.screen {
             assert_eq!(
                 pv.games.len(),
@@ -2308,7 +2312,10 @@ mod tests {
     #[test]
     fn library_cache_loaded_none_is_noop() {
         let mut app = make_app_probing();
-        let _t = update(&mut app, Message::LibraryCacheLoaded(None));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::LibraryLoaded(None)),
+        );
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(pv.games.is_empty());
         }
@@ -2319,7 +2326,10 @@ mod tests {
         let mut app = make_app_probing();
         let _t = update(
             &mut app,
-            Message::PersistentCacheWritten("profile", Err("disk full".to_owned())),
+            Message::Cache(cache::CacheEvent::PersistentWritten(
+                "profile",
+                Err("disk full".to_owned()),
+            )),
         );
         assert_eq!(app.context.connectivity.steam_running, None);
     }
@@ -3321,7 +3331,10 @@ mod tests {
         let hit_ids: Vec<u32> = (1..=300).collect();
         let mut app = make_app_with_n_games(300);
         let result = make_classify_result(&hit_ids, &[]);
-        let _t = update(&mut app, Message::CacheClassified(result));
+        let _t = update(
+            &mut app,
+            Message::Cache(cache::CacheEvent::Classified(result)),
+        );
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(
                 pv.last_scan_completed_at.is_some(),

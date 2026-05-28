@@ -3,21 +3,19 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::cache::types::GameSummaryCache;
-use crate::cache::{self, CachedLibrary, GameCacheEntry, NoAchievementsCache};
+use crate::cache::{self, CacheEvent, CachedLibrary, GameCacheEntry, NoAchievementsCache};
 use steamlens_core::GameSummary;
 
 pub fn load_library_cache() -> Task<crate::Message> {
-    Task::perform(
-        async { cache::load_library_cache().await },
-        crate::Message::LibraryCacheLoaded,
-    )
+    Task::perform(async { cache::load_library_cache().await }, |c| {
+        crate::Message::Cache(CacheEvent::LibraryLoaded(c))
+    })
 }
 
 pub fn load_profile_cache() -> Task<crate::Message> {
-    Task::perform(
-        async { cache::load_profile_cache().await },
-        crate::Message::ProfileCacheLoaded,
-    )
+    Task::perform(async { cache::load_profile_cache().await }, |c| {
+        crate::Message::Cache(CacheEvent::ProfileLoaded(c))
+    })
 }
 
 pub fn write_profile_cache(cached: cache::CachedProfile) -> Task<crate::Message> {
@@ -27,7 +25,7 @@ pub fn write_profile_cache(cached: cache::CachedProfile) -> Task<crate::Message>
                 .await
                 .map_err(|e| e.to_string())
         },
-        |r| crate::Message::PersistentCacheWritten("profile", r),
+        |r| crate::Message::Cache(CacheEvent::PersistentWritten("profile", r)),
     )
 }
 
@@ -38,7 +36,7 @@ pub fn write_library_cache(cached: CachedLibrary) -> Task<crate::Message> {
                 .await
                 .map_err(|e| e.to_string())
         },
-        |r| crate::Message::PersistentCacheWritten("library", r),
+        |r| crate::Message::Cache(CacheEvent::PersistentWritten("library", r)),
     )
 }
 
@@ -50,7 +48,7 @@ pub fn write_game_cache(entry: GameCacheEntry) -> Task<crate::Message> {
                 .await
                 .map_err(|e| e.to_string())
         },
-        move |result| crate::Message::CacheWritten { app_id, result },
+        move |result| crate::Message::Cache(CacheEvent::GameWritten { app_id, result }),
     )
 }
 
@@ -62,7 +60,7 @@ pub fn write_game_summary(entry: GameSummaryCache) -> Task<crate::Message> {
                 .await
                 .map_err(|e| e.to_string())
         },
-        move |result| crate::Message::CacheWritten { app_id, result },
+        move |result| crate::Message::Cache(CacheEvent::GameWritten { app_id, result }),
     )
 }
 
@@ -75,10 +73,12 @@ pub fn invalidate_game_cache(app_id: u32, name: String) -> Task<crate::Message> 
             crate::capsule_cache::purge_for_app(app_id).await;
             result
         },
-        move |result| crate::Message::CacheInvalidated {
-            app_id,
-            name: name.clone(),
-            result,
+        move |result| {
+            crate::Message::Cache(CacheEvent::GameInvalidated {
+                app_id,
+                name: name.clone(),
+                result,
+            })
         },
     )
 }
@@ -90,7 +90,7 @@ pub fn write_no_ach_cache(snapshot: NoAchievementsCache) -> Task<crate::Message>
                 .await
                 .map_err(|e| e.to_string())
         },
-        crate::Message::NoAchCacheWritten,
+        |r| crate::Message::Cache(CacheEvent::NoAchWritten(r)),
     )
 }
 
@@ -101,7 +101,7 @@ pub fn classify_games(
 ) -> Task<crate::Message> {
     Task::perform(
         async move { cache::classify_games(&games, &steam_root, steamid3).await },
-        crate::Message::CacheClassified,
+        |r| crate::Message::Cache(CacheEvent::Classified(r)),
     )
 }
 
