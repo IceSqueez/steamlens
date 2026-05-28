@@ -1,0 +1,58 @@
+use super::state::SeededGameView;
+use super::types::{AchievementFilter, AchievementSort, BulkOp, RarityTier};
+
+#[derive(Debug, Clone)]
+pub enum GameViewMessage {
+    AchievementToggled(String),
+    FilterChanged(AchievementFilter),
+    RarityTierToggled(RarityTier),
+    HiddenPillToggled,
+    RarityFilterCleared,
+    AchievementSortChanged(AchievementSort),
+    SearchChanged(String),
+    StatsSearchChanged(String),
+    StatsMaxAll,
+    StatsResetAll,
+    StatsMaxSingle(String),
+    StatsResetSingle(String),
+    BulkAction(BulkOp),
+    ReloadRequested,
+    ApplyClicked,
+    ApplyConfirmInputChanged(String),
+    ApplyConfirmed,
+    ApplyCancelled,
+    DiscardChanges,
+    RevealHidden(String),
+    SpinnerTick,
+    RevealTick,
+    GameViewFadeTick,
+    RareGlowTick,
+    RequestGoBack,
+    AchievementsFullyLoaded,
+    CapsuleLoaded {
+        app_id: u32,
+        size: crate::capsule_cache::CapsuleSize,
+        handle: iced::widget::image::Handle,
+        width: u32,
+        height: u32,
+    },
+    CapsuleFailed {
+        app_id: u32,
+        size: crate::capsule_cache::CapsuleSize,
+    },
+    BarSliceHoverEnter(RarityTier),
+    BarSliceHoverExit,
+    InvalidateCacheClicked(u32),
+    CacheSeeded {
+        app_id: u32,
+        seeded: Box<SeededGameView>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum GameViewEvent {
+    None,
+    GoBack,
+    AchievementsFullyLoaded { app_id: u32 },
+    InvalidateCache { app_id: u32 },
+}
