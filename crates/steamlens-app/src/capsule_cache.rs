@@ -71,9 +71,11 @@ fn size_suffix(size: CapsuleSize) -> &'static str {
 fn asset_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Option<&ImageAsset> {
     match size {
         CapsuleSize::Portrait => assets.library_capsule.as_ref(),
-        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => {
-            assets.library_header.as_ref()
-        }
+        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => assets
+            .library_header
+            .as_ref()
+            .or(assets.library_hero.as_ref())
+            .or(assets.header_image_legacy.as_ref()),
     }
 }
 
