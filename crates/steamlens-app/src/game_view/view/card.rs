@@ -33,7 +33,6 @@ struct AchievementCardDeps {
     description_hash: u64,
     search_hash: u64,
     tier: Option<RarityTier>,
-    glow_quantized: Option<u8>,
     card_w_bits: u32,
 }
 
@@ -42,15 +41,8 @@ impl AchievementCardDeps {
         row: &AchievementRow,
         card_w: f32,
         search_query: &str,
-        glow_pulse: f32,
         tier: Option<RarityTier>,
     ) -> Self {
-        let glow_quantized = if matches!(tier, Some(RarityTier::Legendary)) {
-            Some((glow_pulse.clamp(0.0, 1.0) * 20.0) as u8)
-        } else {
-            None
-        };
-
         Self {
             id_hash: fnv64(row.data.id.as_bytes()),
             is_dirty: row.is_dirty,
@@ -66,7 +58,6 @@ impl AchievementCardDeps {
             description_hash: fnv64(row.data.description.as_bytes()),
             search_hash: fnv64(search_query.as_bytes()),
             tier,
-            glow_quantized,
             card_w_bits: card_w.to_bits(),
         }
     }
@@ -85,24 +76,58 @@ pub(super) fn achievement_card_widget<'a>(
     row: &'a AchievementRow,
     card_w: f32,
     search_query: String,
-    glow_pulse: f32,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
-    let deps = AchievementCardDeps::new(row, card_w, &search_query, glow_pulse, tier);
+    let deps = AchievementCardDeps::new(row, card_w, &search_query, tier);
 
     let entry = row.clone();
     lazy(deps, move |_| {
-        render_achievement_card(&entry, card_w, &search_query, glow_pulse, tier, app_theme)
+        render_achievement_card(&entry, card_w, &search_query, tier, app_theme)
     })
     .into()
+}
+
+pub(super) fn legendary_glow_overlay(
+    glow_pulse: f32,
+    card_w: f32,
+    card_h: f32,
+    app_theme: crate::ui::theme::AppTheme,
+) -> Element<'static, GameViewMessage> {
+    let p = *palette(app_theme);
+    let alpha = 0.30 + 0.20 * glow_pulse;
+    let blur = 12.0 + 10.0 * glow_pulse;
+    let border_alpha = 0.50 + 0.35 * glow_pulse;
+
+    container(iced::widget::Space::new())
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(card_h))
+        .style(move |_: &iced::Theme| container::Style {
+            shadow: iced::Shadow {
+                color: Color {
+                    a: alpha,
+                    ..p.rarity_legendary
+                },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: blur,
+            },
+            border: iced::Border {
+                color: Color {
+                    a: border_alpha,
+                    ..p.rarity_legendary
+                },
+                width: 1.5,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 fn render_achievement_card(
     row: &AchievementRow,
     card_w: f32,
     search_query: &str,
-    glow_pulse: f32,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'static, GameViewMessage> {
@@ -138,7 +163,7 @@ fn render_achievement_card(
                 .height(Length::Fixed(ACH_CARD_ICON))
                 .opacity(opacity),
         )
-        .style(move |_theme| icon_glow_style(tier, glow_pulse, app_theme))
+        .style(move |_theme| icon_glow_style(tier, app_theme))
         .into()
     } else {
         let icon_bg = if effective {
@@ -476,31 +501,26 @@ pub(super) fn highlight_split<'a>(
 
 pub(super) fn icon_glow_style(
     tier: Option<RarityTier>,
-    glow_pulse: f32,
     theme: crate::ui::theme::AppTheme,
 ) -> container::Style {
     let p = palette(theme);
     match tier {
-        Some(RarityTier::Legendary) => {
-            let alpha = 0.75 + 0.25 * glow_pulse;
-            let blur = 22.0 + 16.0 * glow_pulse;
-            container::Style {
-                shadow: iced::Shadow {
-                    color: Color {
-                        a: alpha,
-                        ..p.rarity_legendary
-                    },
-                    offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: blur,
+        Some(RarityTier::Legendary) => container::Style {
+            shadow: iced::Shadow {
+                color: Color {
+                    a: 0.75,
+                    ..p.rarity_legendary
                 },
-                border: iced::Border {
-                    color: p.rarity_legendary,
-                    width: 3.0,
-                    radius: 8.0.into(),
-                },
-                ..container::Style::default()
-            }
-        }
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 22.0,
+            },
+            border: iced::Border {
+                color: p.rarity_legendary,
+                width: 3.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        },
         Some(RarityTier::Mythical) => container::Style {
             shadow: iced::Shadow {
                 color: Color {

@@ -1,9 +1,10 @@
 use std::sync::LazyLock;
 
-use iced::widget::{button, column, container, row, space, text};
+use iced::widget::{button, column, container, row, space, stack, text};
 use iced::{Alignment, Color, Element, Length, Padding};
 
-use super::card::achievement_card_widget;
+use super::card::{achievement_card_widget, legendary_glow_overlay};
+use crate::game_view::types::RarityTier;
 use crate::game_view::types::{AchievementRow, BulkOp};
 use crate::game_view::{GameViewMessage, GameViewState};
 use crate::ui::grid::{GridLayout, responsive_card_grid};
@@ -126,14 +127,24 @@ pub(super) fn achievement_list(
                 || cache_only
                 || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
             if is_ready {
-                achievement_card_widget(
+                let static_card = achievement_card_widget(
                     entry,
                     ACH_CARD_WIDTH,
                     query_owned.clone(),
-                    glow_pulse,
                     tier,
                     app_theme,
-                )
+                );
+                if matches!(tier, Some(RarityTier::Legendary)) {
+                    let overlay = legendary_glow_overlay(
+                        glow_pulse,
+                        ACH_CARD_WIDTH,
+                        ACH_CARD_HEIGHT,
+                        app_theme,
+                    );
+                    stack![static_card, overlay].into()
+                } else {
+                    static_card
+                }
             } else {
                 build_skeleton_ach_card(ACH_CARD_WIDTH, skeleton_phase)
             }

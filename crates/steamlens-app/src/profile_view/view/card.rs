@@ -12,6 +12,27 @@ use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::skeleton::skeleton_box;
 
+#[derive(Hash, PartialEq, Eq)]
+struct SkeletonCardDeps {
+    app_id: u32,
+    card_w_bits: u32,
+    capsule_w_bits: u32,
+    capsule_h_bits: u32,
+    total_h_bits: u32,
+}
+
+impl SkeletonCardDeps {
+    fn new(app_id: u32, card_w: f32, capsule_w: f32, capsule_h: f32, total_h: f32) -> Self {
+        Self {
+            app_id,
+            card_w_bits: card_w.to_bits(),
+            capsule_w_bits: capsule_w.to_bits(),
+            capsule_h_bits: capsule_h.to_bits(),
+            total_h_bits: total_h.to_bits(),
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_card<'a>(
     entry: &'a GameEntry,
@@ -29,9 +50,13 @@ pub(super) fn build_card<'a>(
     let total_h = total_card_height(capsule_h);
 
     if !entry.is_hydrated() {
-        let inner =
-            build_skeleton_card(entry, card_w, capsule_w, capsule_h, total_h, skeleton_phase);
-        return mouse_area(inner)
+        let skel_deps = SkeletonCardDeps::new(app_id, card_w, capsule_w, capsule_h, total_h);
+        let static_layer = lazy(skel_deps, move |_| {
+            build_skeleton_card_static(app_id, card_w, capsule_w, capsule_h, total_h)
+        });
+        let shimmer = build_skeleton_shimmer_overlay(card_w, total_h, skeleton_phase);
+        let card_stack = stack![static_layer, shimmer];
+        return mouse_area(card_stack)
             .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
             .on_exit(ProfileViewMessage::CardHoverExit(app_id))
             .into();
@@ -61,12 +86,14 @@ pub(super) fn build_card<'a>(
         hovered_tier,
     );
 
-    let lazy_inner = lazy(deps, move |_| render_hydrated_card(&owned));
-
-    mouse_area(lazy_inner)
-        .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
-        .on_exit(ProfileViewMessage::CardHoverExit(app_id))
-        .into()
+    lazy(deps, move |_| {
+        let inner = render_hydrated_card(&owned);
+        let area = mouse_area(inner)
+            .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
+            .on_exit(ProfileViewMessage::CardHoverExit(app_id));
+        Element::<'static, ProfileViewMessage>::from(area)
+    })
+    .into()
 }
 
 #[derive(Hash, PartialEq, Eq)]
@@ -337,17 +364,16 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
         .into()
 }
 
-pub(super) fn build_skeleton_card<'a>(
-    entry: &'a GameEntry,
+fn build_skeleton_card_static(
+    app_id: u32,
     card_w: f32,
     capsule_w: f32,
     capsule_h: f32,
     total_h: f32,
-    phase: f32,
-) -> Element<'a, ProfileViewMessage> {
+) -> Element<'static, ProfileViewMessage> {
     use crate::ui::widgets::skeleton::SKEL_DEFAULT_RADIUS;
 
-    let title_width_ratio = match entry.app_id % 5 {
+    let title_width_ratio = match app_id % 5 {
         0 => 0.75,
         1 => 0.60,
         2 => 0.85,
@@ -355,45 +381,40 @@ pub(super) fn build_skeleton_card<'a>(
         _ => 0.70,
     };
 
-    let capsule_skel = container(skeleton_box(
-        capsule_w,
-        capsule_h,
-        SKEL_DEFAULT_RADIUS,
-        phase,
-    ))
-    .width(Length::Fixed(card_w))
-    .height(Length::Fixed(capsule_h))
-    .align_x(Alignment::Center);
+    let capsule_skel = container(skeleton_box(capsule_w, capsule_h, SKEL_DEFAULT_RADIUS, 0.0))
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(capsule_h))
+        .align_x(Alignment::Center);
 
     let name_skel = skeleton_box(
         card_w * title_width_ratio,
         CARD_NAME_TEXT_HEIGHT,
         SKEL_DEFAULT_RADIUS,
-        phase,
+        0.0,
     );
     let counter_skel = skeleton_box(
         card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
         CARD_COUNTER_TEXT_SIZE,
         SKEL_DEFAULT_RADIUS,
-        phase,
+        0.0,
     );
     let progress_skel = skeleton_box(
         card_w - CARD_PROGRESS_BAR_INSET,
         CARD_PROGRESS_BAR_HEIGHT,
         SKEL_DEFAULT_RADIUS,
-        phase,
+        0.0,
     );
     let tag_skel_genre = skeleton_box(
         card_w * SKEL_GENRE_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
         SKEL_DEFAULT_RADIUS,
-        phase,
+        0.0,
     );
     let tag_skel_pct = skeleton_box(
         card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
         SKEL_DEFAULT_RADIUS,
-        phase,
+        0.0,
     );
 
     let separator_space = iced::widget::Space::new()
@@ -470,4 +491,43 @@ pub(super) fn build_skeleton_card<'a>(
         })
         .into()
 }
+
+fn build_skeleton_shimmer_overlay(
+    card_w: f32,
+    card_h: f32,
+    phase: f32,
+) -> Element<'static, ProfileViewMessage> {
+    use iced::Radians;
+    use iced::gradient;
+
+    let band_half = 0.22f32;
+    let lo = (phase - band_half).max(0.0);
+    let hi = (phase + band_half).min(1.0);
+
+    let angle = Radians(std::f32::consts::FRAC_PI_2);
+    let shine = Color::from_rgba(1.0, 1.0, 1.0, 0.06);
+    let clear = Color::from_rgba(1.0, 1.0, 1.0, 0.0);
+
+    let grad = gradient::Linear::new(angle)
+        .add_stop(0.0, clear)
+        .add_stop(lo.max(0.001), clear)
+        .add_stop(phase.clamp(0.001, 0.999), shine)
+        .add_stop(hi.min(0.999), clear)
+        .add_stop(1.0, clear);
+
+    container(iced::widget::Space::new())
+        .width(Length::Fixed(card_w))
+        .height(Length::Fixed(card_h))
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Gradient(gradient::Gradient::Linear(grad))),
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 8.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 const C_SKELETON_BG: Color = Color::from_rgb(0.267, 0.278, 0.353);
