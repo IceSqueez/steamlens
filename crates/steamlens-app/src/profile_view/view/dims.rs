@@ -23,21 +23,6 @@ pub(super) const CARD_NAME_ROW_PAD_TOP: f32 = 4.0;
 pub(super) const CARD_TAGS_ROW_HEIGHT: f32 = 32.0;
 pub(super) const CARD_TAGS_ROW_PAD_TOP: f32 = 3.0;
 pub(super) const CARD_TAGS_ROW_PAD_BOTTOM: f32 = 8.0;
-pub(super) fn compute_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
-    let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
-
-    let mut cols = cols_max;
-    loop {
-        let total_card_width = cols as f32 * card_w;
-        let remainder = (viewport - total_card_width).max(0.0);
-        let gap = remainder / (cols as f32 + 1.0);
-        if gap >= min_gap || cols == 1 {
-            let clamped_gap = gap.max(0.0);
-            return (cols, clamped_gap);
-        }
-        cols -= 1;
-    }
-}
 
 pub(super) fn fit_contain(natural_w: f32, natural_h: f32, max_w: f32, max_h: f32) -> (f32, f32) {
     if natural_w <= 0.0 || natural_h <= 0.0 {

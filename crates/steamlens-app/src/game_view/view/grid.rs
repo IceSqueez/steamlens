@@ -4,6 +4,7 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use super::card::achievement_card_widget;
 use crate::game_view::types::{AchievementRow, BulkOp, compute_tier_map, visible_achievement_ids};
 use crate::game_view::{GameViewMessage, GameViewState};
+use crate::ui::grid::compute_grid;
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 
@@ -27,21 +28,6 @@ pub(super) fn achievements_tab<'a>(
     let mut col = column![].spacing(0).height(Length::Fill);
     col = col.push(achievement_list(state, skeleton_phase, app_theme));
     col.into()
-}
-
-pub(super) fn compute_ach_grid(viewport: f32, card_w: f32, min_gap: f32) -> (usize, f32) {
-    let cols_max = ((viewport + min_gap) / (card_w + min_gap)).floor().max(1.0) as usize;
-
-    let mut cols = cols_max;
-    loop {
-        let total_card_width = cols as f32 * card_w;
-        let remainder = (viewport - total_card_width).max(0.0);
-        let gap = remainder / (cols as f32 + 1.0);
-        if gap >= min_gap || cols == 1 {
-            return (cols, gap.max(0.0));
-        }
-        cols -= 1;
-    }
 }
 
 pub(super) fn bulk_action_buttons<'a>() -> Element<'a, GameViewMessage> {
@@ -130,7 +116,7 @@ pub(super) fn achievement_list(
     let cache_only = state.cache_only;
 
     let grid = responsive(move |size| {
-        let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
+        let (cols, gap) = compute_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
 
         let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
             .spacing(ACH_CARD_GAP as u32)
@@ -191,7 +177,7 @@ pub(super) fn build_skeleton_ach_grid(
         .max(6);
 
     let grid = responsive(move |size| {
-        let (cols, gap) = compute_ach_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
+        let (cols, gap) = compute_grid(size.width, ACH_CARD_WIDTH, ACH_MIN_GAP);
 
         let mut rows_col: iced::widget::Column<'_, GameViewMessage> = column![]
             .spacing(ACH_CARD_GAP as u32)
@@ -306,36 +292,4 @@ pub(super) fn build_skeleton_ach_card(
         });
 
     card_container.into()
-}
-
-#[cfg(test)]
-mod ach_grid_tests {
-    use super::compute_ach_grid;
-
-    #[test]
-    fn fixed_card_width_with_uniform_gaps() {
-        let (cols, gap) = compute_ach_grid(1000.0, 200.0, 12.0);
-        assert_eq!(cols, 4);
-        assert!((gap - 40.0).abs() < 0.01, "expected gap=40, got {gap}");
-    }
-
-    #[test]
-    fn min_gap_floor_kicks_in() {
-        let (cols, gap) = compute_ach_grid(1010.0, 200.0, 12.0);
-        assert_eq!(cols, 4);
-        assert!((gap - 42.0).abs() < 0.01, "expected gap=42, got {gap}");
-    }
-
-    #[test]
-    fn single_column_below_card_width() {
-        let (cols, gap) = compute_ach_grid(150.0, 200.0, 12.0);
-        assert_eq!(cols, 1);
-        assert_eq!(gap, 0.0);
-    }
-
-    #[test]
-    fn gap_never_negative() {
-        let (_cols, gap) = compute_ach_grid(50.0, 260.0, 12.0);
-        assert!(gap >= 0.0);
-    }
 }

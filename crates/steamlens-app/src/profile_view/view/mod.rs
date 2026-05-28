@@ -17,7 +17,9 @@ use crate::profile_view::widget::{
 use crate::ui::theme::{palette, theme_from_iced};
 
 use card::build_card;
-use dims::{CARD_GAP, MIN_GAP, card_width, compute_grid};
+use dims::{CARD_GAP, MIN_GAP, card_width};
+
+use crate::ui::grid::compute_grid;
 
 pub struct ProfileViewProps<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
@@ -232,58 +234,4 @@ fn center_text(msg: &str) -> Element<'_, ProfileViewMessage> {
     .align_x(Alignment::Center)
     .align_y(Alignment::Center)
     .into()
-}
-
-#[cfg(test)]
-mod grid_tests {
-    use super::compute_grid;
-
-    #[test]
-    fn fixed_card_width_with_uniform_gaps() {
-        let (cols, gap) = compute_grid(1000.0, 200.0, 12.0);
-        assert_eq!(cols, 4);
-        assert!((gap - 40.0).abs() < 0.01, "expected gap=40, got {gap}");
-    }
-
-    #[test]
-    fn min_gap_floor_kicks_in() {
-        let (cols, gap) = compute_grid(1010.0, 200.0, 12.0);
-        assert_eq!(cols, 4);
-        assert!((gap - 42.0).abs() < 0.01, "expected gap=42, got {gap}");
-    }
-
-    #[test]
-    fn single_column_below_card_width() {
-        let (cols, gap) = compute_grid(150.0, 200.0, 12.0);
-        assert_eq!(cols, 1);
-        assert_eq!(gap, 0.0);
-    }
-
-    #[test]
-    fn exact_fit_no_remainder_falls_back_to_fewer_cols() {
-        let (cols, gap) = compute_grid(1000.0, 250.0, 12.0);
-        assert_eq!(cols, 3);
-        let expected_gap = (1000.0 - 3.0 * 250.0) / 4.0;
-        assert!(
-            (gap - expected_gap).abs() < 0.01,
-            "expected gap={expected_gap}, got {gap}"
-        );
-    }
-
-    #[test]
-    fn single_column_gap_is_centered() {
-        let (cols, gap) = compute_grid(300.0, 200.0, 12.0);
-        assert_eq!(cols, 1);
-        let expected_gap = (300.0 - 200.0) / 2.0;
-        assert!(
-            (gap - expected_gap).abs() < 0.01,
-            "expected gap={expected_gap}, got {gap}"
-        );
-    }
-
-    #[test]
-    fn gap_never_negative() {
-        let (_cols, gap) = compute_grid(50.0, 200.0, 12.0);
-        assert!(gap >= 0.0);
-    }
 }

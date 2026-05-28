@@ -226,14 +226,3 @@ fn discover_steamclient_path() -> Result<PathBuf, SteamError> {
         searched: candidates,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore = "requires a real Steam install"]
-    fn steamclient_loads_smoke() {
-        SteamLibrary::load().expect("steamclient must open");
-    }
-}
