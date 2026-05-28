@@ -9,31 +9,39 @@ use crate::{App, Message, Screen};
 pub(crate) fn handle_worker_reply(app: &mut App, reply: SteamReply) -> Task<Message> {
     if let SteamReply::ConnectFailed(reason) = &reply {
         tracing::error!("worker: connect failed: {reason}");
-        if matches!(app.screen, Screen::GameView(_)) {
-            routing::go_back_to_profile(app);
-        }
-        disconnect_worker(app);
+        let go_back_task = if matches!(app.screen, Screen::GameView(_)) {
+            routing::go_back_to_profile(app)
+        } else {
+            Task::none()
+        };
+        let disconnect_task = disconnect_worker(app);
         steam_connectivity::mark_steam_offline_and_warn(app);
-        return Task::none();
+        return Task::batch([go_back_task, disconnect_task]);
     }
+
+    let mut tasks: Vec<Task<Message>> = Vec::new();
 
     if let SteamReply::Connected { .. } = &reply
         && let Some(w) = &app.context.worker
     {
-        w.send(SteamRequest::RequestUserStats);
-        w.send(SteamRequest::RequestGlobalPercentages);
+        tasks.push(w.dispatch(SteamRequest::RequestUserStats, Message::Noop));
+        tasks.push(w.dispatch(SteamRequest::RequestGlobalPercentages, Message::Noop));
     }
 
     let Screen::GameView(state) = &mut app.screen else {
-        return Task::none();
+        return Task::batch(tasks);
     };
 
-    game_view::handle_steam_reply(state, reply, &mut app.context).map(Message::GameView)
+    tasks
+        .push(game_view::handle_steam_reply(state, reply, &mut app.context).map(Message::GameView));
+    Task::batch(tasks)
 }
 
-pub(crate) fn disconnect_worker(app: &mut App) {
-    if let Some(w) = &app.context.worker {
-        w.send(SteamRequest::Disconnect);
-    }
+pub(crate) fn disconnect_worker(app: &mut App) -> Task<Message> {
+    let task = match &app.context.worker {
+        Some(w) => w.dispatch(SteamRequest::Disconnect, Message::Noop),
+        None => Task::none(),
+    };
     app.context.worker = None;
+    task
 }

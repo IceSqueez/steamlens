@@ -104,6 +104,49 @@ impl<'a, M: 'a + Clone> StatusBar<'a, M> {
     }
 }
 
+pub struct StatusContext<'a> {
+    pub total: usize,
+    pub noun: &'a str,
+    pub steam_running: Option<bool>,
+    pub failed: usize,
+    pub offline_cached_count: usize,
+    pub last_sync: Option<Instant>,
+}
+
+pub fn derive_status_bar<'a, M: 'a + Clone>(
+    ctx: StatusContext<'a>,
+    scanning_phases: &[(&'a str, usize)],
+) -> Option<Element<'a, M>> {
+    if ctx.steam_running == Some(false) {
+        if ctx.total == 0 {
+            return None;
+        }
+        return Some(
+            status_bar::<M>()
+                .offline(ctx.offline_cached_count, ctx.noun)
+                .failed(ctx.failed)
+                .into(),
+        );
+    }
+    if ctx.total == 0 {
+        return None;
+    }
+    for (label, current) in scanning_phases {
+        if *current < ctx.total {
+            return Some(
+                status_bar::<M>()
+                    .scanning(*label, *current, ctx.total)
+                    .into(),
+            );
+        }
+    }
+    Some(
+        status_bar::<M>()
+            .connected(ctx.total, ctx.noun, ctx.last_sync)
+            .into(),
+    )
+}
+
 impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
     fn from(b: StatusBar<'a, M>) -> Self {
         let mut left = row![].spacing(14).align_y(Alignment::Center);

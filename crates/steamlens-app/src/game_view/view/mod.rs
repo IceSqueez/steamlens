@@ -156,7 +156,7 @@ fn loaded_view<'a>(
 
 fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>> {
     use crate::game_view::GameViewPhase;
-    use crate::ui::widgets::status_bar::status_bar;
+    use crate::ui::widgets::status_bar::{StatusContext, derive_status_bar, status_bar};
 
     let total = state.achievements.len().max(state.expected_total as usize);
     let ready = state
@@ -183,29 +183,29 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
     }
 
     match state.phase {
-        GameViewPhase::Connecting | GameViewPhase::WaitingStats => Some(
-            status_bar::<GameViewMessage>()
-                .scanning("Loading achievements", ready, total.max(1))
-                .into(),
-        ),
-        GameViewPhase::Ready | GameViewPhase::Saving => {
-            if total == 0 {
-                None
-            } else if ready < total {
-                Some(
-                    status_bar::<GameViewMessage>()
-                        .scanning("Loading achievement icons", ready, total)
-                        .into(),
-                )
-            } else {
-                Some(
-                    status_bar::<GameViewMessage>()
-                        .connected(total, "achievements", None)
-                        .into(),
-                )
-            }
-        }
         GameViewPhase::Error => None,
+        GameViewPhase::Connecting | GameViewPhase::WaitingStats => derive_status_bar(
+            StatusContext {
+                total: total.max(1),
+                noun: "achievements",
+                steam_running: None,
+                failed: 0,
+                offline_cached_count: 0,
+                last_sync: None,
+            },
+            &[("Loading achievements", ready)],
+        ),
+        GameViewPhase::Ready | GameViewPhase::Saving => derive_status_bar(
+            StatusContext {
+                total,
+                noun: "achievements",
+                steam_running: None,
+                failed: 0,
+                offline_cached_count: 0,
+                last_sync: None,
+            },
+            &[("Loading achievement icons", ready)],
+        ),
     }
 }
 pub(crate) fn build_back_leading() -> Element<'static, crate::Message> {
