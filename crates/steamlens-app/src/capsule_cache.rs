@@ -68,15 +68,27 @@ fn size_suffix(size: CapsuleSize) -> &'static str {
     }
 }
 
-fn asset_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Option<&ImageAsset> {
+fn asset_chain_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Vec<&ImageAsset> {
+    let mut chain = Vec::with_capacity(3);
     match size {
-        CapsuleSize::Portrait => assets.library_capsule.as_ref(),
-        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => assets
-            .library_header
-            .as_ref()
-            .or(assets.library_hero.as_ref())
-            .or(assets.header_image_legacy.as_ref()),
+        CapsuleSize::Portrait => {
+            if let Some(a) = assets.library_capsule.as_ref() {
+                chain.push(a);
+            }
+        }
+        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => {
+            if let Some(a) = assets.library_header.as_ref() {
+                chain.push(a);
+            }
+            if let Some(a) = assets.library_hero.as_ref() {
+                chain.push(a);
+            }
+            if let Some(a) = assets.header_image_legacy.as_ref() {
+                chain.push(a);
+            }
+        }
     }
+    chain
 }
 
 fn cdn_url(app_id: u32, asset: &ImageAsset) -> String {
@@ -87,12 +99,6 @@ fn cdn_url(app_id: u32, asset: &ImageAsset) -> String {
         ImageAsset::Plain { filename } => format!(
             "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
         ),
-    }
-}
-
-fn cdn_filename(asset: &ImageAsset) -> &str {
-    match asset {
-        ImageAsset::Hashed { filename, .. } | ImageAsset::Plain { filename } => filename,
     }
 }
 
@@ -113,16 +119,12 @@ pub struct CapsulePixels {
 #[derive(Debug)]
 pub enum CapsuleError {
     NotFound,
-    Decode(String),
-    Http(String),
 }
 
 impl std::fmt::Display for CapsuleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CapsuleError::NotFound => write!(f, "capsule not found (no hash or 404)"),
-            CapsuleError::Decode(e) => write!(f, "decode error: {e}"),
-            CapsuleError::Http(e) => write!(f, "http error: {e}"),
+            CapsuleError::NotFound => write!(f, "no candidate returned real artwork"),
         }
     }
 }
@@ -137,14 +139,17 @@ fn cache_path(app_id: u32, size: CapsuleSize, hash: &str) -> PathBuf {
 
 async fn purge_stale_caches(app_id: u32, size: CapsuleSize, keep_filename: &str) {
     let dir = crate::paths::capsules_dir();
-    let prefix = format!("{app_id}_{}_", size_suffix(size));
+    let prefix_new = format!("{app_id}_{}_", size_suffix(size));
+    let legacy_name = format!("{app_id}_{}.jpg", size_suffix(size));
     let Ok(mut entries) = fs::read_dir(&dir).await else {
         return;
     };
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str.starts_with(&prefix) && name_str.as_ref() != keep_filename {
+        let is_legacy = name_str.as_ref() == legacy_name;
+        let is_stale_new = name_str.starts_with(&prefix_new) && name_str.as_ref() != keep_filename;
+        if is_legacy || is_stale_new {
             let _ = fs::remove_file(entry.path()).await;
         }
     }
@@ -155,18 +160,17 @@ struct DecodedCapsule {
     is_placeholder: bool,
 }
 
-fn decode_jpeg(bytes: &[u8]) -> Result<DecodedCapsule, CapsuleError> {
-    let reader = ImageReader::new(Cursor::new(bytes))
+fn decode_jpeg(bytes: &[u8]) -> Option<DecodedCapsule> {
+    let img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| CapsuleError::Decode(e.to_string()))?;
-    let img = reader
+        .ok()?
         .decode()
-        .map_err(|e| CapsuleError::Decode(e.to_string()))?;
+        .ok()?;
     let is_placeholder = matches!(img.color(), ColorType::L8 | ColorType::La8);
     let img = img.to_rgba8();
     let width = img.width();
     let height = img.height();
-    Ok(DecodedCapsule {
+    Some(DecodedCapsule {
         pixels: CapsulePixels {
             rgba: img.into_raw(),
             width,
@@ -176,88 +180,81 @@ fn decode_jpeg(bytes: &[u8]) -> Result<DecodedCapsule, CapsuleError> {
     })
 }
 
-pub async fn fetch_capsule(
+async fn try_candidate(
     app_id: u32,
     size: CapsuleSize,
-    assets: AppLibraryAssets,
-) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
-    let Some(asset) = asset_for_size(size, &assets) else {
-        return Err((size, CapsuleError::NotFound));
-    };
-
+    asset: &ImageAsset,
+) -> Option<CapsulePixels> {
     let cache_key = cdn_cache_key(asset);
-    let filename = cdn_filename(asset);
     let target_filename = cache_filename(app_id, size, cache_key);
     let path = cache_path(app_id, size, cache_key);
 
     if let Ok(bytes) = fs::read(&path).await {
         match decode_jpeg(&bytes) {
-            Ok(decoded) if !decoded.is_placeholder => {
-                return Ok((size, decoded.pixels));
-            }
+            Some(decoded) if !decoded.is_placeholder => return Some(decoded.pixels),
             _ => {
                 let _ = fs::remove_file(&path).await;
             }
         }
     }
 
-    let Some(client) = http_client() else {
-        return Err((
-            size,
-            CapsuleError::Http("HTTP client unavailable".to_owned()),
-        ));
-    };
-
+    let client = http_client()?;
     let url = cdn_url(app_id, asset);
 
-    let _permit = http_semaphore()
-        .acquire()
-        .await
-        .expect("capsule HTTP semaphore never closed");
+    let _permit = http_semaphore().acquire().await.ok()?;
 
     let response = match client.get(&url).send().await {
-        Ok(r) => Ok(r),
+        Ok(r) => r,
         Err(_) => {
             tokio::time::sleep(HTTP_RETRY_BACKOFF).await;
-            client.get(&url).send().await
+            client.get(&url).send().await.ok()?
         }
     };
 
-    match response {
-        Ok(response) => {
-            if response.status() == reqwest::StatusCode::NOT_FOUND {
-                return Err((size, CapsuleError::NotFound));
-            }
-            if !response.status().is_success() {
-                return Err((
-                    size,
-                    CapsuleError::Http(format!("HTTP {}", response.status().as_u16())),
-                ));
-            }
-            match response.bytes().await {
-                Ok(bytes) => match decode_jpeg(&bytes) {
-                    Ok(decoded) if !decoded.is_placeholder => {
-                        if let Some(parent) = path.parent() {
-                            let _ = fs::create_dir_all(parent).await;
-                        }
-                        let _ = fs::write(&path, &bytes).await;
-                        purge_stale_caches(app_id, size, &target_filename).await;
-                        Ok((size, decoded.pixels))
-                    }
-                    Ok(_) => {
-                        tracing::trace!(
-                            target: "capsule",
-                            app_id,
-                            filename,
-                            "CDN returned a grayscale placeholder; treating as unavailable"
-                        );
-                        Err((size, CapsuleError::NotFound))
-                    }
-                    Err(e) => Err((size, e)),
-                },
-                Err(e) => Err((size, CapsuleError::Http(e.to_string()))),
-            }
-        }
-        Err(e) => Err((size, CapsuleError::Http(e.to_string()))),
+    if !response.status().is_success() {
+        tracing::trace!(
+            target: "capsule",
+            app_id,
+            url = %url,
+            status = response.status().as_u16(),
+            "CDN non-success; trying next candidate"
+        );
+        return None;
     }
+
+    let bytes = response.bytes().await.ok()?;
+    let decoded = decode_jpeg(&bytes)?;
+    if decoded.is_placeholder {
+        tracing::trace!(
+            target: "capsule",
+            app_id,
+            url = %url,
+            "CDN returned a grayscale placeholder; trying next candidate"
+        );
+        return None;
+    }
+
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent).await;
+    }
+    let _ = fs::write(&path, &bytes).await;
+    purge_stale_caches(app_id, size, &target_filename).await;
+    Some(decoded.pixels)
+}
+
+pub async fn fetch_capsule(
+    app_id: u32,
+    size: CapsuleSize,
+    assets: AppLibraryAssets,
+) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
+    let chain = asset_chain_for_size(size, &assets);
+    if chain.is_empty() {
+        return Err((size, CapsuleError::NotFound));
+    }
+    for asset in chain {
+        if let Some(pixels) = try_candidate(app_id, size, asset).await {
+            return Ok((size, pixels));
+        }
+    }
+    Err((size, CapsuleError::NotFound))
 }
