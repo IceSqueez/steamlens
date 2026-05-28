@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use image::{ColorType, ImageReader};
-use steamlens_core::AppLibraryAssets;
+use steamlens_core::{AppLibraryAssets, ImageAsset};
 use tokio::fs;
 
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -61,16 +61,36 @@ fn size_suffix(size: CapsuleSize) -> &'static str {
     }
 }
 
-fn asset_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Option<(&'static str, &str)> {
+fn asset_for_size(size: CapsuleSize, assets: &AppLibraryAssets) -> Option<&ImageAsset> {
     match size {
-        CapsuleSize::Portrait => assets
-            .library_capsule
-            .as_deref()
-            .map(|h| ("library_capsule.jpg", h)),
-        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => assets
-            .library_header
-            .as_deref()
-            .map(|h| ("library_header.jpg", h)),
+        CapsuleSize::Portrait => assets.library_capsule.as_ref(),
+        CapsuleSize::Small | CapsuleSize::Medium | CapsuleSize::Large => {
+            assets.library_header.as_ref()
+        }
+    }
+}
+
+fn cdn_url(app_id: u32, asset: &ImageAsset) -> String {
+    match asset {
+        ImageAsset::Hashed { hash, filename } => format!(
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/{hash}/{filename}"
+        ),
+        ImageAsset::Plain { filename } => format!(
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/{filename}"
+        ),
+    }
+}
+
+fn cdn_filename(asset: &ImageAsset) -> &str {
+    match asset {
+        ImageAsset::Hashed { filename, .. } | ImageAsset::Plain { filename } => filename,
+    }
+}
+
+fn cdn_cache_key(asset: &ImageAsset) -> &str {
+    match asset {
+        ImageAsset::Hashed { hash, .. } => hash,
+        ImageAsset::Plain { filename } => filename,
     }
 }
 
@@ -152,12 +172,14 @@ pub async fn fetch_capsule(
     size: CapsuleSize,
     assets: AppLibraryAssets,
 ) -> Result<(CapsuleSize, CapsulePixels), (CapsuleSize, CapsuleError)> {
-    let Some((filename, hash)) = asset_for_size(size, &assets) else {
+    let Some(asset) = asset_for_size(size, &assets) else {
         return Err((size, CapsuleError::NotFound));
     };
 
-    let target_filename = cache_filename(app_id, size, hash);
-    let path = cache_path(app_id, size, hash);
+    let cache_key = cdn_cache_key(asset);
+    let filename = cdn_filename(asset);
+    let target_filename = cache_filename(app_id, size, cache_key);
+    let path = cache_path(app_id, size, cache_key);
 
     if let Ok(bytes) = fs::read(&path).await {
         match decode_jpeg(&bytes) {
@@ -177,9 +199,7 @@ pub async fn fetch_capsule(
         ));
     };
 
-    let url = format!(
-        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/{hash}/{filename}"
-    );
+    let url = cdn_url(app_id, asset);
 
     match client.get(&url).send().await {
         Ok(response) => {
@@ -207,7 +227,7 @@ pub async fn fetch_capsule(
                             target: "capsule",
                             app_id,
                             filename,
-                            "hashed CDN returned a grayscale placeholder; treating as unavailable"
+                            "CDN returned a grayscale placeholder; treating as unavailable"
                         );
                         Err((size, CapsuleError::NotFound))
                     }

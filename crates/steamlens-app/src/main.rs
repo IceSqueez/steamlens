@@ -190,6 +190,7 @@ fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
             splash_commands::min_splash_wait(),
             splash_commands::probe_steam_boot(),
             spawn_local_profile_load(),
+            spawn_app_assets_load(),
             Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
         ]),
     )
@@ -909,8 +910,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         app.context.steam_state_mtime,
                     ));
 
-                    tasks.push(spawn_app_assets_load(app.context.steam_root.clone()));
-
                     tasks.push(cache::commands::write_profile_cache(cached));
 
                     if !p.game_summaries.is_empty() {
@@ -1400,10 +1399,10 @@ fn compute_seed_from_cache(cached: &GameCacheEntry) -> game_view::SeededGameView
     }
 }
 
-fn spawn_app_assets_load(steam_root: std::path::PathBuf) -> Task<Message> {
+fn spawn_app_assets_load() -> Task<Message> {
     Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || steamlens_core::read_app_assets(&steam_root))
+        async {
+            tokio::task::spawn_blocking(steamlens_core::discover_app_assets)
                 .await
                 .unwrap_or_else(|e| {
                     tracing::error!(error = %e, "app_assets load task panicked");
