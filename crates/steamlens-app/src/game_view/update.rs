@@ -7,8 +7,6 @@ use super::state::{GameViewPhase, GameViewState, compute_tier_breakdown};
 use super::types::{AchievementRow, BulkOp, StatRow, StatValue, build_apply_payload};
 use crate::steam_worker::{SteamReply, SteamRequest};
 
-const MANAGER_FADE_DELTA: f32 = 0.2;
-
 fn surface_connectivity_error(
     ctx: &mut crate::app_context::AppContext,
     err: crate::worker_subprocess::ConnectivityError,
@@ -430,37 +428,6 @@ pub fn update(
             }
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::SpinnerTick => {
-            state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-            if state.phase == GameViewPhase::Ready && state.fade_in < 1.0 {
-                state.fade_in = (state.fade_in + 0.08).min(1.0);
-            }
-            (Task::none(), GameViewEvent::None)
-        }
-        GameViewMessage::RevealTick => {
-            if let Some(id) = state.reveal_queue.pop_front()
-                && let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id)
-            {
-                row.appeared = true;
-                state.recompute_derived();
-            }
-            (Task::none(), GameViewEvent::None)
-        }
-
-        GameViewMessage::GameViewFadeTick => {
-            for row in &mut state.achievements {
-                if row.appeared && row.card_opacity < 1.0 {
-                    row.card_opacity = (row.card_opacity + MANAGER_FADE_DELTA).min(1.0);
-                }
-            }
-            (Task::none(), GameViewEvent::None)
-        }
-
-        GameViewMessage::RareGlowTick => {
-            state.rare_glow_phase = (state.rare_glow_phase + 0.12) % (2.0 * std::f32::consts::PI);
-            (Task::none(), GameViewEvent::None)
-        }
-
         GameViewMessage::AchievementsFullyLoaded => (
             Task::none(),
             GameViewEvent::AchievementsFullyLoaded {

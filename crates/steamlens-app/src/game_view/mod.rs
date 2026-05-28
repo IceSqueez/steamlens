@@ -21,46 +21,8 @@ pub fn view(
     view::render(state, props)
 }
 
-pub fn subscription(state: &GameViewState) -> iced::Subscription<GameViewMessage> {
-    use iced::time;
-    use std::time::Duration;
-
-    let needs_spinner = matches!(
-        state.phase,
-        GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
-    );
-
-    let needs_tick = needs_spinner
-        || (state.phase == GameViewPhase::Ready && state.fade_in < 1.0)
-        || (state.phase == GameViewPhase::Ready && state.has_pending_reveals())
-        || (state.phase == GameViewPhase::Ready && state.has_fading_cards());
-
-    let spinner_sub = if needs_tick {
-        time::every(Duration::from_millis(33)).map(|_| GameViewMessage::SpinnerTick)
-    } else {
-        iced::Subscription::none()
-    };
-
-    let reveal_sub = if state.has_pending_reveals() {
-        time::every(Duration::from_millis(30)).map(|_| GameViewMessage::RevealTick)
-    } else {
-        iced::Subscription::none()
-    };
-
-    let fade_sub = if state.has_fading_cards() {
-        time::every(Duration::from_millis(33)).map(|_| GameViewMessage::GameViewFadeTick)
-    } else {
-        iced::Subscription::none()
-    };
-
-    let has_legendary = state.phase == GameViewPhase::Ready && state.derived.has_legendary_visible;
-    let glow_sub = if has_legendary {
-        time::every(Duration::from_millis(40)).map(|_| GameViewMessage::RareGlowTick)
-    } else {
-        iced::Subscription::none()
-    };
-
-    iced::Subscription::batch([spinner_sub, reveal_sub, fade_sub, glow_sub])
+pub fn subscription(_state: &GameViewState) -> iced::Subscription<GameViewMessage> {
+    iced::Subscription::none()
 }
 
 #[cfg(test)]
@@ -101,9 +63,7 @@ mod tests {
             steam_state: HashMap::new(),
             steam_state_mtime: None,
             app_assets: HashMap::new(),
-            animation: AnimationState {
-                skeleton_phase: 0.0,
-            },
+            animation: AnimationState::new(),
         }
     }
 
@@ -165,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn game_view_reveal_tick_pops_one_from_queue() {
+    fn tick_animations_drains_reveal_queue_via_accumulator() {
         use std::collections::VecDeque;
 
         let mut state = GameViewState::new(0);
@@ -189,28 +149,17 @@ mod tests {
         state.phase = GameViewPhase::Ready;
 
         assert!(state.has_pending_reveals(), "precondition: queue not empty");
-        assert!(
-            state.achievements.iter().all(|r| !r.appeared),
-            "precondition: none appeared"
-        );
 
-        let mut ctx = make_test_ctx();
-        for expected_remaining in [2usize, 1, 0] {
-            let _task = update(&mut state, GameViewMessage::RevealTick, &mut ctx);
-            assert_eq!(
-                state.reveal_queue.len(),
-                expected_remaining,
-                "queue length after pop"
-            );
-        }
+        // One 100ms frame = ceil(100 / 30) = 3 pops via accumulator.
+        state.tick_animations(0.100);
 
-        assert!(
-            state.achievements.iter().all(|r| r.appeared),
-            "all 3 achievements must be appeared after 3 RevealTick calls"
-        );
         assert!(
             !state.has_pending_reveals(),
-            "has_pending_reveals must be false when queue is empty"
+            "all 3 reveals must have popped in a single 100ms frame"
+        );
+        assert!(
+            state.achievements.iter().all(|r| r.appeared),
+            "all 3 achievements must be appeared after accumulator drains"
         );
     }
 

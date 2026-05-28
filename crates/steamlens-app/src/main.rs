@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::process::{self, Command};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use iced::futures::channel::mpsc as iced_mpsc;
 use iced::keyboard;
@@ -87,7 +87,7 @@ pub(crate) enum Message {
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
     DrainHitQueue,
-    SkeletonTick,
+    AnimationFrame(Instant),
     FocusSearch,
     GlobalSearchChanged(String),
     GlobalSortChanged(profile_view::types::LibrarySort),
@@ -244,11 +244,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::Messaging(msg) => update_handlers::handle_messaging(app, msg),
 
-        Message::SkeletonTick => {
-            app.context.animation.skeleton_phase =
-                (app.context.animation.skeleton_phase + 0.02) % 1.0;
-            Task::none()
-        }
+        Message::AnimationFrame(now) => update_handlers::handle_animation_frame(app, now),
 
         Message::KeyboardEvent(event) => update_handlers::handle_keyboard_event(app, event),
 
@@ -444,8 +440,8 @@ fn subscription(app: &App) -> Subscription<Message> {
         },
     );
 
-    let skeleton_sub = if splash::has_active_skeletons(app) {
-        iced::time::every(Duration::from_millis(33)).map(|_| Message::SkeletonTick)
+    let animation_sub = if update_handlers::needs_animation_frame(app) {
+        iced::window::frames().map(Message::AnimationFrame)
     } else {
         Subscription::none()
     };
@@ -480,7 +476,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     Subscription::batch([
         keyboard_sub,
         worker_reply_sub,
-        skeleton_sub,
+        animation_sub,
         settings_flush_sub,
         toast_sub,
         hit_drain_sub,
@@ -590,9 +586,7 @@ mod tests {
                     steam_state: HashMap::new(),
                     steam_state_mtime: None,
                     app_assets: HashMap::new(),
-                    animation: AnimationState {
-                        skeleton_phase: 0.0,
-                    },
+                    animation: AnimationState::new(),
                 },
                 screen: Screen::ProfileView(Box::new(ProfileViewState::new())),
                 preserved_profile_state: None,

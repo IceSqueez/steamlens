@@ -63,6 +63,7 @@ pub struct GameViewState {
     pub spinner_angle: f32,
     pub fade_in: f32,
     pub rare_glow_phase: f32,
+    pub reveal_accumulator: f32,
 
     pub error_message: String,
 
@@ -109,6 +110,7 @@ impl GameViewState {
             spinner_angle: 0.0,
             fade_in: 0.0,
             rare_glow_phase: 0.0,
+            reveal_accumulator: 0.0,
             error_message: String::new(),
             pending_icons: HashMap::new(),
             pending_rarity_percent: None,
@@ -171,6 +173,71 @@ impl GameViewState {
         self.achievements
             .iter()
             .any(|r| r.appeared && r.card_opacity < 1.0)
+    }
+
+    pub fn tick_animations(&mut self, delta_secs: f32) {
+        const SPINNER_DEG_PER_SEC: f32 = 180.0;
+        const FADE_PER_SEC: f32 = 2.4;
+        const CARD_OPACITY_PER_SEC: f32 = 6.0;
+        const GLOW_RAD_PER_SEC: f32 = 3.0;
+        const REVEAL_INTERVAL_SECS: f32 = 0.030;
+
+        let busy = matches!(
+            self.phase,
+            GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
+        );
+        let needs_spinner_or_fade = busy || self.phase == GameViewPhase::Ready;
+        if needs_spinner_or_fade {
+            self.spinner_angle = (self.spinner_angle + SPINNER_DEG_PER_SEC * delta_secs) % 360.0;
+            if self.phase == GameViewPhase::Ready && self.fade_in < 1.0 {
+                self.fade_in = (self.fade_in + FADE_PER_SEC * delta_secs).min(1.0);
+            }
+        }
+
+        if self.has_fading_cards() {
+            for row in &mut self.achievements {
+                if row.appeared && row.card_opacity < 1.0 {
+                    row.card_opacity =
+                        (row.card_opacity + CARD_OPACITY_PER_SEC * delta_secs).min(1.0);
+                }
+            }
+        }
+
+        if self.derived.has_legendary_visible {
+            self.rare_glow_phase = (self.rare_glow_phase + GLOW_RAD_PER_SEC * delta_secs)
+                % (2.0 * std::f32::consts::PI);
+        }
+
+        if self.has_pending_reveals() {
+            self.reveal_accumulator += delta_secs;
+            let mut popped_any = false;
+            while self.reveal_accumulator >= REVEAL_INTERVAL_SECS {
+                self.reveal_accumulator -= REVEAL_INTERVAL_SECS;
+                let Some(id) = self.reveal_queue.pop_front() else {
+                    self.reveal_accumulator = 0.0;
+                    break;
+                };
+                if let Some(row) = self.achievements.iter_mut().find(|r| r.data.id == id) {
+                    row.appeared = true;
+                    popped_any = true;
+                }
+            }
+            if popped_any {
+                self.recompute_derived();
+            }
+        } else {
+            self.reveal_accumulator = 0.0;
+        }
+    }
+
+    pub fn has_active_animations(&self) -> bool {
+        matches!(
+            self.phase,
+            GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
+        ) || (self.phase == GameViewPhase::Ready && self.fade_in < 1.0)
+            || self.has_pending_reveals()
+            || self.has_fading_cards()
+            || self.derived.has_legendary_visible
     }
 }
 

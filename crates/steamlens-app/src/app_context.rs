@@ -14,7 +14,17 @@ use crate::steam_worker::{SteamReply, SteamWorker};
 pub type SharedWorkerRx = Arc<Mutex<Option<mpsc::UnboundedReceiver<SteamReply>>>>;
 
 pub struct AnimationState {
+    pub last_tick: Instant,
     pub skeleton_phase: f32,
+}
+
+impl AnimationState {
+    pub fn new() -> Self {
+        Self {
+            last_tick: Instant::now(),
+            skeleton_phase: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

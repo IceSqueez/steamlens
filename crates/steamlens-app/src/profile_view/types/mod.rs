@@ -8,7 +8,9 @@ pub use entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 pub use filters::{GameStatusFilter, LibrarySort};
 pub use messages::{ProfileEvent, ProfileViewMessage};
 pub(crate) use sort::sort_games_in_place;
-pub use state::{LoaderPhase, ProfileViewPhase, ProfileViewState, SharedProgressRx};
+#[cfg(test)]
+pub use state::LoaderPhase;
+pub use state::{ProfileViewPhase, ProfileViewState, SharedProgressRx};
 
 #[cfg(test)]
 mod tests {

@@ -191,6 +191,31 @@ impl ProfileViewState {
                 .unwrap_or(true),
         }
     }
+
+    pub fn tick_animations(&mut self, delta_secs: f32, steam_running: Option<bool>) {
+        const SPINNER_DEG_PER_SEC: f32 = 75.0;
+        const LOADER_PULSE_PER_SEC: f32 = 0.57;
+
+        if self.is_streaming() {
+            self.spinner_angle = (self.spinner_angle + SPINNER_DEG_PER_SEC * delta_secs) % 360.0;
+        }
+
+        if self.loader_needs_pulse_subscription(steam_running) {
+            self.loader_pulse_phase =
+                (self.loader_pulse_phase + LOADER_PULSE_PER_SEC * delta_secs).rem_euclid(1.0);
+            if let LoaderPhase::Gamma = self.loader_phase(steam_running) {
+                if self.loader_hiding_since.is_none() {
+                    self.loader_hiding_since = Some(Instant::now());
+                }
+            } else {
+                self.loader_hiding_since = None;
+            }
+        }
+    }
+
+    pub fn has_active_animations(&self, steam_running: Option<bool>) -> bool {
+        self.is_streaming() || self.loader_needs_pulse_subscription(steam_running)
+    }
 }
 
 fn compute_visible_indices(

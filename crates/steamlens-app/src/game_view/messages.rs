@@ -23,10 +23,6 @@ pub enum GameViewMessage {
     ApplyCancelled,
     DiscardChanges,
     RevealHidden(String),
-    SpinnerTick,
-    RevealTick,
-    GameViewFadeTick,
-    RareGlowTick,
     RequestGoBack,
     AchievementsFullyLoaded,
     CapsuleLoaded {

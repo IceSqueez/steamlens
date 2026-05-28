@@ -31,14 +31,12 @@ pub enum ProfileViewMessage {
     StatusFilterChanged(GameStatusFilter),
     GenreFilterToggled(String),
     GenreFilterCleared,
-    SpinnerTick(f32),
     ProgressFetched {
         app_id: u32,
         earned: u32,
         total: u32,
     },
     ProgressScanDone,
-    LoaderPulseTick,
     CardHoverEnter(u32),
     CardHoverExit(u32),
     #[allow(
@@ -92,14 +90,12 @@ impl std::fmt::Debug for ProfileViewMessage {
                 write!(f, "CapsuleFailed(app={app_id}, {size})")
             }
             ProfileViewMessage::GameSelected(id) => write!(f, "GameSelected({id})"),
-            ProfileViewMessage::SpinnerTick(a) => write!(f, "SpinnerTick({a:.1})"),
             ProfileViewMessage::ProgressFetched {
                 app_id,
                 earned,
                 total,
             } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
             ProfileViewMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
-            ProfileViewMessage::LoaderPulseTick => write!(f, "LoaderPulseTick"),
             ProfileViewMessage::CardHoverEnter(id) => write!(f, "CardHoverEnter({id})"),
             ProfileViewMessage::CardHoverExit(id) => write!(f, "CardHoverExit({id})"),
             ProfileViewMessage::RetryFailedScans => write!(f, "RetryFailedScans"),

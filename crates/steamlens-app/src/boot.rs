@@ -39,9 +39,7 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         steam_state: HashMap::new(),
         steam_state_mtime: None,
         app_assets: HashMap::new(),
-        animation: AnimationState {
-            skeleton_phase: 0.0,
-        },
+        animation: AnimationState::new(),
     };
     tracing::info!(
         "no_ach: cache loaded with {} entries",

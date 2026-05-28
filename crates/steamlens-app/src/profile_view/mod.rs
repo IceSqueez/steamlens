@@ -182,7 +182,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use iced::Task;
 use iced::futures::channel::mpsc as iced_mpsc;
@@ -342,25 +342,6 @@ pub fn update(
                 return (Task::none(), ProfileEvent::None);
             }
             (Task::none(), ProfileEvent::OpenGame(app_id))
-        }
-
-        ProfileViewMessage::SpinnerTick(_) => {
-            state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-            (Task::none(), ProfileEvent::None)
-        }
-
-        ProfileViewMessage::LoaderPulseTick => {
-            state.loader_pulse_phase = (state.loader_pulse_phase + 0.04) % 1.0;
-
-            let steam_running = ctx.connectivity.steam_running;
-            if let types::LoaderPhase::Gamma = state.loader_phase(steam_running) {
-                if state.loader_hiding_since.is_none() {
-                    state.loader_hiding_since = Some(Instant::now());
-                }
-            } else {
-                state.loader_hiding_since = None;
-            }
-            (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::CardHoverEnter(app_id) => {
@@ -564,23 +545,9 @@ pub(crate) fn spawn_capsule_queue(
 
 pub fn subscription(
     state: &ProfileViewState,
-    steam_running: Option<bool>,
+    _steam_running: Option<bool>,
 ) -> iced::Subscription<ProfileViewMessage> {
-    use iced::time;
-
-    let spinner_sub = if state.is_streaming() {
-        time::every(Duration::from_millis(80)).map(|_| ProfileViewMessage::SpinnerTick(0.0))
-    } else {
-        iced::Subscription::none()
-    };
-
-    let loader_pulse_sub = if state.loader_needs_pulse_subscription(steam_running) {
-        time::every(Duration::from_millis(70)).map(|_| ProfileViewMessage::LoaderPulseTick)
-    } else {
-        iced::Subscription::none()
-    };
-
-    let progress_drain_sub = if state.progress_scanner.is_some() {
+    if state.progress_scanner.is_some() {
         iced::Subscription::run_with(
             ProgressRxHandle {
                 rx: Arc::clone(&state.progress_rx),
@@ -610,9 +577,7 @@ pub fn subscription(
         )
     } else {
         iced::Subscription::none()
-    };
-
-    iced::Subscription::batch([spinner_sub, loader_pulse_sub, progress_drain_sub])
+    }
 }
 
 struct ProgressRxHandle {
