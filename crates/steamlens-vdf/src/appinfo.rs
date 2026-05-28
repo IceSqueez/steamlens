@@ -8,30 +8,23 @@ const MAGIC_STRING_TABLE: u32 = 0x0756_4429;
 
 const RECORD_FIXED_HEADER_LEN: usize = 4 + 4 + 8 + 20 + 4 + 20;
 
-/// Per-app hashed CDN asset paths extracted from `common/library_assets_full`.
-///
-/// Each field holds the 40-character hex SHA-1 that forms the directory
-/// component of the Akamai CDN URL:
-/// `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/{hash}/{filename}`
-///
-/// Fields are `None` when the corresponding slot is absent for an app.
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct AppLibraryAssets {
-    /// Portrait cover art (`library_capsule.jpg`, 300 × 450).
-    pub library_capsule: Option<String>,
-    /// Wide hero banner (`library_hero.jpg`, 1920 × 620).
-    pub library_hero: Option<String>,
-    /// Game logo overlay (`logo.png`, transparent PNG).
-    pub library_logo: Option<String>,
-    /// Traditional header capsule (`library_header.jpg`, 460 × 215).
-    pub library_header: Option<String>,
+/// Steam library image asset. `Hashed` means the value in appinfo is
+/// `{40-hex-sha1}/{filename}` and the CDN URL nests under that hash directory;
+/// `Plain` means the value is just `{filename}` and the CDN URL omits the hash.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImageAsset {
+    Hashed { hash: String, filename: String },
+    Plain { filename: String },
 }
 
-/// Parse `appcache/appinfo.vdf` and return a map of `app_id → AppLibraryAssets`
-/// for every app that has a populated `common/library_assets_full` section.
-///
-/// Apps without that section are absent from the returned map. The hash in each
-/// field is the 40-character hex component only (no slash, no filename extension).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct AppLibraryAssets {
+    pub library_capsule: Option<ImageAsset>,
+    pub library_hero: Option<ImageAsset>,
+    pub library_logo: Option<ImageAsset>,
+    pub library_header: Option<ImageAsset>,
+}
+
 pub fn parse_appinfo_assets(bytes: &[u8]) -> Result<HashMap<u32, AppLibraryAssets>, AppInfoError> {
     if bytes.len() < 16 {
         return Err(AppInfoError::Truncated {
@@ -60,25 +53,14 @@ pub enum AppInfoError {
     InvalidString(String),
 }
 
-/// Flags extracted from a single app record's `common` section.
-///
-/// All fields default to absent / false; the parser sets them only when the
-/// corresponding key or nested section is present in the blob.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct AppFlags {
-    /// Lowercased value of `common/visibility` or `common/section_type`.
-    /// `Some("ownersonly")` means the app is hidden from the store.
     pub visibility: Option<String>,
-    /// `common/store_asset_mtime` key was present (value ignored).
     pub has_store_asset_mtime: bool,
-    /// `common/library_assets` nested section was present.
     pub has_library_assets: bool,
-    /// `common/header_image` nested section was present.
     pub has_header_image: bool,
 }
 
-/// Parse `appcache/appinfo.vdf` and return a map of `app_id → AppFlags` for
-/// every app record that has a `common` section.
 pub fn parse_appinfo_flags(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppInfoError> {
     if bytes.len() < 16 {
         return Err(AppInfoError::Truncated {
@@ -381,15 +363,36 @@ fn read_string_table(bytes: &[u8], offset: usize) -> Result<Vec<String>, AppInfo
     Ok(strings)
 }
 
-fn extract_hash(value: &[u8]) -> Option<String> {
-    let slash = value.iter().position(|&b| b == b'/')?;
-    let hash_bytes = &value[..slash];
-    if hash_bytes.len() != 40 {
+fn parse_asset_value(value: &[u8]) -> Option<ImageAsset> {
+    if value.is_empty() {
         return None;
     }
-    let s = std::str::from_utf8(hash_bytes).ok()?;
-    if s.chars().all(|c| c.is_ascii_hexdigit()) {
-        Some(s.to_owned())
+    let s = std::str::from_utf8(value).ok()?;
+    if let Some(slash) = s.find('/') {
+        let prefix = &s[..slash];
+        let tail = &s[slash + 1..];
+        if prefix.len() == 40 && prefix.chars().all(|c| c.is_ascii_hexdigit()) && !tail.is_empty() {
+            return Some(ImageAsset::Hashed {
+                hash: prefix.to_ascii_lowercase(),
+                filename: tail.to_owned(),
+            });
+        }
+    }
+    Some(ImageAsset::Plain {
+        filename: s.to_owned(),
+    })
+}
+
+fn emit_assets(
+    mut assets: AppLibraryAssets,
+    found_laf: bool,
+    header_image_value: Option<ImageAsset>,
+) -> Option<AppLibraryAssets> {
+    if assets.library_header.is_none() {
+        assets.library_header = header_image_value;
+    }
+    if found_laf || assets.library_header.is_some() {
+        Some(assets)
     } else {
         None
     }
@@ -407,6 +410,9 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
     let mut current_slot: u8 = 0;
     let mut in_image = false;
     let mut image_depth: i32 = -1;
+    let mut in_header_image = false;
+    let mut header_image_depth: i32 = -1;
+    let mut header_image_value: Option<ImageAsset> = None;
     let mut assets = AppLibraryAssets::default();
     let mut found_laf = false;
 
@@ -427,12 +433,18 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                 in_slot = false;
                 slot_depth = -1;
                 current_slot = 0;
-            } else if (in_laf && depth == laf_depth) || (in_common && depth == common_depth) {
-                return Ok(if found_laf { Some(assets) } else { None });
+            } else if in_laf && depth == laf_depth {
+                in_laf = false;
+                laf_depth = -1;
+            } else if in_header_image && depth == header_image_depth {
+                in_header_image = false;
+                header_image_depth = -1;
+            } else if in_common && depth == common_depth {
+                return Ok(emit_assets(assets, found_laf, header_image_value));
             }
             depth -= 1;
             if depth < 0 {
-                return Ok(if found_laf { Some(assets) } else { None });
+                return Ok(emit_assets(assets, found_laf, header_image_value));
             }
             continue;
         }
@@ -447,14 +459,15 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                 if !in_common && key_bytes.eq_ignore_ascii_case(b"common") {
                     in_common = true;
                     common_depth = depth;
-                } else if in_common
-                    && !in_laf
-                    && depth == common_depth + 1
-                    && key_bytes.eq_ignore_ascii_case(b"library_assets_full")
-                {
-                    in_laf = true;
-                    laf_depth = depth;
-                    found_laf = true;
+                } else if in_common && !in_laf && !in_header_image && depth == common_depth + 1 {
+                    if key_bytes.eq_ignore_ascii_case(b"library_assets_full") {
+                        in_laf = true;
+                        laf_depth = depth;
+                        found_laf = true;
+                    } else if key_bytes.eq_ignore_ascii_case(b"header_image") {
+                        in_header_image = true;
+                        header_image_depth = depth;
+                    }
                 } else if in_laf && !in_slot && depth == laf_depth + 1 {
                     current_slot = if key_bytes.eq_ignore_ascii_case(b"library_capsule") {
                         SLOT_CAPSULE
@@ -485,18 +498,25 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                     read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
                         context: "cstring value in assets blob",
                     })?;
-                if in_image
-                    && depth == image_depth
-                    && key_bytes.eq_ignore_ascii_case(b"english")
-                    && let Some(hash) = extract_hash(val_bytes)
-                {
-                    match current_slot {
-                        SLOT_CAPSULE => assets.library_capsule = Some(hash),
-                        SLOT_HERO => assets.library_hero = Some(hash),
-                        SLOT_LOGO => assets.library_logo = Some(hash),
-                        SLOT_HEADER => assets.library_header = Some(hash),
-                        _ => {}
+                if in_image && depth == image_depth && key_bytes.eq_ignore_ascii_case(b"english") {
+                    let slot_ref = match current_slot {
+                        SLOT_CAPSULE => Some(&mut assets.library_capsule),
+                        SLOT_HERO => Some(&mut assets.library_hero),
+                        SLOT_LOGO => Some(&mut assets.library_logo),
+                        SLOT_HEADER => Some(&mut assets.library_header),
+                        _ => None,
+                    };
+                    if let Some(dest) = slot_ref
+                        && dest.is_none()
+                    {
+                        *dest = parse_asset_value(val_bytes);
                     }
+                } else if in_header_image
+                    && depth == header_image_depth
+                    && key_bytes.eq_ignore_ascii_case(b"english")
+                    && header_image_value.is_none()
+                {
+                    header_image_value = parse_asset_value(val_bytes);
                 }
             }
             0x02 | 0x03 | 0x04 | 0x06 => {
@@ -515,11 +535,11 @@ fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, App
                 }
                 i += 8;
             }
-            _ => return Ok(if found_laf { Some(assets) } else { None }),
+            _ => return Ok(emit_assets(assets, found_laf, header_image_value)),
         }
     }
 
-    Ok(if found_laf { Some(assets) } else { None })
+    Ok(emit_assets(assets, found_laf, header_image_value))
 }
 
 fn scan_indexed_blob_assets(
@@ -537,6 +557,9 @@ fn scan_indexed_blob_assets(
     let mut current_slot: u8 = 0;
     let mut in_image = false;
     let mut image_depth: i32 = -1;
+    let mut in_header_image = false;
+    let mut header_image_depth: i32 = -1;
+    let mut header_image_value: Option<ImageAsset> = None;
     let mut assets = AppLibraryAssets::default();
     let mut found_laf = false;
 
@@ -557,12 +580,18 @@ fn scan_indexed_blob_assets(
                 in_slot = false;
                 slot_depth = -1;
                 current_slot = 0;
-            } else if (in_laf && depth == laf_depth) || (in_common && depth == common_depth) {
-                return Ok(if found_laf { Some(assets) } else { None });
+            } else if in_laf && depth == laf_depth {
+                in_laf = false;
+                laf_depth = -1;
+            } else if in_header_image && depth == header_image_depth {
+                in_header_image = false;
+                header_image_depth = -1;
+            } else if in_common && depth == common_depth {
+                return Ok(emit_assets(assets, found_laf, header_image_value));
             }
             depth -= 1;
             if depth < 0 {
-                return Ok(if found_laf { Some(assets) } else { None });
+                return Ok(emit_assets(assets, found_laf, header_image_value));
             }
             continue;
         }
@@ -582,14 +611,15 @@ fn scan_indexed_blob_assets(
                 if !in_common && key.eq_ignore_ascii_case("common") {
                     in_common = true;
                     common_depth = depth;
-                } else if in_common
-                    && !in_laf
-                    && depth == common_depth + 1
-                    && key.eq_ignore_ascii_case("library_assets_full")
-                {
-                    in_laf = true;
-                    laf_depth = depth;
-                    found_laf = true;
+                } else if in_common && !in_laf && !in_header_image && depth == common_depth + 1 {
+                    if key.eq_ignore_ascii_case("library_assets_full") {
+                        in_laf = true;
+                        laf_depth = depth;
+                        found_laf = true;
+                    } else if key.eq_ignore_ascii_case("header_image") {
+                        in_header_image = true;
+                        header_image_depth = depth;
+                    }
                 } else if in_laf && !in_slot && depth == laf_depth + 1 {
                     current_slot = if key.eq_ignore_ascii_case("library_capsule") {
                         SLOT_CAPSULE
@@ -620,18 +650,25 @@ fn scan_indexed_blob_assets(
                     read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
                         context: "cstring value in assets indexed blob",
                     })?;
-                if in_image
-                    && depth == image_depth
-                    && key.eq_ignore_ascii_case("english")
-                    && let Some(hash) = extract_hash(val_bytes)
-                {
-                    match current_slot {
-                        SLOT_CAPSULE => assets.library_capsule = Some(hash),
-                        SLOT_HERO => assets.library_hero = Some(hash),
-                        SLOT_LOGO => assets.library_logo = Some(hash),
-                        SLOT_HEADER => assets.library_header = Some(hash),
-                        _ => {}
+                if in_image && depth == image_depth && key.eq_ignore_ascii_case("english") {
+                    let slot_ref = match current_slot {
+                        SLOT_CAPSULE => Some(&mut assets.library_capsule),
+                        SLOT_HERO => Some(&mut assets.library_hero),
+                        SLOT_LOGO => Some(&mut assets.library_logo),
+                        SLOT_HEADER => Some(&mut assets.library_header),
+                        _ => None,
+                    };
+                    if let Some(dest) = slot_ref
+                        && dest.is_none()
+                    {
+                        *dest = parse_asset_value(val_bytes);
                     }
+                } else if in_header_image
+                    && depth == header_image_depth
+                    && key.eq_ignore_ascii_case("english")
+                    && header_image_value.is_none()
+                {
+                    header_image_value = parse_asset_value(val_bytes);
                 }
             }
             0x02 | 0x03 | 0x04 | 0x06 => {
@@ -650,11 +687,11 @@ fn scan_indexed_blob_assets(
                 }
                 i += 8;
             }
-            _ => return Ok(if found_laf { Some(assets) } else { None }),
+            _ => return Ok(emit_assets(assets, found_laf, header_image_value)),
         }
     }
 
-    Ok(if found_laf { Some(assets) } else { None })
+    Ok(emit_assets(assets, found_laf, header_image_value))
 }
 
 fn scan_cstring_blob(blob: &[u8]) -> Result<Option<AppFlags>, AppInfoError> {
@@ -1585,28 +1622,29 @@ mod tests {
         file
     }
 
+    fn hashed(hash_byte: u8, filename: &str) -> Option<ImageAsset> {
+        Some(ImageAsset::Hashed {
+            hash: fake_hash(hash_byte),
+            filename: filename.to_owned(),
+        })
+    }
+
+    fn plain(filename: &str) -> Option<ImageAsset> {
+        Some(ImageAsset::Plain {
+            filename: filename.to_owned(),
+        })
+    }
+
     #[test]
     fn assets_v8_all_four_slots_extracted() {
         let blob = build_cstring_blob_with_laf_all_slots();
         let file = build_v8_file(&[(20001, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20001).unwrap();
-        assert_eq!(
-            assets.library_capsule.as_deref(),
-            Some(fake_hash(0xAA).as_str())
-        );
-        assert_eq!(
-            assets.library_hero.as_deref(),
-            Some(fake_hash(0xBB).as_str())
-        );
-        assert_eq!(
-            assets.library_logo.as_deref(),
-            Some(fake_hash(0xCC).as_str())
-        );
-        assert_eq!(
-            assets.library_header.as_deref(),
-            Some(fake_hash(0xDD).as_str())
-        );
+        assert_eq!(assets.library_capsule, hashed(0xAA, "library_capsule.jpg"));
+        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.library_logo, hashed(0xCC, "logo.png"));
+        assert_eq!(assets.library_header, hashed(0xDD, "library_header.jpg"));
     }
 
     #[test]
@@ -1615,10 +1653,7 @@ mod tests {
         let file = build_v8_file(&[(20002, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20002).unwrap();
-        assert_eq!(
-            assets.library_capsule.as_deref(),
-            Some(fake_hash(0x11).as_str())
-        );
+        assert_eq!(assets.library_capsule, hashed(0x11, "library_capsule.jpg"));
         assert_eq!(assets.library_hero, None);
         assert_eq!(assets.library_logo, None);
         assert_eq!(assets.library_header, None);
@@ -1644,7 +1679,7 @@ mod tests {
     }
 
     #[test]
-    fn assets_v8_hash_without_slash_not_extracted() {
+    fn assets_v8_plain_filename_yields_plain_asset() {
         let mut blob = Vec::new();
         blob.push(0x00u8);
         blob.extend_from_slice(b"common\x00");
@@ -1656,7 +1691,7 @@ mod tests {
         blob.extend_from_slice(b"image\x00");
         blob.push(0x01u8);
         blob.extend_from_slice(b"english\x00");
-        blob.extend_from_slice(b"noslashhere\x00");
+        blob.extend_from_slice(b"library_600x900.jpg\x00");
         blob.push(0x08);
         blob.push(0x08);
         blob.push(0x08);
@@ -1664,9 +1699,49 @@ mod tests {
         blob.push(0x08);
         let file = build_v8_file(&[(20005, blob)]);
         let map = parse_appinfo_assets(&file).unwrap();
-        // laf section present → entry in map, but capsule hash is None
         let assets = map.get(&20005).unwrap();
-        assert_eq!(assets.library_capsule, None);
+        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
+        assert_eq!(assets.library_hero, None);
+        assert_eq!(assets.library_logo, None);
+        assert_eq!(assets.library_header, None);
+    }
+
+    #[test]
+    fn assets_v8_plain_and_hashed_mixed_slots() {
+        let hash_val = format!("{}/library_hero.jpg\x00", fake_hash(0xBB));
+        let mut blob = Vec::new();
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"common\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_assets_full\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_capsule\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(b"library_600x900.jpg\x00");
+        blob.push(0x08);
+        blob.push(0x08);
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_hero\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(hash_val.as_bytes());
+        blob.push(0x08);
+        blob.push(0x08);
+        blob.push(0x08);
+        blob.push(0x08);
+        blob.push(0x08);
+        let file = build_v8_file(&[(20006, blob)]);
+        let map = parse_appinfo_assets(&file).unwrap();
+        let assets = map.get(&20006).unwrap();
+        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
+        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.library_logo, None);
+        assert_eq!(assets.library_header, None);
     }
 
     #[test]
@@ -1685,22 +1760,10 @@ mod tests {
         let file = build_v9_assets_file(&[(20010, blob)], &[]);
         let map = parse_appinfo_assets(&file).unwrap();
         let assets = map.get(&20010).unwrap();
-        assert_eq!(
-            assets.library_capsule.as_deref(),
-            Some(fake_hash(0xAA).as_str())
-        );
-        assert_eq!(
-            assets.library_hero.as_deref(),
-            Some(fake_hash(0xBB).as_str())
-        );
-        assert_eq!(
-            assets.library_logo.as_deref(),
-            Some(fake_hash(0xCC).as_str())
-        );
-        assert_eq!(
-            assets.library_header.as_deref(),
-            Some(fake_hash(0xDD).as_str())
-        );
+        assert_eq!(assets.library_capsule, hashed(0xAA, "library_capsule.jpg"));
+        assert_eq!(assets.library_hero, hashed(0xBB, "library_hero.jpg"));
+        assert_eq!(assets.library_logo, hashed(0xCC, "logo.png"));
+        assert_eq!(assets.library_header, hashed(0xDD, "library_header.jpg"));
     }
 
     #[test]
@@ -1751,20 +1814,255 @@ mod tests {
         let map = parse_appinfo_assets(&bytes).expect("parse failed");
         let assets = map.get(&2807960).expect("app 2807960 not found in map");
         assert_eq!(
-            assets.library_capsule.as_deref(),
-            Some("f94d928537ac1813f07baf86bbdc1b899fba7ddc"),
+            assets.library_capsule,
+            Some(ImageAsset::Hashed {
+                hash: "f94d928537ac1813f07baf86bbdc1b899fba7ddc".to_owned(),
+                filename: "library_capsule.jpg".to_owned(),
+            }),
         );
         assert_eq!(
-            assets.library_logo.as_deref(),
-            Some("3a5184881210f52887f766f92a313bd0902e7918"),
+            assets.library_logo,
+            Some(ImageAsset::Hashed {
+                hash: "3a5184881210f52887f766f92a313bd0902e7918".to_owned(),
+                filename: "logo.png".to_owned(),
+            }),
         );
         assert_eq!(
-            assets.library_header.as_deref(),
-            Some("1b277e018090ce15d169e22a6eca284338e3ce15"),
+            assets.library_header,
+            Some(ImageAsset::Hashed {
+                hash: "1b277e018090ce15d169e22a6eca284338e3ce15".to_owned(),
+                filename: "library_header.jpg".to_owned(),
+            }),
         );
-        // library_hero may change as Steam updates; just assert it's a 40-char hex string
-        let hero = assets.library_hero.as_deref().expect("library_hero absent");
-        assert_eq!(hero.len(), 40);
-        assert!(hero.chars().all(|c| c.is_ascii_hexdigit()));
+        let hero = assets.library_hero.as_ref().expect("library_hero absent");
+        let ImageAsset::Hashed { hash, .. } = hero else {
+            panic!("library_hero should be Hashed for app 2807960");
+        };
+        assert_eq!(hash.len(), 40);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    #[ignore = "requires real ~/.local/share/Steam/appcache/appinfo.vdf — run manually to verify app 400 assets"]
+    fn assets_real_appinfo_portal() {
+        let path =
+            std::path::Path::new(env!("HOME")).join(".local/share/Steam/appcache/appinfo.vdf");
+        let bytes = std::fs::read(&path).expect("appinfo.vdf not found");
+        let map = parse_appinfo_assets(&bytes).expect("parse failed");
+        let assets = map.get(&400).expect("app 400 not found in map");
+        let capsule = assets
+            .library_capsule
+            .as_ref()
+            .expect("library_capsule absent");
+        assert!(
+            matches!(capsule, ImageAsset::Plain { filename } if filename == "library_600x900.jpg"),
+            "expected Plain(library_600x900.jpg), got {capsule:?}",
+        );
+        let hero = assets.library_hero.as_ref().expect("library_hero absent");
+        assert!(
+            matches!(hero, ImageAsset::Plain { filename } if filename == "library_hero.jpg"),
+            "expected Plain(library_hero.jpg), got {hero:?}",
+        );
+        let header = assets
+            .library_header
+            .as_ref()
+            .expect("library_header absent");
+        assert!(
+            matches!(header, ImageAsset::Plain { filename } if filename == "header.jpg"),
+            "expected Plain(header.jpg), got {header:?}",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires real ~/.local/share/Steam/appcache/appinfo.vdf"]
+    fn assets_real_appinfo_coverage_at_least_750() {
+        let path =
+            std::path::Path::new(env!("HOME")).join(".local/share/Steam/appcache/appinfo.vdf");
+        let bytes = std::fs::read(&path).expect("appinfo.vdf not found");
+        let map = parse_appinfo_assets(&bytes).expect("parse failed");
+        let with_header = map.values().filter(|a| a.library_header.is_some()).count();
+        assert!(
+            with_header >= 750,
+            "expected >=750 apps with library_header, got {with_header}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires real ~/.local/share/Steam/appcache/appinfo.vdf — verify app 249650 header_image fallback"]
+    fn assets_real_appinfo_app_249650_has_library_header() {
+        let path =
+            std::path::Path::new(env!("HOME")).join(".local/share/Steam/appcache/appinfo.vdf");
+        let bytes = std::fs::read(&path).expect("appinfo.vdf not found");
+        let map = parse_appinfo_assets(&bytes).expect("parse failed");
+        let assets = map.get(&249650).expect("app 249650 not in map");
+        assert!(
+            matches!(&assets.library_header, Some(ImageAsset::Plain { filename }) if filename == "header.jpg"),
+            "expected Plain(header.jpg), got {:?}",
+            assets.library_header
+        );
+        assert!(
+            matches!(&assets.library_capsule, Some(ImageAsset::Plain { filename }) if filename == "library_600x900.jpg"),
+            "expected Plain(library_600x900.jpg), got {:?}",
+            assets.library_capsule
+        );
+    }
+
+    #[test]
+    fn assets_header_image_fallback_when_no_laf_header_slot() {
+        // common {
+        //   library_assets_full {
+        //     library_capsule { image { "english" "library_600x900.jpg" } }
+        //   }
+        //   header_image { "english" "header.jpg" }
+        // }
+        let mut blob = Vec::new();
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"common\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_assets_full\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_capsule\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(b"library_600x900.jpg\x00");
+        blob.push(0x08); // close image
+        blob.push(0x08); // close library_capsule
+        blob.push(0x08); // close library_assets_full
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"header_image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(b"header.jpg\x00");
+        blob.push(0x08); // close header_image
+        blob.push(0x08); // close common
+        let file = build_v8_file(&[(400, blob)]);
+        let map = parse_appinfo_assets(&file).unwrap();
+        let assets = map.get(&400).unwrap();
+        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
+        assert_eq!(assets.library_hero, None);
+        assert_eq!(assets.library_logo, None);
+        assert_eq!(
+            assets.library_header,
+            plain("header.jpg"),
+            "header_image fallback must populate library_header"
+        );
+    }
+
+    #[test]
+    fn assets_header_image_fallback_skipped_when_laf_header_slot_present() {
+        // common {
+        //   library_assets_full {
+        //     library_header { image { "english" "{hash}/library_header.jpg" } }
+        //   }
+        //   header_image { "english" "header.jpg" }
+        // }
+        let header_val = format!("{}/library_header.jpg\x00", fake_hash(0xDD));
+        let mut blob = Vec::new();
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"common\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_assets_full\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"library_header\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(header_val.as_bytes());
+        blob.push(0x08); // close image
+        blob.push(0x08); // close library_header
+        blob.push(0x08); // close library_assets_full
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"header_image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(b"header.jpg\x00");
+        blob.push(0x08); // close header_image
+        blob.push(0x08); // close common
+        let file = build_v8_file(&[(9001, blob)]);
+        let map = parse_appinfo_assets(&file).unwrap();
+        let assets = map.get(&9001).unwrap();
+        assert_eq!(
+            assets.library_header,
+            hashed(0xDD, "library_header.jpg"),
+            "LAF library_header must take priority over header_image fallback"
+        );
+    }
+
+    #[test]
+    fn assets_header_image_only_no_laf_yields_entry_with_header() {
+        let mut blob = Vec::new();
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"common\x00");
+        blob.push(0x00u8);
+        blob.extend_from_slice(b"header_image\x00");
+        blob.push(0x01u8);
+        blob.extend_from_slice(b"english\x00");
+        blob.extend_from_slice(b"header.jpg\x00");
+        blob.push(0x08);
+        blob.push(0x08);
+        blob.push(0x08);
+        let file = build_v8_file(&[(215, blob)]);
+        let map = parse_appinfo_assets(&file).unwrap();
+        let assets = map
+            .get(&215)
+            .expect("app 215 must be in map via header_image");
+        assert_eq!(assets.library_capsule, None);
+        assert_eq!(assets.library_hero, None);
+        assert_eq!(assets.library_logo, None);
+        assert_eq!(assets.library_header, plain("header.jpg"));
+    }
+
+    #[test]
+    fn assets_v9_header_image_fallback() {
+        // common {
+        //   library_assets_full {
+        //     library_capsule { image { "english" "library_600x900.jpg" } }
+        //   }
+        //   header_image { "english" "header.jpg" }
+        // }
+        let all_strings = [
+            "common",
+            "library_assets_full",
+            "library_capsule",
+            "library_hero",
+            "library_logo",
+            "library_header",
+            "image",
+            "english",
+            "header_image",
+        ];
+        let idx = |s: &str| -> u32 { all_strings.iter().position(|&x| x == s).unwrap() as u32 };
+
+        let mut blob = Vec::new();
+        blob.push(0x00u8);
+        blob.extend_from_slice(&le32(idx("common")));
+        blob.push(0x00u8);
+        blob.extend_from_slice(&le32(idx("library_assets_full")));
+        blob.push(0x00u8);
+        blob.extend_from_slice(&le32(idx("library_capsule")));
+        blob.push(0x00u8);
+        blob.extend_from_slice(&le32(idx("image")));
+        blob.push(0x01u8);
+        blob.extend_from_slice(&le32(idx("english")));
+        blob.extend_from_slice(b"library_600x900.jpg\x00");
+        blob.push(0x08); // close image
+        blob.push(0x08); // close library_capsule
+        blob.push(0x08); // close library_assets_full
+        blob.push(0x00u8);
+        blob.extend_from_slice(&le32(idx("header_image")));
+        blob.push(0x01u8);
+        blob.extend_from_slice(&le32(idx("english")));
+        blob.extend_from_slice(b"header.jpg\x00");
+        blob.push(0x08); // close header_image
+        blob.push(0x08); // close common
+
+        let file = build_v9_assets_file(&[(400, blob)], &["header_image"]);
+        let map = parse_appinfo_assets(&file).unwrap();
+        let assets = map.get(&400).unwrap();
+        assert_eq!(assets.library_capsule, plain("library_600x900.jpg"));
+        assert_eq!(assets.library_header, plain("header.jpg"));
     }
 }

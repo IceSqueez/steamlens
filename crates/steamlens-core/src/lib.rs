@@ -15,7 +15,7 @@ mod steam_callback;
 pub mod steam_state;
 mod user_stats;
 
-pub use app_assets::read_app_assets;
+pub use app_assets::{discover_app_assets, read_app_assets};
 pub use client::{Client, Image, connect};
 pub use error::{LibraryError, SteamError};
 pub use genre::primary_genre_name;
@@ -42,5 +42,5 @@ pub use steam_callback::{
     STEAM_RESULT_OK, SteamCallback, SteamResult,
 };
 pub use steam_state::{SteamAppState, read_steam_state, read_steam_state_mtime};
-pub use steamlens_vdf::AppLibraryAssets;
+pub use steamlens_vdf::{AppLibraryAssets, ImageAsset};
 pub use user_stats::UserStats;

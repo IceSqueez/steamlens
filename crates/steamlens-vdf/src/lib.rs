@@ -5,7 +5,7 @@ mod parser;
 pub mod text;
 
 pub use appinfo::{
-    AppFlags, AppInfoError, AppLibraryAssets, parse_appinfo_assets, parse_appinfo_flags,
+    AppFlags, AppInfoError, AppLibraryAssets, ImageAsset, parse_appinfo_assets, parse_appinfo_flags,
 };
 pub use localconfig::{AppLocalState, parse_localconfig_last_played, parse_localconfig_states};
 pub use packageinfo::{PackageInfoError, parse_packageinfo};
