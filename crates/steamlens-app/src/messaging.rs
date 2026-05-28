@@ -6,6 +6,14 @@ use iced::{Element, Length, Padding};
 const TOAST_LIFETIME: Duration = Duration::from_secs(4);
 const MAX_VISIBLE_TOASTS: usize = 5;
 
+#[derive(Debug, Clone)]
+pub enum MessagingEvent {
+    ToastTick,
+    ToastHovered(u32, bool),
+    DismissToast(u32),
+    DismissBanner(u32),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerSeverity {
     Info,
@@ -232,7 +240,9 @@ fn render_banner(banner: &Banner) -> Element<'_, crate::Message> {
         b = b.action(action.label, action.message.clone());
     }
     if banner.dismissible {
-        b = b.on_dismiss(crate::Message::DismissBanner(banner.id));
+        b = b.on_dismiss(crate::Message::Messaging(MessagingEvent::DismissBanner(
+            banner.id,
+        )));
     }
     b.into()
 }
@@ -261,9 +271,15 @@ fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
     let mut t = toast_widget::<crate::Message>()
         .kind(kind)
         .title(toast.title.clone())
-        .on_close(crate::Message::DismissToast(toast.id))
-        .on_hover_enter(crate::Message::ToastHovered(toast.id, true))
-        .on_hover_exit(crate::Message::ToastHovered(toast.id, false));
+        .on_close(crate::Message::Messaging(MessagingEvent::DismissToast(
+            toast.id,
+        )))
+        .on_hover_enter(crate::Message::Messaging(MessagingEvent::ToastHovered(
+            toast.id, true,
+        )))
+        .on_hover_exit(crate::Message::Messaging(MessagingEvent::ToastHovered(
+            toast.id, false,
+        )));
     if let Some(body) = &toast.body {
         t = t.body(body.clone());
     }
@@ -422,7 +438,7 @@ mod tests {
             Some("Scan failed for app 570".to_owned()),
             ToastAction {
                 label: "Retry".to_owned(),
-                on_press: crate::Message::ToastTick,
+                on_press: crate::Message::Messaging(MessagingEvent::ToastTick),
             },
         );
         assert_eq!(mc.toasts.len(), 1);

@@ -18,3 +18,25 @@ pub use persistent::{
 };
 pub use store::write_game_cache;
 pub use types::{CURRENT_SCHEMA_VERSION, CacheHit, GameCacheEntry};
+
+#[derive(Debug, Clone)]
+pub enum CacheEvent {
+    ProfileLoaded(Option<CachedProfile>),
+    LibraryLoaded(Option<CachedLibrary>),
+    PersistentWritten(&'static str, Result<(), String>),
+    Classified(ClassifyResult),
+    GameWritten {
+        app_id: u32,
+        result: Result<(), String>,
+    },
+    NoAchWritten(Result<(), String>),
+    GameInvalidated {
+        app_id: u32,
+        name: String,
+        result: Result<(), String>,
+    },
+    OfflineLoaded {
+        app_id: u32,
+        entry: Option<Box<GameCacheEntry>>,
+    },
+}
