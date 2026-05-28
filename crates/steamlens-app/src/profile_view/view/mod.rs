@@ -1,0 +1,289 @@
+mod card;
+mod card_parts;
+mod dims;
+
+use std::collections::HashMap;
+
+use iced::widget::Id as WidgetId;
+use iced::widget::{column, container, responsive, row, scrollable, text};
+use iced::{Alignment, Element, Length, Padding};
+
+use crate::cache::GameCacheEntry;
+use crate::profile_view::ProfileViewState;
+use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase};
+use crate::profile_view::widget::{
+    ProfileWidgetParams, compute_profile_summary, profile_widget, top6_closest_to_complete,
+};
+use crate::ui::theme::{palette, theme_from_iced};
+
+use card::build_card;
+use dims::{CARD_GAP, MIN_GAP, card_width, compute_grid};
+
+pub struct ProfileViewProps<'a> {
+    pub user_profile: Option<&'a steamlens_core::UserProfile>,
+    pub avatar_handle: Option<&'a iced::widget::image::Handle>,
+    pub cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    pub skeleton_phase: f32,
+    pub pinned: &'a [u32],
+    pub steam_level: Option<u32>,
+    pub steam_running: Option<bool>,
+}
+
+pub fn render<'a>(
+    state: &'a ProfileViewState,
+    props: ProfileViewProps<'a>,
+) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
+    let profile_section = build_profile_section(
+        state,
+        props.user_profile,
+        props.avatar_handle,
+        props.cached_entries,
+        props.skeleton_phase,
+        props.steam_level,
+    );
+
+    let body: Element<'_, ProfileViewMessage> = match &state.phase {
+        ProfileViewPhase::Scanning => center_text("Scanning library\u{2026}"),
+        ProfileViewPhase::Loaded => {
+            let visible = state.visible_games(props.pinned);
+
+            if visible.is_empty() {
+                center_text("No games found.")
+            } else {
+                build_grid(
+                    state,
+                    visible,
+                    props.cached_entries,
+                    props.skeleton_phase,
+                    props.pinned,
+                )
+            }
+        }
+    };
+
+    crate::screen::ScreenContent {
+        top: Some(profile_section),
+        status_bar: profile_status_bar(state, props.steam_running),
+        body,
+        footer: None,
+    }
+}
+
+fn profile_status_bar(
+    state: &ProfileViewState,
+    steam_running: Option<bool>,
+) -> Option<Element<'_, ProfileViewMessage>> {
+    use crate::ui::widgets::status_bar::status_bar;
+
+    let total = state.games.len();
+
+    if steam_running == Some(false) {
+        if total == 0 {
+            return None;
+        }
+        let failed = state.failed_app_ids.len();
+        let hydrated = state.games.iter().filter(|g| g.is_hydrated()).count();
+        return Some(
+            status_bar::<ProfileViewMessage>()
+                .offline(hydrated.max(total - failed), "games")
+                .failed(failed)
+                .into(),
+        );
+    }
+
+    if total == 0 {
+        return None;
+    }
+
+    let scanned_progress = state.games.iter().filter(|g| g.progress.is_some()).count();
+    let loaded_capsules = state
+        .games
+        .iter()
+        .filter(|g| !matches!(g.capsule, super::types::CapsuleAsset::Pending))
+        .count();
+
+    if scanned_progress < total {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .scanning("Scanning library", scanned_progress, total)
+                .into(),
+        )
+    } else if loaded_capsules < total {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .scanning("Downloading capsules", loaded_capsules, total)
+                .into(),
+        )
+    } else {
+        Some(
+            status_bar::<ProfileViewMessage>()
+                .connected(total, "games", state.last_scan_completed_at)
+                .into(),
+        )
+    }
+}
+
+fn build_profile_section<'a>(
+    state: &'a ProfileViewState,
+    user_profile: Option<&'a steamlens_core::UserProfile>,
+    avatar_handle: Option<&'a iced::widget::image::Handle>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    skeleton_phase: f32,
+    steam_level: Option<u32>,
+) -> Element<'a, ProfileViewMessage> {
+    let summary = compute_profile_summary(cached_entries);
+    let top6 = top6_closest_to_complete(&state.games, cached_entries);
+    profile_widget(ProfileWidgetParams {
+        user_profile,
+        avatar_handle,
+        summary,
+        top6,
+        games_count: state.games.len(),
+        skeleton_phase,
+        hovered_bar_slice: state.hovered_bar_slice,
+        capsule_handles: &state.capsule_handles,
+        capsule_size: state.capsule_size,
+        steam_level,
+    })
+}
+
+pub fn library_search_id() -> WidgetId {
+    WidgetId::new("library-search")
+}
+
+fn build_grid<'a>(
+    state: &'a ProfileViewState,
+    visible: Vec<&'a GameEntry>,
+    cached_entries: &'a HashMap<u32, GameCacheEntry>,
+    skeleton_phase: f32,
+    pinned: &'a [u32],
+) -> Element<'a, ProfileViewMessage> {
+    let capsule_size = state.capsule_size;
+    let card_w = card_width(capsule_size);
+    let hovered_card = state.hovered_card;
+    let hovered_card_tier = state.hovered_card_tier;
+
+    let entries: Vec<&'a GameEntry> = visible;
+
+    let grid = responsive(move |size| {
+        let (cols, gap) = compute_grid(size.width, card_w, MIN_GAP);
+
+        let mut rows_col: iced::widget::Column<'_, ProfileViewMessage> = column![]
+            .spacing(CARD_GAP as u32)
+            .padding(Padding::default().top(8).bottom(8));
+
+        for chunk in entries.chunks(cols) {
+            let mut r: iced::widget::Row<'_, ProfileViewMessage> =
+                row![iced::widget::Space::new().width(Length::Fixed(gap))];
+            for entry in chunk {
+                let app_id = entry.app_id;
+                let cached = cached_entries.get(&app_id);
+                let tier_breakdown = cached.map(|e| e.tier_breakdown.as_slice()).unwrap_or(&[]);
+                let genre = cached.and_then(|e| e.genre.as_deref());
+                let is_pinned = pinned.contains(&app_id);
+                let is_hovered = hovered_card == Some(app_id);
+                let hovered_tier = hovered_card_tier
+                    .filter(|(id, _)| *id == app_id)
+                    .map(|(_, t)| t);
+                r = r.push(build_card(
+                    entry,
+                    capsule_size,
+                    card_w,
+                    skeleton_phase,
+                    tier_breakdown,
+                    genre,
+                    is_pinned,
+                    is_hovered,
+                    hovered_tier,
+                ));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
+            }
+            let needed = cols - chunk.len();
+            for _ in 0..needed {
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(card_w)));
+                r = r.push(iced::widget::Space::new().width(Length::Fixed(gap)));
+            }
+            rows_col = rows_col.push(r);
+        }
+
+        scrollable(rows_col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    });
+
+    container(grid)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+fn center_text(msg: &str) -> Element<'_, ProfileViewMessage> {
+    let msg = msg.to_owned();
+    container(
+        text(msg)
+            .size(14)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).text_muted),
+            }),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_x(Alignment::Center)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+#[cfg(test)]
+mod grid_tests {
+    use super::compute_grid;
+
+    #[test]
+    fn fixed_card_width_with_uniform_gaps() {
+        let (cols, gap) = compute_grid(1000.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 40.0).abs() < 0.01, "expected gap=40, got {gap}");
+    }
+
+    #[test]
+    fn min_gap_floor_kicks_in() {
+        let (cols, gap) = compute_grid(1010.0, 200.0, 12.0);
+        assert_eq!(cols, 4);
+        assert!((gap - 42.0).abs() < 0.01, "expected gap=42, got {gap}");
+    }
+
+    #[test]
+    fn single_column_below_card_width() {
+        let (cols, gap) = compute_grid(150.0, 200.0, 12.0);
+        assert_eq!(cols, 1);
+        assert_eq!(gap, 0.0);
+    }
+
+    #[test]
+    fn exact_fit_no_remainder_falls_back_to_fewer_cols() {
+        let (cols, gap) = compute_grid(1000.0, 250.0, 12.0);
+        assert_eq!(cols, 3);
+        let expected_gap = (1000.0 - 3.0 * 250.0) / 4.0;
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected gap={expected_gap}, got {gap}"
+        );
+    }
+
+    #[test]
+    fn single_column_gap_is_centered() {
+        let (cols, gap) = compute_grid(300.0, 200.0, 12.0);
+        assert_eq!(cols, 1);
+        let expected_gap = (300.0 - 200.0) / 2.0;
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected gap={expected_gap}, got {gap}"
+        );
+    }
+
+    #[test]
+    fn gap_never_negative() {
+        let (_cols, gap) = compute_grid(50.0, 200.0, 12.0);
+        assert!(gap >= 0.0);
+    }
+}
