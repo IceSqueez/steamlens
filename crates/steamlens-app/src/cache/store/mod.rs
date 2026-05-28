@@ -1,223 +1,37 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+mod game_achievements;
+mod game_cache;
+mod game_summary;
+mod primitives;
 
-use tokio::sync::Mutex as AsyncMutex;
+pub(crate) use game_cache::merge_preserved_fields;
+pub use game_cache::{delete_game_cache_dir, load_game_cache, write_game_cache};
+pub(crate) use game_summary::load_game_summary_from_path;
+pub use game_summary::write_game_summary;
+pub use primitives::{CacheIoError, atomic_write};
 
-use crate::cache::types::{
-    CURRENT_SCHEMA_VERSION, GameAchievementsCache, GameCacheEntry, GameSummaryCache,
-    SUMMARY_SCHEMA_VERSION,
-};
-
-static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-static CACHE_WRITE_LOCKS: OnceLock<Mutex<HashMap<u32, Arc<AsyncMutex<()>>>>> = OnceLock::new();
-
-fn cache_write_lock(app_id: u32) -> Arc<AsyncMutex<()>> {
-    let map = CACHE_WRITE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
-    guard
-        .entry(app_id)
-        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-        .clone()
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CacheIoError {
-    #[error("I/O error writing cache: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("serialization failed: {0}")]
-    Serialize(String),
-}
-
-/// Writes `bytes` to a per-call unique `<path>.tmp.<pid>.<seq>` file, fsyncs,
-/// then renames over `path`. Atomic on POSIX. Unique tmp names allow concurrent
-/// writers to the same target without ENOENT racing on the rename step;
-/// last-writer-wins semantics for the final file.
-pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError> {
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    let tmp_path = tmp_path_for(path);
-
-    {
-        use tokio::io::AsyncWriteExt;
-        #[cfg(unix)]
-        let mut file = {
-            use std::os::unix::fs::PermissionsExt;
-            let f = tokio::fs::File::create(&tmp_path).await?;
-            f.set_permissions(std::fs::Permissions::from_mode(0o600))
-                .await?;
-            f
-        };
-        #[cfg(not(unix))]
-        let mut file = tokio::fs::File::create(&tmp_path).await?;
-        file.write_all(bytes).await?;
-        file.sync_data().await?;
-    }
-
-    tokio::fs::rename(&tmp_path, path).await?;
-
-    Ok(())
-}
-
-fn game_cache_path(app_id: u32) -> PathBuf {
-    crate::paths::cache_dir()
-        .join("games")
-        .join(format!("{app_id}.json"))
-}
-
-pub async fn load_game_cache(app_id: u32) -> Option<GameCacheEntry> {
-    load_game_cache_from_path(&game_cache_path(app_id)).await
-}
-
-pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
-    let bytes = tokio::fs::read(path).await.ok()?;
-    let entry: GameCacheEntry = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            tracing::warn!("cache: JSON parse error at {}: {e}", path.display());
-        })
-        .ok()?;
-    if entry.schema_version != CURRENT_SCHEMA_VERSION {
-        tracing::warn!(
-            "cache: schema version {} != expected {}; treating as cache miss",
-            entry.schema_version,
-            CURRENT_SCHEMA_VERSION
-        );
-        return None;
-    }
-    Some(entry)
-}
-
-pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError> {
-    write_game_cache_at(&game_cache_path(entry.app_id), entry).await
-}
-
-async fn write_game_cache_at(path: &Path, entry: &GameCacheEntry) -> Result<(), CacheIoError> {
-    let lock = cache_write_lock(entry.app_id);
-    let _guard = lock.lock().await;
-    let mut merged = entry.clone();
-    if let Some(old) = load_game_cache_from_path(path).await {
-        merge_preserved_fields(&mut merged, &old);
-    }
-    let bytes =
-        serde_json::to_vec_pretty(&merged).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    atomic_write(path, &bytes).await
-}
-
-pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEntry) {
-    use std::collections::HashMap;
-    let old_by_id: HashMap<&str, &crate::cache::types::CachedAchievement> = old
-        .achievements
-        .iter()
-        .map(|a| (a.api_name.as_str(), a))
-        .collect();
-    for ach in &mut new.achievements {
-        let Some(prev) = old_by_id.get(ach.api_name.as_str()) else {
-            continue;
-        };
-        if ach.display_name.is_empty() && !prev.display_name.is_empty() {
-            ach.display_name = prev.display_name.clone();
-        }
-        if ach.description.is_empty() && !prev.description.is_empty() {
-            ach.description = prev.description.clone();
-        }
-        if !ach.hidden && prev.hidden {
-            ach.hidden = true;
-        }
-    }
-    if new.genre.is_none() && old.genre.is_some() {
-        new.genre = old.genre.clone();
-    }
-}
-
-pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSummaryCache> {
-    let bytes = tokio::fs::read(path).await.ok()?;
-    let entry: GameSummaryCache = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            tracing::warn!("cache: summary JSON parse error at {}: {e}", path.display());
-        })
-        .ok()?;
-    if entry.schema_version != SUMMARY_SCHEMA_VERSION {
-        tracing::warn!(
-            "cache: summary schema version {} != expected {} at {}; treating as cache miss",
-            entry.schema_version,
-            SUMMARY_SCHEMA_VERSION,
-            path.display()
-        );
-        return None;
-    }
-    Some(entry)
-}
-
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub async fn load_game_summary(app_id: u32) -> Option<GameSummaryCache> {
-    load_game_summary_from_path(&crate::paths::game_summary_path(app_id)).await
-}
-
-pub async fn write_game_summary(entry: &GameSummaryCache) -> Result<(), CacheIoError> {
-    let bytes =
-        serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    let path = crate::paths::game_summary_path(entry.app_id);
-    atomic_write(&path, &bytes).await
-}
-
-pub async fn delete_game_cache_dir(app_id: u32) -> Result<(), CacheIoError> {
-    let dir = crate::paths::cache_dir()
-        .join("games")
-        .join(app_id.to_string());
-    match tokio::fs::remove_dir_all(&dir).await {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(CacheIoError::Io(e)),
-    }
-}
-
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub async fn load_game_achievements(app_id: u32) -> Option<GameAchievementsCache> {
-    let path = crate::paths::game_achievements_path(app_id);
-    let bytes = tokio::fs::read(&path).await.ok()?;
-    let entry: GameAchievementsCache = serde_json::from_slice(&bytes)
-        .map_err(|e| {
-            tracing::warn!(
-                "cache: achievements JSON parse error at {}: {e}",
-                path.display()
-            );
-        })
-        .ok()?;
-    if entry.schema_version != SUMMARY_SCHEMA_VERSION {
-        tracing::warn!(
-            "cache: achievements schema version {} != expected {}; treating as cache miss",
-            entry.schema_version,
-            SUMMARY_SCHEMA_VERSION
-        );
-        return None;
-    }
-    Some(entry)
-}
-
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub async fn write_game_achievements(entry: &GameAchievementsCache) -> Result<(), CacheIoError> {
-    let bytes =
-        serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    let path = crate::paths::game_achievements_path(entry.app_id);
-    atomic_write(&path, &bytes).await
-}
-
-fn tmp_path_for(path: &Path) -> PathBuf {
-    let pid = std::process::id();
-    let seq = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut s = path.as_os_str().to_owned();
-    s.push(format!(".tmp.{pid}.{seq}"));
-    PathBuf::from(s)
-}
+#[allow(
+    unused_imports,
+    reason = "publicly exposed alongside other achievements helpers"
+)]
+pub use game_achievements::{load_game_achievements, write_game_achievements};
+#[allow(
+    unused_imports,
+    reason = "publicly exposed alongside other summary helpers"
+)]
+pub use game_summary::load_game_summary;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::types::{CachedAchievement, CachedProgress, CachedStat, CachedStatValue};
+    use crate::cache::types::{
+        CURRENT_SCHEMA_VERSION, CachedAchievement, CachedProgress, CachedStat, CachedStatValue,
+        GameAchievementsCache, GameCacheEntry, GameSummaryCache, SUMMARY_SCHEMA_VERSION,
+    };
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use super::game_cache::{load_game_cache_from_path, write_game_cache_at};
+    use super::primitives::cache_write_lock;
 
     fn make_entry(app_id: u32, name: &str) -> GameCacheEntry {
         GameCacheEntry {
