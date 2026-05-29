@@ -7,7 +7,7 @@ use iced::{Alignment, Element, Length};
 use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
 use crate::ui::widgets::widget::{
     WidgetSummary, breakdown_row, cards_separator, closest_row, rarity_bar, rarity_cards,
@@ -181,6 +181,7 @@ pub struct ProfileWidgetParams<'a> {
     pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub capsule_size: CapsuleSize,
     pub steam_level: Option<u32>,
+    pub theme: AppTheme,
 }
 
 pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, ProfileViewMessage> {
@@ -192,6 +193,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, Profil
         params.skeleton_phase,
         params.hovered_bar_slice,
         params.steam_level,
+        params.theme,
     );
     let right_col = build_right_column(
         params.top6,
@@ -202,6 +204,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, Profil
     widget_panel(left_col, right_col)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_left_column<'a>(
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
@@ -210,6 +213,7 @@ fn build_left_column<'a>(
     skeleton_phase: f32,
     hovered_bar_slice: Option<RarityTier>,
     steam_level: Option<u32>,
+    theme: AppTheme,
 ) -> Element<'a, ProfileViewMessage> {
     let avatar = build_avatar(avatar_handle, skeleton_phase);
     let info = build_profile_info(user_profile, games_count, steam_level);
@@ -227,7 +231,7 @@ fn build_left_column<'a>(
         .spacing(14)
         .align_y(Alignment::Start);
 
-    let bar: Element<'a, ProfileViewMessage> = rarity_bar::<ProfileViewMessage>(*summary)
+    let bar: Element<'a, ProfileViewMessage> = rarity_bar::<ProfileViewMessage>(*summary, theme)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
             Some(t) => ProfileViewMessage::BarSliceHoverEnter(t),
@@ -238,7 +242,7 @@ fn build_left_column<'a>(
     column![
         header_section,
         bar,
-        rarity_cards::<ProfileViewMessage>(summary),
+        rarity_cards::<ProfileViewMessage>(summary, theme),
         iced::widget::Space::new().height(Length::Fill),
         cards_separator::<ProfileViewMessage>(summary),
     ]

@@ -1,6 +1,8 @@
 use iced::Color;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum AppTheme {
     #[default]
     Dark,
@@ -200,27 +202,27 @@ pub const DARK: ThemePalette = ThemePalette {
 };
 
 pub const LIGHT: ThemePalette = ThemePalette {
-    app: Color::from_rgb8(0xf7, 0xf5, 0xfb),
-    surface: Color::from_rgb8(0xff, 0xff, 0xff),
-    border: Color::from_rgb8(0xd4, 0xcf, 0xe0),
-    hover: Color::from_rgb8(0xe8, 0xe4, 0xee),
-    placeholder: Color::from_rgb8(0xe8, 0xe4, 0xee),
+    app: Color::from_rgb8(0xe6, 0xe9, 0xef),
+    surface: Color::from_rgb8(0xef, 0xf1, 0xf5),
+    border: Color::from_rgb8(0xcc, 0xd0, 0xda),
+    hover: Color::from_rgb8(0xdc, 0xe0, 0xe8),
+    placeholder: Color::from_rgb8(0xdc, 0xe0, 0xe8),
 
     text_primary: Color::from_rgb8(0x1f, 0x1c, 0x2c),
     text_secondary: Color::from_rgb8(0x2a, 0x26, 0x38),
     text_muted: Color::from_rgb8(0x6b, 0x68, 0x84),
     text_dim: Color::from_rgb8(0x99, 0x94, 0xa8),
 
-    accent: Color::from_rgb8(0x6d, 0x4c, 0xb5),
-    accent_pressed: Color::from_rgb8(0x4a, 0x33, 0x80),
-    accent_soft: Color::from_rgb8(0xed, 0xe4, 0xf9),
-    accent_soft_border: Color::from_rgb8(0xc8, 0xb2, 0xeb),
+    accent: Color::from_rgb8(0x88, 0x39, 0xef),
+    accent_pressed: Color::from_rgb8(0x6c, 0x1b, 0xd5),
+    accent_soft: Color::from_rgb8(0xed, 0xe0, 0xfa),
+    accent_soft_border: Color::from_rgb8(0xc8, 0xa8, 0xeb),
 
-    rarity_common: Color::from_rgb8(0x04, 0x78, 0x57),
-    rarity_uncommon: Color::from_rgb8(0x1d, 0x6f, 0xa5),
-    rarity_rare: Color::from_rgb8(0x6d, 0x4c, 0xb5),
-    rarity_mythical: Color::from_rgb8(0xb8, 0x3d, 0x7a),
-    rarity_legendary: Color::from_rgb8(0xb8, 0x85, 0x1a),
+    rarity_common: Color::from_rgb8(0x40, 0xa0, 0x2b),
+    rarity_uncommon: Color::from_rgb8(0x17, 0x92, 0x99),
+    rarity_rare: Color::from_rgb8(0x72, 0x87, 0xfd),
+    rarity_mythical: Color::from_rgb8(0xc9, 0x3b, 0x87),
+    rarity_legendary: Color::from_rgb8(0xa8, 0x70, 0x12),
 
     rarity_common_soft: Color::from_rgb8(0xec, 0xf5, 0xf0),
     rarity_uncommon_soft: Color::from_rgb8(0xe8, 0xf0, 0xf6),
@@ -255,7 +257,7 @@ pub const LIGHT: ThemePalette = ThemePalette {
         },
     },
 
-    tier_locked: Color::from_rgb8(0xc0, 0xbb, 0xcc),
+    tier_locked: Color::from_rgb8(0xd0, 0xc9, 0xdd),
 };
 
 pub const THEME_NAME_DARK: &str = "SteamLens Dark";

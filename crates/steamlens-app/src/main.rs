@@ -365,6 +365,7 @@ fn view(app: &App) -> Element<'_, Message> {
                 pinned: &app.context.settings.library.pinned,
                 steam_level: app.context.steam_level,
                 steam_running: app.context.connectivity.steam_running,
+                theme,
             };
             crate::screen::compose_screen(profile_view::render(pv_state, props))
                 .map(Message::ProfileView)

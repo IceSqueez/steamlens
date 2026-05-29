@@ -4,11 +4,10 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use super::dims::*;
 use crate::game_view::types::RarityTier;
 use crate::profile_view::types::{GameEntry, ProfileViewMessage};
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 use crate::ui::widgets::bar::{BarColor, BarSegment, segmented_bar};
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::tooltip_box::tooltip_box;
-use crate::ui::widgets::widget::{C_RARITY_COMMON, C_RARITY_LEGENDARY};
 
 pub(super) fn build_tier_stacked_bar(
     app_id: u32,
@@ -17,6 +16,7 @@ pub(super) fn build_tier_stacked_bar(
     total_achievements: u32,
     card_w: f32,
     hovered_tier: Option<RarityTier>,
+    theme: AppTheme,
 ) -> Element<'static, ProfileViewMessage> {
     const BAR_H: f32 = 8.0;
     const TIER_ORDER: [RarityTier; 5] = [
@@ -47,7 +47,7 @@ pub(super) fn build_tier_stacked_bar(
         let pct = count as f64 / total as f64 * 100.0;
         segments.push(BarSegment {
             weight: count,
-            color: rarity_color_for_tier(*t).into(),
+            color: rarity_color_for_tier(*t, theme).into(),
         });
         tier_at.push(Some(*t));
         tooltips.push(format!(
@@ -218,6 +218,7 @@ pub(super) fn build_tags_row(
     entry: &GameEntry,
     card_w: f32,
     genre: Option<&str>,
+    theme: AppTheme,
 ) -> Element<'static, ProfileViewMessage> {
     let progress = entry.progress.as_ref();
 
@@ -226,9 +227,11 @@ pub(super) fn build_tags_row(
             return None;
         }
         let pct = p.earned as f32 / p.total as f32 * 100.0;
-        let tier_color_opt = completion_tier_color(pct);
+        let tier_color_opt = completion_tier_color(pct, theme);
         let is_legendary = pct >= 100.0;
-        let tint = tier_color_opt.unwrap_or(C_RARITY_COMMON);
+        let p_pal = palette(theme);
+        let tint = tier_color_opt.unwrap_or(p_pal.rarity_common);
+        let legendary_color = p_pal.rarity_legendary;
 
         let pct_text = text(format!("{pct:.0}%"))
             .size(11)
@@ -241,7 +244,7 @@ pub(super) fn build_tags_row(
         if is_legendary {
             pill_el = pill_el.glow(Color {
                 a: 0.5,
-                ..C_RARITY_LEGENDARY
+                ..legendary_color
             });
         }
 

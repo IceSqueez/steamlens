@@ -4,6 +4,7 @@ use iced::widget::column;
 use iced::{Element, Length};
 
 use crate::game_view::types::RarityTier;
+use crate::ui::theme::AppTheme;
 use crate::ui::widgets::bar::{BarColor, BarSegment, segmented_bar};
 
 use super::format::format_thousands;
@@ -13,9 +14,10 @@ use super::summary::WidgetSummary;
 const BAR_HEIGHT: f32 = 16.0;
 const BAR_RADIUS: f32 = 6.0;
 
-pub fn rarity_bar<'a, M: 'a + Clone>(summary: WidgetSummary) -> RarityBar<'a, M> {
+pub fn rarity_bar<'a, M: 'a + Clone>(summary: WidgetSummary, theme: AppTheme) -> RarityBar<'a, M> {
     RarityBar {
         summary,
+        theme,
         hovered: None,
         on_hover: None,
         _phantom: PhantomData,
@@ -24,6 +26,7 @@ pub fn rarity_bar<'a, M: 'a + Clone>(summary: WidgetSummary) -> RarityBar<'a, M>
 
 pub struct RarityBar<'a, M> {
     summary: WidgetSummary,
+    theme: AppTheme,
     hovered: Option<RarityTier>,
     on_hover: Option<Box<dyn Fn(Option<RarityTier>) -> M + 'a>>,
     _phantom: PhantomData<&'a ()>,
@@ -47,6 +50,7 @@ impl<'a, M: 'a + Clone> RarityBar<'a, M> {
 impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
     fn from(b: RarityBar<'a, M>) -> Self {
         let summary = b.summary;
+        let theme = b.theme;
         let tier_counts: [(RarityTier, u32); 5] = [
             (RarityTier::Common, summary.common_count),
             (RarityTier::Uncommon, summary.uncommon_count),
@@ -69,7 +73,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             let pct = *count as f64 / total_for_pct as f64 * 100.0;
             segments.push(BarSegment {
                 weight: *count,
-                color: rarity_color(*tier).into(),
+                color: rarity_color(*tier, theme).into(),
             });
             tier_at.push(Some(*tier));
             tooltips.push(format!(
@@ -129,7 +133,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
         }
 
         let bar: Element<'a, M> = bar_builder.into();
-        let ticks_layer: Element<'a, M> = tick_marks(summary.unlocked_pct());
+        let ticks_layer: Element<'a, M> = tick_marks(summary.unlocked_pct(), theme);
 
         column![bar, ticks_layer].spacing(4).into()
     }

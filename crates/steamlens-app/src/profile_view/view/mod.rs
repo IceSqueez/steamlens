@@ -15,7 +15,7 @@ use crate::profile_view::ProfileViewState;
 use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase, StoredCapsule};
 use crate::profile_view::widget::{ProfileWidgetParams, profile_widget};
 use crate::ui::grid::{GridLayout, responsive_card_grid};
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 
 use card::build_card;
 use dims::{CARD_GAP, MIN_GAP, card_height, card_width};
@@ -32,6 +32,7 @@ pub struct ProfileViewProps<'a> {
     pub pinned: &'a [u32],
     pub steam_level: Option<u32>,
     pub steam_running: Option<bool>,
+    pub theme: AppTheme,
 }
 
 pub fn render<'a>(
@@ -45,6 +46,7 @@ pub fn render<'a>(
         props.capsule_handles,
         props.skeleton_phase,
         props.steam_level,
+        props.theme,
     );
 
     let body: Element<'_, ProfileViewMessage> = match &state.phase {
@@ -65,6 +67,7 @@ pub fn render<'a>(
                     props.cached_entries,
                     props.skeleton_phase,
                     props.pinned,
+                    props.theme,
                 )
             }
         }
@@ -117,6 +120,7 @@ fn build_profile_section<'a>(
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     skeleton_phase: f32,
     steam_level: Option<u32>,
+    theme: AppTheme,
 ) -> Element<'a, ProfileViewMessage> {
     profile_widget(ProfileWidgetParams {
         user_profile,
@@ -129,6 +133,7 @@ fn build_profile_section<'a>(
         capsule_handles,
         capsule_size: state.capsule_size,
         steam_level,
+        theme,
     })
 }
 
@@ -142,6 +147,7 @@ fn build_grid<'a>(
     cached_entries: &'a HashMap<u32, GameCacheEntry>,
     skeleton_phase: f32,
     pinned: &'a [u32],
+    theme: AppTheme,
 ) -> Element<'a, ProfileViewMessage> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
@@ -183,6 +189,7 @@ fn build_grid<'a>(
                 is_pinned,
                 is_hovered,
                 hovered_tier,
+                theme,
             )
         },
     )

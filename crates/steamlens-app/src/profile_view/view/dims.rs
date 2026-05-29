@@ -2,9 +2,7 @@ use iced::Color;
 
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
-use crate::ui::widgets::widget::{
-    C_RARITY_COMMON, C_RARITY_LEGENDARY, C_RARITY_MYTHICAL, C_RARITY_RARE, C_RARITY_UNCOMMON,
-};
+use crate::ui::theme::{AppTheme, palette};
 
 pub(super) const CARD_GAP: f32 = 12.0;
 pub(super) const MIN_GAP: f32 = 12.0;
@@ -54,29 +52,31 @@ pub(super) fn card_height(size: CapsuleSize) -> f32 {
     let (_, capsule_h) = capsule_dims(size);
     total_card_height(capsule_h)
 }
-pub(super) fn completion_tier_color(pct: f32) -> Option<Color> {
+pub(super) fn completion_tier_color(pct: f32, theme: AppTheme) -> Option<Color> {
+    let p = palette(theme);
     if pct >= 100.0 {
-        Some(C_RARITY_LEGENDARY)
+        Some(p.rarity_legendary)
     } else if pct >= 90.0 {
-        Some(C_RARITY_MYTHICAL)
+        Some(p.rarity_mythical)
     } else if pct >= 75.0 {
-        Some(C_RARITY_RARE)
+        Some(p.rarity_rare)
     } else if pct >= 50.0 {
-        Some(C_RARITY_UNCOMMON)
+        Some(p.rarity_uncommon)
     } else if pct >= 25.0 {
-        Some(C_RARITY_COMMON)
+        Some(p.rarity_common)
     } else {
         None
     }
 }
 
-pub(super) fn rarity_color_for_tier(tier: RarityTier) -> Color {
+pub(super) fn rarity_color_for_tier(tier: RarityTier, theme: AppTheme) -> Color {
+    let p = palette(theme);
     match tier {
-        RarityTier::Common => C_RARITY_COMMON,
-        RarityTier::Uncommon => C_RARITY_UNCOMMON,
-        RarityTier::Rare => C_RARITY_RARE,
-        RarityTier::Mythical => C_RARITY_MYTHICAL,
-        RarityTier::Legendary => C_RARITY_LEGENDARY,
+        RarityTier::Common => p.rarity_common,
+        RarityTier::Uncommon => p.rarity_uncommon,
+        RarityTier::Rare => p.rarity_rare,
+        RarityTier::Mythical => p.rarity_mythical,
+        RarityTier::Legendary => p.rarity_legendary,
     }
 }
 

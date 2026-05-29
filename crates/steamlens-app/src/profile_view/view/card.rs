@@ -8,7 +8,7 @@ use super::dims::*;
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::profile_view::types::{CapsuleAsset, GameEntry, ProfileViewMessage};
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::skeleton::skeleton_box;
 
@@ -44,6 +44,7 @@ pub(super) fn build_card<'a>(
     is_pinned: bool,
     is_hovered: bool,
     hovered_tier: Option<RarityTier>,
+    theme: AppTheme,
 ) -> Element<'a, ProfileViewMessage> {
     let app_id = entry.app_id;
     let (capsule_w, capsule_h) = capsule_dims(capsule_size);
@@ -71,6 +72,7 @@ pub(super) fn build_card<'a>(
         is_pinned,
         is_hovered,
         hovered_tier,
+        theme,
     );
 
     let owned = HydratedCardOwned::new(
@@ -84,6 +86,7 @@ pub(super) fn build_card<'a>(
         is_pinned,
         is_hovered,
         hovered_tier,
+        theme,
     );
 
     lazy(deps, move |_| {
@@ -112,6 +115,7 @@ struct HydratedCardDeps {
     name_len: usize,
     tier_hash: u64,
     genre_hash: u64,
+    theme: AppTheme,
 }
 
 impl HydratedCardDeps {
@@ -125,6 +129,7 @@ impl HydratedCardDeps {
         is_pinned: bool,
         is_hovered: bool,
         hovered_tier: Option<RarityTier>,
+        theme: AppTheme,
     ) -> Self {
         let (capsule_state, img_w, img_h) = match &entry.capsule {
             CapsuleAsset::Pending => (0u8, 0u32, 0u32),
@@ -150,6 +155,7 @@ impl HydratedCardDeps {
             name_len: entry.name.as_deref().map(str::len).unwrap_or(0),
             tier_hash,
             genre_hash,
+            theme,
         }
     }
 }
@@ -187,6 +193,7 @@ struct HydratedCardOwned {
     is_pinned: bool,
     is_hovered: bool,
     hovered_tier: Option<RarityTier>,
+    theme: AppTheme,
 }
 
 impl HydratedCardOwned {
@@ -202,6 +209,7 @@ impl HydratedCardOwned {
         is_pinned: bool,
         is_hovered: bool,
         hovered_tier: Option<RarityTier>,
+        theme: AppTheme,
     ) -> Self {
         Self {
             entry: entry.clone(),
@@ -214,6 +222,7 @@ impl HydratedCardOwned {
             is_pinned,
             is_hovered,
             hovered_tier,
+            theme,
         }
     }
 }
@@ -227,6 +236,7 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
     let is_hovered = p.is_hovered;
     let is_pinned = p.is_pinned;
     let hovered_tier = p.hovered_tier;
+    let theme = p.theme;
 
     let capsule_area: Element<'static, ProfileViewMessage> = match &entry.capsule {
         CapsuleAsset::Loaded {
@@ -334,9 +344,10 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
         entry.progress.as_ref().map(|pr| pr.total).unwrap_or(0),
         card_w,
         hovered_tier,
+        theme,
     );
 
-    let tags_row = build_tags_row(entry, card_w, p.genre.as_deref());
+    let tags_row = build_tags_row(entry, card_w, p.genre.as_deref(), theme);
 
     let card_inner = column![
         capsule_stack,

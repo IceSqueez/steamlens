@@ -147,11 +147,7 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
                     button::Status::Hovered | button::Status::Pressed
                 ));
 
-                let bg = if hovered {
-                    lift(surface, 1.18)
-                } else {
-                    surface
-                };
+                let bg = if hovered { p.hover } else { surface };
 
                 let (border, shadow) = match (accent, hovered) {
                     (Some(color), true) => (
@@ -226,15 +222,6 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
     }
 }
 
-fn lift(c: Color, factor: f32) -> Color {
-    Color {
-        r: (c.r * factor).min(1.0),
-        g: (c.g * factor).min(1.0),
-        b: (c.b * factor).min(1.0),
-        a: c.a,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,22 +248,5 @@ mod tests {
         #[derive(Clone)]
         struct Msg;
         let _: Element<'_, Msg> = card(text("body")).on_press(Msg).into();
-    }
-
-    #[test]
-    fn lift_clamps_at_one() {
-        let c = lift(Color::from_rgb(0.95, 0.95, 0.95), 1.18);
-        assert!(c.r <= 1.0);
-        assert!(c.g <= 1.0);
-        assert!(c.b <= 1.0);
-    }
-
-    #[test]
-    fn lift_brightens_below_one() {
-        let dark = Color::from_rgb(0.5, 0.5, 0.5);
-        let lifted = lift(dark, 1.18);
-        assert!(lifted.r > dark.r);
-        assert!(lifted.g > dark.g);
-        assert!(lifted.b > dark.b);
     }
 }

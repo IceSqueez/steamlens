@@ -2,7 +2,7 @@ use iced::widget::{column, container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::game_view::types::RarityTier;
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 
 use super::format::{format_remaining, format_thousands};
 use super::rarity_visuals::{rarity_color, rarity_label, short_rarity_label_str};
@@ -71,7 +71,7 @@ pub fn count_card<'a, M: 'a + Clone>(
         .into()
 }
 
-pub fn rarity_cards<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a, M> {
+pub fn rarity_cards<'a, M: 'a + Clone>(summary: &WidgetSummary, theme: AppTheme) -> Element<'a, M> {
     let tiers: [(RarityTier, u32); 5] = [
         (RarityTier::Common, summary.common_count),
         (RarityTier::Uncommon, summary.uncommon_count),
@@ -89,7 +89,7 @@ pub fn rarity_cards<'a, M: 'a + Clone>(summary: &WidgetSummary) -> Element<'a, M
             0.0
         };
         cards = cards.push(count_card::<M>(
-            rarity_color(tier),
+            rarity_color(tier, theme),
             rarity_label(tier),
             count,
             pct,

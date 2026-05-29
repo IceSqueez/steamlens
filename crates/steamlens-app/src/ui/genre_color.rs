@@ -18,7 +18,7 @@ pub fn genre_color(name: &str) -> Color {
         "Casual" => rgb(0xaac878),
         "Early Access" => rgb(0x9682c8),
         "Free to Play" => rgb(0x6ec3c3),
-        "Indie" => rgb(0xb4dc6e),
+        "Indie" => rgb(0x40a02b),
         "Massively Multiplayer" => rgb(0x5f91d2),
         "RPG" => rgb(0xcd78b4),
         "Racing" => rgb(0xdc6464),

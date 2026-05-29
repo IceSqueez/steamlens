@@ -5,7 +5,7 @@ use iced::widget::{button, column, container, image as image_widget, row, svg, t
 use iced::{Alignment, Border, Color, Element, Length, Shadow, Vector};
 
 use crate::capsule_cache::CapsuleSize;
-use crate::ui::theme::{palette, theme_from_iced};
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 use crate::ui::widgets::skeleton::skeleton_box;
 use crate::ui::widgets::widget::{
     WidgetSummary, breakdown_row, cards_separator, rarity_bar, rarity_cards, widget_panel,
@@ -80,6 +80,7 @@ pub struct GameWidgetParams<'a> {
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
     pub summary: WidgetSummary,
+    pub theme: AppTheme,
 }
 
 pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMessage> {
@@ -96,6 +97,7 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
         params.playtime_minutes,
         &params.summary,
         params.hovered_bar_slice,
+        params.theme,
     );
     let left_content: Element<'a, GameViewMessage> = row![capsule_el, inner_col]
         .spacing(16)
@@ -114,9 +116,10 @@ fn build_left_column<'a>(
     playtime_minutes: Option<u32>,
     summary: &WidgetSummary,
     hovered_bar_slice: Option<RarityTier>,
+    theme: AppTheme,
 ) -> Element<'a, GameViewMessage> {
     let header_row = build_game_header(app_id, game_name, genre, playtime_minutes);
-    let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary)
+    let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary, theme)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
             Some(t) => GameViewMessage::BarSliceHoverEnter(t),
@@ -128,7 +131,7 @@ fn build_left_column<'a>(
         header_row,
         breakdown_row::<GameViewMessage>(summary),
         bar,
-        rarity_cards::<GameViewMessage>(summary),
+        rarity_cards::<GameViewMessage>(summary, theme),
         iced::widget::Space::new().height(Length::Fill),
         cards_separator::<GameViewMessage>(summary),
     ]

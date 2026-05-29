@@ -143,6 +143,7 @@ fn loaded_view<'a>(
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
         summary: state.derived.summary,
+        theme: app_theme,
     });
     let body = achievements_tab(state, skeleton_phase, app_theme);
 

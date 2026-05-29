@@ -2,13 +2,7 @@ use iced::widget::{container, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Length};
 
 use crate::game_view::types::RarityTier;
-use crate::ui::theme::{palette, theme_from_iced};
-
-pub const C_RARITY_COMMON: Color = Color::from_rgb(0.314, 0.980, 0.482);
-pub const C_RARITY_UNCOMMON: Color = Color::from_rgb(0.545, 0.914, 0.992);
-pub const C_RARITY_RARE: Color = Color::from_rgb(0.741, 0.576, 0.976);
-pub const C_RARITY_MYTHICAL: Color = Color::from_rgb(1.0, 0.4, 0.85);
-pub const C_RARITY_LEGENDARY: Color = Color::from_rgb(1.0, 0.85, 0.4);
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 
 pub(crate) fn short_rarity_label_str(label: &str) -> &'static str {
     match label {
@@ -21,13 +15,14 @@ pub(crate) fn short_rarity_label_str(label: &str) -> &'static str {
     }
 }
 
-pub fn rarity_color(tier: RarityTier) -> Color {
+pub fn rarity_color(tier: RarityTier, theme: AppTheme) -> Color {
+    let p = palette(theme);
     match tier {
-        RarityTier::Common => C_RARITY_COMMON,
-        RarityTier::Uncommon => C_RARITY_UNCOMMON,
-        RarityTier::Rare => C_RARITY_RARE,
-        RarityTier::Mythical => C_RARITY_MYTHICAL,
-        RarityTier::Legendary => C_RARITY_LEGENDARY,
+        RarityTier::Common => p.rarity_common,
+        RarityTier::Uncommon => p.rarity_uncommon,
+        RarityTier::Rare => p.rarity_rare,
+        RarityTier::Mythical => p.rarity_mythical,
+        RarityTier::Legendary => p.rarity_legendary,
     }
 }
 
@@ -45,25 +40,26 @@ pub fn tick_lit_at(unlocked_pct: f32, threshold: u8) -> bool {
     unlocked_pct > 0.0 && unlocked_pct >= threshold as f32
 }
 
-pub(crate) fn tick_tier_color(threshold: u8) -> Option<Color> {
+pub(crate) fn tick_tier_color(threshold: u8, theme: AppTheme) -> Option<Color> {
+    let p = palette(theme);
     match threshold {
-        0 => Some(C_RARITY_COMMON),
-        25 => Some(C_RARITY_UNCOMMON),
-        50 => Some(C_RARITY_RARE),
-        75 => Some(C_RARITY_MYTHICAL),
-        100 => Some(C_RARITY_LEGENDARY),
+        0 => Some(p.rarity_common),
+        25 => Some(p.rarity_uncommon),
+        50 => Some(p.rarity_rare),
+        75 => Some(p.rarity_mythical),
+        100 => Some(p.rarity_legendary),
         _ => None,
     }
 }
 
-pub fn tick_marks<'a, M: 'a + Clone>(unlocked_pct: f32) -> Element<'a, M> {
+pub fn tick_marks<'a, M: 'a + Clone>(unlocked_pct: f32, theme: AppTheme) -> Element<'a, M> {
     const THRESHOLDS: [u8; 5] = [0, 25, 50, 75, 100];
 
     let mut ticks_row: iced::widget::Row<'a, M> = row![].spacing(0);
 
     for (i, threshold) in THRESHOLDS.iter().enumerate() {
         let lit = tick_lit_at(unlocked_pct, *threshold);
-        let lit_color_opt = tick_tier_color(*threshold);
+        let lit_color_opt = tick_tier_color(*threshold, theme);
 
         let dot = container(iced::widget::Space::new())
             .width(Length::Fixed(6.0))
@@ -128,11 +124,16 @@ mod tests {
 
     #[test]
     fn tick_tier_color_thresholds() {
-        assert_eq!(tick_tier_color(0), Some(C_RARITY_COMMON));
-        assert_eq!(tick_tier_color(25), Some(C_RARITY_UNCOMMON));
-        assert_eq!(tick_tier_color(50), Some(C_RARITY_RARE));
-        assert_eq!(tick_tier_color(75), Some(C_RARITY_MYTHICAL));
-        assert_eq!(tick_tier_color(100), Some(C_RARITY_LEGENDARY));
-        assert_eq!(tick_tier_color(42), None);
+        use crate::ui::theme::{AppTheme, palette};
+        let p = palette(AppTheme::Dark);
+        assert_eq!(tick_tier_color(0, AppTheme::Dark), Some(p.rarity_common));
+        assert_eq!(tick_tier_color(25, AppTheme::Dark), Some(p.rarity_uncommon));
+        assert_eq!(tick_tier_color(50, AppTheme::Dark), Some(p.rarity_rare));
+        assert_eq!(tick_tier_color(75, AppTheme::Dark), Some(p.rarity_mythical));
+        assert_eq!(
+            tick_tier_color(100, AppTheme::Dark),
+            Some(p.rarity_legendary)
+        );
+        assert_eq!(tick_tier_color(42, AppTheme::Dark), None);
     }
 }
