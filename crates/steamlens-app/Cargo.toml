@@ -54,7 +54,7 @@ section = "games"
 priority = "optional"
 depends = "libc6, libwayland-client0, libxkbcommon0, libgl1"
 assets = [
-  ["../../target/release/steamlens-app", "usr/bin/steamlens-app", "755"],
+  ["target/release/steamlens-app", "usr/bin/steamlens-app", "755"],
   ["../../assets/steamlens.desktop", "usr/share/applications/steamlens.desktop", "644"],
   ["../../assets/icon-16.png",  "usr/share/icons/hicolor/16x16/apps/steamlens.png",   "644"],
   ["../../assets/icon-32.png",  "usr/share/icons/hicolor/32x32/apps/steamlens.png",   "644"],
@@ -72,12 +72,12 @@ summary = "Steam achievement and stats inspector"
 requires = { "libwayland-client" = "*", "libxkbcommon" = "*", "mesa-libGL" = "*" }
 assets = [
   { source = "target/release/steamlens-app", dest = "/usr/bin/steamlens-app", mode = "755" },
-  { source = "assets/steamlens.desktop", dest = "/usr/share/applications/steamlens.desktop", mode = "644" },
-  { source = "assets/icon-16.png",  dest = "/usr/share/icons/hicolor/16x16/apps/steamlens.png",   mode = "644" },
-  { source = "assets/icon-32.png",  dest = "/usr/share/icons/hicolor/32x32/apps/steamlens.png",   mode = "644" },
-  { source = "assets/icon-48.png",  dest = "/usr/share/icons/hicolor/48x48/apps/steamlens.png",   mode = "644" },
-  { source = "assets/icon-64.png",  dest = "/usr/share/icons/hicolor/64x64/apps/steamlens.png",   mode = "644" },
-  { source = "assets/icon-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/steamlens.png", mode = "644" },
-  { source = "assets/icon-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/steamlens.png", mode = "644" },
-  { source = "assets/icon-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/steamlens.png", mode = "644" },
+  { source = "../../assets/steamlens.desktop", dest = "/usr/share/applications/steamlens.desktop", mode = "644" },
+  { source = "../../assets/icon-16.png",  dest = "/usr/share/icons/hicolor/16x16/apps/steamlens.png",   mode = "644" },
+  { source = "../../assets/icon-32.png",  dest = "/usr/share/icons/hicolor/32x32/apps/steamlens.png",   mode = "644" },
+  { source = "../../assets/icon-48.png",  dest = "/usr/share/icons/hicolor/48x48/apps/steamlens.png",   mode = "644" },
+  { source = "../../assets/icon-64.png",  dest = "/usr/share/icons/hicolor/64x64/apps/steamlens.png",   mode = "644" },
+  { source = "../../assets/icon-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/steamlens.png", mode = "644" },
+  { source = "../../assets/icon-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/steamlens.png", mode = "644" },
+  { source = "../../assets/icon-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/steamlens.png", mode = "644" },
 ]
