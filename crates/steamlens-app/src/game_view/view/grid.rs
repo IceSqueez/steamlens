@@ -137,7 +137,7 @@ pub(super) fn achievement_list(
                     app_theme,
                     icon_handle,
                 );
-                if matches!(tier, Some(RarityTier::Legendary)) {
+                if matches!(tier, Some(RarityTier::Legendary)) && entry.effective_achieved() {
                     let overlay = legendary_glow_overlay(
                         glow_pulse,
                         ACH_CARD_WIDTH,

@@ -517,85 +517,60 @@ pub(super) fn icon_glow_style(
     theme: crate::ui::theme::AppTheme,
 ) -> container::Style {
     let p = palette(theme);
-    match tier {
-        Some(RarityTier::Legendary) => container::Style {
-            shadow: iced::Shadow {
-                color: Color {
-                    a: 0.75,
-                    ..p.rarity_legendary
+    let (color, blur_radius) = match tier {
+        Some(RarityTier::Legendary) => (
+            Color {
+                a: 0.75,
+                ..p.rarity_legendary
+            },
+            22.0,
+        ),
+        Some(RarityTier::Mythical) => (
+            Color {
+                a: 0.45,
+                ..p.rarity_mythical
+            },
+            18.0,
+        ),
+        Some(RarityTier::Rare) => (
+            Color {
+                a: 0.7,
+                ..p.rarity_rare
+            },
+            14.0,
+        ),
+        Some(RarityTier::Uncommon) => (
+            Color {
+                a: 0.7,
+                ..p.rarity_uncommon
+            },
+            12.0,
+        ),
+        Some(RarityTier::Common) => (
+            Color {
+                a: 0.7,
+                ..p.rarity_common
+            },
+            10.0,
+        ),
+        None => {
+            return container::Style {
+                shadow: iced::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: iced::Vector::new(1.5, 1.5),
+                    blur_radius: 3.0,
                 },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 22.0,
-            },
-            border: iced::Border {
-                color: p.rarity_legendary,
-                width: 3.0,
-                radius: 8.0.into(),
-            },
-            ..container::Style::default()
+                ..container::Style::default()
+            };
+        }
+    };
+    container::Style {
+        shadow: iced::Shadow {
+            color,
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius,
         },
-        Some(RarityTier::Mythical) => container::Style {
-            shadow: iced::Shadow {
-                color: Color {
-                    a: 0.45,
-                    ..p.rarity_mythical
-                },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 16.0,
-            },
-            border: iced::Border {
-                color: p.rarity_mythical,
-                width: 2.0,
-                radius: 8.0.into(),
-            },
-            ..container::Style::default()
-        },
-        Some(RarityTier::Rare) => container::Style {
-            shadow: iced::Shadow {
-                color: Color {
-                    a: 0.7,
-                    ..p.rarity_rare
-                },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 14.0,
-            },
-            border: iced::Border {
-                color: p.rarity_rare,
-                width: 1.5,
-                radius: 8.0.into(),
-            },
-            ..container::Style::default()
-        },
-        Some(RarityTier::Uncommon) => container::Style {
-            shadow: iced::Shadow {
-                color: Color {
-                    a: 0.7,
-                    ..p.rarity_uncommon
-                },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 14.0,
-            },
-            ..container::Style::default()
-        },
-        Some(RarityTier::Common) => container::Style {
-            shadow: iced::Shadow {
-                color: Color {
-                    a: 0.7,
-                    ..p.rarity_common
-                },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 14.0,
-            },
-            ..container::Style::default()
-        },
-        None => container::Style {
-            shadow: iced::Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
-                offset: iced::Vector::new(1.5, 1.5),
-                blur_radius: 3.0,
-            },
-            ..container::Style::default()
-        },
+        ..container::Style::default()
     }
 }
 #[cfg(test)]
