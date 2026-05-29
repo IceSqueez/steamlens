@@ -178,7 +178,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          RPM_VERSION="${VERSION//-/~}"
+          RPM_VERSION=$(echo "${VERSION}" | sed 's/-/~/g')
           echo "version = \"${RPM_VERSION}\"" > /tmp/rpm-overwrite.toml
           cargo generate-rpm -p crates/${{ inputs.bin_name }} --target ${{ matrix.target }} --metadata-overwrite /tmp/rpm-overwrite.toml
           RPM=$(ls target/${{ matrix.target }}/generate-rpm/*.rpm | head -1)
