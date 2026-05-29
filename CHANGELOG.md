@@ -1,9 +1,24 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-rc.3] - 2026-05-29
+### ⚙️ Miscellaneous Tasks
+- *(workspace)* Cleanup unused dependencies
+- *(app)* Drop dead palette fields and SeveritySlot wrapper
+- *(ci)* Add sha256 checksums per artifact in release
+
+### 📚 Documentation
+- *(readme)* Document MSI, deb, rpm packages and macOS universal dmg
+
+### 🛠️ Build
+- *(release)* Merge macos arm64 and x64 into universal binary
+- *(release)* Add .deb and .rpm packages for Linux alongside AppImage
+- *(release)* Add Windows MSI installer with Start Menu shortcut
+
 ## [1.0.0-rc.2] - 2026-05-29
 ### ⚙️ Miscellaneous Tasks
 - *(ui)* Changed unicode with symbols
+- Release
 
 ### ⚡ Performance
 - *(views)* Cache derived view state, recompute only on input changes
@@ -30,6 +45,9 @@ All notable changes to this project will be documented in this file.
 - *(ui)* Include theme in AchievementCardDeps so cards rebuild on theme switch
 - *(ui)* Add control_surface palette field so header buttons stand out from surface
 - *(ui)* Align stats search styling with global search bar
+
+### 📚 Documentation
+- *(release)* Release v1.0.0-rc.2
 
 ### 🚀 Features
 - *(view)* Added custom virtualization to render cards only in viewport
