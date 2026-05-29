@@ -44,21 +44,27 @@ pub fn closest_row<'a, M: 'a + Clone>(
         .align_y(Alignment::Center)
         .padding(Padding::default().left(6).right(6).top(5).bottom(5));
 
-    let row_container = container(row_content).style(|t: &iced::Theme| container::Style {
-        background: Some(Background::Color(palette(theme_from_iced(t)).hover)),
-        border: Border {
-            radius: 6.0.into(),
-            ..Border::default()
-        },
-        ..container::Style::default()
-    });
-
-    button(row_container)
+    button(row_content)
         .on_press(on_press)
         .padding(0)
-        .style(|_: &iced::Theme, _status| button::Style {
-            background: None,
-            ..button::Style::default()
+        .style(|t: &iced::Theme, status| {
+            let p = palette(theme_from_iced(t));
+            let hovered = matches!(
+                status,
+                button::Status::Hovered | button::Status::Pressed
+            );
+            button::Style {
+                background: Some(Background::Color(if hovered {
+                    p.hover
+                } else {
+                    p.control_surface
+                })),
+                border: Border {
+                    radius: 6.0.into(),
+                    ..Border::default()
+                },
+                ..button::Style::default()
+            }
         })
         .into()
 }
