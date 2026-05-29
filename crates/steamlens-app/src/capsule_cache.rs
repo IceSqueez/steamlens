@@ -269,38 +269,51 @@ async fn try_http_candidate(
 
     tracing::debug!(app_id, %size, %url, "HTTP fetch start");
 
-    let response = match client.get(&url).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::trace!(
+    let mut attempt: u8 = 0;
+    let response = loop {
+        attempt += 1;
 
-                app_id, %url, error = %e,
-                "transport error; retrying once after backoff"
+        let r = match client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                if attempt < 2 {
+                    tracing::trace!(
+                        app_id, %url, error = %e,
+                        "transport error; retrying once after backoff"
+                    );
+                    tokio::time::sleep(HTTP_RETRY_BACKOFF).await;
+                    continue;
+                }
+                tracing::warn!(
+                    app_id, %url, error = %e,
+                    "HTTP send failed after one retry"
+                );
+                return None;
+            }
+        };
+
+        let status = r.status();
+        if status.is_success() {
+            break r;
+        }
+
+        let transient =
+            status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+        if transient && attempt < 2 {
+            tracing::trace!(
+                app_id, %url, status = status.as_u16(),
+                "transient HTTP status; retrying once after backoff"
             );
             tokio::time::sleep(HTTP_RETRY_BACKOFF).await;
-            match client.get(&url).send().await {
-                Ok(r) => r,
-                Err(e2) => {
-                    tracing::warn!(
-
-                        app_id, %url, error = %e2,
-                        "HTTP send failed after one retry"
-                    );
-                    return None;
-                }
-            }
+            continue;
         }
-    };
 
-    let status = response.status();
-    if !status.is_success() {
         tracing::debug!(
-
             app_id, %url, status = status.as_u16(),
             "CDN non-success response; trying next candidate"
         );
         return None;
-    }
+    };
 
     let bytes = match response.bytes().await {
         Ok(b) => b,
