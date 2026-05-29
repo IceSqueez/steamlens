@@ -183,7 +183,6 @@ pub fn update(
                     );
                 } else {
                     row.is_dirty = !row.is_dirty;
-                    state.recompute_derived();
                 }
             }
             (Task::none(), GameViewEvent::None)
@@ -327,7 +326,6 @@ pub fn update(
                     }
                 }
             }
-            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::ReloadRequested => {
@@ -434,7 +432,6 @@ pub fn update(
                 row.is_dirty = false;
                 row.edit_error = None;
             }
-            state.recompute_derived();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RevealHidden(id) => {
