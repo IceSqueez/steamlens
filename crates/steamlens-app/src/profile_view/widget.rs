@@ -174,7 +174,7 @@ pub struct ProfileWidgetParams<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
     pub avatar_handle: Option<&'a iced::widget::image::Handle>,
     pub summary: WidgetSummary,
-    pub top6: Vec<TopEntry>,
+    pub top6: &'a [TopEntry],
     pub games_count: usize,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
@@ -338,7 +338,7 @@ fn build_avatar<'a>(
 }
 
 fn build_right_column<'a>(
-    top6: Vec<TopEntry>,
+    top6: &'a [TopEntry],
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
@@ -377,7 +377,7 @@ fn build_right_column<'a>(
 }
 
 fn build_closest_row<'a>(
-    entry: TopEntry,
+    entry: &'a TopEntry,
     capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
     capsule_size: CapsuleSize,
     skeleton_phase: f32,
@@ -409,7 +409,7 @@ fn build_closest_row<'a>(
     let remaining = entry.total.saturating_sub(entry.earned);
     closest_row::<ProfileViewMessage>(
         capsule_el,
-        entry.game_name,
+        entry.game_name.clone(),
         format!("{} of {} left", remaining, entry.total),
         format!("{:.0}%", entry.completion_pct),
         ProfileViewMessage::RequestOpenGame(entry.app_id),

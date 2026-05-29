@@ -118,7 +118,7 @@ fn build_profile_section<'a>(
         user_profile,
         avatar_handle,
         summary: state.derived.summary,
-        top6: state.derived.top6.clone(),
+        top6: &state.derived.top6,
         games_count: state.games.len(),
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
