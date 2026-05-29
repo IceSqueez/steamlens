@@ -186,7 +186,7 @@ pub(super) fn apply_modal(
         column![
             text("\u{26A0} This writes directly to Steam")
                 .size(13)
-                .color(p.severity.warning.text),
+                .color(p.severity.warning),
             text(
                 "Stats and achievements will be persisted via Steam's stats API \
                  and become visible on your profile immediately. Use Cancel to \
@@ -204,10 +204,10 @@ pub(super) fn apply_modal(
     .style(move |_theme| container::Style {
         background: Some(iced::Background::Color(Color {
             a: 0.08,
-            ..p.severity.warning.text
+            ..p.severity.warning
         })),
         border: iced::Border {
-            color: p.severity.warning.text,
+            color: p.severity.warning,
             width: 1.0,
             radius: 4.0.into(),
         },

@@ -102,7 +102,7 @@ fn error_view(
 ) -> Element<'_, GameViewMessage> {
     let p = palette(theme);
     let content = column![
-        text("Failed to load").size(20).color(p.severity.error.text),
+        text("Failed to load").size(20).color(p.severity.error),
         text(&state.error_message).size(13).color(C_MUTED),
         button(text("Back").size(13))
             .on_press(GameViewMessage::RequestGoBack)

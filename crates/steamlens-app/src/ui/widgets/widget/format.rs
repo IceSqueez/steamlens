@@ -2,7 +2,7 @@ pub fn format_thousands(n: u32) -> String {
     format_thousands_u64(n as u64)
 }
 
-pub fn format_thousands_u64(n: u64) -> String {
+fn format_thousands_u64(n: u64) -> String {
     let s = n.to_string();
     let mut result = String::with_capacity(s.len() + s.len() / 3);
     for (i, ch) in s.chars().rev().enumerate() {

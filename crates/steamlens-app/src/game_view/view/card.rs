@@ -358,7 +358,7 @@ fn render_achievement_card(
     let badge_text = row.status_label();
     let is_locked_badge = badge_text == "Locked";
     let fixed_badge_color: Option<Color> = match badge_text {
-        "Protected" => Some(p.severity.warning.text),
+        "Protected" => Some(p.severity.warning),
         "Pending" => Some(C_YELLOW),
         "Unlocked" => Some(p.rarity_common),
         _ => None,
