@@ -200,7 +200,7 @@ fn build_filter_button(cfg: FilterButton<'_>) -> Element<'_, crate::Message> {
                 } else if hovered {
                     p.hover
                 } else {
-                    Color::TRANSPARENT
+                    p.control_surface
                 })),
                 border: Border {
                     color: if selected { p.accent } else { p.border },
@@ -314,7 +314,7 @@ fn build_segmented_control(cfg: SegmentedControlConfig<'_>) -> Element<'_, crate
         container(row(items).align_y(Alignment::Center)).style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             container::Style {
-                background: Some(Background::Color(p.surface)),
+                background: Some(Background::Color(p.control_surface)),
                 border: Border {
                     color: p.border,
                     width: 1.0,
@@ -401,7 +401,7 @@ fn build_search_input(cfg: SearchConfig<'_>) -> Element<'_, crate::Message> {
         .style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             container::Style {
-                background: Some(Background::Color(p.surface)),
+                background: Some(Background::Color(p.control_surface)),
                 border: Border {
                     color: p.border,
                     width: 1.0,

@@ -14,6 +14,7 @@ pub enum AppTheme {
 pub struct ThemePalette {
     pub app: Color,
     pub surface: Color,
+    pub control_surface: Color,
     pub border: Color,
     pub hover: Color,
     pub placeholder: Color,
@@ -70,8 +71,9 @@ pub struct SeveritySlot {
 pub const DARK: ThemePalette = ThemePalette {
     app: Color::from_rgb8(0x1a, 0x18, 0x25),
     surface: Color::from_rgb8(0x22, 0x1f, 0x30),
+    control_surface: Color::from_rgb8(0x2e, 0x29, 0x42),
     border: Color::from_rgb8(0x2d, 0x29, 0x40),
-    hover: Color::from_rgb8(0x2a, 0x26, 0x38),
+    hover: Color::from_rgb8(0x3a, 0x35, 0x52),
     placeholder: Color::from_rgb(0.188, 0.192, 0.247),
 
     text_primary: Color::from_rgb8(0xf0, 0xee, 0xf8),
@@ -204,8 +206,9 @@ pub const DARK: ThemePalette = ThemePalette {
 pub const LIGHT: ThemePalette = ThemePalette {
     app: Color::from_rgb8(0xe6, 0xe9, 0xef),
     surface: Color::from_rgb8(0xef, 0xf1, 0xf5),
+    control_surface: Color::from_rgb8(0xe0, 0xe4, 0xec),
     border: Color::from_rgb8(0xcc, 0xd0, 0xda),
-    hover: Color::from_rgb8(0xdc, 0xe0, 0xe8),
+    hover: Color::from_rgb8(0xc8, 0xcd, 0xd6),
     placeholder: Color::from_rgb8(0xdc, 0xe0, 0xe8),
 
     text_primary: Color::from_rgb8(0x1f, 0x1c, 0x2c),
