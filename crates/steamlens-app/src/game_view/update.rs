@@ -190,7 +190,7 @@ pub fn update(
         }
         GameViewMessage::FilterChanged(f) => {
             state.filter = f;
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityTierToggled(tier) => {
@@ -205,7 +205,7 @@ pub fn update(
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::HiddenPillToggled => {
@@ -216,7 +216,7 @@ pub fn update(
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::RarityFilterCleared => {
@@ -226,19 +226,19 @@ pub fn update(
                 s.manager.rarity_tiers = Vec::new();
                 s.manager.include_hidden = false;
             });
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::AchievementSortChanged(s) => {
             let sort = s;
             let _ = ctx.update_settings(|s| s.manager.sort = sort);
             state.achievement_sort = s;
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::SearchChanged(q) => {
             state.search_query = q;
-            state.recompute_derived();
+            state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatsSearchChanged(q) => {

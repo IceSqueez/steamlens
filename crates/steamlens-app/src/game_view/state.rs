@@ -146,6 +146,19 @@ impl GameViewState {
         };
     }
 
+    pub fn recompute_visible_only(&mut self) {
+        let visible_indices = visible_achievement_indices(
+            &self.achievements,
+            &self.derived.tier_map,
+            self.filter,
+            &self.search_query,
+            self.achievement_sort,
+            &self.rarity_tier_set,
+            self.include_hidden,
+        );
+        self.derived.visible_indices = visible_indices;
+    }
+
     pub fn dirty_count(&self) -> usize {
         dirty_count(&self.achievements, &self.stats)
     }
