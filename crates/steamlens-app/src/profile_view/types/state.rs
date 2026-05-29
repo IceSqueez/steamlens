@@ -22,6 +22,9 @@ pub struct DerivedProfileView {
     pub visible_indices: Vec<usize>,
     pub summary: WidgetSummary,
     pub top6: Vec<TopEntry>,
+    pub hydrated_count: usize,
+    pub scanned_progress_count: usize,
+    pub loaded_capsules_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -125,10 +128,27 @@ impl ProfileViewState {
         );
         let summary = compute_profile_summary(cached_entries);
         let top6 = top6_closest_to_complete(&self.games, cached_entries);
+        let mut hydrated_count = 0;
+        let mut scanned_progress_count = 0;
+        let mut loaded_capsules_count = 0;
+        for g in &self.games {
+            if g.is_hydrated() {
+                hydrated_count += 1;
+            }
+            if g.progress.is_some() {
+                scanned_progress_count += 1;
+            }
+            if !matches!(g.capsule, CapsuleAsset::Pending) {
+                loaded_capsules_count += 1;
+            }
+        }
         self.derived = DerivedProfileView {
             visible_indices,
             summary,
             top6,
+            hydrated_count,
+            scanned_progress_count,
+            loaded_capsules_count,
         };
     }
 
