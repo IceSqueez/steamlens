@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use super::types::{
     AchievementFilter, AchievementRow, AchievementSort, RarityTier, StatRow, compute_tier_map,
@@ -9,7 +10,7 @@ use crate::ui::widgets::widget::WidgetSummary;
 
 #[derive(Debug, Default)]
 pub struct DerivedGameView {
-    pub tier_map: HashMap<String, RarityTier>,
+    pub tier_map: Arc<HashMap<String, RarityTier>>,
     pub visible_indices: Vec<usize>,
     pub summary: WidgetSummary,
     pub has_legendary_visible: bool,
@@ -138,7 +139,7 @@ impl GameViewState {
                     .is_some_and(|&t| t == RarityTier::Legendary)
         });
         self.derived = DerivedGameView {
-            tier_map,
+            tier_map: Arc::new(tier_map),
             visible_indices,
             summary,
             has_legendary_visible,
