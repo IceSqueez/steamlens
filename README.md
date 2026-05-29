@@ -66,16 +66,32 @@ A few things worth knowing before you start:
 
 Pre-built binaries are published with each release. Grab the right artifact for your OS from the [latest release page](https://github.com/IceSqueez/steamlens/releases/latest).
 
-### Linux (AppImage)
+### Linux
+
+Three formats are published — pick the one that fits your distro:
+
+**Debian / Ubuntu (`.deb`)**
+
+```bash
+sudo apt install ./steamlens-app-*-linux-x64.deb
+```
+
+**Fedora / openSUSE (`.rpm`)**
+
+```bash
+sudo dnf install ./steamlens-app-*-linux-x64.rpm
+```
+
+**Portable (`.AppImage` — works on any distro)**
 
 ```bash
 chmod +x steamlens-app-*-linux-x64.AppImage
 ./steamlens-app-*-linux-x64.AppImage
 ```
 
-AppImage is portable — no install required. Optionally integrate with your desktop using [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher), or move the binary into `~/.local/bin/` and create your own `.desktop` entry.
+AppImage requires no install. Optionally integrate with your desktop using [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher).
 
-If the AppImage fails to launch, install the runtime libs for your distro:
+If launch fails due to missing system libs:
 
 ```bash
 # Ubuntu / Debian
@@ -90,17 +106,27 @@ sudo pacman -S wayland libxkbcommon mesa fontconfig
 
 ### macOS (.dmg)
 
-1. Download the `.dmg` for your CPU (`macos-arm64` for Apple Silicon, `macos-x64` for Intel).
+1. Download `steamlens-app-*-macos-universal.dmg` (works on both Apple Silicon and Intel).
 2. Open the `.dmg` and drag **SteamLens** into Applications.
 3. The first launch is blocked by Gatekeeper because the app is not yet notarized. Workaround:
    - Right-click **SteamLens** → **Open** → confirm in the dialog. macOS remembers the choice for future launches.
    - Or run once from Terminal: `xattr -dr com.apple.quarantine /Applications/SteamLens.app`
 
-### Windows (.exe)
+### Windows
+
+Two formats are published — pick whichever fits your workflow:
+
+**Installer (`.msi` — recommended)**
+
+1. Download `steamlens-app-*-windows-x64.msi` and double-click.
+2. SmartScreen may warn that the publisher is unknown — click **More info** → **Run anyway**.
+3. Installer creates a Start Menu shortcut and registers the app in Add/Remove Programs.
+
+**Portable (`.exe`)**
 
 1. Download `steamlens-app-*-windows-x64.exe` and place it anywhere convenient (e.g. `%LOCALAPPDATA%\Programs\SteamLens\`).
-2. SmartScreen may warn that the publisher is unknown — click **More info** → **Run anyway**.
-3. Double-click to launch. No installer; create your own Start Menu shortcut if you want one.
+2. SmartScreen may warn — click **More info** → **Run anyway**.
+3. Double-click to launch. No installer; no Start Menu shortcut.
 
 ### From source
 
