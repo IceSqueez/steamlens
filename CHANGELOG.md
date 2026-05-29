@@ -1,14 +1,34 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-05-29
+### 📚 Documentation
+- *(readme)* Updated screenshot
+
 ## [1.0.0-rc.3] - 2026-05-29
 ### ⚙️ Miscellaneous Tasks
 - *(workspace)* Cleanup unused dependencies
 - *(app)* Drop dead palette fields and SeveritySlot wrapper
 - *(ci)* Add sha256 checksums per artifact in release
+- Release
+
+### 🎨 Styling
+- Cargo fmt closest_row hover match
+
+### 🐛 Bug Fixes
+- *(ui)* Restore hover effect on closest to complete elements
+- *(ui)* Shift tier_locked further from hover to keep bar visible on card hover
+- *(ci)* Correct asset paths for cargo-deb and cargo-generate-rpm
+- *(ci)* Use --manifest-path for cargo-generate-rpm package resolution
+- *(ci)* Pass crate path to cargo-generate-rpm via -p
+- *(ci)* Translate rpm version dashes to tildes and use correct overwrite flag
+- *(ci)* Use sed instead of bash param expansion for rpm version dash translation
+- *(ci)* Run cargo-wix from crate dir so it resolves wix\Product.ico
+- *(ci)* Pass -p flag to cargo-wix when running from crate dir in workspace
 
 ### 📚 Documentation
 - *(readme)* Document MSI, deb, rpm packages and macOS universal dmg
+- *(release)* Release v1.0.0-rc.3
 
 ### 🛠️ Build
 - *(release)* Merge macos arm64 and x64 into universal binary
