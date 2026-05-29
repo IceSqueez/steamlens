@@ -103,7 +103,7 @@ pub(super) fn achievement_list(
         .map(|&i| &state.achievements[i])
         .collect();
 
-    let query_owned = state.search_query.clone();
+    let query_lower = state.search_query.to_lowercase();
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
     let tier_map = state.derived.tier_map.clone();
     let cache_only = state.cache_only;
@@ -130,7 +130,7 @@ pub(super) fn achievement_list(
                 let static_card = achievement_card_widget(
                     entry,
                     ACH_CARD_WIDTH,
-                    query_owned.clone(),
+                    query_lower.clone(),
                     tier,
                     app_theme,
                 );

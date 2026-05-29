@@ -40,7 +40,7 @@ impl AchievementCardDeps {
     fn new(
         row: &AchievementRow,
         card_w: f32,
-        search_query: &str,
+        search_query_lower: &str,
         tier: Option<RarityTier>,
     ) -> Self {
         Self {
@@ -56,7 +56,7 @@ impl AchievementCardDeps {
             has_rarity: row.rarity_percent.is_some(),
             display_name_hash: fnv64(row.data.display_name.as_bytes()),
             description_hash: fnv64(row.data.description.as_bytes()),
-            search_hash: fnv64(search_query.as_bytes()),
+            search_hash: fnv64(search_query_lower.as_bytes()),
             tier,
             card_w_bits: card_w.to_bits(),
         }
@@ -75,15 +75,15 @@ fn fnv64(bytes: &[u8]) -> u64 {
 pub(super) fn achievement_card_widget<'a>(
     row: &'a AchievementRow,
     card_w: f32,
-    search_query: String,
+    search_query_lower: String,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'a, GameViewMessage> {
-    let deps = AchievementCardDeps::new(row, card_w, &search_query, tier);
+    let deps = AchievementCardDeps::new(row, card_w, &search_query_lower, tier);
 
     let entry = row.clone();
     lazy(deps, move |_| {
-        render_achievement_card(&entry, card_w, &search_query, tier, app_theme)
+        render_achievement_card(&entry, card_w, &search_query_lower, tier, app_theme)
     })
     .into()
 }
@@ -127,7 +127,7 @@ pub(super) fn legendary_glow_overlay(
 fn render_achievement_card(
     row: &AchievementRow,
     card_w: f32,
-    search_query: &str,
+    search_query_lower: &str,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
 ) -> Element<'static, GameViewMessage> {
@@ -231,40 +231,30 @@ fn render_achievement_card(
     };
 
     let name_color = if row.is_dirty { C_YELLOW } else { fg };
-    let name_label: Element<'static, GameViewMessage> =
-        if !row.is_dirty && !spoiler_hidden && !search_query.is_empty() {
-            if let Some((before, matched, after)) = highlight_split(&display_name, search_query) {
-                let before = before.to_owned();
-                let matched = matched.to_owned();
-                let after = after.to_owned();
-                container(
-                    rich_text![
-                        span(before).color(fg),
-                        span(matched)
-                            .color(C_YELLOW)
-                            .background(Color { a: 0.2, ..C_YELLOW }),
-                        span(after).color(fg),
-                    ]
-                    .on_link_click(iced::never)
-                    .size(ACH_CARD_TITLE_TEXT_SIZE)
-                    .wrapping(text::Wrapping::Word)
-                    .line_height(text::LineHeight::Relative(1.2)),
-                )
-                .width(Length::Fill)
-                .height(Length::Fixed(36.0))
-                .into()
-            } else {
-                container(
-                    text(display_name)
-                        .size(ACH_CARD_TITLE_TEXT_SIZE)
-                        .color(name_color)
-                        .wrapping(text::Wrapping::Word)
-                        .line_height(text::LineHeight::Relative(1.2)),
-                )
-                .width(Length::Fill)
-                .height(Length::Fixed(36.0))
-                .into()
-            }
+    let name_label: Element<'static, GameViewMessage> = if !row.is_dirty
+        && !spoiler_hidden
+        && !search_query_lower.is_empty()
+    {
+        if let Some((before, matched, after)) = highlight_split(&display_name, search_query_lower) {
+            let before = before.to_owned();
+            let matched = matched.to_owned();
+            let after = after.to_owned();
+            container(
+                rich_text![
+                    span(before).color(fg),
+                    span(matched)
+                        .color(C_YELLOW)
+                        .background(Color { a: 0.2, ..C_YELLOW }),
+                    span(after).color(fg),
+                ]
+                .on_link_click(iced::never)
+                .size(ACH_CARD_TITLE_TEXT_SIZE)
+                .wrapping(text::Wrapping::Word)
+                .line_height(text::LineHeight::Relative(1.2)),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(36.0))
+            .into()
         } else {
             container(
                 text(display_name)
@@ -276,7 +266,19 @@ fn render_achievement_card(
             .width(Length::Fill)
             .height(Length::Fixed(36.0))
             .into()
-        };
+        }
+    } else {
+        container(
+            text(display_name)
+                .size(ACH_CARD_TITLE_TEXT_SIZE)
+                .color(name_color)
+                .wrapping(text::Wrapping::Word)
+                .line_height(text::LineHeight::Relative(1.2)),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(36.0))
+        .into()
+    };
 
     let description = if spoiler_hidden {
         "Hidden until revealed".to_owned()
@@ -290,38 +292,28 @@ fn render_achievement_card(
         C_LOCKED_DESC
     };
 
-    let desc_label: Element<'static, GameViewMessage> =
-        if !spoiler_hidden && !search_query.is_empty() {
-            if let Some((before, matched, after)) = highlight_split(&description, search_query) {
-                let before = before.to_owned();
-                let matched = matched.to_owned();
-                let after = after.to_owned();
-                container(
-                    rich_text![
-                        span(before).color(desc_color),
-                        span(matched)
-                            .color(C_YELLOW)
-                            .background(Color { a: 0.2, ..C_YELLOW }),
-                        span(after).color(desc_color),
-                    ]
-                    .on_link_click(iced::never)
-                    .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                    .wrapping(text::Wrapping::Word),
-                )
-                .width(Length::Fill)
-                .height(Length::Fixed(30.0))
-                .into()
-            } else {
-                container(
-                    text(description)
-                        .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                        .color(desc_color)
-                        .wrapping(text::Wrapping::Word),
-                )
-                .width(Length::Fill)
-                .height(Length::Fixed(30.0))
-                .into()
-            }
+    let desc_label: Element<'static, GameViewMessage> = if !spoiler_hidden
+        && !search_query_lower.is_empty()
+    {
+        if let Some((before, matched, after)) = highlight_split(&description, search_query_lower) {
+            let before = before.to_owned();
+            let matched = matched.to_owned();
+            let after = after.to_owned();
+            container(
+                rich_text![
+                    span(before).color(desc_color),
+                    span(matched)
+                        .color(C_YELLOW)
+                        .background(Color { a: 0.2, ..C_YELLOW }),
+                    span(after).color(desc_color),
+                ]
+                .on_link_click(iced::never)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .wrapping(text::Wrapping::Word),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(30.0))
+            .into()
         } else {
             container(
                 text(description)
@@ -332,7 +324,18 @@ fn render_achievement_card(
             .width(Length::Fill)
             .height(Length::Fixed(30.0))
             .into()
-        };
+        }
+    } else {
+        container(
+            text(description)
+                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+                .color(desc_color)
+                .wrapping(text::Wrapping::Word),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(30.0))
+        .into()
+    };
 
     let text_col = column![name_label, desc_label].spacing(ACH_CARD_TEXT_COL_SPACING);
 
@@ -484,15 +487,14 @@ fn render_achievement_card(
 
 pub(super) fn highlight_split<'a>(
     source: &'a str,
-    query: &str,
+    query_lower: &str,
 ) -> Option<(&'a str, &'a str, &'a str)> {
-    if query.is_empty() {
+    if query_lower.is_empty() {
         return None;
     }
     let lower_source = source.to_lowercase();
-    let lower_query = query.to_lowercase();
-    let byte_offset = lower_source.find(&lower_query)?;
-    let match_end = byte_offset + lower_query.len();
+    let byte_offset = lower_source.find(query_lower)?;
+    let match_end = byte_offset + query_lower.len();
     let before = &source[..byte_offset];
     let matched = &source[byte_offset..match_end];
     let after = &source[match_end..];
