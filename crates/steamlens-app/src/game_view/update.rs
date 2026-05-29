@@ -326,6 +326,13 @@ pub fn update(
             state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
+        GameViewMessage::UnlockedAtTopToggled => {
+            state.unlocked_at_top = !state.unlocked_at_top;
+            let unlocked_at_top = state.unlocked_at_top;
+            let _ = ctx.update_settings(|s| s.manager.unlocked_at_top = unlocked_at_top);
+            state.recompute_visible_only();
+            (Task::none(), GameViewEvent::None)
+        }
         GameViewMessage::SearchChanged(q) => {
             state.search_query = q;
             state.recompute_visible_only();

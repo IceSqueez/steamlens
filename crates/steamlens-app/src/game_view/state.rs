@@ -57,6 +57,7 @@ pub struct GameViewState {
     pub achievement_sort: AchievementSort,
     pub rarity_tier_set: HashSet<RarityTier>,
     pub include_hidden: bool,
+    pub unlocked_at_top: bool,
 
     pub apply_confirm_input: String,
     pub show_apply_modal: bool,
@@ -105,6 +106,7 @@ impl GameViewState {
             achievement_sort: AchievementSort::UnlockChance,
             rarity_tier_set: HashSet::new(),
             include_hidden: false,
+            unlocked_at_top: true,
             apply_confirm_input: String::new(),
             show_apply_modal: false,
             spinner_angle: 0.0,
@@ -136,6 +138,7 @@ impl GameViewState {
             self.achievement_sort,
             &self.rarity_tier_set,
             self.include_hidden,
+            self.unlocked_at_top,
         );
         let summary = compute_game_summary_with_tier_map(&self.achievements, &tier_map);
         let has_legendary_visible = self.achievements.iter().any(|r| {
@@ -161,6 +164,7 @@ impl GameViewState {
             self.achievement_sort,
             &self.rarity_tier_set,
             self.include_hidden,
+            self.unlocked_at_top,
         );
         self.derived.visible_indices = visible_indices;
     }

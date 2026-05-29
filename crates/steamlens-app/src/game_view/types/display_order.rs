@@ -28,6 +28,7 @@ fn tier_rank(tier: Option<RarityTier>) -> u8 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn visible_achievement_indices(
     achievements: &[AchievementRow],
     tier_map: &HashMap<String, RarityTier>,
@@ -36,6 +37,7 @@ pub fn visible_achievement_indices(
     sort: AchievementSort,
     rarity_tier_set: &std::collections::HashSet<RarityTier>,
     include_hidden: bool,
+    unlocked_at_top: bool,
 ) -> Vec<usize> {
     let query = search.to_lowercase();
     let mut filtered: Vec<(usize, &AchievementRow)> = achievements
@@ -71,7 +73,7 @@ pub fn visible_achievement_indices(
             filter_ok && search_ok && rarity_ok
         })
         .collect();
-    sort_indexed_for_display(&mut filtered, tier_map, sort);
+    sort_indexed_for_display(&mut filtered, tier_map, sort, unlocked_at_top);
     filtered.into_iter().map(|(i, _)| i).collect()
 }
 
@@ -79,12 +81,17 @@ fn sort_indexed_for_display(
     rows: &mut [(usize, &AchievementRow)],
     tier_map: &HashMap<String, RarityTier>,
     sort: AchievementSort,
+    unlocked_at_top: bool,
 ) {
     match sort {
         AchievementSort::UnlockChance => {
             rows.sort_by(|(_, a), (_, b)| {
-                display_group(a)
-                    .cmp(&display_group(b))
+                let group_cmp = if unlocked_at_top {
+                    display_group(a).cmp(&display_group(b))
+                } else {
+                    Ordering::Equal
+                };
+                group_cmp
                     .then_with(|| {
                         let pa = a.rarity_percent;
                         let pb = b.rarity_percent;
@@ -105,8 +112,12 @@ fn sort_indexed_for_display(
         }
         AchievementSort::RarityAndName => {
             rows.sort_by(|(_, a), (_, b)| {
-                display_group(a)
-                    .cmp(&display_group(b))
+                let group_cmp = if unlocked_at_top {
+                    display_group(a).cmp(&display_group(b))
+                } else {
+                    Ordering::Equal
+                };
+                group_cmp
                     .then_with(|| {
                         tier_rank(tier_map.get(&a.data.id).copied())
                             .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
@@ -121,7 +132,12 @@ fn sort_indexed_for_display(
         }
         AchievementSort::Name => {
             rows.sort_by(|(_, a), (_, b)| {
-                display_group(a).cmp(&display_group(b)).then_with(|| {
+                let group_cmp = if unlocked_at_top {
+                    display_group(a).cmp(&display_group(b))
+                } else {
+                    Ordering::Equal
+                };
+                group_cmp.then_with(|| {
                     a.data
                         .display_name
                         .to_lowercase()
@@ -150,6 +166,7 @@ pub fn visible_achievement_ids<'a>(
         sort,
         rarity_tier_set,
         include_hidden,
+        true,
     )
     .into_iter()
     .map(|i| achievements[i].data.id.as_str())

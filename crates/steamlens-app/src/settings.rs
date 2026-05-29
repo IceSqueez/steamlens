@@ -74,10 +74,16 @@ pub struct ManagerSettings {
     pub rarity_tiers: Vec<RarityTier>,
     #[serde(default)]
     pub include_hidden: bool,
+    #[serde(default = "default_unlocked_at_top")]
+    pub unlocked_at_top: bool,
 }
 
 fn default_achievement_sort() -> AchievementSort {
     AchievementSort::UnlockChance
+}
+
+fn default_unlocked_at_top() -> bool {
+    true
 }
 
 impl Default for ManagerSettings {
@@ -86,6 +92,7 @@ impl Default for ManagerSettings {
             sort: default_achievement_sort(),
             rarity_tiers: Vec::new(),
             include_hidden: false,
+            unlocked_at_top: true,
         }
     }
 }
@@ -237,6 +244,7 @@ mod tests {
                 sort: AchievementSort::Name,
                 rarity_tiers: vec![RarityTier::Legendary, RarityTier::Mythical],
                 include_hidden: true,
+                unlocked_at_top: true,
             },
         };
         let restored = round_trip(&original);

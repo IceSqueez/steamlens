@@ -69,6 +69,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         .copied()
         .collect();
     state.include_hidden = app.context.settings.manager.include_hidden;
+    state.unlocked_at_top = app.context.settings.manager.unlocked_at_top;
 
     let mut tasks: Vec<Task<Message>> = Vec::new();
 

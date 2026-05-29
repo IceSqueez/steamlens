@@ -10,6 +10,7 @@ pub enum GameViewMessage {
     HiddenPillToggled,
     RarityFilterCleared,
     AchievementSortChanged(AchievementSort),
+    UnlockedAtTopToggled,
     SearchChanged(String),
     StatsSearchChanged(String),
     StatsMaxAll,
