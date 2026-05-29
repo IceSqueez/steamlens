@@ -90,7 +90,7 @@ pub(crate) fn handle_update_check_result(
     match result {
         Ok(Some(info)) => {
             let body = format!(
-                "A new version {} is available \u{2014} click Download to get it.",
+                "A new version {} is available - click Download to get it.",
                 info.latest
             );
             app.context.messaging.push_banner(

@@ -364,8 +364,7 @@ pub(crate) fn handle_offline_loaded(
             && state.cache_only
         {
             state.phase = game_view::GameViewPhase::Error;
-            state.error_message =
-                "No cached data \u{2014} reconnect Steam to load this game".to_owned();
+            state.error_message = "No cached data - reconnect Steam to load this game".to_owned();
         }
         return Task::none();
     };

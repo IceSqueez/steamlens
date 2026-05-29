@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 
-use iced::Element;
-
 use super::state::GameViewState;
 use super::view::{
     achievement_search_id, build_back_leading, build_game_reload_button, tier_color,
@@ -26,20 +24,30 @@ pub fn header_content<'a>(
         })
         .collect();
 
+    let unlocked_toggle = SegmentedControlConfig {
+        label: None,
+        items: vec![SegmentItem {
+            label: Cow::Borrowed("Unlocked at top"),
+            tooltip: Some("Group unlocked achievements at the top"),
+            selected: state.unlocked_at_top,
+            on_press: crate::Message::GameView(GameViewMessage::UnlockedAtTopToggled),
+        }],
+    };
+
     crate::screen::AppHeaderContent {
         search: Some(crate::screen::SearchConfig {
             placeholder: "Search achievements\u{2026}",
             value: state.search_query.as_str(),
             id: achievement_search_id(),
         }),
-        segments: vec![SegmentedControlConfig {
-            label: Some("SORT"),
-            items: sort_items,
-        }],
-        screen_actions: vec![
-            build_unlocked_at_top_button(state.unlocked_at_top),
-            build_game_reload_button(),
+        segments: vec![
+            unlocked_toggle,
+            SegmentedControlConfig {
+                label: Some("SORT"),
+                items: sort_items,
+            },
         ],
+        screen_actions: vec![build_game_reload_button()],
         leading: Some(build_back_leading()),
         status_filter: Some(build_achievement_status_strip(state)),
         category_filter: Some(build_rarity_tier_strip(state, theme)),
@@ -161,30 +169,5 @@ fn build_rarity_tier_strip(
         .spacing(6)
         .align_y(Alignment::Center)
         .width(Length::Fill)
-        .into()
-}
-
-fn build_unlocked_at_top_button(active: bool) -> Element<'static, crate::Message> {
-    use crate::ui::theme::{AppTheme, palette};
-    use crate::ui::widgets::pill::pill;
-    use iced::Alignment;
-    use iced::widget::{row, text};
-
-    let glyph = if active { "\u{2611}" } else { "\u{2610}" };
-    let color = palette(AppTheme::Dark).text_muted;
-    let label = row![
-        text(glyph).size(13).color(color),
-        text("Unlocked at top").size(11).color(color),
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center);
-
-    pill(label, color)
-        .radius(14.0)
-        .padding(9, 4)
-        .selected(active)
-        .on_press(crate::Message::GameView(
-            GameViewMessage::UnlockedAtTopToggled,
-        ))
         .into()
 }

@@ -18,7 +18,7 @@ pub enum LibrarySort {
 impl LibrarySort {
     pub fn short_label(&self) -> &'static str {
         match self {
-            LibrarySort::NameAsc => "A \u{2014} Z",
+            LibrarySort::NameAsc => "Name (A - Z)",
             LibrarySort::LastPlayed => "Last played",
             LibrarySort::Completion => "Completion",
         }
@@ -26,7 +26,7 @@ impl LibrarySort {
 
     pub fn tooltip(&self) -> &'static str {
         match self {
-            LibrarySort::NameAsc => "Sort by name (A → Z)",
+            LibrarySort::NameAsc => "Sort by name (A - Z)",
             LibrarySort::LastPlayed => "Sort by last played",
             LibrarySort::Completion => "Sort by completion % (highest first)",
         }
@@ -37,7 +37,7 @@ impl std::fmt::Display for LibrarySort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LibrarySort::LastPlayed => write!(f, "Last Played"),
-            LibrarySort::NameAsc => write!(f, "Name (A\u{2013}Z)"),
+            LibrarySort::NameAsc => write!(f, "Name (A - Z)"),
             LibrarySort::Completion => write!(f, "Completion"),
         }
     }

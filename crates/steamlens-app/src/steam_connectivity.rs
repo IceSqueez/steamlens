@@ -22,9 +22,9 @@ pub(crate) enum SteamUnavailable {
 
 pub(crate) fn surface_steam_unavailable(ctx: &mut AppContext, state: SteamUnavailable) {
     let body: &'static str = match state {
-        SteamUnavailable::NotRunning => "Steam is not running \u{2014} reconnect to load live data",
+        SteamUnavailable::NotRunning => "Steam is not running - reconnect to load live data",
         SteamUnavailable::NotLoggedIn => {
-            "Steam is running but no user is signed in \u{2014} showing cached data"
+            "Steam is running but no user is signed in - showing cached data"
         }
     };
     if ctx.messaging.banners.iter().any(|b| b.body == body) {
