@@ -49,10 +49,7 @@ pub fn closest_row<'a, M: 'a + Clone>(
         .padding(0)
         .style(|t: &iced::Theme, status| {
             let p = palette(theme_from_iced(t));
-            let hovered = matches!(
-                status,
-                button::Status::Hovered | button::Status::Pressed
-            );
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: Some(Background::Color(if hovered {
                     p.hover
