@@ -107,6 +107,7 @@ pub(super) fn achievement_list(
     let glow_pulse = (state.rare_glow_phase.sin() + 1.0) * 0.5;
     let tier_map = state.derived.tier_map.clone();
     let cache_only = state.cache_only;
+    let icon_handles = &state.icon_handles;
 
     responsive_card_grid(
         cards,
@@ -123,6 +124,7 @@ pub(super) fn achievement_list(
         GameViewMessage::AchievementGridScrolled,
         move |entry: &&AchievementRow| {
             let tier = tier_map.get(&entry.data.id).copied();
+            let icon_handle = icon_handles.get(&entry.data.id).cloned();
             let is_ready = entry.is_spoiler_hidden()
                 || cache_only
                 || (entry.data.icon.is_some() && entry.rarity_percent.is_some());
@@ -133,6 +135,7 @@ pub(super) fn achievement_list(
                     query_lower.clone(),
                     tier,
                     app_theme,
+                    icon_handle,
                 );
                 if matches!(tier, Some(RarityTier::Legendary)) {
                     let overlay = legendary_glow_overlay(

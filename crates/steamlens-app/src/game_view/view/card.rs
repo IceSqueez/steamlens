@@ -78,12 +78,20 @@ pub(super) fn achievement_card_widget<'a>(
     search_query_lower: String,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
+    icon_handle: Option<iced::widget::image::Handle>,
 ) -> Element<'a, GameViewMessage> {
     let deps = AchievementCardDeps::new(row, card_w, &search_query_lower, tier);
 
     let entry = row.clone();
     lazy(deps, move |_| {
-        render_achievement_card(&entry, card_w, &search_query_lower, tier, app_theme)
+        render_achievement_card(
+            &entry,
+            card_w,
+            &search_query_lower,
+            tier,
+            app_theme,
+            icon_handle.clone(),
+        )
     })
     .into()
 }
@@ -130,6 +138,7 @@ fn render_achievement_card(
     search_query_lower: &str,
     tier: Option<RarityTier>,
     app_theme: crate::ui::theme::AppTheme,
+    icon_handle: Option<iced::widget::image::Handle>,
 ) -> Element<'static, GameViewMessage> {
     let p = *palette(app_theme);
     let fg = p.text_primary;
@@ -154,8 +163,7 @@ fn render_achievement_card(
                 ..container::Style::default()
             })
             .into()
-    } else if let Some(ico) = &row.data.icon {
-        let handle = image::Handle::from_rgba(ico.width, ico.height, ico.rgba.clone());
+    } else if let Some(handle) = icon_handle {
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
         container(
             image(handle)

@@ -98,6 +98,20 @@ pub fn handle_steam_reply(
             state.tier_breakdown = compute_tier_breakdown(&state.achievements);
             state.recompute_derived();
 
+            state.icon_handles.clear();
+            for row in &state.achievements {
+                if let Some(ico) = &row.data.icon {
+                    state.icon_handles.insert(
+                        row.data.id.clone(),
+                        iced::widget::image::Handle::from_rgba(
+                            ico.width,
+                            ico.height,
+                            ico.rgba.clone(),
+                        ),
+                    );
+                }
+            }
+
             Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::LoadFailed(e) => {
@@ -138,6 +152,12 @@ pub fn handle_steam_reply(
         }
         SteamReply::IconUpdated { name, icon } => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
+                let handle = iced::widget::image::Handle::from_rgba(
+                    icon.width,
+                    icon.height,
+                    icon.rgba.clone(),
+                );
+                state.icon_handles.insert(name.clone(), handle);
                 row.data.icon = Some(icon);
             } else {
                 state.pending_icons.insert(name, icon);
@@ -333,6 +353,7 @@ pub fn update(
             state.achievements.clear();
             state.stats.clear();
             state.reveal_queue.clear();
+            state.icon_handles.clear();
             state.recompute_derived();
             let mut tasks: Vec<Task<GameViewMessage>> = Vec::new();
             if let Some(w) = worker {
@@ -491,6 +512,20 @@ pub fn update(
                 state.stats = seeded.stats;
                 state.reveal_queue.clear();
                 state.recompute_derived();
+
+                state.icon_handles.clear();
+                for row in &state.achievements {
+                    if let Some(ico) = &row.data.icon {
+                        state.icon_handles.insert(
+                            row.data.id.clone(),
+                            iced::widget::image::Handle::from_rgba(
+                                ico.width,
+                                ico.height,
+                                ico.rgba.clone(),
+                            ),
+                        );
+                    }
+                }
             }
             (Task::none(), GameViewEvent::None)
         }

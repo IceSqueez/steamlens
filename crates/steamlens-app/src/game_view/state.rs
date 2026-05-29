@@ -82,6 +82,8 @@ pub struct GameViewState {
 
     pub achievement_grid_scroll_y: f32,
 
+    pub icon_handles: HashMap<String, iced::widget::image::Handle>,
+
     pub derived: DerivedGameView,
 }
 
@@ -116,6 +118,7 @@ impl GameViewState {
             playtime_minutes: None,
             cache_only: false,
             achievement_grid_scroll_y: 0.0,
+            icon_handles: HashMap::new(),
             derived: DerivedGameView::default(),
         }
     }
