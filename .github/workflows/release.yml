@@ -33,6 +33,13 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate SHA256 checksums
+        working-directory: artifacts
+        run: |
+          for f in *; do
+            [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
+          done
+
       - name: Resolve previous tag
         id: prev_tag
         run: |
