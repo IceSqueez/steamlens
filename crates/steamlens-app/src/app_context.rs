@@ -45,6 +45,7 @@ pub struct AppContext {
     pub messaging: MessagingCenter,
     pub cached_entries: HashMap<u32, GameCacheEntry>,
     pub pending_hit_queue: VecDeque<CacheHit>,
+    pub last_hit_recompute_at: Option<Instant>,
     pub steam_root: std::path::PathBuf,
     pub steamid3: u64,
     pub steam_level: Option<u32>,

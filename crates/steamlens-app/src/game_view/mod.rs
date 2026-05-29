@@ -50,6 +50,7 @@ mod tests {
             messaging: MessagingCenter::new(),
             cached_entries: HashMap::new(),
             pending_hit_queue: VecDeque::new(),
+            last_hit_recompute_at: None,
             steam_root: PathBuf::from("/tmp"),
             steamid3: 0,
             user_profile: None,

@@ -466,7 +466,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let hit_drain_sub = if !app.context.pending_hit_queue.is_empty() {
-        iced::time::every(Duration::from_millis(16)).map(|_| Message::DrainHitQueue)
+        iced::time::every(Duration::from_millis(33)).map(|_| Message::DrainHitQueue)
     } else {
         Subscription::none()
     };
@@ -579,6 +579,7 @@ mod tests {
                     messaging: MessagingCenter::new(),
                     cached_entries: HashMap::new(),
                     pending_hit_queue: VecDeque::new(),
+                    last_hit_recompute_at: None,
                     steam_root: PathBuf::from("/tmp"),
                     steamid3: 0,
                     user_profile: None,

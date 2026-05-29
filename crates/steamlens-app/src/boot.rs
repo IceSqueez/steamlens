@@ -29,6 +29,7 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         messaging: MessagingCenter::new(),
         cached_entries: HashMap::new(),
         pending_hit_queue: VecDeque::new(),
+        last_hit_recompute_at: None,
         steam_root: PathBuf::new(),
         steamid3: 0,
         user_profile: None,

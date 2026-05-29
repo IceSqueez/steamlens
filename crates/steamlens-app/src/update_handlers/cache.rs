@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use iced::Task;
 
@@ -58,7 +58,7 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
 }
 
 pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
-    const HITS_PER_TICK: usize = 8;
+    const HITS_PER_TICK: usize = 32;
     let mut touched = false;
     for _ in 0..HITS_PER_TICK {
         let Some(hit) = app.context.pending_hit_queue.pop_front() else {
@@ -81,11 +81,21 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
         touched = true;
     }
     if touched {
-        let pinned = app.context.settings.library.pinned.clone();
-        let pv_state =
-            routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-        pv_state.rebuild_available_genres();
-        pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+        const RECOMPUTE_DEBOUNCE: Duration = Duration::from_millis(250);
+        let now = Instant::now();
+        let queue_empty = app.context.pending_hit_queue.is_empty();
+        let due = app
+            .context
+            .last_hit_recompute_at
+            .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
+        if queue_empty || due {
+            let pinned = app.context.settings.library.pinned.clone();
+            let pv_state =
+                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+            pv_state.rebuild_available_genres();
+            pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+            app.context.last_hit_recompute_at = Some(now);
+        }
     }
     Task::none()
 }
