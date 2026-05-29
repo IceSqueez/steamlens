@@ -218,11 +218,11 @@ pub const LIGHT: ThemePalette = ThemePalette {
     accent_soft: Color::from_rgb8(0xed, 0xe0, 0xfa),
     accent_soft_border: Color::from_rgb8(0xc8, 0xa8, 0xeb),
 
-    rarity_common: Color::from_rgb8(0x40, 0xa0, 0x2b),
-    rarity_uncommon: Color::from_rgb8(0x17, 0x92, 0x99),
+    rarity_common: Color::from_rgb8(0x4c, 0xaf, 0x50),
+    rarity_uncommon: Color::from_rgb8(0x02, 0x84, 0xc7),
     rarity_rare: Color::from_rgb8(0x72, 0x87, 0xfd),
     rarity_mythical: Color::from_rgb8(0xc9, 0x3b, 0x87),
-    rarity_legendary: Color::from_rgb8(0xa8, 0x70, 0x12),
+    rarity_legendary: Color::from_rgb8(0xc8, 0xa1, 0x16),
 
     rarity_common_soft: Color::from_rgb8(0xec, 0xf5, 0xf0),
     rarity_uncommon_soft: Color::from_rgb8(0xe8, 0xf0, 0xf6),
