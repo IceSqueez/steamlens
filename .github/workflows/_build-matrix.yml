@@ -98,7 +98,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          (cd crates/${{ inputs.bin_name }} && cargo wix -p ${{ inputs.bin_name }} --target ${{ matrix.target }} --no-build --nocapture)
+          INSTALL_VERSION=$(echo "${VERSION}" | sed 's/+.*//')
+          (cd crates/${{ inputs.bin_name }} && cargo wix -p ${{ inputs.bin_name }} --target ${{ matrix.target }} --install-version "${INSTALL_VERSION}" --no-build --nocapture)
           MSI=$(ls target/wix/*.msi | head -1)
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.msi"
           mv "$MSI" "$OUT"
