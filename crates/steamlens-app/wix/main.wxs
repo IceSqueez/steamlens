@@ -131,7 +131,7 @@
                 <Shortcut Id='ApplicationStartMenuShortcut'
                           Name='SteamLens'
                           Description='Inspect and modify Steam achievements and stats'
-                          Target='[#exe0]'
+                          Target='[APPLICATIONFOLDER]bin\steamlens-app.exe'
                           WorkingDirectory='APPLICATIONFOLDER'
                           Icon='ProductICO'/>
                 <RemoveFolder Id='RemoveApplicationProgramsFolder' Directory='ApplicationProgramsFolder' On='uninstall'/>
