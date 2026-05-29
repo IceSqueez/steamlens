@@ -62,7 +62,7 @@ pub(super) fn build_tier_stacked_bar(
         let pct = locked_count as f64 / total as f64 * 100.0;
         segments.push(BarSegment {
             weight: locked_count,
-            color: BarColor::Hover,
+            color: BarColor::Locked,
         });
         tier_at.push(None);
         tooltips.push(format!("{locked_count} Locked \u{00B7} {pct:.1}%"));

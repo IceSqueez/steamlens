@@ -29,7 +29,7 @@ pub fn segmented_bar<'a, M: Clone + 'a>(
 #[derive(Debug, Clone, Copy)]
 pub enum BarColor {
     Fixed(Color),
-    Hover,
+    Locked,
     Accent,
 }
 
@@ -37,7 +37,7 @@ impl BarColor {
     pub fn resolve(self, p: &crate::ui::theme::ThemePalette) -> Color {
         match self {
             BarColor::Fixed(c) => c,
-            BarColor::Hover => p.hover,
+            BarColor::Locked => p.text_dim,
             BarColor::Accent => p.accent,
         }
     }

@@ -100,7 +100,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             let pct = locked as f64 / total_for_pct as f64 * 100.0;
             segments.push(BarSegment {
                 weight: locked,
-                color: BarColor::Hover,
+                color: BarColor::Locked,
             });
             tier_at.push(None);
             tooltips.push(format!(
