@@ -41,6 +41,9 @@ winresource = "0.1"
 name = "steamlens-app"
 path = "src/main.rs"
 
+[package.metadata.wix]
+eula = false
+
 [package.metadata.deb]
 name = "steamlens"
 maintainer = "IceSqueez <icesqueez@gmail.com>"
