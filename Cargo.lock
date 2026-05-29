@@ -4176,7 +4176,6 @@ version = "1.0.0-rc.2+build.1"
 dependencies = [
  "iced",
  "image",
- "postcard",
  "reqwest",
  "semver",
  "serde",
