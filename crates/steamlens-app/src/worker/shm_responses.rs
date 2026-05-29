@@ -48,15 +48,21 @@ pub(super) fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerRespo
 
 pub(super) fn shm_response_for_icon(name: String, icon: AchievementIcon) -> WorkerResponse {
     match steamlens_core::write_payload(&icon) {
-        Ok((path, region_bytes)) => WorkerResponse::IconUpdated {
-            name,
-            shm_path: path.to_string_lossy().into_owned(),
-            region_bytes,
-        },
-        Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
-            message: e.to_string(),
-        },
+        Ok((path, region_bytes)) => {
+            tracing::trace!(name = %name, region_bytes, w = icon.width, h = icon.height, "shm_response_for_icon: written");
+            WorkerResponse::IconUpdated {
+                name,
+                shm_path: path.to_string_lossy().into_owned(),
+                region_bytes,
+            }
+        }
+        Err(e) => {
+            tracing::trace!(name = %name, error = %e, "shm_response_for_icon: write_payload failed");
+            WorkerResponse::Error {
+                kind: WorkerErrorKind::Generic,
+                message: e.to_string(),
+            }
+        }
     }
 }
 

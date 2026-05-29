@@ -45,6 +45,7 @@ pub enum GameViewMessage {
         seeded: Box<SeededGameView>,
     },
     AchievementGridScrolled(f32),
+    RetryGlobalPercentages,
 }
 
 #[derive(Debug, Clone)]

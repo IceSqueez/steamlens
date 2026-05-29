@@ -352,7 +352,7 @@ fn host_filter() -> Targets {
     let default_level = std::env::var("STEAMLENS_LOG")
         .ok()
         .and_then(|s| s.parse::<Level>().ok())
-        .unwrap_or(Level::INFO);
+        .unwrap_or(Level::TRACE);
     Targets::new()
         .with_target("steamlens_app", default_level)
         .with_target("steamlens_core", default_level)

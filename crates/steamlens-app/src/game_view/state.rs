@@ -80,6 +80,8 @@ pub struct GameViewState {
 
     pub cache_only: bool,
 
+    pub global_percentages_retries: u8,
+
     pub achievement_grid_scroll_y: f32,
 
     pub icon_handles: HashMap<String, iced::widget::image::Handle>,
@@ -117,6 +119,7 @@ impl GameViewState {
             genre: None,
             playtime_minutes: None,
             cache_only: false,
+            global_percentages_retries: 0,
             achievement_grid_scroll_y: 0.0,
             icon_handles: HashMap::new(),
             derived: DerivedGameView::default(),

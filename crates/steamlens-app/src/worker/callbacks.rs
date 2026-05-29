@@ -156,6 +156,7 @@ pub(super) async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse 
 }
 
 pub(super) async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client: &Client) {
+    let mut icon_count = 0usize;
     for cb in callbacks {
         if let SteamCallback::UserAchievementIconFetched {
             achievement_name,
@@ -164,13 +165,27 @@ pub(super) async fn forward_icon_callbacks(callbacks: Vec<SteamCallback>, client
         } = cb
         {
             if icon_handle == 0 {
+                tracing::trace!(name = %achievement_name, "forward_icon_callbacks: skip handle=0");
                 continue;
             }
-            if let Ok(Some(img)) = client.get_image(icon_handle) {
-                let resp = build_icon_response(achievement_name, img);
-                let _ = write_response(&resp).await;
+            match client.get_image(icon_handle) {
+                Ok(Some(img)) => {
+                    tracing::trace!(name = %achievement_name, handle = icon_handle, w = img.width, h = img.height, "forward_icon_callbacks: fetched");
+                    let resp = build_icon_response(achievement_name, img);
+                    let _ = write_response(&resp).await;
+                    icon_count += 1;
+                }
+                Ok(None) => {
+                    tracing::trace!(name = %achievement_name, handle = icon_handle, "forward_icon_callbacks: get_image returned None");
+                }
+                Err(e) => {
+                    tracing::trace!(name = %achievement_name, handle = icon_handle, error = %e, "forward_icon_callbacks: get_image failed");
+                }
             }
         }
+    }
+    if icon_count > 0 {
+        tracing::trace!(icon_count, "forward_icon_callbacks: batch sent");
     }
 }
 

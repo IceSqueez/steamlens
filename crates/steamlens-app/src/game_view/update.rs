@@ -47,6 +47,13 @@ pub fn handle_steam_reply(
             achievements,
             stats,
         } => {
+            tracing::trace!(
+                app_id = state.app_id,
+                ach_count = achievements.len(),
+                stats_count = stats.len(),
+                "game_view: AchievementsAndStats received"
+            );
+            state.global_percentages_retries = 0;
             let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> =
                 HashMap::new();
             let mut existing_rarity_pct: HashMap<String, f32> = HashMap::new();
@@ -151,6 +158,7 @@ pub fn handle_steam_reply(
             Task::done(GameViewMessage::AchievementsFullyLoaded)
         }
         SteamReply::IconUpdated { name, icon } => {
+            tracing::trace!(name = %name, w = icon.width, h = icon.height, "game_view: IconUpdated received");
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == name) {
                 let handle = iced::widget::image::Handle::from_rgba(
                     icon.width,
@@ -159,13 +167,21 @@ pub fn handle_steam_reply(
                 );
                 state.icon_handles.insert(name.clone(), handle);
                 row.data.icon = Some(icon);
+                tracing::trace!(name = %name, "game_view: IconUpdated applied to row");
             } else {
+                tracing::trace!(name = %name, "game_view: IconUpdated queued to pending_icons");
                 state.pending_icons.insert(name, icon);
             }
             Task::none()
         }
         SteamReply::Disconnected => Task::none(),
         SteamReply::GlobalPercentagesReady(map) => {
+            tracing::trace!(
+                app_id = state.app_id,
+                count = map.len(),
+                "game_view: GlobalPercentagesReady received"
+            );
+            state.global_percentages_retries = 0;
             if state.achievements.is_empty() {
                 state.pending_rarity_percent = Some(map);
                 Task::none()
@@ -180,7 +196,36 @@ pub fn handle_steam_reply(
                 Task::done(GameViewMessage::AchievementsFullyLoaded)
             }
         }
-        SteamReply::GlobalPercentagesFailed => Task::none(),
+        SteamReply::GlobalPercentagesFailed => {
+            const MAX_RETRIES: u8 = 3;
+            state.global_percentages_retries = state.global_percentages_retries.saturating_add(1);
+            tracing::trace!(
+                app_id = state.app_id,
+                attempt = state.global_percentages_retries,
+                max = MAX_RETRIES,
+                "game_view: GlobalPercentagesFailed"
+            );
+            if state.global_percentages_retries <= MAX_RETRIES {
+                let backoff_secs: u64 = match state.global_percentages_retries {
+                    1 => 2,
+                    2 => 5,
+                    _ => 10,
+                };
+                tracing::trace!(backoff_secs, "game_view: scheduling RetryGlobalPercentages");
+                Task::perform(
+                    tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)),
+                    |_| GameViewMessage::RetryGlobalPercentages,
+                )
+            } else {
+                tracing::trace!("game_view: GlobalPercentages exhausted retries, surfacing toast");
+                ctx.messaging.push_toast(
+                    crate::messaging::ToastKind::Error,
+                    "Steam did not return achievement rarity (3 attempts failed). Tier info unavailable.".to_owned(),
+                    None,
+                );
+                Task::none()
+            }
+        }
     }
 }
 
@@ -192,6 +237,32 @@ pub fn update(
     let worker = ctx.worker.as_ref();
     match message {
         GameViewMessage::Noop => (Task::none(), GameViewEvent::None),
+
+        GameViewMessage::RetryGlobalPercentages => {
+            tracing::trace!(
+                app_id = state.app_id,
+                attempt = state.global_percentages_retries,
+                "game_view: dispatching RetryGlobalPercentages"
+            );
+            if let Some(w) = worker {
+                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
+                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
+                match w.dispatch_checked(
+                    SteamRequest::RequestGlobalPercentages,
+                    steam_running,
+                    user_logged_in,
+                    GameViewMessage::Noop,
+                ) {
+                    Ok(t) => (t, GameViewEvent::None),
+                    Err(e) => {
+                        surface_connectivity_error(ctx, e);
+                        (Task::none(), GameViewEvent::None)
+                    }
+                }
+            } else {
+                (Task::none(), GameViewEvent::None)
+            }
+        }
 
         GameViewMessage::AchievementToggled(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
@@ -354,6 +425,7 @@ pub fn update(
             state.stats.clear();
             state.reveal_queue.clear();
             state.icon_handles.clear();
+            state.global_percentages_retries = 0;
             state.recompute_derived();
             let mut tasks: Vec<Task<GameViewMessage>> = Vec::new();
             if let Some(w) = worker {
