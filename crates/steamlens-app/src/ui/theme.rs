@@ -84,7 +84,7 @@ pub const DARK: ThemePalette = ThemePalette {
         error: Color::from_rgb(0.863, 0.392, 0.392),
     },
 
-    tier_locked: Color::from_rgb8(0x3a, 0x36, 0x50),
+    tier_locked: Color::from_rgb8(0x54, 0x4f, 0x6e),
 };
 
 pub const LIGHT: ThemePalette = ThemePalette {
@@ -118,7 +118,7 @@ pub const LIGHT: ThemePalette = ThemePalette {
         error: Color::from_rgb8(0xb9, 0x1c, 0x1c),
     },
 
-    tier_locked: Color::from_rgb8(0xd0, 0xc9, 0xdd),
+    tier_locked: Color::from_rgb8(0xb8, 0xb3, 0xc4),
 };
 
 pub const THEME_NAME_DARK: &str = "SteamLens Dark";
