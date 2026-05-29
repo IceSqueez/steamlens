@@ -34,14 +34,6 @@ static SVG_RESET: LazyLock<svg::Handle> = LazyLock::new(|| {
     )
 });
 
-static SVG_SEARCH: LazyLock<svg::Handle> = LazyLock::new(|| {
-    svg::Handle::from_memory(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#6b6884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>"##
-            .as_bytes()
-            .to_vec(),
-    )
-});
-
 pub fn build_stats_panel<'a>(
     stats: &'a [StatRow],
     search_query: &'a str,
@@ -216,14 +208,10 @@ fn action_button(
 }
 
 fn build_search_input(query: &str) -> Element<'_, GameViewMessage> {
-    let icon = svg(SVG_SEARCH.clone())
-        .width(Length::Fixed(12.0))
-        .height(Length::Fixed(12.0));
-
     let input = text_input("Search stats...", query)
         .on_input(GameViewMessage::StatsSearchChanged)
         .size(12)
-        .padding(Padding::default().left(6).right(8).top(6).bottom(6))
+        .padding(Padding::default().left(10).right(10).top(6).bottom(6))
         .style(|t: &iced::Theme, _status| {
             let p = palette(theme_from_iced(t));
             iced::widget::text_input::Style {
@@ -234,21 +222,19 @@ fn build_search_input(query: &str) -> Element<'_, GameViewMessage> {
                     radius: 0.0.into(),
                 },
                 icon: p.text_muted,
-                placeholder: p.text_dim,
+                placeholder: p.text_muted,
                 value: p.text_primary,
                 selection: Color { a: 0.3, ..p.accent },
             }
         });
 
-    let inner = row![icon, input].spacing(0).align_y(Alignment::Center);
-
-    container(inner)
+    container(input)
         .width(Length::Fill)
-        .padding(Padding::default().left(9).right(2).top(0).bottom(0))
+        .padding(Padding::default().left(0).right(0).top(0).bottom(0))
         .style(|t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             container::Style {
-                background: Some(Background::Color(p.hover)),
+                background: Some(Background::Color(p.control_surface)),
                 border: Border {
                     color: p.border,
                     width: 1.0,
