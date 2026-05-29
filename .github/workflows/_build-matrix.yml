@@ -178,7 +178,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          cargo generate-rpm -p ${{ inputs.bin_name }} --target ${{ matrix.target }}
+          cargo generate-rpm --manifest-path crates/${{ inputs.bin_name }}/Cargo.toml --target ${{ matrix.target }}
           RPM=$(ls target/${{ matrix.target }}/generate-rpm/*.rpm | head -1)
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.rpm"
           mv "$RPM" "$OUT"
