@@ -89,7 +89,6 @@ jobs:
           SRC="target/${{ matrix.target }}/release/${{ inputs.bin_name }}.exe"
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.exe"
           mv "$SRC" "$OUT"
-          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
 
       # ---------- Linux: AppImage with hicolor icon set + top-level icon ----------
       - name: Package Linux AppImage
@@ -143,7 +142,33 @@ jobs:
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.AppImage"
           ARCH=x86_64 ./appimagetool --no-appstream "$APPDIR" "$OUT"
 
-          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
+      # ---------- Linux: .deb (Debian/Ubuntu) ----------
+      - name: Install cargo-deb
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cargo-deb --locked
+
+      - name: Package Linux .deb
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cargo deb -p ${{ inputs.bin_name }} --target ${{ matrix.target }} --no-build --no-strip
+          DEB=$(ls target/${{ matrix.target }}/debian/*.deb | head -1)
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.deb"
+          mv "$DEB" "$OUT"
+
+      # ---------- Linux: .rpm (Fedora/openSUSE) ----------
+      - name: Install cargo-generate-rpm
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cargo-generate-rpm --locked
+
+      - name: Package Linux .rpm
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cargo generate-rpm -p ${{ inputs.bin_name }} --target ${{ matrix.target }}
+          RPM=$(ls target/${{ matrix.target }}/generate-rpm/*.rpm | head -1)
+          OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.rpm"
+          mv "$RPM" "$OUT"
 
       # ---------- macOS: .app bundle wrapped in .dmg ----------
       - name: Package macOS .dmg
@@ -217,11 +242,15 @@ jobs:
           hdiutil create -volname "${APP_NAME}" -srcfolder "$APP_BUNDLE" \
             -ov -format UDZO "$OUT"
 
-          echo "ARTIFACT_PATH=$OUT" >> $GITHUB_ENV
-
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.ARTIFACT_PATH }}
-          path: ${{ env.ARTIFACT_PATH }}
+          name: ${{ inputs.bin_name }}-${{ matrix.asset_name }}
+          path: |
+            ${{ inputs.bin_name }}-*.exe
+            ${{ inputs.bin_name }}-*.AppImage
+            ${{ inputs.bin_name }}-*.deb
+            ${{ inputs.bin_name }}-*.rpm
+            ${{ inputs.bin_name }}-*.dmg
+          if-no-files-found: ignore
           retention-days: ${{ inputs.retention_days == 0 && 3 || inputs.retention_days }}

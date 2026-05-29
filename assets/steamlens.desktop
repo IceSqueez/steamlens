@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SteamLens
+GenericName=Steam Achievement Manager
+Comment=Inspect and modify Steam achievements and stats
+Exec=steamlens-app
+Icon=steamlens
+Categories=Game;Utility;
+Terminal=false
