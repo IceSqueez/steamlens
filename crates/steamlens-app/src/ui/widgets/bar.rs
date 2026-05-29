@@ -37,7 +37,7 @@ impl BarColor {
     pub fn resolve(self, p: &crate::ui::theme::ThemePalette) -> Color {
         match self {
             BarColor::Fixed(c) => c,
-            BarColor::Locked => p.text_dim,
+            BarColor::Locked => p.tier_locked,
             BarColor::Accent => p.accent,
         }
     }

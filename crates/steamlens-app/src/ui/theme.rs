@@ -38,6 +38,8 @@ pub struct ThemePalette {
     pub rarity_mythical_soft: Color,
     pub rarity_legendary_soft: Color,
 
+    pub tier_locked: Color,
+
     pub dot_scanning: Color,
     pub dot_connected: Color,
     pub dot_offline: Color,
@@ -193,6 +195,8 @@ pub const DARK: ThemePalette = ThemePalette {
             },
         },
     },
+
+    tier_locked: Color::from_rgb8(0x3a, 0x36, 0x50),
 };
 
 pub const LIGHT: ThemePalette = ThemePalette {
@@ -250,6 +254,8 @@ pub const LIGHT: ThemePalette = ThemePalette {
             border: Color::from_rgb8(0xb9, 0x1c, 0x1c),
         },
     },
+
+    tier_locked: Color::from_rgb8(0xc0, 0xbb, 0xcc),
 };
 
 pub const THEME_NAME_DARK: &str = "SteamLens Dark";
