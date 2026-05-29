@@ -1,7 +1,56 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-rc.2] - 2026-05-29
+### ⚙️ Miscellaneous Tasks
+- *(ui)* Changed unicode with symbols
+
+### ⚡ Performance
+- *(views)* Cache derived view state, recompute only on input changes
+- *(ipc)* Event-driven worker_rx and progress_rx via Subscription::run_with
+- *(ui)* Consolidate animation timers into vsync-synced window::frames()
+- *(messages)* Box large payloads in ProgressResultReceived and ProbeResult
+- *(ui)* Lazy-wrap hydrated cards
+- *(ui)* Isolate animation phase to overlay stack so cards stay lazy-cached
+- *(ui)* Cache available_genres in ProfileViewState to avoid per-frame allocation
+- *(ui)* Cache status bar counters in DerivedProfileView
+- *(ui)* Wrap DerivedGameView::tier_map in Arc to make clone O(1)
+- *(ui)* Split recompute_derived into visible-only path for filter/search/sort
+- *(ui)* Drop no-op recompute_derived from is_dirty-only toggle sites
+- *(ui)* Borrow top6 slice in ProfileWidgetParams to avoid Vec clone per view
+- *(ui)* Precompute search query lowercase once per grid render
+- *(ui)* Debounce hit-queue recompute to ~4 Hz, drain 32 entries/tick at 30 Hz
+- *(ui)* Cache image::Handle per achievement icon in GameViewState
+
+### 🐛 Bug Fixes
+- *(ui)* Revert capsule/hydrated status bar counters to inline
+- *(ui)* Retry GlobalPercentages on failure with trace instrumentation
+- *(ui)* Retry 5xx and 429 CDN responses with unified attempt counter
+- *(ui)* Rename BarColor::Hover to Locked and resolve to text_dim for contrast
+- *(ui)* Include theme in AchievementCardDeps so cards rebuild on theme switch
+- *(ui)* Add control_surface palette field so header buttons stand out from surface
+- *(ui)* Align stats search styling with global search bar
+
+### 🚀 Features
+- *(view)* Added custom virtualization to render cards only in viewport
+- *(ui)* Add "Unlocked at top" toggle to game view header
+
+### 🚜 Refactor
+- *(workspace)* Use import instead of long usage
+- *(ui)* Consolidate responsive card-grid layout in ui::grid helper
+- *(app)* Split update_handlers monolith into topical sub-modules
+- *(app)* Centralize capsule caches in AppContext
+- *(app)* Update not use blocking send() anymore
+- *(view)* Unified status_bar
+- *(ui)* Move locked bar color to palette for light theme support
+- *(ui)* Replace hardcoded C_RARITY constants with theme-aware palette lookup
+- *(ui)* Swap Uncommon to sky blue to distinguish from Rare lavender
+- *(ui)* Remove dead icon border from icon_glow_style
+
 ## [1.0.0-rc.1] - 2026-05-28
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### ⚡ Performance
 - *(cache)* Parallelize per-game summary reads during classify
 - *(capsule)* Offload JPEG decode to tokio blocking pool for real parallelism
@@ -24,6 +73,7 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 - *(readme)* Clarify intent as collector tool, not cheat utility
 - *(readme)* Polish feature bullets clarity
+- *(release)* Release v1.0.0-rc.1
 
 ### 🚀 Features
 - *(core)* Load library_assets_full hashes from appinfo.vdf at boot
