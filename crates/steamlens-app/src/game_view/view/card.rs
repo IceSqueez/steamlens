@@ -34,6 +34,7 @@ struct AchievementCardDeps {
     search_hash: u64,
     tier: Option<RarityTier>,
     card_w_bits: u32,
+    theme: crate::ui::theme::AppTheme,
 }
 
 impl AchievementCardDeps {
@@ -42,6 +43,7 @@ impl AchievementCardDeps {
         card_w: f32,
         search_query_lower: &str,
         tier: Option<RarityTier>,
+        theme: crate::ui::theme::AppTheme,
     ) -> Self {
         Self {
             id_hash: fnv64(row.data.id.as_bytes()),
@@ -59,6 +61,7 @@ impl AchievementCardDeps {
             search_hash: fnv64(search_query_lower.as_bytes()),
             tier,
             card_w_bits: card_w.to_bits(),
+            theme,
         }
     }
 }
@@ -80,7 +83,7 @@ pub(super) fn achievement_card_widget<'a>(
     app_theme: crate::ui::theme::AppTheme,
     icon_handle: Option<iced::widget::image::Handle>,
 ) -> Element<'a, GameViewMessage> {
-    let deps = AchievementCardDeps::new(row, card_w, &search_query_lower, tier);
+    let deps = AchievementCardDeps::new(row, card_w, &search_query_lower, tier, app_theme);
 
     let entry = row.clone();
     lazy(deps, move |_| {
