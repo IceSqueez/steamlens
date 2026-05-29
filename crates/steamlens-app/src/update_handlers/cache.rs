@@ -84,6 +84,7 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
         let pinned = app.context.settings.library.pinned.clone();
         let pv_state =
             routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+        pv_state.rebuild_available_genres();
         pv_state.recompute_derived(&app.context.cached_entries, &pinned);
     }
     Task::none()

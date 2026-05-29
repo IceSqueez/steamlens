@@ -49,6 +49,7 @@ pub struct ProfileViewState {
     pub hovered_card_tier: Option<(u32, RarityTier)>,
     pub status_filter: GameStatusFilter,
     pub genre_filter: HashSet<String>,
+    pub available_genres: Vec<String>,
     pub grid_scroll_y: f32,
     pub last_scan_completed_at: Option<Instant>,
     pub scan_started_at: Option<Instant>,
@@ -88,6 +89,7 @@ impl ProfileViewState {
             hovered_card_tier: None,
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
+            available_genres: Vec::new(),
             grid_scroll_y: 0.0,
             last_scan_completed_at: None,
             scan_started_at: None,
@@ -152,10 +154,10 @@ impl ProfileViewState {
         .collect()
     }
 
-    pub fn available_genres(&self) -> Vec<String> {
-        let set: std::collections::BTreeSet<String> =
-            self.games.iter().filter_map(|g| g.genre.clone()).collect();
-        set.into_iter().collect()
+    pub(crate) fn rebuild_available_genres(&mut self) {
+        use std::collections::BTreeSet;
+        let set: BTreeSet<String> = self.games.iter().filter_map(|g| g.genre.clone()).collect();
+        self.available_genres = set.into_iter().collect();
     }
 
     pub fn loader_phase(&self, steam_running: Option<bool>) -> LoaderPhase {

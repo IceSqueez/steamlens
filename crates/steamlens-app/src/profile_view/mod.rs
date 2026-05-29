@@ -14,7 +14,7 @@ pub fn header_content<'a>(
     use crate::screen::{SegmentItem, SegmentedControlConfig};
     use types::LibrarySort;
 
-    let genres = state.available_genres();
+    let genres = &state.available_genres;
     let category_filter = if genres.is_empty() {
         None
     } else {
@@ -111,7 +111,7 @@ fn build_profile_status_strip(state: &types::ProfileViewState) -> crate::screen:
 
 fn build_profile_genre_strip<'a>(
     state: &'a types::ProfileViewState,
-    genres: Vec<String>,
+    genres: &'a [String],
 ) -> iced::Element<'a, crate::Message> {
     use crate::ui::genre_color::genre_color;
     use crate::ui::widgets::pill::pill;
@@ -126,18 +126,18 @@ fn build_profile_genre_strip<'a>(
     let neutral = crate::ui::theme::palette(crate::ui::theme::AppTheme::Dark).text_muted;
     let any_selected = !state.genre_filter.is_empty();
     let chips: Vec<iced::Element<'_, crate::Message>> = genres
-        .into_iter()
+        .iter()
         .map(|g| {
-            let tint = genre_color(&g);
+            let tint = genre_color(g);
             let label = text(g.clone()).size(11).color(tint);
-            let is_selected = state.genre_filter.contains(&g);
+            let is_selected = state.genre_filter.contains(g);
             let mut p = pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
                 .reserve_dot_space(true)
                 .selected(is_selected)
                 .on_press(crate::Message::ProfileView(
-                    types::ProfileViewMessage::GenreFilterToggled(g),
+                    types::ProfileViewMessage::GenreFilterToggled(g.clone()),
                 ));
             if !any_selected || is_selected {
                 p = p.with_dot(tint);
@@ -214,6 +214,7 @@ pub fn update(
                     genre: None,
                 })
                 .collect();
+            state.rebuild_available_genres();
             ctx.capsule_handles.clear();
             ctx.capsule_unavailable.clear();
             state.stop_scan();
@@ -398,6 +399,7 @@ pub fn update(
 
         ProfileViewMessage::ProgressResultReceived(result) => {
             let outcome = handle_progress_result(state, ctx, *result);
+            state.rebuild_available_genres();
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             outcome
         }

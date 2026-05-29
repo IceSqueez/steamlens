@@ -52,6 +52,7 @@ mod tests {
             hovered_card_tier: None,
             status_filter: GameStatusFilter::default(),
             genre_filter: HashSet::new(),
+            available_genres: Vec::new(),
             grid_scroll_y: 0.0,
             last_scan_completed_at: None,
             scan_started_at: None,
