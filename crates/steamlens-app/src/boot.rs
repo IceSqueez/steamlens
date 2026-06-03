@@ -1,12 +1,12 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use iced::Task;
 use tokio::sync::mpsc;
 
 use crate::app_context::{
-    AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
-    WorkerState,
+    AnimationState, AppContext, CapsuleStore, ConnectivityState, GameCacheMemory, SteamSnapshot,
+    UserState, WorkerState,
 };
 use crate::cache;
 use crate::messaging::MessagingCenter;
@@ -31,9 +31,7 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         settings: loaded_settings,
         settings_dirty_since: None,
         messaging: MessagingCenter::new(),
-        cached_entries: HashMap::new(),
-        pending_hit_queue: VecDeque::new(),
-        last_hit_recompute_at: None,
+        game_cache: GameCacheMemory::default(),
         user: UserState::default(),
         connectivity: ConnectivityState::default(),
         no_ach_cache: cache::load_no_achievements_cache_blocking(),

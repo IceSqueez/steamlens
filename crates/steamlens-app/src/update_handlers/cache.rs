@@ -24,7 +24,7 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
     } = result;
 
     let hit_count = hits.len();
-    app.context.pending_hit_queue.extend(hits);
+    app.context.game_cache.pending_hits.extend(hits);
 
     let steam_off = app.context.connectivity.steam_running == Some(false);
 
@@ -61,7 +61,7 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
     const HITS_PER_TICK: usize = 32;
     let mut touched = false;
     for _ in 0..HITS_PER_TICK {
-        let Some(hit) = app.context.pending_hit_queue.pop_front() else {
+        let Some(hit) = app.context.game_cache.pending_hits.pop_front() else {
             break;
         };
         let mut entry = hit.entry;
@@ -77,24 +77,25 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
             });
             game.genre = entry.genre.clone();
         }
-        app.context.cached_entries.insert(hit.app_id, entry);
+        app.context.game_cache.entries.insert(hit.app_id, entry);
         touched = true;
     }
     if touched {
         const RECOMPUTE_DEBOUNCE: Duration = Duration::from_millis(250);
         let now = Instant::now();
-        let queue_empty = app.context.pending_hit_queue.is_empty();
+        let queue_empty = app.context.game_cache.pending_hits.is_empty();
         let due = app
             .context
-            .last_hit_recompute_at
+            .game_cache
+            .last_recompute_at
             .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
         if queue_empty || due {
             let pinned = app.context.settings.library.pinned.clone();
             let pv_state =
                 routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             pv_state.rebuild_available_genres();
-            pv_state.recompute_derived(&app.context.cached_entries, &pinned);
-            app.context.last_hit_recompute_at = Some(now);
+            pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
+            app.context.game_cache.last_recompute_at = Some(now);
         }
     }
     Task::none()
@@ -158,7 +159,8 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
 
     let genre = app
         .context
-        .cached_entries
+        .game_cache
+        .entries
         .get(&app_id)
         .and_then(|e| e.genre.clone());
 
@@ -189,7 +191,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         playtime_minutes,
     };
 
-    if let Some(existing) = app.context.cached_entries.get(&app_id)
+    if let Some(existing) = app.context.game_cache.entries.get(&app_id)
         && existing.progress.earned == summary.progress.earned
         && existing.progress.total == summary.progress.total
         && existing.tier_breakdown == summary.tier_breakdown
@@ -205,11 +207,12 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         app_id,
         &app.context.steam.app_state,
     );
-    if let Some(existing) = app.context.cached_entries.get(&app_id) {
+    if let Some(existing) = app.context.game_cache.entries.get(&app_id) {
         cache::store::merge_preserved_fields(&mut full_entry, existing);
     }
     app.context
-        .cached_entries
+        .game_cache
+        .entries
         .insert(app_id, full_entry.clone());
 
     let pinned = app.context.settings.library.pinned.clone();
@@ -220,7 +223,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         entry.genre = summary.genre.clone();
         entry.progress = Some(crate::progress_scan::ProgressData { earned, total });
     }
-    pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+    pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
 
     let Screen::GameView(gv_state) = &app.screen else {
         return Task::none();
@@ -268,11 +271,12 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
 pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<Message> {
     let name = app
         .context
-        .cached_entries
+        .game_cache
+        .entries
         .get(&app_id)
         .map(|e| e.name.clone())
         .unwrap_or_else(|| format!("App {app_id}"));
-    app.context.cached_entries.remove(&app_id);
+    app.context.game_cache.entries.remove(&app_id);
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
     let pinned = app.context.settings.library.pinned.clone();
@@ -295,7 +299,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
     if steam_on {
         pv_state.start_scan(vec![app_id]);
     }
-    pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+    pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
 
     cache::commands::invalidate_game_cache(steamid3, app_id, name)
 }
@@ -428,6 +432,6 @@ pub(crate) fn handle_offline_loaded(
     } else {
         game_cache_builder::spawn_seed_task(app_id, full.clone())
     };
-    app.context.cached_entries.insert(app_id, full);
+    app.context.game_cache.entries.insert(app_id, full);
     seed_task
 }

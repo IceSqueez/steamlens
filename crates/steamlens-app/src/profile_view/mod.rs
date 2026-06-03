@@ -219,7 +219,7 @@ pub fn update(
             ctx.capsules.unavailable.clear();
             state.stop_scan();
             state.phase = ProfileViewPhase::Loaded;
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
 
             let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
             (
@@ -232,14 +232,14 @@ pub fn update(
 
         ProfileViewMessage::SearchChanged(query) => {
             state.search = query;
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::SortChanged(sort) => {
             ctx.update_settings(|s| s.library.sort = sort);
             state.sort = sort;
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -318,7 +318,7 @@ pub fn update(
         } => {
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
                 entry.progress = Some(ProgressData { earned, total });
-                state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+                state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             }
             (Task::none(), ProfileEvent::None)
         }
@@ -338,7 +338,7 @@ pub fn update(
             state.scan_target_count = 0;
             state.last_scan_completed_at = Some(now);
             state.stop_scan();
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -400,13 +400,13 @@ pub fn update(
         ProfileViewMessage::ProgressResultReceived(result) => {
             let outcome = handle_progress_result(state, ctx, *result);
             state.rebuild_available_genres();
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             outcome
         }
 
         ProfileViewMessage::StatusFilterChanged(filter) => {
             state.status_filter = filter;
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -416,13 +416,13 @@ pub fn update(
             } else {
                 state.genre_filter.insert(genre);
             }
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
         ProfileViewMessage::GenreFilterCleared => {
             state.genre_filter.clear();
-            state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
+            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
 
@@ -461,7 +461,7 @@ fn handle_progress_result(
             .find(|g| g.app_id == scan_app_id)
             .map(|g| g.change_number);
         state.games.retain(|g| g.app_id != scan_app_id);
-        ctx.cached_entries.remove(&scan_app_id);
+        ctx.game_cache.entries.remove(&scan_app_id);
         let no_ach_entries = if let Some(cn) = change_number {
             ctx.no_ach_cache.insert(scan_app_id, cn);
             vec![(scan_app_id, cn)]
@@ -527,7 +527,7 @@ fn handle_progress_result(
         playtime_minutes: entry.playtime_minutes,
     };
 
-    ctx.cached_entries.insert(scan_app_id, entry.clone());
+    ctx.game_cache.entries.insert(scan_app_id, entry.clone());
 
     (
         progress_task,

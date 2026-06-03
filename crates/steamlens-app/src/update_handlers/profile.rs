@@ -64,7 +64,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             tasks.push(cache::commands::write_library_cache(steamid3, cached));
         }
         pv_state.recompute_derived(
-            &app.context.cached_entries,
+            &app.context.game_cache.entries,
             &app.context.settings.library.pinned,
         );
 
@@ -76,7 +76,8 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             } else {
                 let name = app
                     .context
-                    .cached_entries
+                    .game_cache
+                    .entries
                     .get(&app_id)
                     .map(|e| e.name.clone())
                     .filter(|n| !n.is_empty())
@@ -117,7 +118,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             let pinned = app.context.settings.library.pinned.clone();
             let pv_state =
                 routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-            pv_state.recompute_derived(&app.context.cached_entries, &pinned);
+            pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
             extra
         }
         ProfileEvent::DrainedProgress {

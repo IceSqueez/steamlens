@@ -29,13 +29,12 @@ pub fn subscription(_state: &GameViewState) -> iced::Subscription<GameViewMessag
 mod tests {
     use super::*;
     use crate::app_context::{
-        AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
-        WorkerState,
+        AnimationState, AppContext, CapsuleStore, ConnectivityState, GameCacheMemory,
+        SteamSnapshot, UserState, WorkerState,
     };
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
-    use std::collections::{HashMap, VecDeque};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use steamlens_core::AchievementIcon;
@@ -53,9 +52,7 @@ mod tests {
             settings: Settings::default(),
             settings_dirty_since: None,
             messaging: MessagingCenter::new(),
-            cached_entries: HashMap::new(),
-            pending_hit_queue: VecDeque::new(),
-            last_hit_recompute_at: None,
+            game_cache: GameCacheMemory::default(),
             user: UserState {
                 steam_root: PathBuf::from("/tmp"),
                 ..UserState::default()

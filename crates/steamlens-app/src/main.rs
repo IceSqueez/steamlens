@@ -294,7 +294,7 @@ fn view(app: &App) -> Element<'_, Message> {
             let props = profile_view::ProfileViewProps {
                 user_profile: app.context.user.profile.as_ref(),
                 avatar_handle: app.context.user.avatar_handle.as_ref(),
-                cached_entries: &app.context.cached_entries,
+                cached_entries: &app.context.game_cache.entries,
                 capsules: &app.context.capsules,
                 skeleton_phase,
                 pinned: &app.context.settings.library.pinned,
@@ -400,7 +400,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let hit_drain_sub = if !app.context.pending_hit_queue.is_empty() {
+    let hit_drain_sub = if !app.context.game_cache.pending_hits.is_empty() {
         iced::time::every(Duration::from_millis(33)).map(|_| Message::DrainHitQueue)
     } else {
         Subscription::none()
@@ -493,12 +493,12 @@ mod tests {
     use super::*;
     use crate::app_context::AnimationState;
     use crate::app_context::{
-        CapsuleStore, ConnectivityState, SteamSnapshot, UserState, WorkerState,
+        CapsuleStore, ConnectivityState, GameCacheMemory, SteamSnapshot, UserState, WorkerState,
     };
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
-    use std::collections::{HashSet, VecDeque};
+    use std::collections::HashSet;
     use std::path::PathBuf;
     use std::sync::Mutex;
     use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
@@ -517,9 +517,7 @@ mod tests {
                     settings: Settings::default(),
                     settings_dirty_since: None,
                     messaging: MessagingCenter::new(),
-                    cached_entries: HashMap::new(),
-                    pending_hit_queue: VecDeque::new(),
-                    last_hit_recompute_at: None,
+                    game_cache: GameCacheMemory::default(),
                     user: UserState {
                         steam_root: PathBuf::from("/tmp"),
                         ..UserState::default()
@@ -1601,7 +1599,7 @@ mod tests {
         );
 
         assert!(
-            app.context.cached_entries.contains_key(&app_id),
+            app.context.game_cache.entries.contains_key(&app_id),
             "successful scan must insert into cached_entries"
         );
         if let Screen::ProfileView(pv) = &app.screen {
@@ -1663,7 +1661,7 @@ mod tests {
             panic!("expected ProfileView screen");
         }
         assert!(
-            !app.context.cached_entries.contains_key(&app_id),
+            !app.context.game_cache.entries.contains_key(&app_id),
             "empty-achievements scan must drop any cached_entries for the app"
         );
     }
@@ -1708,7 +1706,7 @@ mod tests {
             screen: Screen::ProfileView(Box::new(pv_state)),
             ..App::default()
         };
-        app.context.cached_entries.insert(
+        app.context.game_cache.entries.insert(
             app_id,
             cache::GameCacheEntry {
                 schema_version: cache::CURRENT_SCHEMA_VERSION,
@@ -1741,7 +1739,7 @@ mod tests {
             "RequestOpenGame must respawn worker for the new app"
         );
         assert!(
-            app.context.cached_entries.contains_key(&app_id),
+            app.context.game_cache.entries.contains_key(&app_id),
             "cached entry must survive RequestOpenGame"
         );
 
@@ -1760,7 +1758,7 @@ mod tests {
             "RequestGoBack from GameView must restore ProfileView screen"
         );
         assert!(
-            app.context.cached_entries.contains_key(&app_id),
+            app.context.game_cache.entries.contains_key(&app_id),
             "cached entry must survive GoBack (overwritten with fresh game-view snapshot)"
         );
     }

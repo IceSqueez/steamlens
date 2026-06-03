@@ -50,6 +50,13 @@ pub struct WorkerState {
 }
 
 #[derive(Default)]
+pub struct GameCacheMemory {
+    pub entries: HashMap<u32, GameCacheEntry>,
+    pub pending_hits: VecDeque<CacheHit>,
+    pub last_recompute_at: Option<Instant>,
+}
+
+#[derive(Default)]
 pub struct CapsuleStore {
     pub handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
     pub unavailable: HashSet<(u32, CapsuleSize)>,
@@ -67,9 +74,7 @@ pub struct AppContext {
     pub settings: Settings,
     pub settings_dirty_since: Option<Instant>,
     pub messaging: MessagingCenter,
-    pub cached_entries: HashMap<u32, GameCacheEntry>,
-    pub pending_hit_queue: VecDeque<CacheHit>,
-    pub last_hit_recompute_at: Option<Instant>,
+    pub game_cache: GameCacheMemory,
     pub user: UserState,
     pub connectivity: ConnectivityState,
     pub no_ach_cache: cache::NoAchievementsCache,
