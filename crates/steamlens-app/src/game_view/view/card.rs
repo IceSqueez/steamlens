@@ -9,7 +9,7 @@ use super::grid::{
 };
 use super::{C_MUTED, dracula_border_radius, tier_color};
 use crate::game_view::GameViewMessage;
-use crate::game_view::types::{AchievementRow, RarityTier};
+use crate::game_view::types::{AchievementRow, RarityTier, RowStatus};
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
@@ -355,13 +355,12 @@ fn render_achievement_card(
         .align_y(Alignment::Start)
         .padding(Padding::from([8u16, 8]));
 
-    let badge_text = row.status_label();
-    let is_locked_badge = badge_text == "Locked";
-    let fixed_badge_color: Option<Color> = match badge_text {
-        "Protected" => Some(p.severity.warning),
-        "Pending" => Some(C_YELLOW),
-        "Unlocked" => Some(p.rarity_common),
-        _ => None,
+    let status = row.status();
+    let fixed_badge_color: Option<Color> = match status {
+        RowStatus::Protected => Some(p.severity.warning),
+        RowStatus::Pending => Some(C_YELLOW),
+        RowStatus::Unlocked => Some(p.rarity_common),
+        RowStatus::Hidden | RowStatus::Locked => None,
     };
 
     let badge = if let Some(badge_color) = fixed_badge_color {
@@ -370,21 +369,19 @@ fn render_achievement_card(
             ..badge_color
         };
         pill(
-            text(badge_text)
+            text(status.label())
                 .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                 .color(badge_text_color),
             badge_color,
         )
     } else {
-        let locked_text =
-            text(badge_text)
-                .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .style(move |_t: &iced::Theme| iced::widget::text::Style {
-                    color: Some(C_LOCKED_DESC),
-                });
+        let locked_text = text(status.label())
+            .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
+            .style(move |_t: &iced::Theme| iced::widget::text::Style {
+                color: Some(C_LOCKED_DESC),
+            });
         pill(locked_text, C_LOCKED_DESC)
     };
-    let _ = is_locked_badge;
 
     let rarity_badge: Option<Element<'static, GameViewMessage>> = if spoiler_hidden {
         None

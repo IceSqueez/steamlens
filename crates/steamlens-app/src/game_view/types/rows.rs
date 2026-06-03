@@ -36,17 +36,38 @@ impl AchievementRow {
         self.data.is_hidden && !self.data.is_achieved && !self.revealed
     }
 
-    pub fn status_label(&self) -> &'static str {
+    pub fn status(&self) -> RowStatus {
         if self.data.permission != 0 {
-            "Protected"
+            RowStatus::Protected
         } else if self.is_dirty {
-            "Pending"
+            RowStatus::Pending
         } else if self.is_spoiler_hidden() {
-            "Hidden"
+            RowStatus::Hidden
         } else if self.effective_achieved() {
-            "Unlocked"
+            RowStatus::Unlocked
         } else {
-            "Locked"
+            RowStatus::Locked
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowStatus {
+    Protected,
+    Pending,
+    Hidden,
+    Unlocked,
+    Locked,
+}
+
+impl RowStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            RowStatus::Protected => "Protected",
+            RowStatus::Pending => "Pending",
+            RowStatus::Hidden => "Hidden",
+            RowStatus::Unlocked => "Unlocked",
+            RowStatus::Locked => "Locked",
         }
     }
 }
@@ -147,55 +168,55 @@ mod tests {
     }
 
     #[test]
-    fn status_label_protected_overrides_all() {
+    fn status_protected_overrides_all() {
         let row = make_row(false, false, false, true, 1);
-        assert_eq!(row.status_label(), "Protected");
+        assert_eq!(row.status(), RowStatus::Protected);
     }
 
     #[test]
-    fn status_label_pending_overrides_hidden() {
+    fn status_pending_overrides_hidden() {
         let row = make_row(true, true, false, true, 0);
         assert_eq!(
-            row.status_label(),
-            "Pending",
+            row.status(),
+            RowStatus::Pending,
             "dirty wins over Hidden when achievement was already unlocked"
         );
     }
 
     #[test]
-    fn status_label_pending_on_hidden_spoiler() {
+    fn status_pending_on_hidden_spoiler() {
         let row = make_row(true, false, false, true, 0);
         assert_eq!(
-            row.status_label(),
-            "Pending",
+            row.status(),
+            RowStatus::Pending,
             "dirty wins over Hidden even on spoiler card so progress is visible"
         );
     }
 
     #[test]
-    fn status_label_hidden_when_clean_and_secret() {
+    fn status_hidden_when_clean_and_secret() {
         let row = make_row(true, false, false, false, 0);
-        assert_eq!(row.status_label(), "Hidden");
+        assert_eq!(row.status(), RowStatus::Hidden);
     }
 
     #[test]
-    fn status_label_unlocked_persisted() {
+    fn status_unlocked_persisted() {
         let row = make_row(false, true, false, false, 0);
-        assert_eq!(row.status_label(), "Unlocked");
+        assert_eq!(row.status(), RowStatus::Unlocked);
     }
 
     #[test]
-    fn status_label_locked_default() {
+    fn status_locked_default() {
         let row = make_row(false, false, false, false, 0);
-        assert_eq!(row.status_label(), "Locked");
+        assert_eq!(row.status(), RowStatus::Locked);
     }
 
     #[test]
-    fn status_label_unlocked_after_revealed_secret() {
+    fn status_unlocked_after_revealed_secret() {
         let row = make_row(true, true, false, false, 0);
         assert_eq!(
-            row.status_label(),
-            "Unlocked",
+            row.status(),
+            RowStatus::Unlocked,
             "secret naturally revealed by being earned shows Unlocked"
         );
     }

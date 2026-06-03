@@ -58,13 +58,13 @@ pub fn header_content<'a>(
 fn build_achievement_status_strip(state: &GameViewState) -> crate::screen::FilterStrip<'_> {
     use types::AchievementFilter;
     let buttons = [
-        (AchievementFilter::All, "All"),
-        (AchievementFilter::Unlocked, "Unlocked"),
-        (AchievementFilter::Locked, "Locked"),
+        AchievementFilter::All,
+        AchievementFilter::Unlocked,
+        AchievementFilter::Locked,
     ]
     .into_iter()
-    .map(|(f, label)| crate::screen::FilterButton {
-        label: Cow::Borrowed(label),
+    .map(|f| crate::screen::FilterButton {
+        label: Cow::Borrowed(f.label()),
         selected: state.filter == f,
         on_press: crate::Message::GameView(GameViewMessage::FilterChanged(f)),
     })
