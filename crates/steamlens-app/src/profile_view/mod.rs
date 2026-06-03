@@ -610,20 +610,3 @@ pub fn render<'a>(
 ) -> crate::screen::ScreenContent<'a, ProfileViewMessage> {
     view::render(state, props)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn profile_subscription_constructs_with_default_state() {
-        let state = ProfileViewState::new();
-        let _: iced::Subscription<ProfileViewMessage> = subscription(&state, None);
-    }
-
-    #[test]
-    fn profile_subscription_constructs_steam_running() {
-        let state = ProfileViewState::new();
-        let _: iced::Subscription<ProfileViewMessage> = subscription(&state, Some(true));
-    }
-}

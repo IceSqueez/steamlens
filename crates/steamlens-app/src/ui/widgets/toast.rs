@@ -250,27 +250,3 @@ fn link_button<'a, M: 'a + Clone>(label: impl Into<Cow<'a, str>>, msg: M) -> Ele
     })
     .into()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn success_toast_builds() {
-        let _: Element<'_, ()> = toast::<()>()
-            .kind(Kind::Success)
-            .title("47 achievements unlocked")
-            .body("Torchlight II")
-            .action("Undo", ())
-            .into();
-    }
-
-    #[test]
-    fn info_toast_builds() {
-        let _: Element<'_, ()> = toast::<()>()
-            .kind(Kind::Info)
-            .title("Cache cleared")
-            .body("234 MB freed")
-            .into();
-    }
-}

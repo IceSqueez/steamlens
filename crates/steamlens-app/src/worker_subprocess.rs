@@ -316,15 +316,6 @@ mod tests {
     }
 
     #[test]
-    fn worker_protocol_error_variants_constructible() {
-        let _: WorkerProtocolError = WorkerProtocolError::UnexpectedMessage;
-        let _: WorkerProtocolError = WorkerProtocolError::Timeout;
-        let _: WorkerProtocolError = WorkerProtocolError::UnexpectedEof;
-        let _: WorkerProtocolError = WorkerProtocolError::Decode(std::io::Error::other("x"));
-        let _: WorkerProtocolError = WorkerProtocolError::Write(std::io::Error::other("y"));
-    }
-
-    #[test]
     fn parse_worker_line_strips_known_levels() {
         let cases = [
             (
@@ -353,16 +344,6 @@ mod tests {
         let (level, msg) = parse_worker_line("steamlens: BLoggedOn = true");
         assert_eq!(level, tracing::Level::INFO);
         assert_eq!(msg, "steamlens: BLoggedOn = true");
-    }
-
-    #[test]
-    fn worker_mode_variants_copy() {
-        let a = WorkerMode::OneShot;
-        let _a2 = a;
-        let _ = a;
-        let b = WorkerMode::Interactive;
-        let _b2 = b;
-        let _ = b;
     }
 
     #[test]

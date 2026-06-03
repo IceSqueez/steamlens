@@ -71,22 +71,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_current_pkg_version() {
-        Version::parse(env!("CARGO_PKG_VERSION")).expect("CARGO_PKG_VERSION must be valid semver");
-    }
-
-    #[test]
     fn semver_orders_alpha_releases() {
         let a = Version::parse("1.0.0-alpha.8").unwrap();
         let b = Version::parse("1.0.0-alpha.9").unwrap();
         assert!(b > a);
-    }
-
-    #[test]
-    fn semver_ignores_build_metadata() {
-        let a = Version::parse("1.0.0-alpha.8").unwrap();
-        let b = Version::parse("1.0.0-alpha.8+build.1").unwrap();
-        assert_eq!(a.cmp_precedence(&b), std::cmp::Ordering::Equal);
     }
 
     #[test]

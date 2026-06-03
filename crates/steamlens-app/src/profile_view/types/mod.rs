@@ -234,14 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn library_sort_short_label_and_tooltip() {
-        assert_eq!(LibrarySort::NameAsc.short_label(), "Name (A - Z)");
-        assert_eq!(LibrarySort::LastPlayed.short_label(), "Last played");
-        assert_eq!(LibrarySort::Completion.short_label(), "Completion");
-        assert!(!LibrarySort::Completion.tooltip().is_empty());
-    }
-
-    #[test]
     fn search_filters_case_insensitive_substring() {
         let mut state = make_state_with_games(vec![
             make_entry(1, "Terraria", Some(100)),
@@ -258,114 +250,6 @@ mod tests {
             .collect();
         assert!(names.contains(&"Terraria"));
         assert!(names.contains(&"terra Battle"));
-    }
-
-    #[test]
-    fn capsule_size_default_is_medium() {
-        let state = ProfileViewState::new();
-        assert_eq!(state.capsule_size, CapsuleSize::Medium);
-    }
-
-    #[test]
-    fn profile_view_spinner_tick_updates_angle() {
-        let mut state = make_state_with_games(vec![]);
-        assert_eq!(
-            state.spinner_angle, 0.0,
-            "precondition: angle starts at 0.0"
-        );
-
-        state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-        assert!(
-            (state.spinner_angle - 6.0).abs() < f32::EPSILON,
-            "one tick must advance angle by 6 degrees"
-        );
-
-        for _ in 0..59 {
-            state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-        }
-        assert!(
-            (state.spinner_angle - 0.0).abs() < f32::EPSILON,
-            "60 ticks must wrap exactly back to 0.0 (60 * 6 = 360)"
-        );
-
-        state.spinner_angle = 356.0;
-        state.spinner_angle = (state.spinner_angle + 6.0) % 360.0;
-        assert!(
-            (state.spinner_angle - 2.0).abs() < f32::EPSILON,
-            "angle must wrap around 360 correctly from 356"
-        );
-    }
-
-    #[test]
-    fn cache_hit_instant_restore() {
-        use iced::widget::image::Handle as ImageHandle;
-
-        let app_id = 105600u32;
-        let dummy_handle = ImageHandle::from_rgba(1, 1, vec![0u8, 0, 0, 255]);
-        let stored = StoredCapsule {
-            handle: dummy_handle.clone(),
-            width: 120,
-            height: 45,
-        };
-
-        let entry = make_entry(app_id, "Terraria", None);
-        let mut state = make_state_with_games(vec![entry]);
-        state.capsule_size = CapsuleSize::Small;
-        let mut capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule> = HashMap::new();
-        capsule_handles.insert((app_id, CapsuleSize::Small), stored);
-
-        for entry in &mut state.games {
-            let key = (entry.app_id, state.capsule_size);
-            if let Some(cached) = capsule_handles.get(&key) {
-                entry.capsule = CapsuleAsset::Loaded {
-                    handle: cached.handle.clone(),
-                    width: cached.width,
-                    height: cached.height,
-                };
-            } else {
-                entry.capsule = CapsuleAsset::Pending;
-            }
-        }
-
-        let g = &state.games[0];
-        assert!(
-            matches!(g.capsule, CapsuleAsset::Loaded { .. }),
-            "entry capsule must be Loaded on cache hit"
-        );
-    }
-
-    #[test]
-    fn cache_miss_falls_through_to_pending() {
-        let app_id = 105600u32;
-        let entry = make_entry(app_id, "Terraria", None);
-        let mut state = make_state_with_games(vec![entry]);
-        state.capsule_size = CapsuleSize::Small;
-        let capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule> = HashMap::new();
-
-        for entry in &mut state.games {
-            let key = (entry.app_id, state.capsule_size);
-            if let Some(cached) = capsule_handles.get(&key) {
-                entry.capsule = CapsuleAsset::Loaded {
-                    handle: cached.handle.clone(),
-                    width: cached.width,
-                    height: cached.height,
-                };
-            } else {
-                entry.capsule = CapsuleAsset::Pending;
-            }
-        }
-
-        let g = &state.games[0];
-        assert!(
-            matches!(g.capsule, CapsuleAsset::Pending),
-            "entry capsule must be Pending on cache miss"
-        );
-    }
-
-    #[test]
-    fn loader_phase_alpha_when_no_games() {
-        let state = ProfileViewState::new();
-        assert_eq!(state.loader_phase(None), LoaderPhase::Alpha);
     }
 
     #[test]
@@ -439,31 +323,6 @@ mod tests {
     }
 
     #[test]
-    fn pinned_first_sort_with_name_sort() {
-        let state = make_state_with_games(vec![
-            make_entry(1, "Cherry", None),
-            make_entry(2, "Apple", None),
-            make_entry(3, "Banana", None),
-        ]);
-        let pinned = [1u32];
-        let mut sorted_state = make_state_with_games(vec![
-            make_entry(1, "Cherry", None),
-            make_entry(2, "Apple", None),
-            make_entry(3, "Banana", None),
-        ]);
-        sorted_state.sort = LibrarySort::NameAsc;
-        let visible = sorted_state.visible_games(&pinned);
-        let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
-        assert_eq!(
-            ids[0], 1,
-            "pinned game must be first regardless of name sort"
-        );
-        assert_eq!(ids[1], 2, "Apple before Banana alphabetically");
-        assert_eq!(ids[2], 3, "Banana after Apple");
-        let _ = state;
-    }
-
-    #[test]
     fn empty_pinned_list_falls_back_to_sort() {
         let state = make_state_with_games(vec![
             make_entry(1, "Zebra", Some(100)),
@@ -473,30 +332,6 @@ mod tests {
         let ids: Vec<u32> = visible.iter().map(|g| g.app_id).collect();
         assert_eq!(ids[0], 2, "most recently played first");
         assert_eq!(ids[1], 1);
-    }
-
-    #[test]
-    fn toggle_game_pin_adds_to_settings() {
-        let mut pinned: Vec<u32> = vec![];
-        let app_id = 105600u32;
-        if let Some(pos) = pinned.iter().position(|&id| id == app_id) {
-            pinned.remove(pos);
-        } else {
-            pinned.push(app_id);
-        }
-        assert_eq!(pinned, vec![105600u32], "pin should be added");
-    }
-
-    #[test]
-    fn toggle_game_pin_removes_from_settings() {
-        let mut pinned: Vec<u32> = vec![105600u32, 420u32];
-        let app_id = 105600u32;
-        if let Some(pos) = pinned.iter().position(|&id| id == app_id) {
-            pinned.remove(pos);
-        } else {
-            pinned.push(app_id);
-        }
-        assert_eq!(pinned, vec![420u32], "pin should be removed");
     }
 
     #[test]

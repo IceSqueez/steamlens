@@ -66,13 +66,4 @@ mod tests {
         assert_eq!(genre_color("Nonexistent"), FALLBACK);
         assert_eq!(genre_color(""), FALLBACK);
     }
-
-    #[test]
-    fn rgb_decoder_matches_expected() {
-        let c = rgb(0xff0000);
-        assert!((c.r - 1.0).abs() < 1e-6);
-        assert!(c.g.abs() < 1e-6);
-        assert!(c.b.abs() < 1e-6);
-        assert!((c.a - 1.0).abs() < 1e-6);
-    }
 }

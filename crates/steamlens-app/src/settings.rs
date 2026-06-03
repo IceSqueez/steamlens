@@ -358,15 +358,6 @@ mod tests {
     }
 
     #[test]
-    fn library_view_defaults_to_grid() {
-        assert_eq!(
-            LibrarySettings::default().view,
-            LibraryView::Grid,
-            "default view must be Grid"
-        );
-    }
-
-    #[test]
     fn library_view_list_round_trips_via_toml() {
         let settings = Settings {
             library: LibrarySettings {

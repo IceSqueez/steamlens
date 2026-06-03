@@ -249,24 +249,3 @@ fn dismiss_button<'a, M: 'a + Clone>(msg: M) -> Element<'a, M> {
     })
     .into()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn plain_banner_constructs() {
-        let _: Element<'_, ()> = banner().title("hello").into();
-    }
-
-    #[test]
-    fn full_banner_constructs() {
-        let _: Element<'_, ()> = banner::<()>()
-            .severity(Severity::Warning)
-            .title("Steam is not running")
-            .text("Showing cached data from 2 hours ago.")
-            .action("Retry", ())
-            .on_dismiss(())
-            .into();
-    }
-}

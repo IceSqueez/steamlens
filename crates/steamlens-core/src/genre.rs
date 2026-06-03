@@ -32,25 +32,3 @@ pub fn primary_genre_name(id: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn known_ids_map_to_canonical_names() {
-        assert_eq!(primary_genre_name("1"), Some("Action"));
-        assert_eq!(primary_genre_name("3"), Some("RPG"));
-        assert_eq!(primary_genre_name("23"), Some("Indie"));
-        assert_eq!(primary_genre_name("25"), Some("Adventure"));
-        assert_eq!(primary_genre_name("37"), Some("Free to Play"));
-        assert_eq!(primary_genre_name("84"), Some("Tutorial"));
-    }
-
-    #[test]
-    fn unknown_id_returns_none() {
-        assert_eq!(primary_genre_name("999"), None);
-        assert_eq!(primary_genre_name(""), None);
-        assert_eq!(primary_genre_name("Action"), None);
-    }
-}

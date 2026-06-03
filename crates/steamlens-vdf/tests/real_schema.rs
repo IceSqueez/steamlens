@@ -1,7 +1,5 @@
 use steamlens_vdf::Value;
 
-// Hand-built bytes shaped like UserGameStatsSchema_<appid>.bin:
-// 325180 -> { stats -> { "1" -> { bits -> {}, type = "ACHIEVEMENTS" } }, version = i32(6) }
 #[rustfmt::skip]
 static SCHEMA: &[u8] = &[
     0x00, b'3', b'2', b'5', b'1', b'8', b'0', 0x00,

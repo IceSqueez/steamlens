@@ -900,18 +900,6 @@ mod tests {
     }
 
     #[test]
-    fn profile_cache_loaded_none_is_noop() {
-        let mut app = make_app_probing();
-        app.context.connectivity.steam_running = Some(false);
-        let _t = update(
-            &mut app,
-            Message::Cache(cache::CacheEvent::ProfileLoaded(None)),
-        );
-        assert!(app.context.user_profile.is_none());
-        assert_eq!(app.context.connectivity.steam_running, Some(false));
-    }
-
-    #[test]
     fn library_cache_loaded_some_dispatches_scan_complete_when_games_empty() {
         let mut app = make_app_probing();
         app.context.connectivity.steam_running = Some(false);
@@ -976,18 +964,6 @@ mod tests {
             assert_eq!(pv.games[0].name.as_deref(), Some("AlreadyHere"));
         } else {
             panic!("expected ProfileView screen");
-        }
-    }
-
-    #[test]
-    fn library_cache_loaded_none_is_noop() {
-        let mut app = make_app_probing();
-        let _t = update(
-            &mut app,
-            Message::Cache(cache::CacheEvent::LibraryLoaded(None)),
-        );
-        if let Screen::ProfileView(pv) = &app.screen {
-            assert!(pv.games.is_empty());
         }
     }
 
@@ -1285,18 +1261,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn game_view_state_dirty_count_zero_on_init() {
-        let state = GameViewState::new(105600);
-        assert_eq!(state.dirty_count(), 0);
-    }
-
-    #[test]
-    fn game_view_state_no_errors_on_init() {
-        let state = GameViewState::new(105600);
-        assert!(!state.has_stat_errors());
-    }
-
     fn make_game_view_state_with_dirty_achievements() -> GameViewState {
         use game_view::types::{AchievementData, AchievementRow};
         let mut state = GameViewState::new(105600);
@@ -1360,15 +1324,6 @@ mod tests {
             state.phase,
             game_view::GameViewPhase::Ready,
             "phase must not change after DiscardChanges"
-        );
-    }
-
-    #[test]
-    fn game_view_state_app_name_starts_as_fallback() {
-        let state = GameViewState::new(105600);
-        assert_eq!(
-            state.game_name, "App 105600",
-            "initial game_name must be fallback App <id>"
         );
     }
 

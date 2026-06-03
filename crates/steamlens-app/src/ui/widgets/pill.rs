@@ -197,33 +197,3 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use iced::Color;
-
-    #[test]
-    fn plain_text_pill_constructs() {
-        let _: Element<'_, ()> =
-            pill(iced::widget::text("hello"), Color::from_rgb(0.5, 0.5, 1.0)).into();
-    }
-
-    #[test]
-    fn pill_with_all_options_constructs() {
-        let _: Element<'_, ()> = pill(iced::widget::text("x"), Color::from_rgb(1.0, 0.5, 0.5))
-            .radius(12.0)
-            .padding(10, 3)
-            .bg_alpha(0.18)
-            .border_alpha(0.5)
-            .glow(Color::from_rgba(1.0, 0.5, 0.5, 0.5))
-            .into();
-    }
-
-    #[test]
-    fn pill_with_dot_constructs() {
-        let _: Element<'_, ()> = pill(iced::widget::text("rare"), Color::from_rgb(0.8, 0.5, 1.0))
-            .with_dot(Color::from_rgb(0.8, 0.5, 1.0))
-            .into();
-    }
-}

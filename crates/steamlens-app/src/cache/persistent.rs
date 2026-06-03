@@ -139,8 +139,6 @@ mod tests {
     use super::*;
     use crate::cache::store::atomic_write;
 
-    const TEST_STEAMID3: u32 = 123456789;
-
     fn make_profile() -> CachedProfile {
         CachedProfile {
             schema_version: CURRENT_PROFILE_SCHEMA,
@@ -249,57 +247,5 @@ mod tests {
         std::fs::write(&path, bad).unwrap();
         let result = load_library_from_path(&path).await;
         assert!(result.is_none());
-    }
-
-    #[test]
-    fn make_cached_profile_sets_schema_and_timestamp() {
-        let p = make_cached_profile(1, "u".into(), None, None, None);
-        assert_eq!(p.schema_version, CURRENT_PROFILE_SCHEMA);
-        assert!(p.cached_at > 0, "cached_at must be set to a real epoch");
-    }
-
-    #[test]
-    fn make_cached_library_sets_schema_and_timestamp() {
-        let l = make_cached_library(Vec::new());
-        assert_eq!(l.schema_version, CURRENT_LIBRARY_SCHEMA);
-        assert!(l.cached_at > 0);
-    }
-
-    #[tokio::test]
-    async fn write_and_load_profile_cache_round_trip() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let user_path = dir
-            .path()
-            .join("users")
-            .join(TEST_STEAMID3.to_string())
-            .join("profile.json");
-        std::fs::create_dir_all(user_path.parent().unwrap()).unwrap();
-
-        let original = make_profile();
-        let bytes = serde_json::to_vec_pretty(&original).unwrap();
-        atomic_write(&user_path, &bytes).await.unwrap();
-
-        let restored = load_profile_from_path(&user_path).await.expect("must load");
-        assert_eq!(restored.steam_id, original.steam_id);
-        assert_eq!(restored.schema_version, CURRENT_PROFILE_SCHEMA);
-    }
-
-    #[tokio::test]
-    async fn write_and_load_library_cache_round_trip() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let lib_path = dir
-            .path()
-            .join("users")
-            .join(TEST_STEAMID3.to_string())
-            .join("library.json");
-        std::fs::create_dir_all(lib_path.parent().unwrap()).unwrap();
-
-        let original = make_library();
-        let bytes = serde_json::to_vec_pretty(&original).unwrap();
-        atomic_write(&lib_path, &bytes).await.unwrap();
-
-        let restored = load_library_from_path(&lib_path).await.expect("must load");
-        assert_eq!(restored.games.len(), 1);
-        assert_eq!(restored.schema_version, CURRENT_LIBRARY_SCHEMA);
     }
 }

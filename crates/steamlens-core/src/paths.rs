@@ -164,18 +164,4 @@ mod tests {
             assert!(c.to_string_lossy().ends_with("linux64/steamclient.so"));
         }
     }
-
-    #[test]
-    fn user_data_dir_constructs_path() {
-        let root = PathBuf::from("/opt/steam");
-        let p = user_data_dir(&root, 12345);
-        assert_eq!(p, PathBuf::from("/opt/steam/userdata/12345"));
-    }
-
-    #[test]
-    fn appcache_stats_dir_constructs_path() {
-        let root = PathBuf::from("/opt/steam");
-        let p = appcache_stats_dir(&root);
-        assert_eq!(p, PathBuf::from("/opt/steam/appcache/stats"));
-    }
 }

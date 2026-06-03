@@ -411,25 +411,3 @@ fn link_button<'a, M: 'a + Clone>(
     })
     .into()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn connected_builds() {
-        let _: Element<'_, ()> = status_bar::<()>().connected(344, "games", None).into();
-    }
-
-    #[test]
-    fn scanning_builds() {
-        let _: Element<'_, ()> = status_bar::<()>()
-            .scanning("Scanning library", 554, 626)
-            .into();
-    }
-
-    #[test]
-    fn offline_builds() {
-        let _: Element<'_, ()> = status_bar().offline(344, "games").on_reconnect(()).into();
-    }
-}

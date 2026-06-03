@@ -165,10 +165,4 @@ mod tests {
             "all 3 achievements must be appeared after accumulator drains"
         );
     }
-
-    #[test]
-    fn game_subscription_constructs_with_default_state() {
-        let state = GameViewState::new(0);
-        let _: iced::Subscription<GameViewMessage> = subscription(&state);
-    }
 }

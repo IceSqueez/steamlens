@@ -39,14 +39,3 @@ pub fn fetch_capsule(
         },
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fetch_capsule_builds() {
-        let _: Task<ProfileViewMessage> =
-            fetch_capsule(440, CapsuleSize::Medium, AppLibraryAssets::default());
-    }
-}

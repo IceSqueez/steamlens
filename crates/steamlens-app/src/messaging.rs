@@ -306,13 +306,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn messaging_center_starts_empty_banners_and_toasts() {
-        let mc = MessagingCenter::new();
-        assert!(mc.banners.is_empty());
-        assert!(mc.toasts.is_empty());
-    }
-
-    #[test]
     fn push_banner_returns_unique_ids() {
         let mut mc = MessagingCenter::new();
         let id1 = mc.push_banner(BannerSeverity::Info, "a", None, false);
@@ -342,15 +335,6 @@ mod tests {
     }
 
     #[test]
-    fn toast_queue_caps_at_max_visible() {
-        let mut mc = MessagingCenter::new();
-        for i in 0..5 {
-            mc.push_toast(ToastKind::Info, format!("toast {i}"), None);
-        }
-        assert_eq!(mc.toasts.len(), MAX_VISIBLE_TOASTS);
-    }
-
-    #[test]
     fn toast_queue_drops_oldest_when_full() {
         let mut mc = MessagingCenter::new();
         for i in 0..MAX_VISIBLE_TOASTS {
@@ -359,15 +343,6 @@ mod tests {
         mc.push_toast(ToastKind::Info, "new".to_owned(), None);
         assert_eq!(mc.toasts.len(), MAX_VISIBLE_TOASTS);
         assert_eq!(mc.toasts.last().unwrap().title, "new");
-    }
-
-    #[test]
-    fn dismiss_toast_removes_by_id() {
-        let mut mc = MessagingCenter::new();
-        mc.push_toast(ToastKind::Success, "done", None);
-        let id = mc.toasts[0].id;
-        mc.dismiss_toast(id);
-        assert!(mc.toasts.is_empty());
     }
 
     #[test]

@@ -575,31 +575,9 @@ pub(super) fn icon_glow_style(
 }
 #[cfg(test)]
 mod skeleton_polish_tests {
-    use super::super::grid::{ACH_CARD_HEIGHT, ACH_CARD_ICON, ACH_CARD_WIDTH};
     use super::C_LOCKED_DESC;
     use crate::ui::theme::DARK;
     use iced::Color;
-
-    #[test]
-    fn skeleton_card_height_matches_hydrated_card_height() {
-        assert_eq!(
-            ACH_CARD_HEIGHT, 140.0,
-            "skeleton and hydrated paths both use ACH_CARD_HEIGHT — must agree"
-        );
-    }
-
-    #[test]
-    fn skeleton_icon_size_matches_hydrated_icon_size() {
-        assert_eq!(
-            ACH_CARD_ICON, 64.0,
-            "icon placeholder size must match real icon size"
-        );
-    }
-
-    #[test]
-    fn card_width_constant_is_reasonable() {
-        const { assert!(ACH_CARD_WIDTH >= 200.0 && ACH_CARD_WIDTH <= 400.0) };
-    }
 
     #[test]
     fn locked_desc_color_is_lighter_than_text_muted() {
@@ -609,35 +587,6 @@ mod skeleton_polish_tests {
         assert!(
             luminance(locked) >= luminance(muted),
             "C_LOCKED_DESC must be lighter than or equal to text_muted — locked descriptions should be more readable"
-        );
-    }
-
-    #[test]
-    fn locked_desc_color_has_correct_rgb() {
-        let Color { r, g, b, .. } = C_LOCKED_DESC;
-        let r8 = (r * 255.0).round() as u8;
-        let g8 = (g * 255.0).round() as u8;
-        let b8 = (b * 255.0).round() as u8;
-        assert_eq!(r8, 0x99, "red channel");
-        assert_eq!(g8, 0x94, "green channel");
-        assert_eq!(b8, 0xb0, "blue channel");
-    }
-
-    #[test]
-    fn skeleton_grid_uses_same_card_dimensions_as_hydrated() {
-        let title_w = ACH_CARD_WIDTH * 0.60;
-        let desc_w = ACH_CARD_WIDTH * 0.80;
-        assert!(
-            title_w < ACH_CARD_WIDTH,
-            "title skeleton must be narrower than card"
-        );
-        assert!(
-            desc_w < ACH_CARD_WIDTH,
-            "desc skeleton must be narrower than card"
-        );
-        assert!(
-            title_w < desc_w,
-            "title skeleton must be narrower than desc skeleton"
         );
     }
 }

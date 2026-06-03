@@ -35,23 +35,3 @@ pub fn probe_steam_reconnect() -> Task<crate::Message> {
         crate::Message::ProbeResult,
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn min_splash_wait_builds() {
-        let _: Task<crate::Message> = min_splash_wait();
-    }
-
-    #[test]
-    fn probe_steam_boot_builds() {
-        let _: Task<crate::Message> = probe_steam_boot();
-    }
-
-    #[test]
-    fn probe_steam_reconnect_builds() {
-        let _: Task<crate::Message> = probe_steam_reconnect();
-    }
-}

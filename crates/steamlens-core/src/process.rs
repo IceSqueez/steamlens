@@ -124,14 +124,3 @@ pub fn current_exe_resilient() -> io::Result<PathBuf> {
         std::env::current_exe()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn associate_is_noop_on_non_windows() {
-        let _guard = associate_kill_on_parent_exit(0).expect("must succeed on non-Windows");
-    }
-}

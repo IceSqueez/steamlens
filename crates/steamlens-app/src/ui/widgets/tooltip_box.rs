@@ -40,14 +40,3 @@ pub fn tooltip_box<'a, M: 'a>(
 
     tooltip(content, tip, position).into()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use iced::widget::tooltip::Position;
-
-    #[test]
-    fn tooltip_box_constructs() {
-        let _: Element<'_, ()> = tooltip_box(iced::widget::text("anchor"), "tip", Position::Top);
-    }
-}

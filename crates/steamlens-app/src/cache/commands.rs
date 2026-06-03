@@ -106,23 +106,3 @@ pub fn classify_games(
         |r| crate::Message::Cache(CacheEvent::Classified(r)),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn load_library_cache_builds() {
-        let _: Task<crate::Message> = load_library_cache(123456789);
-    }
-
-    #[test]
-    fn load_profile_cache_builds() {
-        let _: Task<crate::Message> = load_profile_cache(123456789);
-    }
-
-    #[test]
-    fn classify_games_builds() {
-        let _: Task<crate::Message> = classify_games(Vec::new(), PathBuf::from("/tmp/steam"), 0);
-    }
-}

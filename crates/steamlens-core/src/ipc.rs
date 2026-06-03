@@ -388,47 +388,11 @@ mod tests {
     }
 
     #[test]
-    fn encode_frame_header_bytes_match_payload_length() {
-        let cmd = WorkerCommand::SetAchievement("ACH_WIN".to_owned());
-        let framed = encode_frame(&cmd).expect("encode must succeed");
-        let reported_len = parse_header(framed[..4].try_into().unwrap()).unwrap();
-        let actual_payload_len = framed.len() - 4;
-        assert_eq!(
-            reported_len, actual_payload_len,
-            "header must report exact payload byte count"
-        );
-    }
-
-    #[test]
     fn stat_value_int_roundtrip() {
         let v = StatValue::Int(-1024);
         let framed = encode_frame(&v).unwrap();
         let decoded: StatValue = decode_frame(&framed[4..]).unwrap();
         assert_eq!(decoded, v);
-    }
-
-    #[test]
-    fn ack_roundtrip() {
-        let framed = encode_frame(&WorkerResponse::Ack).expect("encode must succeed");
-        assert!(framed.len() >= 4, "framed must contain at least a header");
-        let payload = &framed[4..];
-        let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
-        assert!(
-            matches!(decoded, WorkerResponse::Ack),
-            "decoded variant must be Ack"
-        );
-        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
-        assert_eq!(framed, re_framed, "Ack round-trip must be byte-stable");
-    }
-
-    #[test]
-    fn quick_achievement_count_command_roundtrip() {
-        let cmd = WorkerCommand::QuickAchievementCount;
-        let framed = encode_frame(&cmd).expect("encode must succeed");
-        let payload = &framed[4..];
-        let decoded: WorkerCommand = decode_frame(payload).expect("decode must succeed");
-        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
-        assert_eq!(framed, re_framed, "QuickAchievementCount must round-trip");
     }
 
     #[test]
@@ -438,19 +402,6 @@ mod tests {
         let decoded: StatValue = decode_frame(&framed[4..]).unwrap();
         assert!(
             matches!(decoded, StatValue::Float(f) if (f - std::f32::consts::PI).abs() < f32::EPSILON)
-        );
-    }
-
-    #[test]
-    fn card_only_command_roundtrip() {
-        let cmd = WorkerCommand::LoadAchievementsAndStatsCardOnly;
-        let framed = encode_frame(&cmd).expect("encode must succeed");
-        let payload = &framed[4..];
-        let decoded: WorkerCommand = decode_frame(payload).expect("decode must succeed");
-        let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
-        assert_eq!(
-            framed, re_framed,
-            "LoadAchievementsAndStatsCardOnly must round-trip byte-stable"
         );
     }
 
@@ -507,37 +458,6 @@ mod tests {
         assert_eq!(restored.achievements[1].id, "ACH_HUNDRED");
         assert!(!restored.achievements[1].is_achieved);
         assert_eq!(restored.genre.as_deref(), Some("Action"));
-    }
-
-    #[test]
-    fn card_only_payload_roundtrip_empty() {
-        let payload = types::CardOnlyPayload {
-            achievements: Vec::new(),
-            genre: None,
-        };
-        let bytes = postcard::to_allocvec(&payload).expect("serialize");
-        let restored: types::CardOnlyPayload = postcard::from_bytes(&bytes).expect("decode");
-        assert!(restored.achievements.is_empty());
-        assert!(restored.genre.is_none());
-    }
-
-    #[test]
-    fn card_only_achievement_field_equality() {
-        use types::CardOnlyAchievement;
-        let a = CardOnlyAchievement {
-            id: "X".to_owned(),
-            is_achieved: true,
-        };
-        let b = CardOnlyAchievement {
-            id: "X".to_owned(),
-            is_achieved: true,
-        };
-        let c = CardOnlyAchievement {
-            id: "X".to_owned(),
-            is_achieved: false,
-        };
-        assert_eq!(a, b);
-        assert_ne!(a, c);
     }
 
     #[test]

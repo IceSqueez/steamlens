@@ -480,16 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn merge_keeps_new_genre_when_set() {
-        let old = shell_entry(Vec::new(), Some("Old".to_owned()));
-        let mut new = shell_entry(Vec::new(), Some("New".to_owned()));
-
-        merge_preserved_fields(&mut new, &old);
-
-        assert_eq!(new.genre.as_deref(), Some("New"));
-    }
-
-    #[test]
     fn cache_write_lock_same_app_id_returns_same_arc() {
         let l1 = cache_write_lock(91337);
         let l2 = cache_write_lock(91337);

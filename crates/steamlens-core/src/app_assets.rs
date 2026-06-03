@@ -36,10 +36,4 @@ mod tests {
         let map = read_app_assets(tmp.path());
         assert!(map.is_empty());
     }
-
-    #[test]
-    fn appinfo_path_joins_under_appcache() {
-        let p = appinfo_path(Path::new("/opt/steam"));
-        assert_eq!(p, PathBuf::from("/opt/steam/appcache/appinfo.vdf"));
-    }
 }

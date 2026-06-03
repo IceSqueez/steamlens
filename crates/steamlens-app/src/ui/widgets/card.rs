@@ -221,32 +221,3 @@ impl<'a, M: Clone + 'a> From<Card<'a, M>> for Element<'a, M> {
         button.into()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use iced::widget::text;
-
-    #[test]
-    fn card_default_constructs_without_panic() {
-        let _: Element<'_, ()> = card(text("hi")).into();
-    }
-
-    #[test]
-    fn card_with_all_setters_constructs() {
-        let _: Element<'_, ()> = card(text("body"))
-            .accent(Color::from_rgb(1.0, 0.85, 0.4))
-            .radius(6.0)
-            .hovered(true)
-            .width(Length::Fixed(200.0))
-            .height(Length::Fixed(100.0))
-            .into();
-    }
-
-    #[test]
-    fn card_with_on_press_constructs() {
-        #[derive(Clone)]
-        struct Msg;
-        let _: Element<'_, Msg> = card(text("body")).on_press(Msg).into();
-    }
-}

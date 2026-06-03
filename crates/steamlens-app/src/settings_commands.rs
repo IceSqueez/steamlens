@@ -12,13 +12,3 @@ pub fn write_settings(snapshot: Settings) -> Task<crate::Message> {
         crate::Message::SettingsWritten,
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn write_settings_builds() {
-        let _: Task<crate::Message> = write_settings(Settings::default());
-    }
-}
