@@ -22,7 +22,7 @@ pub(crate) fn handle_worker_reply(app: &mut App, reply: SteamReply) -> Task<Mess
     let mut tasks: Vec<Task<Message>> = Vec::new();
 
     if let SteamReply::Connected { .. } = &reply
-        && let Some(w) = &app.context.worker
+        && let Some(w) = &app.context.worker.current
     {
         tasks.push(w.dispatch(SteamRequest::RequestUserStats, Message::DiscardReply));
         tasks.push(w.dispatch(
@@ -41,10 +41,10 @@ pub(crate) fn handle_worker_reply(app: &mut App, reply: SteamReply) -> Task<Mess
 }
 
 pub(crate) fn disconnect_worker(app: &mut App) -> Task<Message> {
-    let task = match &app.context.worker {
+    let task = match &app.context.worker.current {
         Some(w) => w.dispatch(SteamRequest::Disconnect, Message::DiscardReply),
         None => Task::none(),
     };
-    app.context.worker = None;
+    app.context.worker.current = None;
     task
 }

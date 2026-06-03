@@ -43,6 +43,12 @@ pub struct UserState {
     pub avatar_handle: Option<iced::widget::image::Handle>,
 }
 
+pub struct WorkerState {
+    pub current: Option<SteamWorker>,
+    pub reply_tx: mpsc::UnboundedSender<SteamReply>,
+    pub reply_rx: SharedWorkerRx,
+}
+
 #[derive(Default)]
 pub struct CapsuleStore {
     pub handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
@@ -57,9 +63,7 @@ pub struct SteamSnapshot {
 }
 
 pub struct AppContext {
-    pub worker: Option<SteamWorker>,
-    pub worker_reply_tx: mpsc::UnboundedSender<SteamReply>,
-    pub worker_reply_rx: SharedWorkerRx,
+    pub worker: WorkerState,
     pub settings: Settings,
     pub settings_dirty_since: Option<Instant>,
     pub messaging: MessagingCenter,

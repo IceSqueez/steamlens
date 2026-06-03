@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::app_context::{
     AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
+    WorkerState,
 };
 use crate::cache;
 use crate::messaging::MessagingCenter;
@@ -22,9 +23,11 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
     let worker = SteamWorker::spawn(reply_tx.clone());
 
     let context = AppContext {
-        worker: Some(worker),
-        worker_reply_tx: reply_tx,
-        worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+        worker: WorkerState {
+            current: Some(worker),
+            reply_tx,
+            reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+        },
         settings: loaded_settings,
         settings_dirty_since: None,
         messaging: MessagingCenter::new(),

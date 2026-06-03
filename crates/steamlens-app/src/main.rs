@@ -364,7 +364,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     });
 
     let worker_reply_sub = Subscription::run_with(
-        WorkerReplyHandle(Arc::clone(&app.context.worker_reply_rx)),
+        WorkerReplyHandle(Arc::clone(&app.context.worker.reply_rx)),
         |handle: &WorkerReplyHandle| {
             let rx_holder = Arc::clone(&handle.0);
             iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
@@ -492,7 +492,9 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
     use crate::app_context::AnimationState;
-    use crate::app_context::{CapsuleStore, ConnectivityState, SteamSnapshot, UserState};
+    use crate::app_context::{
+        CapsuleStore, ConnectivityState, SteamSnapshot, UserState, WorkerState,
+    };
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -507,9 +509,11 @@ mod tests {
             let (reply_tx, reply_rx) = mpsc::unbounded_channel();
             Self {
                 context: AppContext {
-                    worker: None,
-                    worker_reply_tx: reply_tx,
-                    worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+                    worker: WorkerState {
+                        current: None,
+                        reply_tx,
+                        reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+                    },
                     settings: Settings::default(),
                     settings_dirty_since: None,
                     messaging: MessagingCenter::new(),
@@ -547,7 +551,7 @@ mod tests {
         let (app, _task) = boot::boot_with_settings(Settings::default());
         assert!(matches!(app.screen, Screen::ProfileView(_)));
         assert!(
-            app.context.worker.is_some(),
+            app.context.worker.current.is_some(),
             "worker must be spawned immediately"
         );
     }
@@ -1733,7 +1737,7 @@ mod tests {
             "RequestOpenGame must switch to GameView screen"
         );
         assert!(
-            app.context.worker.is_some(),
+            app.context.worker.current.is_some(),
             "RequestOpenGame must respawn worker for the new app"
         );
         assert!(

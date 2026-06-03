@@ -30,6 +30,7 @@ mod tests {
     use super::*;
     use crate::app_context::{
         AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
+        WorkerState,
     };
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -44,9 +45,11 @@ mod tests {
     fn make_test_ctx() -> AppContext {
         let (reply_tx, reply_rx) = mpsc::unbounded_channel();
         AppContext {
-            worker: None,
-            worker_reply_tx: reply_tx,
-            worker_reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+            worker: WorkerState {
+                current: None,
+                reply_tx,
+                reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
+            },
             settings: Settings::default(),
             settings_dirty_since: None,
             messaging: MessagingCenter::new(),

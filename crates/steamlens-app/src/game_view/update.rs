@@ -234,7 +234,7 @@ pub fn update(
     message: GameViewMessage,
     ctx: &mut crate::app_context::AppContext,
 ) -> (Task<GameViewMessage>, GameViewEvent) {
-    let worker = ctx.worker.as_ref();
+    let worker = ctx.worker.current.as_ref();
     match message {
         GameViewMessage::DiscardReply => (Task::none(), GameViewEvent::None),
 
