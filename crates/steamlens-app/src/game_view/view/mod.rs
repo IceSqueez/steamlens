@@ -173,6 +173,7 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
                 last_sync: None,
             },
             &[("Loading achievements", ready)],
+            None,
         ),
         GameViewPhase::Ready | GameViewPhase::Saving => derive_status_bar(
             StatusContext {
@@ -184,6 +185,7 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
                 last_sync: None,
             },
             &[("Loading achievement icons", ready)],
+            None,
         ),
     }
 }

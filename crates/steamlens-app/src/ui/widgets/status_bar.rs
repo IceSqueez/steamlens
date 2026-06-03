@@ -116,6 +116,7 @@ pub struct StatusContext<'a> {
 pub fn derive_status_bar<'a, M: 'a + Clone>(
     ctx: StatusContext<'a>,
     scanning_phases: &[(&'a str, usize)],
+    retry_action: Option<(&'a str, M)>,
 ) -> Option<Element<'a, M>> {
     if ctx.steam_running == Some(false) {
         if ctx.total == 0 {
@@ -131,20 +132,21 @@ pub fn derive_status_bar<'a, M: 'a + Clone>(
     if ctx.total == 0 {
         return None;
     }
+    let retry_to_attach = if ctx.failed > 0 { retry_action } else { None };
     for (label, current) in scanning_phases {
         if *current < ctx.total {
-            return Some(
-                status_bar::<M>()
-                    .scanning(*label, *current, ctx.total)
-                    .into(),
-            );
+            let mut bar = status_bar::<M>().scanning(*label, *current, ctx.total);
+            if let Some((retry_label, retry_msg)) = retry_to_attach {
+                bar = bar.retry(retry_label, retry_msg);
+            }
+            return Some(bar.into());
         }
     }
-    Some(
-        status_bar::<M>()
-            .connected(ctx.total, ctx.noun, ctx.last_sync)
-            .into(),
-    )
+    let mut bar = status_bar::<M>().connected(ctx.total, ctx.noun, ctx.last_sync);
+    if let Some((retry_label, retry_msg)) = retry_to_attach {
+        bar = bar.retry(retry_label, retry_msg);
+    }
+    Some(bar.into())
 }
 
 impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {

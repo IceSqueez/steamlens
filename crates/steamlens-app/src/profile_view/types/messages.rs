@@ -39,10 +39,6 @@ pub enum ProfileViewMessage {
     ProgressScanDone,
     CardHoverEntered(u32),
     CardHoverExited(u32),
-    #[allow(
-        dead_code,
-        reason = "re-wired when status_bar gets a Retry-Failed link"
-    )]
     FailedScansRetryRequested,
     BarSliceHoverEntered(RarityTier),
     BarSliceHoverExited,

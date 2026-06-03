@@ -109,6 +109,10 @@ fn profile_status_bar(
             ("Scanning library", scanned_progress),
             ("Downloading capsules", loaded_capsules),
         ],
+        Some((
+            "Retry failed",
+            ProfileViewMessage::FailedScansRetryRequested,
+        )),
     )
 }
 
