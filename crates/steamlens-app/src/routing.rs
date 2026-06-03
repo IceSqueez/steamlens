@@ -84,7 +84,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         state.expected_total = cached.progress.total;
         state.genre = cached.genre.clone();
         state.playtime_minutes = cached.playtime_minutes;
-        if !cached.achievements.is_empty() {
+        if steam_off && !cached.achievements.is_empty() {
             tasks.push(crate::game_cache_builder::spawn_seed_task(
                 app_id,
                 cached.clone(),
