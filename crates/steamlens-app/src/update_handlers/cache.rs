@@ -180,6 +180,12 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
 
     let pinned = app.context.settings.library.pinned.clone();
     let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    if let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id) {
+        entry.change_number = summary.cached_change_number;
+        entry.name = Some(summary.name.clone());
+        entry.genre = summary.genre.clone();
+        entry.progress = Some(crate::progress_scan::ProgressData { earned, total });
+    }
     pv_state.recompute_derived(&app.context.cached_entries, &pinned);
 
     let Screen::GameView(gv_state) = &app.screen else {
