@@ -17,6 +17,10 @@ fn display_group(row: &AchievementRow) -> u8 {
     }
 }
 
+fn is_hidden_pending_unlock(row: &AchievementRow) -> bool {
+    row.data.is_hidden && !row.data.is_achieved
+}
+
 fn tier_rank(tier: Option<RarityTier>) -> u8 {
     match tier {
         Some(RarityTier::Common) => 0,
@@ -86,12 +90,14 @@ fn sort_indexed_for_display(
     match sort {
         AchievementSort::UnlockChance => {
             rows.sort_by(|(_, a), (_, b)| {
+                let hidden_cmp = is_hidden_pending_unlock(a).cmp(&is_hidden_pending_unlock(b));
                 let group_cmp = if unlocked_at_top {
                     display_group(a).cmp(&display_group(b))
                 } else {
                     Ordering::Equal
                 };
-                group_cmp
+                hidden_cmp
+                    .then(group_cmp)
                     .then_with(|| {
                         let pa = a.rarity_percent;
                         let pb = b.rarity_percent;
@@ -112,12 +118,14 @@ fn sort_indexed_for_display(
         }
         AchievementSort::RarityAndName => {
             rows.sort_by(|(_, a), (_, b)| {
+                let hidden_cmp = is_hidden_pending_unlock(a).cmp(&is_hidden_pending_unlock(b));
                 let group_cmp = if unlocked_at_top {
                     display_group(a).cmp(&display_group(b))
                 } else {
                     Ordering::Equal
                 };
-                group_cmp
+                hidden_cmp
+                    .then(group_cmp)
                     .then_with(|| {
                         tier_rank(tier_map.get(&a.data.id).copied())
                             .cmp(&tier_rank(tier_map.get(&b.data.id).copied()))
@@ -132,12 +140,13 @@ fn sort_indexed_for_display(
         }
         AchievementSort::Name => {
             rows.sort_by(|(_, a), (_, b)| {
+                let hidden_cmp = is_hidden_pending_unlock(a).cmp(&is_hidden_pending_unlock(b));
                 let group_cmp = if unlocked_at_top {
                     display_group(a).cmp(&display_group(b))
                 } else {
                     Ordering::Equal
                 };
-                group_cmp.then_with(|| {
+                hidden_cmp.then(group_cmp).then_with(|| {
                     a.data
                         .display_name
                         .to_lowercase()
@@ -597,6 +606,153 @@ mod tests {
         assert!(
             ids.contains(&"earned_legendary"),
             "earned hidden achievement (no longer spoiler) must appear under Legendary rarity filter"
+        );
+    }
+
+    #[test]
+    fn hidden_pending_unlock_lands_at_end_under_unlock_chance_sort() {
+        let rows = vec![
+            make_appeared("visible_rare", Some(2.0)),
+            make_hidden_row("hidden_locked", false, false, Some(1.0)),
+            make_appeared("visible_common", Some(80.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert_eq!(
+            ids.last().copied(),
+            Some("hidden_locked"),
+            "hidden locked achievement must sort to end ignoring its rarity"
+        );
+    }
+
+    #[test]
+    fn revealed_but_still_locked_hidden_remains_at_end() {
+        let rows = vec![
+            make_appeared("visible_a", Some(50.0)),
+            make_hidden_row("revealed_hidden", false, true, Some(1.0)),
+            make_appeared("visible_b", Some(80.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert_eq!(
+            ids.last().copied(),
+            Some("revealed_hidden"),
+            "reveal does not promote hidden into normal sort — only unlock does"
+        );
+    }
+
+    #[test]
+    fn hidden_pending_unlock_at_end_for_name_sort() {
+        let rows = vec![
+            make_hidden_row("aaa_hidden", false, false, Some(1.0)),
+            make_appeared("bbb_visible", Some(50.0)),
+            make_appeared("ccc_visible", Some(80.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::Name,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert_eq!(
+            ids.last().copied(),
+            Some("aaa_hidden"),
+            "alphabetically-first hidden still pushed to end"
+        );
+    }
+
+    #[test]
+    fn hidden_pending_unlock_at_end_for_rarity_sort() {
+        let rows = vec![
+            make_hidden_row("hidden_legendary_candidate", false, false, Some(0.5)),
+            make_appeared("visible_legendary", Some(1.0)),
+            make_appeared("visible_common", Some(80.0)),
+        ];
+        let ids = visible_achievement_ids(
+            &rows,
+            AchievementFilter::All,
+            "",
+            AchievementSort::RarityAndName,
+            &std::collections::HashSet::new(),
+            true,
+        );
+        assert_eq!(
+            ids.last().copied(),
+            Some("hidden_legendary_candidate"),
+            "even Legendary-tier hidden card sorts to end until unlocked"
+        );
+    }
+
+    #[test]
+    fn achieved_hidden_sorts_by_unlock_chance_not_pinned_to_end() {
+        let rows = vec![
+            make_hidden_row("hidden_unlocked", true, false, Some(1.0)),
+            make_appeared("visible_rare", Some(5.0)),
+            make_appeared("visible_common", Some(80.0)),
+        ];
+        let mut tier_map = std::collections::HashMap::new();
+        tier_map.insert("hidden_unlocked".to_owned(), RarityTier::Legendary);
+        tier_map.insert("visible_rare".to_owned(), RarityTier::Mythical);
+        tier_map.insert("visible_common".to_owned(), RarityTier::Common);
+
+        let indices = visible_achievement_indices(
+            &rows,
+            &tier_map,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            &std::collections::HashSet::new(),
+            false,
+            false,
+        );
+        let ordered: Vec<&str> = indices.iter().map(|&i| rows[i].data.id.as_str()).collect();
+
+        assert_eq!(
+            ordered,
+            vec!["visible_common", "visible_rare", "hidden_unlocked"],
+            "unlocked hidden joins normal sort by rarity (highest % first)"
+        );
+    }
+
+    #[test]
+    fn hidden_pending_unlock_respected_when_unlocked_at_top_toggle_off() {
+        let rows = vec![
+            make_appeared("visible", Some(50.0)),
+            make_hidden_row("hidden_locked", false, false, Some(1.0)),
+        ];
+        let mut tier_map = std::collections::HashMap::new();
+        tier_map.insert("visible".to_owned(), RarityTier::Common);
+        tier_map.insert("hidden_locked".to_owned(), RarityTier::Legendary);
+
+        let indices = visible_achievement_indices(
+            &rows,
+            &tier_map,
+            AchievementFilter::All,
+            "",
+            AchievementSort::UnlockChance,
+            &std::collections::HashSet::new(),
+            false,
+            false,
+        );
+        let ordered: Vec<&str> = indices.iter().map(|&i| rows[i].data.id.as_str()).collect();
+        assert_eq!(
+            ordered.last().copied(),
+            Some("hidden_locked"),
+            "even with unlocked_at_top off, hidden-pending must stay last"
         );
     }
 }
