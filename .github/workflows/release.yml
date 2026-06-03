@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # No `test` job here: tags are cut from `main`, where CI has already
   # validated `cargo test --workspace --locked`. Re-running the test suite

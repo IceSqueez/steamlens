@@ -17,6 +17,15 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+
+      - name: Cache advisory-db
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/advisory-db
+          key: advisory-db-${{ github.run_id }}
+          restore-keys: |
+            advisory-db-
+
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

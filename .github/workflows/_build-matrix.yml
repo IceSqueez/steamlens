@@ -49,6 +49,7 @@ jobs:
           # Explicit shared-key so release builds reuse cache across tags
           # rather than being scoped per-workflow-run.
           shared-key: release-${{ matrix.target }}
+          cache-all-crates: true
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -92,7 +93,9 @@ jobs:
 
       - name: Install cargo-wix
         if: matrix.os == 'windows-latest'
-        run: cargo install cargo-wix --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-wix
 
       - name: Package Windows MSI
         if: matrix.os == 'windows-latest'
@@ -156,10 +159,12 @@ jobs:
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.AppImage"
           ARCH=x86_64 ./appimagetool --no-appstream "$APPDIR" "$OUT"
 
-      # ---------- Linux: .deb (Debian/Ubuntu) ----------
-      - name: Install cargo-deb
+      # ---------- Linux: .deb (Debian/Ubuntu) and .rpm (Fedora/openSUSE) ----------
+      - name: Install Linux packaging tools
         if: matrix.os == 'ubuntu-latest'
-        run: cargo install cargo-deb --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
 
       - name: Package Linux .deb
         if: matrix.os == 'ubuntu-latest'
@@ -169,11 +174,6 @@ jobs:
           DEB=$(ls target/${{ matrix.target }}/debian/*.deb | head -1)
           OUT="${{ inputs.bin_name }}-${{ env.VERSION }}+${{ github.run_number }}-${{ matrix.asset_name }}.deb"
           mv "$DEB" "$OUT"
-
-      # ---------- Linux: .rpm (Fedora/openSUSE) ----------
-      - name: Install cargo-generate-rpm
-        if: matrix.os == 'ubuntu-latest'
-        run: cargo install cargo-generate-rpm --locked
 
       - name: Package Linux .rpm
         if: matrix.os == 'ubuntu-latest'
