@@ -1,7 +1,3 @@
-//! Compile-time guards: `UserStats` wraps a thread-local Steam interface
-//! pointer; moving it across threads would call Steam FFI from the wrong
-//! thread (UB per the Steam threading model).
-
 use static_assertions::assert_not_impl_all;
 use steamlens_core::UserStats;
 

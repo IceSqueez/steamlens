@@ -39,7 +39,6 @@ impl Client {
         self.user.app_id()
     }
 
-    /// Returns `None` when Steam reports a negative value (error sentinel).
     pub fn get_player_steam_level(&self) -> Option<u32> {
         self.user.get_player_steam_level()
     }

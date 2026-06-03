@@ -55,8 +55,6 @@ pub enum SteamError {
     #[error("Achievement {name:?} not found or returned null from Steam")]
     AchievementNotFound { name: String },
 
-    /// Raised only for present-but-corrupt schema files; missing files
-    /// yield an empty descriptor list instead.
     #[error("Failed to parse Steam schema cache: {source}")]
     SchemaParseError {
         #[source]

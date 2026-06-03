@@ -6,13 +6,10 @@ use thiserror::Error;
 
 use crate::paths;
 
-/// Lowest SteamID64 for an individual account (Public/Individual/Desktop, AccountID=0); subtract to obtain SteamID3.
 pub const STEAMID64_INDIVIDUAL_MIN: u64 = 0x0110_0001_0000_0000;
 
-/// Disk-only snapshot of the logged-in user; no Steam pipe needed.
 #[derive(Debug, Clone)]
 pub struct UserProfile {
-    /// 64-bit Steam community ID (not Steam3).
     pub steam_id: u64,
     pub nickname: String,
     pub avatar_png_bytes: Option<Vec<u8>>,
@@ -30,9 +27,6 @@ pub enum ProfileError {
     InvalidSteamId(String),
 }
 
-/// Reads `<steam_root>/config/loginusers.vdf`, picks the entry with
-/// `MostRecent == "1"` (or the first entry as fallback), and pairs it
-/// with `config/avatarcache/<steam_id>.png` when present.
 pub fn load_local_profile() -> Result<UserProfile, ProfileError> {
     let root = paths::steam_install_root_candidates()
         .into_iter()

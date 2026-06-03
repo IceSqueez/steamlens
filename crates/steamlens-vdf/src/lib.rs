@@ -12,8 +12,6 @@ pub use packageinfo::{PackageInfoError, parse_packageinfo};
 pub use parser::{KeyValuePair, Value, VdfError};
 pub use text::{TextValue, TextVdfError, parse as parse_text};
 
-/// Parse a binary KV blob (`appcache/stats/UserGameStatsSchema_*.bin`,
-/// `packageinfo.vdf` records) into a root [`Value::Section`].
 pub fn parse(bytes: &[u8]) -> Result<Value, VdfError> {
     let mut cursor = parser::Cursor::new(bytes);
     cursor.read_section()

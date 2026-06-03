@@ -8,9 +8,6 @@ pub struct AppLocalState {
     pub playtime_minutes: Option<u32>,
 }
 
-/// Parse `localconfig.vdf` and return `app_id → (LastPlayed, Playtime)` in a
-/// single pass. Zero `LastPlayed` collapses to `None`. Errors collapse to an
-/// empty map — this file is supplementary and must not block boot.
 pub fn parse_localconfig_states(content: &str) -> HashMap<u32, AppLocalState> {
     let root = match parse_text(content) {
         Ok(v) => v,
@@ -60,9 +57,6 @@ pub fn parse_localconfig_states(content: &str) -> HashMap<u32, AppLocalState> {
     map
 }
 
-/// Parse `localconfig.vdf` and return `app_id → LastPlayed` Unix
-/// timestamps, dropping zero values. Errors collapse to an empty map —
-/// this file is supplementary and must not block boot.
 pub fn parse_localconfig_last_played(content: &str) -> HashMap<u32, u32> {
     let root = match parse_text(content) {
         Ok(v) => v,

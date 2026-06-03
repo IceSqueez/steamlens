@@ -24,11 +24,6 @@ pub enum PackageInfoError {
     MissingAppidsBlock,
 }
 
-/// Parse the full `packageinfo.vdf` (header + records) and return a
-/// sorted `(app_id, change_number)` list. When an app appears in
-/// several packages, the maximum `change_number` is kept — the PICS
-/// change number is a coarse "package touched?" signal that
-/// over-invalidates but never under-invalidates.
 pub fn parse_packageinfo(bytes: &[u8]) -> Result<Vec<(u32, u32)>, PackageInfoError> {
     if bytes.len() < 8 {
         return Err(PackageInfoError::Truncated);

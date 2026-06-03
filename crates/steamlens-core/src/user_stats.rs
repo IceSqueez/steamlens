@@ -6,19 +6,12 @@ use crate::error::SteamError;
 use crate::ffi::interfaces::ISteamUserStats013;
 use crate::ffi::opaque::{self, RawInterface};
 
-/// `!Send` / `!Sync`. Steam-owned pointers returned by methods are valid
-/// only until the next Steam call on this pipe; this wrapper copies them
-/// out before returning.
 pub struct UserStats<'a> {
     raw: RawInterface,
     _client: PhantomData<&'a c_void>,
     _not_send: PhantomData<*const ()>,
 }
 
-// Every `unsafe` block here shares one invariant: `self.raw` is the live
-// `ISteamUserStats013` vtable acquired in `establish`. Per-block SAFETY
-// notes only call out the extra invariants of each block (argument
-// lifetimes, out-pointer validity).
 impl<'a> UserStats<'a> {
     pub(crate) fn from_raw(raw: RawInterface) -> Self {
         Self {
@@ -81,8 +74,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Returns `(achieved, unix_timestamp)` — `unlock_time` is `0` when
-    /// the achievement is locked.
     pub fn achievement_and_unlock_time(&self, name: &str) -> Result<(bool, u32), SteamError> {
         let cname = Self::cname(name)?;
         let mut achieved = false;
@@ -215,9 +206,6 @@ impl<'a> UserStats<'a> {
         Ok(name)
     }
 
-    /// Async — the result arrives as
-    /// [`crate::SteamCallback::UserStatsReceived`]. Pass the local user's
-    /// [`crate::Client::steam_id`].
     pub fn request_user_stats(&self, steam_id: u64) -> Result<(), SteamError> {
         // SAFETY: see impl-level note.
         let handle = unsafe {
@@ -233,9 +221,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Drives the overlay's "X/Y" progress popup. Steam keeps this counter
-    /// separately from regular stats — call with `current = 0` to clear the
-    /// popup counter without a game-side write.
     pub fn indicate_achievement_progress(
         &self,
         name: &str,
@@ -257,8 +242,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// Returns a `SteamAPICall_t` — poll via
-    /// [`crate::Client::poll_call_result`] with callback id `1110`.
     pub fn request_global_achievement_percentages(&self) -> Result<u64, SteamError> {
         // SAFETY: see impl-level note.
         let handle = unsafe {
@@ -274,10 +257,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// 0.0–100.0 — fraction of users who have unlocked the achievement.
-    /// Wait for `GlobalAchievementPercentagesReady` after
-    /// [`Self::request_global_achievement_percentages`] before reading,
-    /// otherwise Steam returns `false` for every name.
     pub fn achievement_achieved_percent(&self, name: &str) -> Result<f32, SteamError> {
         let cname = Self::cname(name)?;
         let mut percent: f32 = 0.0;
@@ -295,8 +274,6 @@ impl<'a> UserStats<'a> {
         }
     }
 
-    /// `0` while Steam is still fetching — subscribe to
-    /// `UserAchievementIconFetched` to retry.
     pub fn achievement_icon(&self, name: &str) -> Result<i32, SteamError> {
         let cname = Self::cname(name)?;
         // SAFETY: `cname` outlives the call.
@@ -307,8 +284,6 @@ impl<'a> UserStats<'a> {
         Ok(handle)
     }
 
-    /// `attribute` is `"name"`, `"desc"`, or `"hidden"` (stringified
-    /// `"0"`/`"1"`). Served from the local schema cache — no network.
     pub fn achievement_display_attribute(
         &self,
         name: &str,

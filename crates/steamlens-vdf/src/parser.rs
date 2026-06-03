@@ -4,8 +4,6 @@ pub struct KeyValuePair {
     pub value: Value,
 }
 
-/// `WideString` (tag 0x05) surfaces as [`VdfError::UnsupportedType`]
-/// rather than a panic or silent skip.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Section(Vec<KeyValuePair>),
@@ -51,7 +49,6 @@ impl Value {
         }
     }
 
-    /// Walk a `/`-separated, case-sensitive path through nested sections.
     pub fn get(&self, path: &str) -> Option<&Value> {
         let mut current = self;
         for segment in path.split('/') {

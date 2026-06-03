@@ -37,10 +37,6 @@ pub fn write_payload<T: serde::Serialize>(value: &T) -> Result<(PathBuf, u64), S
     Ok((path, payload.len() as u64))
 }
 
-/// Removes `/dev/shm/steamlens-*` (or fallback `temp_dir`) files older than
-/// 60 seconds, picking up orphans from crashed sessions. Files newer than
-/// the cutoff are left alone in case another concurrent SteamLens instance
-/// is mid-flight. Call once at app startup before any worker spawns.
 pub fn sweep_orphans() -> usize {
     sweep_orphans_in(&shm_dir(), Duration::from_secs(60))
 }
@@ -107,9 +103,9 @@ impl ShmWriter {
     pub fn create(size: usize) -> Result<Self, ShmError> {
         let file = Builder::new().prefix("steamlens-").tempfile_in(shm_dir())?;
         file.as_file().set_len(size as u64)?;
-        // SAFETY: see RFC-004 §Phase A. NamedTempFile is owned exclusively by
-        // this ShmWriter; the path has not been exposed to any other process,
-        // so the file cannot be modified out-of-band during the mapping.
+        // SAFETY: NamedTempFile is owned exclusively by this ShmWriter; the path
+        // has not been exposed to any other process, so the file cannot be
+        // modified out-of-band during the mapping.
         let mmap = unsafe { MmapMut::map_mut(file.as_file())? };
         Ok(Self {
             file,
@@ -134,9 +130,6 @@ impl ShmWriter {
         self.file.path()
     }
 
-    /// Persists the temp file (disables auto-delete on drop) and returns its
-    /// path. Caller is responsible for sending the path to the reader and
-    /// for reader-side cleanup via [`ShmReader::unlink`].
     pub fn into_path(self) -> Result<PathBuf, ShmError> {
         let ShmWriter { file, mmap, .. } = self;
         drop(mmap);
@@ -155,9 +148,9 @@ pub struct ShmReader {
 impl ShmReader {
     pub fn open(path: &Path) -> Result<Self, ShmError> {
         let file = File::open(path)?;
-        // SAFETY: see RFC-004 §Phase A. The producer has flushed and dropped
-        // its mmap before sending us this path; no other process is expected
-        // to mutate the file during our read.
+        // SAFETY: the producer has flushed and dropped its mmap before sending us
+        // this path; no other process is expected to mutate the file during our
+        // read.
         let mmap = unsafe { Mmap::map(&file)? };
         Ok(Self {
             file,
@@ -170,8 +163,6 @@ impl ShmReader {
         &self.mmap
     }
 
-    /// Drops the mapping, closes the fd, removes the underlying file. One-shot:
-    /// consumes `self` so the caller cannot accidentally double-unlink.
     pub fn unlink(self) -> Result<(), ShmError> {
         let ShmReader { file, mmap, path } = self;
         drop(mmap);

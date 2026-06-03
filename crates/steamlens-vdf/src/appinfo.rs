@@ -8,9 +8,6 @@ const MAGIC_STRING_TABLE: u32 = 0x0756_4429;
 
 const RECORD_FIXED_HEADER_LEN: usize = 4 + 4 + 8 + 20 + 4 + 20;
 
-/// Steam library image asset. `Hashed` means the value in appinfo is
-/// `{40-hex-sha1}/{filename}` and the CDN URL nests under that hash directory;
-/// `Plain` means the value is just `{filename}` and the CDN URL omits the hash.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImageAsset {
     Hashed { hash: String, filename: String },
@@ -1806,12 +1803,6 @@ mod tests {
 
     #[test]
     fn assets_header_image_fallback_when_no_laf_header_slot() {
-        // common {
-        //   library_assets_full {
-        //     library_capsule { image { "english" "library_600x900.jpg" } }
-        //   }
-        //   header_image { "english" "header.jpg" }
-        // }
         let mut blob = Vec::new();
         blob.push(0x00u8);
         blob.extend_from_slice(b"common\x00");
@@ -1850,12 +1841,6 @@ mod tests {
 
     #[test]
     fn assets_header_image_fallback_skipped_when_laf_header_slot_present() {
-        // common {
-        //   library_assets_full {
-        //     library_header { image { "english" "{hash}/library_header.jpg" } }
-        //   }
-        //   header_image { "english" "header.jpg" }
-        // }
         let header_val = format!("{}/library_header.jpg\x00", fake_hash(0xDD));
         let mut blob = Vec::new();
         blob.push(0x00u8);
@@ -1916,12 +1901,6 @@ mod tests {
 
     #[test]
     fn assets_v9_header_image_fallback() {
-        // common {
-        //   library_assets_full {
-        //     library_capsule { image { "english" "library_600x900.jpg" } }
-        //   }
-        //   header_image { "english" "header.jpg" }
-        // }
         let all_strings = [
             "common",
             "library_assets_full",

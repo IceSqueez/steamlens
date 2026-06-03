@@ -1,12 +1,6 @@
 use std::io;
 use std::path::PathBuf;
 
-/// Returned by [`associate_kill_on_parent_exit`]. Hold this for as long as
-/// the child should remain attached to the parent's lifetime. When this
-/// guard is dropped — or when the parent process is killed and the OS
-/// reclaims its handle table — the kernel terminates the child. On
-/// non-Windows platforms this is a zero-sized no-op; POSIX orphan-to-init
-/// + stdin EOF handles the same concern at the OS level.
 pub struct ChildLifetimeGuard {
     #[cfg(target_os = "windows")]
     job_handle: windows_sys::Win32::Foundation::HANDLE,
@@ -36,16 +30,6 @@ impl Drop for ChildLifetimeGuard {
     }
 }
 
-/// On Windows, associates the given child PID with an anonymous Job Object
-/// configured for `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. When the returned
-/// guard is dropped — or when the parent process exits, abnormally or not —
-/// the OS releases the last handle to the job object and kills the
-/// associated child. On Linux/macOS, returns an empty guard immediately;
-/// POSIX semantics (orphan-to-init + stdin EOF on parent close) cover the
-/// same scenario.
-///
-/// On Windows this performs three syscalls plus one OpenProcess; failures
-/// at any step propagate as `io::Error::last_os_error()`.
 pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard> {
     #[cfg(target_os = "windows")]
     {
@@ -130,14 +114,6 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
     }
 }
 
-/// Returns a path that `Command::new()` can exec to spawn another instance of
-/// the running binary, even if the on-disk file has been deleted or replaced
-/// since launch (e.g. by `cargo build` during a dev session). On Linux this
-/// returns the literal `/proc/self/exe` symlink, which the kernel preserves
-/// for the running process regardless of filesystem state. On macOS/Windows
-/// we fall back to `std::env::current_exe()` — both platforms keep the on-disk
-/// path stable (Windows locks the .exe; macOS preserves inode but
-/// `current_exe()` still resolves correctly in practice).
 pub fn current_exe_resilient() -> io::Result<PathBuf> {
     #[cfg(target_os = "linux")]
     {

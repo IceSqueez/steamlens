@@ -12,9 +12,6 @@ pub struct GameSummary {
     pub last_played: Option<u32>,
 }
 
-/// AppIDs that ship with every Steam account but are not real games.
-/// `480` is Spacewar — Valve's SteamWorks test app, present in every user's
-/// library and reports valid app metadata, but has no meaningful content.
 const HARDCODED_SKIP_APP_IDS: &[u32] = &[480];
 
 pub(crate) fn enumerate_owned_games_impl(

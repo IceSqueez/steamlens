@@ -373,8 +373,7 @@ mod tests {
         assert_eq!(
             MAX_CONCURRENT, 4,
             "temporary parallel-scan diagnostic; raising MAX_CONCURRENT above 1 re-opens the \
-             cards-render-out-of-order race closed in Phase A.2 (see ALPHA_6_HARDENING.md B.6) — \
-             revert if test surfaces issues"
+             cards-render-out-of-order race — revert if test surfaces issues"
         );
     }
 

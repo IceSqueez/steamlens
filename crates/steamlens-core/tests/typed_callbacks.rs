@@ -1,7 +1,3 @@
-//! Payload layouts (Pack=1, LE):
-//!   UserStatsReceived (1101, 20 B): u64 game_id | i32 result | u64 user_steam_id
-//!   UserStatsStored   (1102, 12 B): u64 game_id | i32 result
-
 use steamlens_core::{RawCallback, SteamCallback, SteamResult};
 
 fn make_user_stats_received(game_id: u64, result: i32, user_steam_id: u64) -> Vec<u8> {

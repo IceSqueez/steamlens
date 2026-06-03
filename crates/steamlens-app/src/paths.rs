@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-/// Falls back to the process working directory when the home env var
-/// is absent — keeps boot infallible on unusual system configurations.
 pub fn steamlens_root() -> PathBuf {
     #[cfg(not(target_os = "windows"))]
     let home = std::env::var("HOME").unwrap_or_default();

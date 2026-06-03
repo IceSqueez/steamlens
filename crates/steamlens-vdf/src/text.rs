@@ -15,8 +15,6 @@ pub enum TextVdfError {
     InvalidUtf8,
 }
 
-/// Duplicate keys in a `Block` are preserved in insertion order to
-/// match Steam's text-VDF behaviour.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextValue {
     String(std::string::String),
@@ -54,9 +52,6 @@ impl TextValue {
     }
 }
 
-/// Parse a text KV document (`.acf`, `libraryfolders.vdf`). The root
-/// is a [`TextValue::Block`]; a bare `"key" "value"` at the top level
-/// without enclosing braces is also accepted.
 pub fn parse(input: &str) -> Result<TextValue, TextVdfError> {
     let mut parser = Parser::new(input);
     let pairs = parser.read_pairs(false)?;

@@ -37,9 +37,6 @@ pub enum ProbeError {
     Io(#[from] io::Error),
 }
 
-/// Spawns `current_exe() --probe`, reads one `WorkerResponse` frame
-/// from the child's stdout, then kills it. `timeout` bounds the total
-/// run (startup + pipe connect + avatar fetch).
 pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError> {
     let exe = crate::process::current_exe_resilient()?;
 

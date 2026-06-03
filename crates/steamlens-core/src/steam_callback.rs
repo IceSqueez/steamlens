@@ -8,8 +8,6 @@ pub const CALLBACK_ID_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
 pub const STEAM_RESULT_OK: i32 = 1;
 pub const STEAM_RESULT_NO_STATS_SCHEMA: i32 = 2;
 
-/// Only `Ok` (raw `1`) is named; all other Steam result codes are
-/// preserved as `Other(i32)` for caller inspection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamResult {
     Ok,
@@ -37,7 +35,6 @@ impl SteamResult {
     }
 }
 
-/// Unknown or malformed payloads fall through to `Unknown(RawCallback)`.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum SteamCallback {

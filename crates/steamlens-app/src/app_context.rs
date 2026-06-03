@@ -32,7 +32,6 @@ impl AnimationState {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConnectivityState {
     pub steam_running: Option<bool>,
-    /// `None` covers both pre-probe AND "Steam not running" — we can't check login without a live pipe.
     pub user_logged_in: Option<bool>,
 }
 
@@ -62,9 +61,6 @@ pub struct AppContext {
 }
 
 impl AppContext {
-    /// Mutates settings via the provided closure and marks them dirty for
-    /// deferred persistence. The actual write is performed by the
-    /// `SettingsFlushTick` handler after the debounce window expires.
     pub fn update_settings(&mut self, f: impl FnOnce(&mut Settings)) -> Task<crate::Message> {
         f(&mut self.settings);
         if self.settings_dirty_since.is_none() {
