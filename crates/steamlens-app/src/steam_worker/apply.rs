@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
 
-use super::api::SteamReply;
+use super::api::{SteamReply, WorkerReply};
 use super::dispatch::{error_reply, handle_worker_response, reply, round_trip};
 use crate::timeouts;
 use crate::worker_subprocess::WorkerHandle;
@@ -14,7 +14,8 @@ pub(super) async fn run_apply_sequence(
     stats_int: HashMap<String, i32>,
     stats_float: HashMap<String, f32>,
     handle: &mut WorkerHandle,
-    reply_sender: &mpsc::UnboundedSender<SteamReply>,
+    reply_sender: &mpsc::UnboundedSender<WorkerReply>,
+    app_id: u32,
 ) {
     let staging_timeout = timeouts::STAGING;
 
@@ -33,15 +34,16 @@ pub(super) async fn run_apply_sequence(
     }
 
     for command in &staging_cmds {
-        match round_trip(handle, command, staging_timeout, reply_sender).await {
+        match round_trip(handle, command, staging_timeout, reply_sender, app_id).await {
             Some(WorkerResponse::Ack) => {}
             Some(WorkerResponse::Error { stage, message }) => {
-                reply(reply_sender, error_reply(stage, message));
+                reply(reply_sender, app_id, error_reply(stage, message));
                 return;
             }
             Some(other) => {
                 reply(
                     reply_sender,
+                    app_id,
                     SteamReply::SaveFailed(format!(
                         "unexpected response during staging: {:?}",
                         std::mem::discriminant(&other)
@@ -52,6 +54,7 @@ pub(super) async fn run_apply_sequence(
             None => {
                 reply(
                     reply_sender,
+                    app_id,
                     SteamReply::SaveFailed("timed out waiting for staging Ack".to_owned()),
                 );
                 return;
@@ -65,33 +68,37 @@ pub(super) async fn run_apply_sequence(
         &WorkerCommand::StoreStats,
         store_timeout,
         reply_sender,
+        app_id,
     )
     .await
     {
         Some(WorkerResponse::StatsStored) => {
-            reply(reply_sender, SteamReply::ChangesSaved);
+            reply(reply_sender, app_id, SteamReply::ChangesSaved);
             let load_timeout = timeouts::LIVE_LOAD;
             match round_trip(
                 handle,
                 &WorkerCommand::LoadAchievementsFull,
                 load_timeout,
                 reply_sender,
+                app_id,
             )
             .await
             {
-                Some(response) => handle_worker_response(response, reply_sender),
+                Some(response) => handle_worker_response(response, reply_sender, app_id),
                 None => reply(
                     reply_sender,
+                    app_id,
                     SteamReply::LoadFailed("timed out after store".into()),
                 ),
             }
         }
         Some(WorkerResponse::Error { stage, message }) => {
-            reply(reply_sender, error_reply(stage, message));
+            reply(reply_sender, app_id, error_reply(stage, message));
         }
         Some(other) => {
             reply(
                 reply_sender,
+                app_id,
                 SteamReply::SaveFailed(format!(
                     "unexpected StoreStats response: {:?}",
                     std::mem::discriminant(&other)
@@ -101,6 +108,7 @@ pub(super) async fn run_apply_sequence(
         None => {
             reply(
                 reply_sender,
+                app_id,
                 SteamReply::SaveFailed("timed out waiting for StoreStats".to_owned()),
             );
         }

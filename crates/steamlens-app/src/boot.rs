@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use iced::Task;
-use tokio::sync::mpsc;
 
 use crate::app_context::{
     AnimationState, AppContext, CapsuleStore, ConnectivityState, GameCacheMemory, SteamSnapshot,
@@ -19,14 +17,11 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
     let mut profile_view_state = ProfileViewState::new();
     profile_view_state.sort = loaded_settings.library.sort;
 
-    let (reply_tx, reply_rx) = mpsc::unbounded_channel();
-    let worker = SteamWorker::spawn(reply_tx.clone());
+    let worker = SteamWorker::spawn();
 
     let context = AppContext {
         worker: WorkerState {
             current: Some(worker),
-            reply_tx,
-            reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
         },
         settings: loaded_settings,
         settings_dirty_since: None,

@@ -3,10 +3,20 @@ use iced::Task;
 use crate::game_view;
 use crate::routing;
 use crate::steam_connectivity;
-use crate::steam_worker::{SteamReply, SteamRequest};
+use crate::steam_worker::{SteamReply, SteamRequest, WorkerReply};
 use crate::{App, Message, Screen};
 
-pub(crate) fn handle_worker_reply(app: &mut App, reply: SteamReply) -> Task<Message> {
+pub(crate) fn handle_worker_reply(app: &mut App, envelope: WorkerReply) -> Task<Message> {
+    let current_app_id = match &app.screen {
+        Screen::GameView(state) => Some(state.app_id),
+        Screen::ProfileView(_) => None,
+    };
+    if Some(envelope.app_id) != current_app_id {
+        return Task::none();
+    }
+
+    let reply = envelope.reply;
+
     if let SteamReply::ConnectFailed(reason) = &reply {
         tracing::error!("worker: connect failed: {reason}");
         let go_back_task = if matches!(app.screen, Screen::GameView(_)) {
@@ -41,10 +51,6 @@ pub(crate) fn handle_worker_reply(app: &mut App, reply: SteamReply) -> Task<Mess
 }
 
 pub(crate) fn disconnect_worker(app: &mut App) -> Task<Message> {
-    let task = match &app.context.worker.current {
-        Some(worker) => worker.dispatch(SteamRequest::Disconnect, Message::DiscardReply),
-        None => Task::none(),
-    };
     app.context.worker.current = None;
-    task
+    Task::none()
 }

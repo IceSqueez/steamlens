@@ -79,7 +79,7 @@ pub(crate) enum Message {
     GameView(GameViewMessage),
     Cache(cache::CacheEvent),
     Messaging(messaging::MessagingEvent),
-    WorkerReply(steam_worker::SteamReply),
+    WorkerReply(steam_worker::WorkerReply),
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
     ProbeResult(Result<Box<ProbedProfile>, ProbeFailure>),
@@ -112,11 +112,14 @@ pub(crate) enum Message {
     AppAssetsLoaded(HashMap<u32, steamlens_core::AppLibraryAssets>),
 }
 
-struct WorkerReplyHandle(app_context::SharedWorkerRx);
+struct WorkerReplyHandle {
+    generation: u64,
+    reply_receiver: steam_worker::SharedWorkerReplyReceiver,
+}
 
 impl Hash for WorkerReplyHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.0).hash(state);
+        self.generation.hash(state);
     }
 }
 
@@ -367,23 +370,32 @@ fn subscription(app: &App) -> Subscription<Message> {
         }
     });
 
-    let worker_reply_sub = Subscription::run_with(
-        WorkerReplyHandle(Arc::clone(&app.context.worker.reply_rx)),
-        |handle: &WorkerReplyHandle| {
-            let rx_holder = Arc::clone(&handle.0);
-            iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
-                let Some(mut rx) = rx_holder.lock().expect("worker_reply_rx poisoned").take()
-                else {
-                    return;
-                };
-                while let Some(reply) = rx.recv().await {
-                    if output.try_send(Message::WorkerReply(reply)).is_err() {
-                        break;
+    let worker_reply_sub = match &app.context.worker.current {
+        Some(worker) => Subscription::run_with(
+            WorkerReplyHandle {
+                generation: worker.generation(),
+                reply_receiver: worker.reply_receiver(),
+            },
+            |handle: &WorkerReplyHandle| {
+                let receiver_holder = Arc::clone(&handle.reply_receiver);
+                iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
+                    let Some(mut receiver) = receiver_holder
+                        .lock()
+                        .expect("worker_reply_receiver poisoned")
+                        .take()
+                    else {
+                        return;
+                    };
+                    while let Some(reply) = receiver.recv().await {
+                        if output.try_send(Message::WorkerReply(reply)).is_err() {
+                            break;
+                        }
                     }
-                }
-            })
-        },
-    );
+                })
+            },
+        ),
+        None => Subscription::none(),
+    };
 
     let animation_sub = if update_handlers::needs_animation_frame(app) {
         iced::window::frames().map(Message::AnimationFrame)
@@ -504,20 +516,13 @@ mod tests {
     use crate::settings::Settings;
     use std::collections::HashSet;
     use std::path::PathBuf;
-    use std::sync::Mutex;
     use steamlens_core::{STEAM_ID_64_INDIVIDUAL_MIN, UserProfile};
-    use tokio::sync::mpsc;
 
     impl Default for App {
         fn default() -> Self {
-            let (reply_tx, reply_rx) = mpsc::unbounded_channel();
             Self {
                 context: AppContext {
-                    worker: WorkerState {
-                        current: None,
-                        reply_tx,
-                        reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
-                    },
+                    worker: WorkerState { current: None },
                     settings: Settings::default(),
                     settings_dirty_since: None,
                     messaging: MessagingCenter::new(),

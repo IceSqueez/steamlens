@@ -3,7 +3,7 @@ mod apply;
 mod bridge;
 mod dispatch;
 
-pub use api::{SteamReply, SteamRequest, SteamWorker};
+pub use api::{SharedWorkerReplyReceiver, SteamReply, SteamRequest, SteamWorker, WorkerReply};
 
 #[cfg(test)]
 pub(crate) fn translate_request(request: &SteamRequest) -> Vec<steamlens_core::ipc::WorkerCommand> {
@@ -42,9 +42,7 @@ pub(crate) fn translate_request(request: &SteamRequest) -> Vec<steamlens_core::i
             commands
         }
 
-        SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {
-            vec![]
-        }
+        SteamRequest::ConnectWithApp(_) => vec![],
     }
 }
 
@@ -53,12 +51,10 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage};
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn dispatch_checked_blocks_when_steam_not_running() {
-        let (reply_sender, _reply_rx) = mpsc::unbounded_channel();
-        let worker = SteamWorker::spawn(reply_sender);
+        let worker = SteamWorker::spawn();
         let err = worker
             .dispatch_checked(SteamRequest::RequestUserStats, false, true, ())
             .unwrap_err();
@@ -139,12 +135,6 @@ mod tests {
             "empty apply must still produce StoreStats"
         );
         assert!(matches!(commands[0], WorkerCommand::StoreStats));
-    }
-
-    #[test]
-    fn translate_request_disconnect_produces_no_commands() {
-        let commands = translate_request(&SteamRequest::Disconnect);
-        assert!(commands.is_empty());
     }
 
     use steamlens_core::ipc::{WorkerResponse, decode_frame, encode_frame, parse_header};

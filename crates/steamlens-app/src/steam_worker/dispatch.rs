@@ -7,13 +7,16 @@ use tokio::sync::mpsc;
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage, WorkerResponse};
 
-use super::api::SteamReply;
+use super::api::{SteamReply, WorkerReply};
 use super::apply::run_apply_sequence;
 use crate::timeouts;
 use crate::worker_subprocess::WorkerHandle;
 
-pub(super) fn reply(sender: &mpsc::UnboundedSender<SteamReply>, message: SteamReply) {
-    let _ = sender.send(message);
+pub(super) fn reply(sender: &mpsc::UnboundedSender<WorkerReply>, app_id: u32, message: SteamReply) {
+    let _ = sender.send(WorkerReply {
+        app_id,
+        reply: message,
+    });
 }
 
 pub(super) fn error_reply(stage: WorkerErrorStage, message: String) -> SteamReply {
@@ -45,7 +48,8 @@ pub(super) async fn round_trip(
     handle: &mut WorkerHandle,
     command: &WorkerCommand,
     timeout: Duration,
-    reply_sender: &mpsc::UnboundedSender<SteamReply>,
+    reply_sender: &mpsc::UnboundedSender<WorkerReply>,
+    app_id: u32,
 ) -> Option<WorkerResponse> {
     if handle.send(command).await.is_err() {
         return None;
@@ -59,7 +63,7 @@ pub(super) async fn round_trip(
         match tokio::time::timeout(remaining, handle.recv()).await {
             Ok(Ok(Some(response))) => {
                 if is_unsolicited(&response) {
-                    handle_worker_response(response, reply_sender);
+                    handle_worker_response(response, reply_sender, app_id);
                     continue;
                 }
                 return Some(response);
@@ -81,11 +85,12 @@ fn read_shm<T: serde::de::DeserializeOwned>(
 
 pub(super) fn handle_worker_response(
     response: WorkerResponse,
-    reply_sender: &mpsc::UnboundedSender<SteamReply>,
+    reply_sender: &mpsc::UnboundedSender<WorkerReply>,
+    app_id: u32,
 ) {
     match response {
         WorkerResponse::SteamConnected { app_name, .. } => {
-            reply(reply_sender, SteamReply::Connected { app_name });
+            reply(reply_sender, app_id, SteamReply::Connected { app_name });
         }
         WorkerResponse::Ack => {}
         WorkerResponse::AchievementsFull {
@@ -98,19 +103,20 @@ pub(super) fn handle_worker_response(
         ) {
             Ok(payload) => reply(
                 reply_sender,
+                app_id,
                 SteamReply::AchievementsFull {
                     achievements: payload.achievements,
                     stats: payload.stats,
                 },
             ),
-            Err(err_msg) => reply(reply_sender, SteamReply::LoadFailed(err_msg)),
+            Err(err_msg) => reply(reply_sender, app_id, SteamReply::LoadFailed(err_msg)),
         },
         WorkerResponse::IconUpdated {
             name,
             shm_path,
             region_bytes,
         } => match read_shm::<AchievementIcon>("IconUpdated", &shm_path, region_bytes) {
-            Ok(icon) => reply(reply_sender, SteamReply::IconUpdated { name, icon }),
+            Ok(icon) => reply(reply_sender, app_id, SteamReply::IconUpdated { name, icon }),
             Err(err_msg) => {
                 tracing::error!("icon shm read failed for {name}: {err_msg}");
             }
@@ -123,11 +129,15 @@ pub(super) fn handle_worker_response(
             &shm_path,
             region_bytes,
         ) {
-            Ok(map) => reply(reply_sender, SteamReply::GlobalPercentagesReady(map)),
-            Err(_) => reply(reply_sender, SteamReply::GlobalPercentagesFailed),
+            Ok(map) => reply(
+                reply_sender,
+                app_id,
+                SteamReply::GlobalPercentagesReady(map),
+            ),
+            Err(_) => reply(reply_sender, app_id, SteamReply::GlobalPercentagesFailed),
         },
         WorkerResponse::StatsStored => {
-            reply(reply_sender, SteamReply::ChangesSaved);
+            reply(reply_sender, app_id, SteamReply::ChangesSaved);
         }
         WorkerResponse::AchievementsCount {
             shm_path,
@@ -148,10 +158,10 @@ pub(super) fn handle_worker_response(
             steamlens_core::unlink_at(&PathBuf::from(shm_path));
         }
         WorkerResponse::Error { stage, message } => {
-            reply(reply_sender, error_reply(stage, message));
+            reply(reply_sender, app_id, error_reply(stage, message));
         }
         WorkerResponse::Disconnected => {
-            reply(reply_sender, SteamReply::Disconnected);
+            reply(reply_sender, app_id, SteamReply::Disconnected);
         }
     }
 }
@@ -159,7 +169,8 @@ pub(super) fn handle_worker_response(
 pub(super) async fn handle_request(
     request: super::api::SteamRequest,
     handle: &mut WorkerHandle,
-    reply_sender: &mpsc::UnboundedSender<SteamReply>,
+    reply_sender: &mpsc::UnboundedSender<WorkerReply>,
+    app_id: u32,
 ) {
     use super::api::SteamRequest;
     match request {
@@ -170,12 +181,14 @@ pub(super) async fn handle_request(
                 &WorkerCommand::LoadAchievementsFull,
                 timeout,
                 reply_sender,
+                app_id,
             )
             .await
             {
-                Some(response) => handle_worker_response(response, reply_sender),
+                Some(response) => handle_worker_response(response, reply_sender, app_id),
                 None => reply(
                     reply_sender,
+                    app_id,
                     SteamReply::LoadFailed("timed out waiting for AchievementsFull".to_owned()),
                 ),
             }
@@ -188,11 +201,12 @@ pub(super) async fn handle_request(
                 &WorkerCommand::RequestGlobalPercentages,
                 timeout,
                 reply_sender,
+                app_id,
             )
             .await
             {
-                Some(response) => handle_worker_response(response, reply_sender),
-                None => reply(reply_sender, SteamReply::GlobalPercentagesFailed),
+                Some(response) => handle_worker_response(response, reply_sender, app_id),
+                None => reply(reply_sender, app_id, SteamReply::GlobalPercentagesFailed),
             }
         }
 
@@ -209,10 +223,11 @@ pub(super) async fn handle_request(
                 stats_float,
                 handle,
                 reply_sender,
+                app_id,
             )
             .await;
         }
 
-        SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {}
+        SteamRequest::ConnectWithApp(_) => {}
     }
 }

@@ -36,19 +36,12 @@ mod tests {
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
     use steamlens_core::AchievementIcon;
-    use tokio::sync::mpsc;
     use types::{AchievementData, AchievementRow};
 
     fn make_test_ctx() -> AppContext {
-        let (reply_tx, reply_rx) = mpsc::unbounded_channel();
         AppContext {
-            worker: WorkerState {
-                current: None,
-                reply_tx,
-                reply_rx: Arc::new(Mutex::new(Some(reply_rx))),
-            },
+            worker: WorkerState { current: None },
             settings: Settings::default(),
             settings_dirty_since: None,
             messaging: MessagingCenter::new(),

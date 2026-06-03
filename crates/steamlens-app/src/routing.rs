@@ -118,7 +118,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         state.phase = game_view::GameViewPhase::Ready;
     } else {
         tasks.push(crate::worker_drain::disconnect_worker(app));
-        let worker = SteamWorker::spawn(app.context.worker.reply_tx.clone());
+        let worker = SteamWorker::spawn();
         tasks.push(worker.dispatch(SteamRequest::ConnectWithApp(app_id), Message::DiscardReply));
         app.context.worker.current = Some(worker);
     }

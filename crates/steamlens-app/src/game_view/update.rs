@@ -38,11 +38,6 @@ pub fn handle_steam_reply(
             state.error_message = e;
             Task::none()
         }
-        SteamReply::RequestStatsFailed(e) => {
-            state.phase = GameViewPhase::Error;
-            state.error_message = e;
-            Task::none()
-        }
         SteamReply::AchievementsFull {
             achievements,
             stats,
