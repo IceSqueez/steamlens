@@ -1,11 +1,10 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use steamlens_core::GameSummary;
 
 use crate::cache::CacheHit;
 use crate::cache::store::load_game_summary_from_path;
-use crate::paths::cache_dir;
 
 const LP_RACE_GRACE_SECS: u64 = 30;
 
@@ -17,16 +16,14 @@ pub struct ClassifyResult {
     pub invalidation_count: u32,
 }
 
-fn cache_root() -> PathBuf {
-    cache_dir().join("games")
-}
-
 pub async fn classify_games(
     game_summaries: &[GameSummary],
     _steam_root: &Path,
-    _steamid3: u64,
+    steamid3: u64,
 ) -> ClassifyResult {
-    classify_games_with_root(game_summaries, &cache_root()).await
+    let steamid3_u32 = steamid3 as u32;
+    let user_games_root = crate::paths::user_dir(steamid3_u32).join("games");
+    classify_games_with_root(game_summaries, &user_games_root).await
 }
 
 async fn scan_cached_app_ids(cache_root: &Path) -> HashSet<u32> {

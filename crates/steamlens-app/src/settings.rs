@@ -4,7 +4,7 @@ use crate::game_view::types::{AchievementSort, RarityTier};
 use crate::profile_view::types::LibrarySort;
 use crate::ui::theme::AppTheme;
 
-const CURRENT_SETTINGS_VERSION: u32 = 2;
+const CURRENT_SETTINGS_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UiSettings {
@@ -107,6 +107,8 @@ pub struct Settings {
     pub library: LibrarySettings,
     #[serde(default)]
     pub manager: ManagerSettings,
+    #[serde(default)]
+    pub last_user_steamid: Option<u32>,
 }
 
 fn default_schema_version() -> u32 {
@@ -120,6 +122,7 @@ impl Default for Settings {
             ui: UiSettings::default(),
             library: LibrarySettings::default(),
             manager: ManagerSettings::default(),
+            last_user_steamid: None,
         }
     }
 }
@@ -229,7 +232,7 @@ mod tests {
     #[test]
     fn non_default_settings_round_trip() {
         let original = Settings {
-            schema_version: 2,
+            schema_version: CURRENT_SETTINGS_VERSION,
             ui: UiSettings {
                 window_width: 1920.0,
                 window_height: 1080.0,
@@ -246,6 +249,7 @@ mod tests {
                 include_hidden: true,
                 unlocked_at_top: true,
             },
+            last_user_steamid: Some(123456789),
         };
         let restored = round_trip(&original);
         assert_eq!(original, restored);
@@ -281,8 +285,9 @@ mod tests {
     #[test]
     fn old_toml_missing_rarity_tiers_gets_empty_default() {
         let tmp = std::env::temp_dir().join("steamlens_test_old_rarity_999999.toml");
-        let toml_without_rarity = "schema_version = 2\n[manager]\nfilter = \"all\"\n";
-        std::fs::write(&tmp, toml_without_rarity).expect("write");
+        let toml_without_rarity =
+            format!("schema_version = {CURRENT_SETTINGS_VERSION}\n[manager]\nfilter = \"all\"\n");
+        std::fs::write(&tmp, toml_without_rarity.as_str()).expect("write");
         let result = load_from_path(&tmp);
         assert!(
             result.manager.rarity_tiers.is_empty(),
@@ -341,8 +346,10 @@ mod tests {
     #[test]
     fn partial_settings_fills_in_defaults() {
         let tmp = std::env::temp_dir().join("steamlens_test_partial_999999.toml");
-        let partial = "schema_version = 2\n[library]\nsort = \"name_asc\"\n";
-        std::fs::write(&tmp, partial).expect("write");
+        let partial = format!(
+            "schema_version = {CURRENT_SETTINGS_VERSION}\n[library]\nsort = \"name_asc\"\n"
+        );
+        std::fs::write(&tmp, partial.as_str()).expect("write");
         let result = load_from_path(&tmp);
         assert_eq!(result.library.sort, LibrarySort::NameAsc);
         assert_eq!(result.ui.window_width, 1280.0);
@@ -380,8 +387,10 @@ mod tests {
     #[test]
     fn library_view_absent_from_toml_defaults_to_grid() {
         let tmp = std::env::temp_dir().join("steamlens_test_no_view_999999.toml");
-        let toml_without_view = "schema_version = 2\n[library]\nsort = \"name_asc\"\n";
-        std::fs::write(&tmp, toml_without_view).expect("write");
+        let toml_without_view = format!(
+            "schema_version = {CURRENT_SETTINGS_VERSION}\n[library]\nsort = \"name_asc\"\n"
+        );
+        std::fs::write(&tmp, toml_without_view.as_str()).expect("write");
         let result = load_from_path(&tmp);
         assert_eq!(
             result.library.view,

@@ -40,20 +40,51 @@ pub fn no_achievements_path() -> PathBuf {
     cache_dir().join("no_achievements.json")
 }
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub fn game_summary_path(app_id: u32) -> PathBuf {
-    cache_dir()
-        .join("games")
-        .join(app_id.to_string())
-        .join("summary.json")
+pub fn users_dir() -> PathBuf {
+    cache_dir().join("users")
 }
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-pub fn game_achievements_path(app_id: u32) -> PathBuf {
+pub fn user_dir(steamid3: u32) -> PathBuf {
+    users_dir().join(steamid3.to_string())
+}
+
+pub fn user_profile_path(steamid3: u32) -> PathBuf {
+    user_dir(steamid3).join("profile.json")
+}
+
+pub fn user_library_path(steamid3: u32) -> PathBuf {
+    user_dir(steamid3).join("library.json")
+}
+
+pub fn user_game_dir(steamid3: u32, app_id: u32) -> PathBuf {
+    user_dir(steamid3).join("games").join(app_id.to_string())
+}
+
+pub fn user_game_summary_path(steamid3: u32, app_id: u32) -> PathBuf {
+    user_game_dir(steamid3, app_id).join("summary.json")
+}
+
+pub fn user_game_achievements_path(steamid3: u32, app_id: u32) -> PathBuf {
+    user_game_dir(steamid3, app_id).join("achievements.json")
+}
+
+pub fn shared_game_icons_dir(app_id: u32) -> PathBuf {
     cache_dir()
         .join("games")
         .join(app_id.to_string())
-        .join("achievements.json")
+        .join("icons")
+}
+
+pub(crate) fn legacy_profile_path() -> PathBuf {
+    cache_dir().join("profile.json")
+}
+
+pub(crate) fn legacy_library_path() -> PathBuf {
+    cache_dir().join("library.json")
+}
+
+pub(crate) fn legacy_game_dir(app_id: u32) -> PathBuf {
+    cache_dir().join("games").join(app_id.to_string())
 }
 
 #[cfg(test)]
@@ -61,29 +92,66 @@ mod tests {
     use super::*;
 
     #[test]
-    fn game_summary_path_uses_per_game_subdir() {
-        let p = game_summary_path(570);
+    fn user_profile_path_contains_steamid3() {
+        let p = user_profile_path(123456789);
         let s = p.to_string_lossy();
         assert!(
-            s.ends_with("cache/games/570/summary.json")
-                || s.ends_with("cache\\games\\570\\summary.json")
+            s.contains("users/123456789/profile.json")
+                || s.contains("users\\123456789\\profile.json")
         );
     }
 
     #[test]
-    fn game_achievements_path_uses_per_game_subdir() {
-        let p = game_achievements_path(730);
+    fn user_library_path_contains_steamid3() {
+        let p = user_library_path(123456789);
         let s = p.to_string_lossy();
         assert!(
-            s.ends_with("cache/games/730/achievements.json")
-                || s.ends_with("cache\\games\\730\\achievements.json")
+            s.contains("users/123456789/library.json")
+                || s.contains("users\\123456789\\library.json")
         );
     }
 
     #[test]
-    fn summary_and_achievements_share_parent_dir() {
-        let summary = game_summary_path(42);
-        let achievements = game_achievements_path(42);
-        assert_eq!(summary.parent(), achievements.parent());
+    fn user_game_summary_path_correct() {
+        let p = user_game_summary_path(123456789, 570);
+        let s = p.to_string_lossy();
+        assert!(
+            s.contains("users/123456789/games/570/summary.json")
+                || s.contains("users\\123456789\\games\\570\\summary.json")
+        );
+    }
+
+    #[test]
+    fn user_game_achievements_path_correct() {
+        let p = user_game_achievements_path(123456789, 570);
+        let s = p.to_string_lossy();
+        assert!(
+            s.contains("users/123456789/games/570/achievements.json")
+                || s.contains("users\\123456789\\games\\570\\achievements.json")
+        );
+    }
+
+    #[test]
+    fn shared_game_icons_dir_not_in_users() {
+        let p = shared_game_icons_dir(570);
+        let s = p.to_string_lossy();
+        assert!(
+            !s.contains("users"),
+            "icons dir must be shared, not per-user"
+        );
+        assert!(
+            s.contains("games/570/icons") || s.contains("games\\570\\icons"),
+            "icons dir must be under games/570/icons"
+        );
+    }
+
+    #[test]
+    fn legacy_profile_path_at_cache_root() {
+        let p = legacy_profile_path();
+        let s = p.to_string_lossy();
+        assert!(
+            s.ends_with("cache/profile.json") || s.ends_with("cache\\profile.json"),
+            "legacy profile.json must be at cache root, got: {s}"
+        );
     }
 }

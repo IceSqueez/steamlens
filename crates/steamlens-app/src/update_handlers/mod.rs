@@ -17,5 +17,5 @@ pub(crate) use input::{
     handle_global_search_changed, handle_keyboard_event, handle_local_profile_loaded,
     handle_messaging, handle_update_check_result,
 };
-pub(crate) use probe::handle_probe_result;
+pub(crate) use probe::{handle_probe_library_ready, handle_probe_result};
 pub(crate) use profile::handle_profile_view;

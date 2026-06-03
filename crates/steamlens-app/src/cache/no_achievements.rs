@@ -35,11 +35,6 @@ impl NoAchievementsCache {
 }
 
 impl Cached for NoAchievementsCache {
-    const NAME: &'static str = "no_achievements";
-    const CURRENT_SCHEMA: u32 = CURRENT_NO_ACHIEVEMENTS_SCHEMA;
-    fn schema_version(&self) -> u32 {
-        self.schema_version
-    }
     fn path() -> PathBuf {
         cache_path()
     }

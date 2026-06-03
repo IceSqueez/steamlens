@@ -2,16 +2,9 @@ use std::path::PathBuf;
 
 use steamlens_core::AchievementIcon;
 
-fn icons_dir(app_id: u32) -> PathBuf {
-    crate::paths::cache_dir()
-        .join("games")
-        .join(app_id.to_string())
-        .join("icons")
-}
-
 fn icon_path(app_id: u32, ach_id: &str) -> PathBuf {
     let safe = ach_id.replace(['/', '\\', ':', '\0'], "_");
-    icons_dir(app_id).join(format!("{safe}.png"))
+    crate::paths::shared_game_icons_dir(app_id).join(format!("{safe}.png"))
 }
 
 pub fn write_blocking(app_id: u32, ach_id: &str, icon: &AchievementIcon) -> std::io::Result<()> {

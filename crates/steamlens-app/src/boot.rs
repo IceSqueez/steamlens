@@ -57,16 +57,23 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         modals: Modals::default(),
     };
 
-    (
-        app,
-        Task::batch([
-            splash_commands::min_splash_wait(),
-            splash_commands::probe_steam_boot(),
-            spawn_local_profile_load(),
-            spawn_app_assets_load(),
-            Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
-        ]),
-    )
+    let last_steamid3 = app.context.settings.last_user_steamid;
+
+    let mut boot_tasks = vec![
+        splash_commands::min_splash_wait(),
+        splash_commands::probe_steam_boot(),
+        spawn_local_profile_load(),
+        spawn_app_assets_load(),
+        Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
+    ];
+
+    if let Some(steamid3) = last_steamid3 {
+        use crate::cache;
+        boot_tasks.push(cache::commands::load_profile_cache(steamid3));
+        boot_tasks.push(cache::commands::load_library_cache(steamid3));
+    }
+
+    (app, Task::batch(boot_tasks))
 }
 
 pub(crate) fn spawn_local_profile_load() -> Task<Message> {

@@ -210,8 +210,9 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         },
     );
 
+    let steamid3 = app.context.steamid3 as u32;
     let summary_task = Task::perform(
-        async move { cache::store::write_game_summary(&summary).await },
+        async move { cache::store::write_game_summary(steamid3, &summary).await },
         move |result| {
             Message::Cache(cache::CacheEvent::GameWritten {
                 app_id,

@@ -6,22 +6,24 @@ use crate::cache::types::GameSummaryCache;
 use crate::cache::{self, CacheEvent, CachedLibrary, GameCacheEntry, NoAchievementsCache};
 use steamlens_core::GameSummary;
 
-pub fn load_library_cache() -> Task<crate::Message> {
-    Task::perform(async { cache::load_library_cache().await }, |c| {
-        crate::Message::Cache(CacheEvent::LibraryLoaded(c))
-    })
+pub fn load_library_cache(steamid3: u32) -> Task<crate::Message> {
+    Task::perform(
+        async move { cache::load_library_cache(steamid3).await },
+        |c| crate::Message::Cache(CacheEvent::LibraryLoaded(c)),
+    )
 }
 
-pub fn load_profile_cache() -> Task<crate::Message> {
-    Task::perform(async { cache::load_profile_cache().await }, |c| {
-        crate::Message::Cache(CacheEvent::ProfileLoaded(c))
-    })
+pub fn load_profile_cache(steamid3: u32) -> Task<crate::Message> {
+    Task::perform(
+        async move { cache::load_profile_cache(steamid3).await },
+        |c| crate::Message::Cache(CacheEvent::ProfileLoaded(c)),
+    )
 }
 
-pub fn write_profile_cache(cached: cache::CachedProfile) -> Task<crate::Message> {
+pub fn write_profile_cache(steamid3: u32, cached: cache::CachedProfile) -> Task<crate::Message> {
     Task::perform(
         async move {
-            cache::write_profile_cache(&cached)
+            cache::write_profile_cache(steamid3, &cached)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -29,10 +31,10 @@ pub fn write_profile_cache(cached: cache::CachedProfile) -> Task<crate::Message>
     )
 }
 
-pub fn write_library_cache(cached: CachedLibrary) -> Task<crate::Message> {
+pub fn write_library_cache(steamid3: u32, cached: CachedLibrary) -> Task<crate::Message> {
     Task::perform(
         async move {
-            cache::write_library_cache(&cached)
+            cache::write_library_cache(steamid3, &cached)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -52,11 +54,11 @@ pub fn write_game_cache(entry: GameCacheEntry) -> Task<crate::Message> {
     )
 }
 
-pub fn write_game_summary(entry: GameSummaryCache) -> Task<crate::Message> {
+pub fn write_game_summary(steamid3: u32, entry: GameSummaryCache) -> Task<crate::Message> {
     let app_id = entry.app_id;
     Task::perform(
         async move {
-            cache::store::write_game_summary(&entry)
+            cache::store::write_game_summary(steamid3, &entry)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -111,12 +113,12 @@ mod tests {
 
     #[test]
     fn load_library_cache_builds() {
-        let _: Task<crate::Message> = load_library_cache();
+        let _: Task<crate::Message> = load_library_cache(123456789);
     }
 
     #[test]
     fn load_profile_cache_builds() {
-        let _: Task<crate::Message> = load_profile_cache();
+        let _: Task<crate::Message> = load_profile_cache(123456789);
     }
 
     #[test]

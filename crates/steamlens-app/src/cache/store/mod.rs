@@ -3,22 +3,15 @@ mod game_cache;
 mod game_summary;
 mod primitives;
 
+#[allow(unused_imports, reason = "available for future consumers")]
+pub use game_achievements::{load_game_achievements, write_game_achievements};
 pub(crate) use game_cache::merge_preserved_fields;
 pub use game_cache::{delete_game_cache_dir, load_game_cache, write_game_cache};
+#[allow(unused_imports, reason = "available for offline game view consumers")]
+pub use game_summary::load_game_summary;
 pub(crate) use game_summary::load_game_summary_from_path;
 pub use game_summary::write_game_summary;
 pub use primitives::{CacheIoError, atomic_write};
-
-#[allow(
-    unused_imports,
-    reason = "publicly exposed alongside other achievements helpers"
-)]
-pub use game_achievements::{load_game_achievements, write_game_achievements};
-#[allow(
-    unused_imports,
-    reason = "publicly exposed alongside other summary helpers"
-)]
-pub use game_summary::load_game_summary;
 
 #[cfg(test)]
 mod tests {

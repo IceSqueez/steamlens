@@ -84,6 +84,11 @@ pub(crate) enum Message {
     KeyboardEvent(keyboard::Event),
     SplashMinElapsed,
     ProbeResult(Result<Box<ProbedProfile>, ProbeFailure>),
+    ProbeLibraryReady {
+        steamid3: u32,
+        summaries: Vec<steamlens_core::GameSummary>,
+        no_ach: cache::NoAchievementsCache,
+    },
     RetrySteamConnect,
     SettingsFlushTick,
     SettingsWritten(Result<(), String>),
@@ -217,6 +222,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::ProbeResult(result) => update_handlers::handle_probe_result(app, result),
+
+        Message::ProbeLibraryReady {
+            steamid3,
+            summaries,
+            no_ach,
+        } => update_handlers::handle_probe_library_ready(app, steamid3, summaries, no_ach),
 
         Message::Cache(cache::CacheEvent::ProfileLoaded(maybe)) => {
             update_handlers::handle_profile_loaded(app, maybe)

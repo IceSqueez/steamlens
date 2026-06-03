@@ -60,7 +60,8 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
                     })
                     .collect(),
             );
-            tasks.push(cache::commands::write_library_cache(cached));
+            let steamid3 = app.context.steamid3 as u32;
+            tasks.push(cache::commands::write_library_cache(steamid3, cached));
         }
         pv_state.recompute_derived(
             &app.context.cached_entries,
@@ -128,8 +129,9 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             for entry in cache_entries {
                 tasks.push(cache::commands::write_game_cache(entry));
             }
+            let steamid3 = app.context.steamid3 as u32;
             for summary in summary_entries {
-                tasks.push(cache::commands::write_game_summary(summary));
+                tasks.push(cache::commands::write_game_summary(steamid3, summary));
             }
             if !no_ach_entries.is_empty() {
                 for (app_id, cn) in no_ach_entries {
