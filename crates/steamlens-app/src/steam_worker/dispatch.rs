@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use steamlens_core::AchievementIcon;
-use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage, WorkerResponse};
 
 use super::api::SteamReply;
 use super::apply::run_apply_sequence;
@@ -16,21 +16,21 @@ pub(super) fn reply(tx: &mpsc::UnboundedSender<SteamReply>, r: SteamReply) {
     let _ = tx.send(r);
 }
 
-pub(super) fn error_reply(kind: WorkerErrorKind, message: String) -> SteamReply {
+pub(super) fn error_reply(kind: WorkerErrorStage, message: String) -> SteamReply {
     match kind {
-        WorkerErrorKind::Connect | WorkerErrorKind::NotLoggedIn => {
+        WorkerErrorStage::Connect | WorkerErrorStage::NotLoggedIn => {
             SteamReply::ConnectFailed(message)
         }
-        WorkerErrorKind::RequestUserStats
-        | WorkerErrorKind::UserStatsReceived
-        | WorkerErrorKind::PollCallbacks => SteamReply::LoadFailed(message),
-        WorkerErrorKind::StoreStats | WorkerErrorKind::UserStatsStored => {
+        WorkerErrorStage::RequestUserStats
+        | WorkerErrorStage::UserStatsReceived
+        | WorkerErrorStage::PollCallbacks => SteamReply::LoadFailed(message),
+        WorkerErrorStage::StoreStats | WorkerErrorStage::UserStatsStored => {
             SteamReply::SaveFailed(message)
         }
-        WorkerErrorKind::RequestGlobalPercentages
-        | WorkerErrorKind::GlobalPercentagesReady
-        | WorkerErrorKind::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed,
-        WorkerErrorKind::Generic => SteamReply::LoadFailed(message),
+        WorkerErrorStage::RequestGlobalPercentages
+        | WorkerErrorStage::GlobalPercentagesReady
+        | WorkerErrorStage::GlobalPercentagesAPICall => SteamReply::GlobalPercentagesFailed,
+        WorkerErrorStage::Generic => SteamReply::LoadFailed(message),
     }
 }
 

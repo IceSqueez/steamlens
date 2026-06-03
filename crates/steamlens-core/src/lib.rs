@@ -25,7 +25,7 @@ pub use ipc::shm::{
 pub use ipc::{
     AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
     CardOnlyAchievement, CardOnlyPayload, FrameError, ProbeResultPayload, StatData, StatValue,
-    WorkerCommand, WorkerErrorKind, WorkerResponse,
+    WorkerCommand, WorkerErrorStage, WorkerResponse,
 };
 pub use library::GameSummary;
 pub use paths::{

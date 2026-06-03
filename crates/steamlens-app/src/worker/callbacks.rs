@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 use steamlens_core::{Client, SteamCallback};
 
 use super::ipc_io::write_response;
@@ -46,7 +46,7 @@ pub(super) async fn wait_for_stats_received(
                     }
                     forward_icon_callbacks(callbacks.clone(), client).await;
                     return Some(WorkerResponse::Error {
-                        kind: WorkerErrorKind::UserStatsReceived,
+                        kind: WorkerErrorStage::UserStatsReceived,
                         message: format!("result code {}", result.raw()),
                     });
                 }
@@ -56,7 +56,7 @@ pub(super) async fn wait_for_stats_received(
 
         if Instant::now() >= deadline {
             return Some(WorkerResponse::Error {
-                kind: WorkerErrorKind::UserStatsReceived,
+                kind: WorkerErrorStage::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
@@ -102,7 +102,7 @@ pub(super) async fn wait_for_stats_received_card_only(
                     }
                     forward_icon_callbacks(callbacks.clone(), client).await;
                     return Some(WorkerResponse::Error {
-                        kind: WorkerErrorKind::UserStatsReceived,
+                        kind: WorkerErrorStage::UserStatsReceived,
                         message: format!("result code {}", result.raw()),
                     });
                 }
@@ -116,7 +116,7 @@ pub(super) async fn wait_for_stats_received_card_only(
                 timeouts::STAT_RECEIVED
             );
             return Some(WorkerResponse::Error {
-                kind: WorkerErrorKind::UserStatsReceived,
+                kind: WorkerErrorStage::UserStatsReceived,
                 message: "timed out waiting for UserStatsReceived".into(),
             });
         }
@@ -136,7 +136,7 @@ pub(super) async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse 
                     } else {
                         forward_icon_callbacks(callbacks.clone(), client).await;
                         return WorkerResponse::Error {
-                            kind: WorkerErrorKind::UserStatsStored,
+                            kind: WorkerErrorStage::UserStatsStored,
                             message: format!("result code {}", result.raw()),
                         };
                     }
@@ -147,7 +147,7 @@ pub(super) async fn wait_for_store_confirmed(client: &Client) -> WorkerResponse 
 
         if Instant::now() >= deadline {
             return WorkerResponse::Error {
-                kind: WorkerErrorKind::StoreStats,
+                kind: WorkerErrorStage::StoreStats,
                 message: "timed out waiting for UserStatsStored".into(),
             };
         }

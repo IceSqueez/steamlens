@@ -1,6 +1,6 @@
 use std::process::ExitStatus;
 
-use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -68,7 +68,7 @@ pub(crate) fn preflight(
 pub enum WorkerProtocolError {
     #[error("worker error: {kind:?}: {message}")]
     WorkerError {
-        kind: WorkerErrorKind,
+        kind: WorkerErrorStage,
         message: String,
     },
 
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn worker_protocol_error_display_includes_kind_and_message() {
         let err = WorkerProtocolError::WorkerError {
-            kind: WorkerErrorKind::Connect,
+            kind: WorkerErrorStage::Connect,
             message: "no pipe".to_owned(),
         };
         let s = format!("{err}");

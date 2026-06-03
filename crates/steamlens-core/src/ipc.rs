@@ -11,7 +11,7 @@ pub use types::{
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum WorkerErrorKind {
+pub enum WorkerErrorStage {
     Connect,
     NotLoggedIn,
     RequestUserStats,
@@ -25,7 +25,7 @@ pub enum WorkerErrorKind {
     Generic,
 }
 
-impl WorkerErrorKind {
+impl WorkerErrorStage {
     pub fn tag(self) -> &'static str {
         match self {
             Self::Connect => "connect",
@@ -97,7 +97,7 @@ pub enum WorkerResponse {
         region_bytes: u64,
     },
     Error {
-        kind: WorkerErrorKind,
+        kind: WorkerErrorStage,
         message: String,
     },
     Disconnected,
@@ -210,7 +210,7 @@ mod tests {
                 region_bytes: 4096,
             },
             WorkerResponse::Error {
-                kind: WorkerErrorKind::StoreStats,
+                kind: WorkerErrorStage::StoreStats,
                 message: "pipe closed".to_owned(),
             },
             WorkerResponse::Disconnected,
@@ -221,19 +221,19 @@ mod tests {
         ]
     }
 
-    fn all_error_kinds() -> Vec<WorkerErrorKind> {
+    fn all_error_kinds() -> Vec<WorkerErrorStage> {
         vec![
-            WorkerErrorKind::Connect,
-            WorkerErrorKind::NotLoggedIn,
-            WorkerErrorKind::RequestUserStats,
-            WorkerErrorKind::UserStatsReceived,
-            WorkerErrorKind::PollCallbacks,
-            WorkerErrorKind::StoreStats,
-            WorkerErrorKind::UserStatsStored,
-            WorkerErrorKind::RequestGlobalPercentages,
-            WorkerErrorKind::GlobalPercentagesReady,
-            WorkerErrorKind::GlobalPercentagesAPICall,
-            WorkerErrorKind::Generic,
+            WorkerErrorStage::Connect,
+            WorkerErrorStage::NotLoggedIn,
+            WorkerErrorStage::RequestUserStats,
+            WorkerErrorStage::UserStatsReceived,
+            WorkerErrorStage::PollCallbacks,
+            WorkerErrorStage::StoreStats,
+            WorkerErrorStage::UserStatsStored,
+            WorkerErrorStage::RequestGlobalPercentages,
+            WorkerErrorStage::GlobalPercentagesReady,
+            WorkerErrorStage::GlobalPercentagesAPICall,
+            WorkerErrorStage::Generic,
         ]
     }
 

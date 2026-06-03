@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use steamlens_core::Client;
-use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage, WorkerResponse};
 use tokio::sync::mpsc;
 
 use super::callbacks::forward_icon_callbacks;
@@ -56,7 +56,7 @@ pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
                     Err(e) => {
                         tracing::error!("read_command err: {e}");
                         let _ = write_response(&WorkerResponse::Error {
-                            kind: WorkerErrorKind::Generic,
+                            kind: WorkerErrorStage::Generic,
                             message: e.to_string(),
                         }).await;
                         return 1;
@@ -126,7 +126,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorKind::Generic,
+                    kind: WorkerErrorStage::Generic,
                     message: format!("SetAchievement({name}): {e}"),
                 },
             };
@@ -139,7 +139,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().clear_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorKind::Generic,
+                    kind: WorkerErrorStage::Generic,
                     message: format!("ClearAchievement({name}): {e}"),
                 },
             };
@@ -152,7 +152,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_stat_int(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorKind::Generic,
+                    kind: WorkerErrorStage::Generic,
                     message: format!("SetStatInt({name}): {e}"),
                 },
             };
@@ -165,7 +165,7 @@ async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> Dis
             let resp = match client.user_stats().set_stat_float(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorKind::Generic,
+                    kind: WorkerErrorStage::Generic,
                     message: format!("SetStatFloat({name}): {e}"),
                 },
             };

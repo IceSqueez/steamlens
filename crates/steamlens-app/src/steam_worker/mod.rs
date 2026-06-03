@@ -52,7 +52,7 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<steamlens_core::ipc::
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind};
+    use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage};
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -190,7 +190,7 @@ mod tests {
 
         let (mut tx, rx) = tokio::io::duplex(4096);
         let resp = WorkerResponse::Error {
-            kind: WorkerErrorKind::Connect,
+            kind: WorkerErrorStage::Connect,
             message: "steam not running".to_owned(),
         };
         tx.write_all(&encode_frame(&resp).unwrap()).await.unwrap();
@@ -200,7 +200,7 @@ mod tests {
         assert!(matches!(
             result,
             Some(WorkerResponse::Error {
-                kind: WorkerErrorKind::Connect,
+                kind: WorkerErrorStage::Connect,
                 ..
             })
         ));

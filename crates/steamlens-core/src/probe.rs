@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-use crate::ipc::{WorkerErrorKind, WorkerResponse, decode_frame, parse_header};
+use crate::ipc::{WorkerErrorStage, WorkerResponse, decode_frame, parse_header};
 use crate::library::GameSummary;
 
 #[derive(Debug, Clone)]
@@ -123,8 +123,8 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
             })
         }
         WorkerResponse::Error { kind, message } => match kind {
-            WorkerErrorKind::Connect => Err(ProbeError::SteamNotRunning),
-            WorkerErrorKind::NotLoggedIn => Err(ProbeError::NotLoggedIn),
+            WorkerErrorStage::Connect => Err(ProbeError::SteamNotRunning),
+            WorkerErrorStage::NotLoggedIn => Err(ProbeError::NotLoggedIn),
             _ => Err(ProbeError::Worker(message)),
         },
         other => Err(ProbeError::Worker(format!(

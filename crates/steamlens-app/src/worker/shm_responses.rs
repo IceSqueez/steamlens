@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use steamlens_core::AchievementIcon;
-use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 
 pub(super) fn shm_response_for_aas(
     payload: steamlens_core::AchievementsAndStatsPayload,
@@ -12,7 +12,7 @@ pub(super) fn shm_response_for_aas(
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
+            kind: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
@@ -27,7 +27,7 @@ pub(super) fn shm_response_for_count(
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
+            kind: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
@@ -40,7 +40,7 @@ pub(super) fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerRespo
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
+            kind: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
@@ -59,7 +59,7 @@ pub(super) fn shm_response_for_icon(name: String, icon: AchievementIcon) -> Work
         Err(e) => {
             tracing::trace!(name = %name, error = %e, "shm_response_for_icon: write_payload failed");
             WorkerResponse::Error {
-                kind: WorkerErrorKind::Generic,
+                kind: WorkerErrorStage::Generic,
                 message: e.to_string(),
             }
         }
@@ -75,7 +75,7 @@ pub(super) fn shm_response_for_probe(
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
+            kind: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
@@ -90,7 +90,7 @@ pub(super) fn shm_response_for_card_only(
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorKind::Generic,
+            kind: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }

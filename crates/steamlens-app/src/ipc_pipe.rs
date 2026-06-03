@@ -25,7 +25,7 @@ pub(crate) async fn read_response<R: AsyncRead + Unpin>(reader: &mut R) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use steamlens_core::ipc::{WorkerCommand, WorkerErrorKind, encode_frame};
+    use steamlens_core::ipc::{WorkerCommand, WorkerErrorStage, encode_frame};
     use tokio::io::AsyncWriteExt;
 
     async fn write_frame(writer: &mut (impl tokio::io::AsyncWrite + Unpin), resp: &WorkerResponse) {
@@ -79,7 +79,7 @@ mod tests {
         write_frame(
             &mut tx,
             &WorkerResponse::Error {
-                kind: WorkerErrorKind::Connect,
+                kind: WorkerErrorStage::Connect,
                 message: "no pipe".to_owned(),
             },
         )
@@ -89,7 +89,7 @@ mod tests {
         let resp = read_response(&mut rx).await.expect("decoded");
         match resp {
             WorkerResponse::Error { kind, message } => {
-                assert_eq!(kind, WorkerErrorKind::Connect);
+                assert_eq!(kind, WorkerErrorStage::Connect);
                 assert_eq!(message, "no pipe");
             }
             other => panic!("expected Error, got {other:?}"),

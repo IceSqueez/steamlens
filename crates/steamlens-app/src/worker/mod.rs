@@ -8,7 +8,7 @@ mod shm_responses;
 use std::process;
 use std::time::Instant;
 
-use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 
 use commands::encode_avatar_png;
 use dispatch::dispatch_loop;
@@ -50,7 +50,7 @@ async fn probe_main() -> i32 {
         Err(steamlens_core::SteamError::NotLoggedIn) => {
             tracing::warn!("probe: Steam is running but no user is signed in");
             let _ = write_response(&WorkerResponse::Error {
-                kind: WorkerErrorKind::NotLoggedIn,
+                kind: WorkerErrorStage::NotLoggedIn,
                 message: steamlens_core::SteamError::NotLoggedIn.to_string(),
             })
             .await;
@@ -59,7 +59,7 @@ async fn probe_main() -> i32 {
         Err(e) => {
             tracing::error!("probe: connect failed: {}", error_chain(&e));
             let _ = write_response(&WorkerResponse::Error {
-                kind: WorkerErrorKind::Connect,
+                kind: WorkerErrorStage::Connect,
                 message: error_chain(&e),
             })
             .await;
@@ -74,7 +74,7 @@ async fn probe_main() -> i32 {
         Some(n) => n,
         None => {
             let _ = write_response(&WorkerResponse::Error {
-                kind: WorkerErrorKind::Generic,
+                kind: WorkerErrorStage::Generic,
                 message: "GetPersonaName returned null or empty".into(),
             })
             .await;
@@ -134,7 +134,7 @@ async fn worker_main(app_id: u32) -> i32 {
         Err(e) => {
             tracing::error!("connect failed in {:?}: {}", t0.elapsed(), error_chain(&e));
             let _ = write_response(&WorkerResponse::Error {
-                kind: WorkerErrorKind::Connect,
+                kind: WorkerErrorStage::Connect,
                 message: error_chain(&e),
             })
             .await;

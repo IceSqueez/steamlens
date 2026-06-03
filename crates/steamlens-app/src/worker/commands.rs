@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use steamlens_core::ipc::{WorkerErrorKind, WorkerResponse};
+use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 use steamlens_core::{AchievementData, AchievementIcon, Client, StatKind, StatValue};
 
 use super::callbacks::{
@@ -30,7 +30,7 @@ pub(super) async fn load_achievements_and_stats(client: &Client, app_id: u32) ->
 
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         return WorkerResponse::Error {
-            kind: WorkerErrorKind::RequestUserStats,
+            kind: WorkerErrorStage::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -154,7 +154,7 @@ pub(super) async fn load_achievements_card_only(client: &Client, app_id: u32) ->
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         tracing::error!("request_user_stats failed in {:?}: {e}", t0.elapsed());
         return WorkerResponse::Error {
-            kind: WorkerErrorKind::RequestUserStats,
+            kind: WorkerErrorStage::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -206,7 +206,7 @@ pub(super) async fn quick_achievement_count(client: &Client) -> WorkerResponse {
 
     if let Err(e) = stats_iface.request_user_stats(steam_id) {
         return WorkerResponse::Error {
-            kind: WorkerErrorKind::RequestUserStats,
+            kind: WorkerErrorStage::RequestUserStats,
             message: e.to_string(),
         };
     }
@@ -237,7 +237,7 @@ pub(super) async fn store_stats_and_wait(client: &Client) -> WorkerResponse {
     let stats_iface = client.user_stats();
     if let Err(e) = stats_iface.store_stats() {
         return WorkerResponse::Error {
-            kind: WorkerErrorKind::StoreStats,
+            kind: WorkerErrorStage::StoreStats,
             message: e.to_string(),
         };
     }
@@ -252,7 +252,7 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
         Ok(h) => h,
         Err(e) => {
             return WorkerResponse::Error {
-                kind: WorkerErrorKind::RequestGlobalPercentages,
+                kind: WorkerErrorStage::RequestGlobalPercentages,
                 message: e.to_string(),
             };
         }
@@ -269,14 +269,14 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
         ) {
             Err(e) => {
                 return WorkerResponse::Error {
-                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
+                    kind: WorkerErrorStage::GlobalPercentagesAPICall,
                     message: e.to_string(),
                 };
             }
             Ok(None) => {}
             Ok(Some(Err(e))) => {
                 return WorkerResponse::Error {
-                    kind: WorkerErrorKind::GlobalPercentagesAPICall,
+                    kind: WorkerErrorStage::GlobalPercentagesAPICall,
                     message: e.to_string(),
                 };
             }
@@ -284,14 +284,14 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
                 poll_and_forward(client).await;
                 if bytes.len() < PAYLOAD_SIZE {
                     return WorkerResponse::Error {
-                        kind: WorkerErrorKind::GlobalPercentagesReady,
+                        kind: WorkerErrorStage::GlobalPercentagesReady,
                         message: "payload too short".into(),
                     };
                 }
                 let result_code = i32::from_le_bytes(bytes[8..12].try_into().unwrap_or([0u8; 4]));
                 if result_code != STEAM_RESULT_OK {
                     return WorkerResponse::Error {
-                        kind: WorkerErrorKind::GlobalPercentagesReady,
+                        kind: WorkerErrorStage::GlobalPercentagesReady,
                         message: format!("result code {result_code}"),
                     };
                 }
@@ -301,7 +301,7 @@ pub(super) async fn fetch_global_percentages(client: &Client) -> WorkerResponse 
 
         if Instant::now() >= deadline {
             return WorkerResponse::Error {
-                kind: WorkerErrorKind::RequestGlobalPercentages,
+                kind: WorkerErrorStage::RequestGlobalPercentages,
                 message: "timed out waiting for GlobalAchievementPercentagesReady".into(),
             };
         }
