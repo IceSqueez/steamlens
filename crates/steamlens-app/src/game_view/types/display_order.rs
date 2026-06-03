@@ -553,7 +553,7 @@ mod tests {
         let rows = vec![
             make_appeared("non_legendary_common", Some(80.0)),
             make_appeared("legendary_a", Some(1.0)),
-            make_appeared("legendary_b", Some(2.0)),
+            make_appeared("legendary_b", Some(1.0)),
             make_hidden_row("hidden_row", false, false, Some(60.0)),
         ];
         let ids = visible_achievement_ids(

@@ -3,7 +3,14 @@ use std::collections::HashMap;
 
 use super::rows::AchievementRow;
 
-const LEGENDARY_TOP_N: usize = 3;
+const TIER_PLAN: [(RarityTier, f32, f32); 4] = [
+    (RarityTier::Legendary, 0.05, 10.0),
+    (RarityTier::Mythical, 0.10, 15.0),
+    (RarityTier::Rare, 0.15, 30.0),
+    (RarityTier::Uncommon, 0.25, 50.0),
+];
+
+const TIE_BREAK_EPSILON: f32 = 0.001;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,68 +35,63 @@ impl RarityTier {
 }
 
 pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, RarityTier> {
-    let mut rated: Vec<(String, f32)> = achievements
+    let mut rated_achievements: Vec<(String, f32)> = achievements
         .iter()
-        .filter_map(|r| r.rarity_percent.map(|p| (r.data.id.clone(), p)))
+        .filter_map(|row| {
+            row.rarity_percent
+                .map(|percent| (row.data.id.clone(), percent))
+        })
         .collect();
 
-    if rated.is_empty() {
+    if rated_achievements.is_empty() {
         return HashMap::new();
     }
 
-    rated.sort_by(|a, b| {
-        a.1.partial_cmp(&b.1)
+    rated_achievements.sort_by(|left, right| {
+        left.1
+            .partial_cmp(&right.1)
             .unwrap_or(Ordering::Equal)
-            .then(a.0.cmp(&b.0))
+            .then(left.0.cmp(&right.0))
     });
 
-    let total = rated.len();
-    let mut legendary_n = total.min(LEGENDARY_TOP_N);
-    if legendary_n > 0 && legendary_n < total {
-        let threshold = rated[legendary_n - 1].1;
-        while legendary_n < total && (rated[legendary_n].1 - threshold).abs() < 0.001 {
-            legendary_n += 1;
+    let total = rated_achievements.len();
+    let mut tier_map = HashMap::with_capacity(total);
+    let mut cursor = 0usize;
+
+    for (tier, slot_share, ceiling_percent) in TIER_PLAN {
+        if cursor >= total {
+            break;
+        }
+        let remaining = total - cursor;
+        let raw_slot_count = ((remaining as f32) * slot_share).ceil() as usize;
+        let slot_count = raw_slot_count.max(1);
+        let mut slot_end = (cursor + slot_count).min(total);
+
+        if slot_end > cursor && slot_end < total {
+            let boundary_percent = rated_achievements[slot_end - 1].1;
+            while slot_end < total
+                && (rated_achievements[slot_end].1 - boundary_percent).abs() < TIE_BREAK_EPSILON
+            {
+                slot_end += 1;
+            }
+        }
+
+        while cursor < slot_end {
+            let (id, percent) = &rated_achievements[cursor];
+            if *percent < ceiling_percent {
+                tier_map.insert(id.clone(), tier);
+                cursor += 1;
+            } else {
+                break;
+            }
         }
     }
-    let remaining = total - legendary_n;
 
-    let mythical_n = (remaining as f32 * 0.10).round() as usize;
-    let rare_n = (remaining as f32 * 0.15).round() as usize;
-    let uncommon_n = (remaining as f32 * 0.25).round() as usize;
-    let common_n = remaining
-        .saturating_sub(mythical_n)
-        .saturating_sub(rare_n)
-        .saturating_sub(uncommon_n);
-
-    let mut map = HashMap::with_capacity(total);
-
-    let mut idx = 0;
-
-    for (id, _) in &rated[idx..idx + legendary_n] {
-        map.insert(id.clone(), RarityTier::Legendary);
-    }
-    idx += legendary_n;
-
-    for (id, _) in &rated[idx..idx + mythical_n] {
-        map.insert(id.clone(), RarityTier::Mythical);
-    }
-    idx += mythical_n;
-
-    for (id, _) in &rated[idx..idx + rare_n] {
-        map.insert(id.clone(), RarityTier::Rare);
-    }
-    idx += rare_n;
-
-    for (id, _) in &rated[idx..idx + uncommon_n] {
-        map.insert(id.clone(), RarityTier::Uncommon);
-    }
-    idx += uncommon_n;
-
-    for (id, _) in &rated[idx..idx + common_n] {
-        map.insert(id.clone(), RarityTier::Common);
+    for (id, _) in &rated_achievements[cursor..] {
+        tier_map.insert(id.clone(), RarityTier::Common);
     }
 
-    map
+    tier_map
 }
 
 #[cfg(test)]
@@ -120,132 +122,210 @@ mod tests {
     fn make_linear_rows(count: usize) -> Vec<AchievementRow> {
         (0..count)
             .map(|i| {
-                let pct = (i as f32 / (count - 1).max(1) as f32) * 100.0;
-                make_achievement_row(&format!("a{i}"), Some(pct))
+                let percent = (i as f32 / (count - 1).max(1) as f32) * 100.0;
+                make_achievement_row(&format!("a{i}"), Some(percent))
             })
             .collect()
     }
 
-    fn count_legendary(map: &HashMap<String, RarityTier>) -> usize {
-        map.values()
-            .filter(|t| **t == RarityTier::Legendary)
-            .count()
+    fn count_tier(map: &HashMap<String, RarityTier>, tier: RarityTier) -> usize {
+        map.values().filter(|&&entry| entry == tier).count()
     }
 
     #[test]
-    fn compute_tier_map_balanced_distribution() {
+    fn empty_input_returns_empty_map() {
+        let map = compute_tier_map(&[]);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn all_unrated_returns_empty_map() {
+        let rows = vec![
+            make_achievement_row("a", None),
+            make_achievement_row("b", None),
+        ];
+        let map = compute_tier_map(&rows);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn unrated_achievements_excluded_from_tier_map() {
+        let rows = vec![
+            make_achievement_row("rated_low", Some(5.0)),
+            make_achievement_row("rated_high", Some(80.0)),
+            make_achievement_row("unrated", None),
+        ];
+        let map = compute_tier_map(&rows);
+        assert!(!map.contains_key("unrated"));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn easy_game_with_all_high_percentages_assigns_only_common() {
+        let rows: Vec<_> = (0..50)
+            .map(|i| make_achievement_row(&format!("a{i}"), Some(50.0 + i as f32)))
+            .collect();
+        let map = compute_tier_map(&rows);
+        assert_eq!(map.len(), 50);
+        assert!(
+            map.values().all(|&entry| entry == RarityTier::Common),
+            "all >=50% achievements must demote through every top-tier ceiling"
+        );
+    }
+
+    #[test]
+    fn single_low_percent_achievement_assigned_legendary() {
+        let rows = vec![make_achievement_row("solo", Some(0.5))];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map["solo"], RarityTier::Legendary);
+    }
+
+    #[test]
+    fn single_mid_percent_achievement_demotes_to_uncommon() {
+        let rows = vec![make_achievement_row("solo", Some(39.1))];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map["solo"], RarityTier::Uncommon);
+    }
+
+    #[test]
+    fn single_common_percent_achievement_falls_through_all_ceilings() {
+        let rows = vec![make_achievement_row("solo", Some(85.0))];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map["solo"], RarityTier::Common);
+    }
+
+    #[test]
+    fn linear_distribution_produces_cascading_caps() {
         let rows = make_linear_rows(100);
         let map = compute_tier_map(&rows);
 
-        let legendary = map
-            .values()
-            .filter(|&&t| t == RarityTier::Legendary)
-            .count();
-        let mythical = map.values().filter(|&&t| t == RarityTier::Mythical).count();
-        let rare = map.values().filter(|&&t| t == RarityTier::Rare).count();
-        let uncommon = map.values().filter(|&&t| t == RarityTier::Uncommon).count();
-        let common = map.values().filter(|&&t| t == RarityTier::Common).count();
-
-        assert_eq!(legendary, 3, "top 3 lowest -> Legendary");
-        assert_eq!(mythical, 10, "~10% of remaining 97 = 10 (rounded)");
-        assert_eq!(rare, 15, "~15% of remaining 97 = 15 (rounded)");
-        assert_eq!(uncommon, 24, "~25% of remaining 97 = 24 (rounded)");
-        assert_eq!(
-            common + legendary + mythical + rare + uncommon,
-            100,
-            "total must sum to 100"
-        );
-        assert!(
-            (45..=50).contains(&common),
-            "common gets remainder: {common}"
-        );
+        assert_eq!(count_tier(&map, RarityTier::Legendary), 5);
+        assert_eq!(count_tier(&map, RarityTier::Mythical), 10);
+        assert_eq!(count_tier(&map, RarityTier::Rare), 13);
+        assert_eq!(count_tier(&map, RarityTier::Uncommon), 18);
+        assert_eq!(count_tier(&map, RarityTier::Common), 54);
     }
 
     #[test]
-    fn compute_tier_map_skewed_low_distribution() {
-        let rows: Vec<AchievementRow> = (0..100)
-            .map(|i| make_achievement_row(&format!("a{i}"), Some(i as f32 * 0.1)))
+    fn hardcore_game_with_all_low_percentages_still_distributes_via_caps() {
+        let rows: Vec<_> = (0..100)
+            .map(|i| make_achievement_row(&format!("a{i}"), Some(i as f32 * 0.05)))
             .collect();
         let map = compute_tier_map(&rows);
 
-        let legendary = map
-            .values()
-            .filter(|&&t| t == RarityTier::Legendary)
-            .count();
-        let mythical = map.values().filter(|&&t| t == RarityTier::Mythical).count();
-        let rare = map.values().filter(|&&t| t == RarityTier::Rare).count();
-        let uncommon = map.values().filter(|&&t| t == RarityTier::Uncommon).count();
-        let common = map.values().filter(|&&t| t == RarityTier::Common).count();
+        let legendary = count_tier(&map, RarityTier::Legendary);
+        let mythical = count_tier(&map, RarityTier::Mythical);
+        let rare = count_tier(&map, RarityTier::Rare);
+        let uncommon = count_tier(&map, RarityTier::Uncommon);
+        let common = count_tier(&map, RarityTier::Common);
 
-        assert_eq!(legendary, 3);
-        assert!(
-            mythical > 0,
-            "Mythical tier must not be empty even with all-low percents"
-        );
-        assert!(common > 0, "Common must exist");
         assert_eq!(legendary + mythical + rare + uncommon + common, 100);
+        assert_eq!(legendary, 5);
+        assert_eq!(mythical, 10);
+        assert_eq!(rare, 13);
+        assert_eq!(uncommon, 18);
+        assert!(
+            common > 0,
+            "even all-rare games yield Common via cascading caps"
+        );
     }
 
     #[test]
-    fn compute_tier_map_handles_fewer_than_3_total() {
+    fn each_assigned_tier_satisfies_its_ceiling() {
+        let rows = make_linear_rows(100);
+        let map = compute_tier_map(&rows);
+
+        for row in &rows {
+            let percent = row.rarity_percent.expect("linear rows have percent");
+            match map.get(&row.data.id).copied() {
+                Some(RarityTier::Legendary) => {
+                    assert!(percent < 10.0, "Legendary at {percent}%")
+                }
+                Some(RarityTier::Mythical) => assert!(percent < 15.0, "Mythical at {percent}%"),
+                Some(RarityTier::Rare) => assert!(percent < 30.0, "Rare at {percent}%"),
+                Some(RarityTier::Uncommon) => assert!(percent < 50.0, "Uncommon at {percent}%"),
+                Some(RarityTier::Common) => {}
+                None => panic!("linear row {} unmapped", row.data.id),
+            }
+        }
+    }
+
+    #[test]
+    fn tier_assignment_preserves_rarity_order() {
+        let rows = make_linear_rows(100);
+        let map = compute_tier_map(&rows);
+
+        let tier_rank = |tier: RarityTier| match tier {
+            RarityTier::Legendary => 0,
+            RarityTier::Mythical => 1,
+            RarityTier::Rare => 2,
+            RarityTier::Uncommon => 3,
+            RarityTier::Common => 4,
+        };
+
+        let mut by_percent: Vec<_> = rows
+            .iter()
+            .map(|row| (row.rarity_percent.expect("linear"), map[&row.data.id]))
+            .collect();
+        by_percent.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+        let mut previous_rank = 0;
+        for (percent, tier) in by_percent {
+            let rank = tier_rank(tier);
+            assert!(
+                rank >= previous_rank,
+                "rarity order violated at {percent}% ({tier:?})"
+            );
+            previous_rank = rank;
+        }
+    }
+
+    #[test]
+    fn ceiling_failure_demotes_overflow_into_next_tier() {
+        let mut rows = vec![make_achievement_row("leg1", Some(5.0))];
+        rows.push(make_achievement_row("myth1", Some(11.0)));
+        rows.push(make_achievement_row("myth2", Some(11.5)));
+        rows.push(make_achievement_row("rare_overflow1", Some(12.0)));
+        rows.push(make_achievement_row("rare_overflow2", Some(12.5)));
+        for i in 0..15 {
+            rows.push(make_achievement_row(
+                &format!("com{i}"),
+                Some(60.0 + i as f32 * 0.5),
+            ));
+        }
+        let map = compute_tier_map(&rows);
+
+        assert_eq!(map["leg1"], RarityTier::Legendary);
+        assert_eq!(map["myth1"], RarityTier::Mythical);
+        assert_eq!(map["myth2"], RarityTier::Mythical);
+        assert_eq!(
+            map["rare_overflow1"],
+            RarityTier::Rare,
+            "12% overflows Mythical slot but still <30% so lands in Rare"
+        );
+        assert_eq!(map["rare_overflow2"], RarityTier::Rare);
+        for i in 0..15 {
+            assert_eq!(
+                map[&format!("com{i}")],
+                RarityTier::Common,
+                "60%+ fails Rare and Uncommon ceilings, falls to Common"
+            );
+        }
+    }
+
+    #[test]
+    fn two_low_percent_achievements_split_across_legendary_and_mythical() {
         let rows = vec![
             make_achievement_row("a1", Some(2.0)),
             make_achievement_row("a2", Some(5.0)),
         ];
         let map = compute_tier_map(&rows);
-        assert_eq!(map.len(), 2);
         assert_eq!(map["a1"], RarityTier::Legendary);
-        assert_eq!(map["a2"], RarityTier::Legendary);
+        assert_eq!(map["a2"], RarityTier::Mythical);
     }
 
     #[test]
-    fn compute_tier_map_excludes_unrated() {
-        let rows = vec![
-            make_achievement_row("rated1", Some(10.0)),
-            make_achievement_row("rated2", Some(50.0)),
-            make_achievement_row("rated3", Some(90.0)),
-            make_achievement_row("unrated", None),
-        ];
-        let map = compute_tier_map(&rows);
-        assert!(
-            !map.contains_key("unrated"),
-            "None rows must not appear in map"
-        );
-        assert_eq!(map.len(), 3);
-    }
-
-    #[test]
-    fn legendary_no_tie_at_third_position() {
-        let rows = vec![
-            make_achievement_row("a", Some(1.0)),
-            make_achievement_row("b", Some(1.0)),
-            make_achievement_row("c", Some(2.0)),
-            make_achievement_row("d", Some(3.0)),
-            make_achievement_row("e", Some(3.0)),
-        ];
-        let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 3);
-        assert_eq!(map.get("a").copied(), Some(RarityTier::Legendary));
-        assert_eq!(map.get("b").copied(), Some(RarityTier::Legendary));
-        assert_eq!(map.get("c").copied(), Some(RarityTier::Legendary));
-        assert_ne!(map.get("d").copied(), Some(RarityTier::Legendary));
-    }
-
-    #[test]
-    fn legendary_three_with_same_value_no_extension() {
-        let rows = vec![
-            make_achievement_row("a", Some(1.0)),
-            make_achievement_row("b", Some(1.0)),
-            make_achievement_row("c", Some(1.0)),
-            make_achievement_row("d", Some(2.0)),
-            make_achievement_row("e", Some(3.0)),
-        ];
-        let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 3);
-    }
-
-    #[test]
-    fn legendary_extends_when_fourth_matches_third() {
+    fn tie_at_legendary_boundary_extends_tier_past_slot_cap() {
         let rows = vec![
             make_achievement_row("a", Some(1.0)),
             make_achievement_row("b", Some(1.0)),
@@ -254,52 +334,35 @@ mod tests {
             make_achievement_row("e", Some(2.0)),
         ];
         let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 4);
         for id in ["a", "b", "c", "d"] {
             assert_eq!(
-                map.get(id).copied(),
-                Some(RarityTier::Legendary),
-                "{id} should be Legendary"
+                map[id],
+                RarityTier::Legendary,
+                "{id} tied at 1% must extend Legendary"
             );
         }
+        assert_eq!(map["e"], RarityTier::Mythical);
     }
 
     #[test]
-    fn legendary_extends_through_multiple_ties() {
+    fn tie_extension_stops_at_first_different_percentage() {
         let rows = vec![
             make_achievement_row("a", Some(1.0)),
-            make_achievement_row("b", Some(2.0)),
-            make_achievement_row("c", Some(3.0)),
-            make_achievement_row("d", Some(3.0)),
+            make_achievement_row("b", Some(1.0)),
+            make_achievement_row("c", Some(1.0)),
+            make_achievement_row("d", Some(2.0)),
             make_achievement_row("e", Some(3.0)),
         ];
         let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 5);
+        for id in ["a", "b", "c"] {
+            assert_eq!(map[id], RarityTier::Legendary);
+        }
+        assert_eq!(map["d"], RarityTier::Mythical);
+        assert_eq!(map["e"], RarityTier::Rare);
     }
 
     #[test]
-    fn legendary_fewer_than_three_rated() {
-        let rows = vec![
-            make_achievement_row("a", Some(1.0)),
-            make_achievement_row("b", Some(2.0)),
-        ];
-        let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 2);
-    }
-
-    #[test]
-    fn legendary_zero_rated_returns_empty() {
-        let rows = vec![
-            make_achievement_row("a", None),
-            make_achievement_row("b", None),
-        ];
-        let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 0);
-        assert!(map.is_empty());
-    }
-
-    #[test]
-    fn legendary_all_same_percent() {
+    fn all_same_percent_assigns_every_achievement_via_tie_extension() {
         let rows = vec![
             make_achievement_row("a", Some(1.0)),
             make_achievement_row("b", Some(1.0)),
@@ -308,6 +371,42 @@ mod tests {
             make_achievement_row("e", Some(1.0)),
         ];
         let map = compute_tier_map(&rows);
-        assert_eq!(count_legendary(&map), 5);
+        assert!(map.values().all(|&entry| entry == RarityTier::Legendary));
+    }
+
+    #[test]
+    fn cascading_caps_through_distinct_percentages() {
+        let rows = vec![
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(2.0)),
+            make_achievement_row("c", Some(3.0)),
+            make_achievement_row("d", Some(3.0)),
+            make_achievement_row("e", Some(3.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map["a"], RarityTier::Legendary);
+        assert_eq!(map["b"], RarityTier::Mythical);
+        for id in ["c", "d", "e"] {
+            assert_eq!(map[id], RarityTier::Rare);
+        }
+    }
+
+    #[test]
+    fn tier_progression_fills_each_tier_when_gaps_separate_percentages() {
+        let rows = vec![
+            make_achievement_row("a", Some(8.0)),
+            make_achievement_row("b", Some(11.0)),
+            make_achievement_row("c", Some(14.0)),
+            make_achievement_row("d", Some(40.0)),
+            make_achievement_row("e", Some(41.0)),
+            make_achievement_row("f", Some(75.0)),
+        ];
+        let map = compute_tier_map(&rows);
+        assert_eq!(map["a"], RarityTier::Legendary);
+        assert_eq!(map["b"], RarityTier::Mythical);
+        assert_eq!(map["c"], RarityTier::Rare);
+        assert_eq!(map["d"], RarityTier::Uncommon);
+        assert_eq!(map["e"], RarityTier::Common);
+        assert_eq!(map["f"], RarityTier::Common);
     }
 }
