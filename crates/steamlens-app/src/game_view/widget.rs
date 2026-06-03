@@ -103,7 +103,7 @@ pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMess
         .spacing(16)
         .align_y(Alignment::Center)
         .into();
-    let right_col = build_stats_panel(params.stats, params.stats_search_query);
+    let right_col = build_stats_panel(params.stats, params.stats_search_query, params.theme);
     widget_panel(left_content, right_col)
 }
 

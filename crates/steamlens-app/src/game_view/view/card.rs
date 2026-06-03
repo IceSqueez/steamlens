@@ -7,15 +7,12 @@ use super::grid::{
     ACH_CARD_DESCRIPTION_TEXT_SIZE, ACH_CARD_HEIGHT, ACH_CARD_ICON, ACH_CARD_TEXT_COL_SPACING,
     ACH_CARD_TITLE_TEXT_SIZE,
 };
-use super::{C_MUTED, dracula_border_radius, tier_color};
+use super::{dracula_border_radius, tier_color};
 use crate::game_view::GameViewMessage;
 use crate::game_view::types::{AchievementRow, RarityTier, RowStatus};
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
-
-const C_LOCKED_DESC: Color = Color::from_rgb8(0x99, 0x94, 0xb0);
-const C_YELLOW: Color = Color::from_rgb(0.945, 0.980, 0.549);
 
 #[derive(Hash, PartialEq, Eq)]
 struct AchievementCardDeps {
@@ -150,22 +147,25 @@ fn render_achievement_card(
     let is_hidden_meta = row.data.is_hidden;
 
     let icon_el: Element<'static, GameViewMessage> = if spoiler_hidden {
-        container(text("\u{2754}").size(22).color(Color { a: 0.5, ..C_MUTED }))
-            .width(Length::Fixed(ACH_CARD_ICON))
-            .height(Length::Fixed(ACH_CARD_ICON))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center)
-            .style(move |_theme| container::Style {
-                background: Some(iced::Background::Color(Color {
-                    r: p.border.r * 0.7,
-                    g: p.border.g * 0.7,
-                    b: p.border.b * 0.7,
-                    a: 1.0,
-                })),
-                border: dracula_border_radius(6.0),
-                ..container::Style::default()
-            })
-            .into()
+        container(text("\u{2754}").size(22).color(Color {
+            a: 0.5,
+            ..p.text_muted
+        }))
+        .width(Length::Fixed(ACH_CARD_ICON))
+        .height(Length::Fixed(ACH_CARD_ICON))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(move |_theme| container::Style {
+            background: Some(iced::Background::Color(Color {
+                r: p.border.r * 0.7,
+                g: p.border.g * 0.7,
+                b: p.border.b * 0.7,
+                a: 1.0,
+            })),
+            border: dracula_border_radius(6.0),
+            ..container::Style::default()
+        })
+        .into()
     } else if let Some(handle) = icon_handle {
         let opacity = if effective { 1.0f32 } else { 0.45f32 };
         container(
@@ -190,7 +190,11 @@ fn render_achievement_card(
         container(
             text(if effective { "\u{2713}" } else { "\u{25CB}" })
                 .size(20)
-                .color(if effective { p.rarity_common } else { C_MUTED }),
+                .color(if effective {
+                    p.rarity_common
+                } else {
+                    p.text_muted
+                }),
         )
         .width(Length::Fixed(ACH_CARD_ICON))
         .height(Length::Fixed(ACH_CARD_ICON))
@@ -205,22 +209,25 @@ fn render_achievement_card(
     };
 
     let icon_el: Element<'static, GameViewMessage> = if is_hidden_meta && !spoiler_hidden {
-        let badge = container(text("H").size(11).color(C_LOCKED_DESC))
+        let badge = container(text("H").size(11).color(p.text_locked_desc))
             .width(Length::Fixed(18.0))
             .height(Length::Fixed(18.0))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
-            .style(|t: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: 0.85,
-                    ..palette(theme_from_iced(t)).surface
-                })),
-                border: Border {
-                    color: C_LOCKED_DESC,
-                    width: 1.0,
-                    radius: 9.0.into(),
-                },
-                ..container::Style::default()
+            .style(|t: &iced::Theme| {
+                let p = palette(theme_from_iced(t));
+                container::Style {
+                    background: Some(iced::Background::Color(Color {
+                        a: 0.85,
+                        ..p.surface
+                    })),
+                    border: Border {
+                        color: p.text_locked_desc,
+                        width: 1.0,
+                        radius: 9.0.into(),
+                    },
+                    ..container::Style::default()
+                }
             });
         let positioned = container(badge)
             .width(Length::Fixed(ACH_CARD_ICON))
@@ -241,7 +248,7 @@ fn render_achievement_card(
         row.data.display_name.clone()
     };
 
-    let name_color = if row.is_dirty { C_YELLOW } else { fg };
+    let name_color = if row.is_dirty { p.accent_pending } else { fg };
     let name_label: Element<'static, GameViewMessage> = if !row.is_dirty
         && !spoiler_hidden
         && !search_query_lower.is_empty()
@@ -253,9 +260,10 @@ fn render_achievement_card(
             container(
                 rich_text![
                     span(before).color(fg),
-                    span(matched)
-                        .color(C_YELLOW)
-                        .background(Color { a: 0.2, ..C_YELLOW }),
+                    span(matched).color(p.accent_pending).background(Color {
+                        a: 0.2,
+                        ..p.accent_pending
+                    }),
                     span(after).color(fg),
                 ]
                 .on_link_click(iced::never)
@@ -298,9 +306,12 @@ fn render_achievement_card(
     };
 
     let desc_color = if spoiler_hidden {
-        Color { a: 0.5, ..C_MUTED }
+        Color {
+            a: 0.5,
+            ..p.text_muted
+        }
     } else {
-        C_LOCKED_DESC
+        p.text_locked_desc
     };
 
     let desc_label: Element<'static, GameViewMessage> = if !spoiler_hidden
@@ -313,9 +324,10 @@ fn render_achievement_card(
             container(
                 rich_text![
                     span(before).color(desc_color),
-                    span(matched)
-                        .color(C_YELLOW)
-                        .background(Color { a: 0.2, ..C_YELLOW }),
+                    span(matched).color(p.accent_pending).background(Color {
+                        a: 0.2,
+                        ..p.accent_pending
+                    }),
                     span(after).color(desc_color),
                 ]
                 .on_link_click(iced::never)
@@ -358,7 +370,7 @@ fn render_achievement_card(
     let status = row.status();
     let fixed_badge_color: Option<Color> = match status {
         RowStatus::Protected => Some(p.severity.warning),
-        RowStatus::Pending => Some(C_YELLOW),
+        RowStatus::Pending => Some(p.accent_pending),
         RowStatus::Unlocked => Some(p.rarity_common),
         RowStatus::Hidden | RowStatus::Locked => None,
     };
@@ -378,9 +390,9 @@ fn render_achievement_card(
         let locked_text = text(status.label())
             .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
             .style(move |_t: &iced::Theme| iced::widget::text::Style {
-                color: Some(C_LOCKED_DESC),
+                color: Some(p.text_locked_desc),
             });
-        pill(locked_text, C_LOCKED_DESC)
+        pill(locked_text, p.text_locked_desc)
     };
 
     let rarity_badge: Option<Element<'static, GameViewMessage>> = if spoiler_hidden {
@@ -572,18 +584,17 @@ pub(super) fn icon_glow_style(
 }
 #[cfg(test)]
 mod skeleton_polish_tests {
-    use super::C_LOCKED_DESC;
     use crate::ui::theme::DARK;
     use iced::Color;
 
     #[test]
     fn locked_desc_color_is_lighter_than_text_muted() {
-        let locked = C_LOCKED_DESC;
+        let locked = DARK.text_locked_desc;
         let muted = DARK.text_muted;
         let luminance = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
         assert!(
             luminance(locked) >= luminance(muted),
-            "C_LOCKED_DESC must be lighter than or equal to text_muted — locked descriptions should be more readable"
+            "text_locked_desc must be lighter than or equal to text_muted — locked descriptions should be more readable"
         );
     }
 }

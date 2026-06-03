@@ -14,8 +14,6 @@ use crate::ui::theme::{palette, theme_from_iced};
 use footer_modal::{apply_modal, footer_bar, saving_overlay};
 use grid::achievements_tab;
 
-pub(super) const C_MUTED: Color = Color::from_rgb(0.384, 0.447, 0.643);
-
 pub(super) fn dracula_border_radius(r: f32) -> iced::Border {
     iced::Border {
         radius: r.into(),
@@ -103,7 +101,7 @@ fn error_view(
     let p = palette(theme);
     let content = column![
         text("Failed to load").size(20).color(p.severity.error),
-        text(&state.error_message).size(13).color(C_MUTED),
+        text(&state.error_message).size(13).color(p.text_muted),
         button(text("Back").size(13))
             .on_press(GameViewMessage::RequestGoBack)
             .padding(Padding::from([8, 16])),

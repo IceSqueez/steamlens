@@ -1,8 +1,8 @@
 use iced::widget::{button, column, container, row, space, stack, text, text_input};
 use iced::{Alignment, Color, Element, Length, Padding};
 
+use super::dracula_border_radius;
 use super::grid::bulk_action_buttons;
-use super::{C_MUTED, dracula_border_radius};
 use crate::game_view::{GameViewMessage, GameViewPhase, GameViewState};
 use crate::ui::theme::{palette, theme_from_iced};
 
@@ -39,12 +39,15 @@ pub(super) fn footer_bar(
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: if hovered {
-                    Some(iced::Background::Color(Color { a: 0.2, ..C_MUTED }))
+                    Some(iced::Background::Color(Color {
+                        a: 0.2,
+                        ..p.text_muted
+                    }))
                 } else {
                     None
                 },
                 border: iced::Border {
-                    color: C_MUTED,
+                    color: p.text_muted,
                     width: 1.0,
                     radius: 6.0.into(),
                 },
@@ -69,7 +72,10 @@ pub(super) fn footer_bar(
             button::Style {
                 background: None,
                 border: iced::Border {
-                    color: Color { a: 0.3, ..C_MUTED },
+                    color: Color {
+                        a: 0.3,
+                        ..p.text_muted
+                    },
                     width: 1.0,
                     radius: 6.0.into(),
                 },
@@ -214,7 +220,9 @@ pub(super) fn apply_modal(
         ..container::Style::default()
     });
 
-    let confirm_input_label = text("Type \"confirmed\" to apply:").size(12).color(C_MUTED);
+    let confirm_input_label = text("Type \"confirmed\" to apply:")
+        .size(12)
+        .color(p.text_muted);
 
     let confirm_input = text_input("confirmed", &state.apply_confirm_input)
         .on_input(GameViewMessage::ApplyConfirmInputChanged)
@@ -224,12 +232,15 @@ pub(super) fn apply_modal(
         .style(move |_theme, _status| iced::widget::text_input::Style {
             background: iced::Background::Color(p.app),
             border: iced::Border {
-                color: C_MUTED,
+                color: p.text_muted,
                 width: 1.0,
                 radius: 4.0.into(),
             },
-            icon: C_MUTED,
-            placeholder: Color { a: 0.3, ..C_MUTED },
+            icon: p.text_muted,
+            placeholder: Color {
+                a: 0.3,
+                ..p.text_muted
+            },
             value: p.text_primary,
             selection: Color {
                 a: 0.35,
@@ -300,7 +311,10 @@ pub(super) fn apply_modal(
                 })),
                 border: iced::Border {
                     color: if hovered {
-                        Color { a: 0.40, ..C_MUTED }
+                        Color {
+                            a: 0.40,
+                            ..p.text_muted
+                        }
                     } else {
                         Color::TRANSPARENT
                     },
@@ -321,7 +335,7 @@ pub(super) fn apply_modal(
         text("\u{26A0}  Confirm Apply")
             .size(16)
             .color(p.text_primary),
-        text(dirty_label).size(13).color(C_MUTED),
+        text(dirty_label).size(13).color(p.text_muted),
         warning_box,
         confirm_gate,
         button_row,

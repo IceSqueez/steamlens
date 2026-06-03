@@ -5,16 +5,7 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use super::GameViewMessage;
 use super::types::{StatRow, StatValue};
-use crate::ui::theme::{palette, theme_from_iced};
-
-const C_GREEN: Color = Color::from_rgb(0.427, 0.788, 0.498);
-const C_DANGER: Color = Color::from_rgb(0.863, 0.392, 0.392);
-const C_DIRTY: Color = Color::from_rgb(0.945, 0.980, 0.549);
-const C_VALUE_IN_PROGRESS: Color = Color::from_rgb(
-    0xaa as f32 / 255.0,
-    0xa6 as f32 / 255.0,
-    0xc0 as f32 / 255.0,
-);
+use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 
 const PROGRESS_BAR_HEIGHT: f32 = 2.0;
 
@@ -37,8 +28,9 @@ static SVG_RESET: LazyLock<svg::Handle> = LazyLock::new(|| {
 pub fn build_stats_panel<'a>(
     stats: &'a [StatRow],
     search_query: &'a str,
+    app_theme: AppTheme,
 ) -> Element<'a, GameViewMessage> {
-    let header = build_header(stats);
+    let header = build_header(stats, app_theme);
     let search = build_search_input(search_query);
 
     let header_section = column![header, search]
@@ -85,8 +77,9 @@ pub fn build_stats_panel<'a>(
         .into()
 }
 
-fn build_header<'a>(stats: &'a [StatRow]) -> Element<'a, GameViewMessage> {
+fn build_header<'a>(stats: &'a [StatRow], app_theme: AppTheme) -> Element<'a, GameViewMessage> {
     let (total, maxed, in_progress) = summarize(stats);
+    let p = palette(app_theme);
 
     let title = text("IN-GAME STATISTICS")
         .size(11)
@@ -108,14 +101,14 @@ fn build_header<'a>(stats: &'a [StatRow]) -> Element<'a, GameViewMessage> {
     let cap_all_btn = action_button(
         SVG_CHECK.clone(),
         "Cap all",
-        C_GREEN,
+        p.severity.success,
         GameViewMessage::StatsMaxAll,
         !any_capped,
     );
     let reset_all_btn = action_button(
         SVG_RESET.clone(),
         "Reset all",
-        C_DANGER,
+        p.severity.error,
         GameViewMessage::StatsResetAll,
         false,
     );
@@ -256,7 +249,7 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
             .style(move |t: &iced::Theme| {
                 let p = palette(theme_from_iced(t));
                 let color = if is_dirty {
-                    C_DIRTY
+                    p.accent_pending
                 } else if !has_progress {
                     p.text_dim
                 } else {
@@ -270,8 +263,10 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
             container(Space::new())
                 .width(Length::Fixed(6.0))
                 .height(Length::Fixed(6.0))
-                .style(|_: &iced::Theme| container::Style {
-                    background: Some(Background::Color(C_DIRTY)),
+                .style(|t: &iced::Theme| container::Style {
+                    background: Some(Background::Color(
+                        palette(theme_from_iced(t)).accent_pending,
+                    )),
                     border: Border {
                         radius: 3.0.into(),
                         ..Border::default()
@@ -285,12 +280,19 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
     };
 
     let max_badge: Option<Element<'_, GameViewMessage>> = if maxed && !is_dirty {
-        let badge = text("MAX").size(9).color(C_GREEN);
+        let badge = text("MAX")
+            .size(9)
+            .style(|t: &iced::Theme| iced::widget::text::Style {
+                color: Some(palette(theme_from_iced(t)).severity.success),
+            });
         Some(
             container(badge)
                 .padding(Padding::default().left(4).right(4).top(1).bottom(1))
-                .style(|_: &iced::Theme| container::Style {
-                    background: Some(Background::Color(Color { a: 0.12, ..C_GREEN })),
+                .style(|t: &iced::Theme| container::Style {
+                    background: Some(Background::Color(Color {
+                        a: 0.12,
+                        ..palette(theme_from_iced(t)).severity.success
+                    })),
                     border: Border {
                         radius: 3.0.into(),
                         ..Border::default()
@@ -318,13 +320,13 @@ fn stat_row(row_data: &StatRow) -> Element<'_, GameViewMessage> {
         .style(move |t: &iced::Theme| {
             let p = palette(theme_from_iced(t));
             let color = if is_dirty {
-                C_DIRTY
+                p.accent_pending
             } else if !has_progress {
                 p.text_dim
             } else if maxed {
-                C_GREEN
+                p.severity.success
             } else {
-                C_VALUE_IN_PROGRESS
+                p.text_muted
             };
             iced::widget::text::Style { color: Some(color) }
         });
@@ -385,12 +387,13 @@ fn build_progress_bar(
             .width(Length::FillPortion(portion_fill))
             .height(Length::Fixed(PROGRESS_BAR_HEIGHT))
             .style(move |t: &iced::Theme| {
+                let p = palette(theme_from_iced(t));
                 let fill_color = if is_dirty {
-                    C_DIRTY
+                    p.accent_pending
                 } else if maxed {
-                    C_GREEN
+                    p.severity.success
                 } else {
-                    palette(theme_from_iced(t)).accent
+                    p.accent
                 };
                 container::Style {
                     background: Some(Background::Color(fill_color)),
