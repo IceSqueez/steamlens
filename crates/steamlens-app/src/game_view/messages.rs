@@ -3,7 +3,7 @@ use super::types::{AchievementFilter, AchievementSort, BulkOp, RarityTier};
 
 #[derive(Debug, Clone)]
 pub enum GameViewMessage {
-    Noop,
+    DiscardReply,
     AchievementToggled(String),
     FilterChanged(AchievementFilter),
     RarityTierToggled(RarityTier),

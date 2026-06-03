@@ -236,7 +236,7 @@ pub fn update(
 ) -> (Task<GameViewMessage>, GameViewEvent) {
     let worker = ctx.worker.as_ref();
     match message {
-        GameViewMessage::Noop => (Task::none(), GameViewEvent::None),
+        GameViewMessage::DiscardReply => (Task::none(), GameViewEvent::None),
 
         GameViewMessage::RetryGlobalPercentages => {
             tracing::trace!(
@@ -251,7 +251,7 @@ pub fn update(
                     SteamRequest::RequestGlobalPercentages,
                     steam_running,
                     user_logged_in,
-                    GameViewMessage::Noop,
+                    GameViewMessage::DiscardReply,
                 ) {
                     Ok(t) => (t, GameViewEvent::None),
                     Err(e) => {
@@ -442,7 +442,7 @@ pub fn update(
                     SteamRequest::RequestUserStats,
                     steam_running,
                     user_logged_in,
-                    GameViewMessage::Noop,
+                    GameViewMessage::DiscardReply,
                 ) {
                     Ok(t) => tasks.push(t),
                     Err(e) => {
@@ -454,7 +454,7 @@ pub fn update(
                     SteamRequest::RequestGlobalPercentages,
                     steam_running,
                     user_logged_in,
-                    GameViewMessage::Noop,
+                    GameViewMessage::DiscardReply,
                 ) {
                     Ok(t) => tasks.push(t),
                     Err(e) => {
@@ -505,7 +505,7 @@ pub fn update(
                     },
                     steam_running,
                     user_logged_in,
-                    GameViewMessage::Noop,
+                    GameViewMessage::DiscardReply,
                 ) {
                     Ok(t) => return (t, GameViewEvent::None),
                     Err(e) => {

@@ -74,7 +74,7 @@ impl From<ProbeError> for ProbeFailure {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
-    Noop,
+    DiscardReply,
     GoBack,
     ProfileView(ProfileViewMessage),
     GameView(GameViewMessage),
@@ -147,7 +147,7 @@ pub(crate) struct App {
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
-        Message::Noop => Task::none(),
+        Message::DiscardReply => Task::none(),
 
         Message::GoBack => match &app.screen {
             Screen::GameView(_) => Task::done(Message::GameView(GameViewMessage::RequestGoBack)),
