@@ -43,9 +43,8 @@ use iced::keyboard;
 use iced::widget::column;
 use iced::{Element, Subscription, Task};
 
-use app_context::{AppContext, ConnectivityState};
+use app_context::AppContext;
 use game_view::{GameViewMessage, GameViewState};
-use messaging::{BannerSeverity, ToastKind};
 use profile_view::types::{ProfileViewMessage, ProfileViewState};
 use steamlens_core::{ProbeError, ProbedProfile};
 
@@ -160,10 +159,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DrainHitQueue => update_handlers::handle_drain_hit_queue(app),
 
         Message::Cache(cache::CacheEvent::GameWritten { app_id, result }) => {
-            if let Err(e) = result {
-                tracing::error!("cache: write failed for app {app_id}: {e}");
-            }
-            Task::none()
+            update_handlers::handle_game_written(app_id, result)
         }
 
         Message::PersistGameSummary(app_id) => {
@@ -184,39 +180,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::WorkerReply(reply) => worker_drain::handle_worker_reply(app, reply),
 
-        Message::SettingsFlushTick => {
-            if let Some(since) = app.context.settings_dirty_since
-                && since.elapsed() >= Duration::from_millis(200)
-            {
-                app.context.settings_dirty_since = None;
-                let snapshot = app.context.settings.clone();
-                return settings_commands::write_settings(snapshot);
-            }
-            Task::none()
-        }
+        Message::SettingsFlushTick => update_handlers::handle_settings_flush_tick(app),
 
-        Message::SettingsWritten(result) => {
-            if let Err(e) = result {
-                tracing::error!("settings: write error: {e}");
-                app.context
-                    .messaging
-                    .push_toast(ToastKind::Error, "Could not save settings", None);
-            }
-            Task::none()
-        }
+        Message::SettingsWritten(result) => update_handlers::handle_settings_written(app, result),
 
         Message::SplashMinElapsed => {
             app.boot.splash_min_elapsed = true;
             Task::none()
         }
 
-        Message::RetrySteamConnect => {
-            app.context.connectivity = ConnectivityState::default();
-            app.context
-                .messaging
-                .dismiss_all_banners_by_severity(BannerSeverity::Warning);
-            splash_commands::probe_steam_reconnect()
-        }
+        Message::RetrySteamConnect => update_handlers::handle_retry_steam_connect(app),
 
         Message::ProbeResult(result) => update_handlers::handle_probe_result(app, result),
 
@@ -235,22 +208,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::Cache(cache::CacheEvent::NoAchWritten(result)) => {
-            if let Err(e) = result {
-                tracing::error!("no_achievements cache: write failed: {e}");
-            }
-            Task::none()
+            update_handlers::handle_no_ach_written(result)
         }
 
         Message::Cache(cache::CacheEvent::PersistentWritten(label, result)) => {
-            if let Err(e) = result {
-                tracing::error!("{label} cache: write failed: {e}");
-                app.context.messaging.push_toast(
-                    ToastKind::Error,
-                    format!("Cache write failed ({label}): {e}"),
-                    None,
-                );
-            }
-            Task::none()
+            update_handlers::handle_persistent_written(app, label, result)
         }
 
         Message::Messaging(msg) => update_handlers::handle_messaging(app, msg),
@@ -259,14 +221,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 
         Message::KeyboardEvent(event) => update_handlers::handle_keyboard_event(app, event),
 
-        Message::FocusSearch => match &app.screen {
-            Screen::ProfileView(_) => {
-                iced::widget::operation::focus(profile_view::library_search_id())
-            }
-            Screen::GameView(_) => {
-                iced::widget::operation::focus(game_view::achievement_search_id())
-            }
-        },
+        Message::FocusSearch => update_handlers::handle_focus_search(app),
 
         Message::GlobalSearchChanged(query) => {
             update_handlers::handle_global_search_changed(app, query)
@@ -287,35 +242,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::ToggleTheme => {
-            let new_theme = match app.context.settings.ui.theme {
-                crate::ui::theme::AppTheme::Dark => crate::ui::theme::AppTheme::Light,
-                crate::ui::theme::AppTheme::Light => crate::ui::theme::AppTheme::Dark,
-            };
-            app.context.update_settings(|s| s.ui.theme = new_theme);
-            Task::none()
-        }
+        Message::ToggleTheme => update_handlers::handle_toggle_theme(app),
 
         Message::UpdateCheckResult(result) => {
             update_handlers::handle_update_check_result(app, result)
         }
 
-        Message::SteamStateRefreshed(Some((state, mtime))) => {
-            app.context.steam_state = state;
-            app.context.steam_state_mtime = mtime;
-            Task::none()
+        Message::SteamStateRefreshed(payload) => {
+            update_handlers::handle_steam_state_refreshed(app, payload)
         }
 
-        Message::SteamStateRefreshed(None) => Task::none(),
-
-        Message::AppAssetsLoaded(assets) => {
-            tracing::info!(
-                count = assets.len(),
-                "app_assets: loaded library_assets_full hashes from appinfo.vdf"
-            );
-            app.context.app_assets = assets;
-            Task::none()
-        }
+        Message::AppAssetsLoaded(assets) => update_handlers::handle_app_assets_loaded(app, assets),
 
         Message::LocalProfileLoaded(profile) => {
             update_handlers::handle_local_profile_loaded(app, profile)
@@ -556,6 +493,7 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
     use crate::app_context::AnimationState;
+    use crate::app_context::ConnectivityState;
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;

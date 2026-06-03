@@ -1,12 +1,16 @@
+use std::collections::HashMap;
+use std::time::{Duration, SystemTime};
+
 use iced::Task;
 use iced::keyboard;
 
-use steamlens_core::STEAMID64_INDIVIDUAL_MIN;
+use steamlens_core::{AppLibraryAssets, STEAMID64_INDIVIDUAL_MIN, SteamAppState};
 
+use crate::app_context::ConnectivityState;
 use crate::game_view::{self, GameViewMessage};
-use crate::messaging::{self, BannerSeverity};
+use crate::messaging::{self, BannerSeverity, ToastKind};
 use crate::profile_view::{self, types::ProfileViewMessage};
-use crate::{App, Message, Screen, routing};
+use crate::{App, Message, Screen, routing, settings_commands, splash_commands};
 
 pub(crate) fn handle_keyboard_event(app: &mut App, event: keyboard::Event) -> Task<Message> {
     if let keyboard::Event::KeyPressed {
@@ -140,5 +144,75 @@ pub(crate) fn handle_messaging(app: &mut App, msg: messaging::MessagingEvent) ->
             app.context.messaging.dismiss_banner(id);
         }
     }
+    Task::none()
+}
+
+pub(crate) fn handle_settings_flush_tick(app: &mut App) -> Task<Message> {
+    let Some(since) = app.context.settings_dirty_since else {
+        return Task::none();
+    };
+    if since.elapsed() < Duration::from_millis(200) {
+        return Task::none();
+    }
+    app.context.settings_dirty_since = None;
+    let snapshot = app.context.settings.clone();
+    settings_commands::write_settings(snapshot)
+}
+
+pub(crate) fn handle_settings_written(app: &mut App, result: Result<(), String>) -> Task<Message> {
+    if let Err(e) = result {
+        tracing::error!("settings: write error: {e}");
+        app.context
+            .messaging
+            .push_toast(ToastKind::Error, "Could not save settings", None);
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_retry_steam_connect(app: &mut App) -> Task<Message> {
+    app.context.connectivity = ConnectivityState::default();
+    app.context
+        .messaging
+        .dismiss_all_banners_by_severity(BannerSeverity::Warning);
+    splash_commands::probe_steam_reconnect()
+}
+
+pub(crate) fn handle_focus_search(app: &App) -> Task<Message> {
+    match &app.screen {
+        Screen::ProfileView(_) => iced::widget::operation::focus(profile_view::library_search_id()),
+        Screen::GameView(_) => iced::widget::operation::focus(game_view::achievement_search_id()),
+    }
+}
+
+pub(crate) fn handle_toggle_theme(app: &mut App) -> Task<Message> {
+    use crate::ui::theme::AppTheme;
+    let new_theme = match app.context.settings.ui.theme {
+        AppTheme::Dark => AppTheme::Light,
+        AppTheme::Light => AppTheme::Dark,
+    };
+    app.context.update_settings(|s| s.ui.theme = new_theme);
+    Task::none()
+}
+
+pub(crate) fn handle_steam_state_refreshed(
+    app: &mut App,
+    payload: Option<(HashMap<u32, SteamAppState>, Option<SystemTime>)>,
+) -> Task<Message> {
+    if let Some((state, mtime)) = payload {
+        app.context.steam_state = state;
+        app.context.steam_state_mtime = mtime;
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_app_assets_loaded(
+    app: &mut App,
+    assets: HashMap<u32, AppLibraryAssets>,
+) -> Task<Message> {
+    tracing::info!(
+        count = assets.len(),
+        "app_assets: loaded library_assets_full hashes from appinfo.vdf"
+    );
+    app.context.app_assets = assets;
     Task::none()
 }

@@ -100,6 +100,36 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
     Task::none()
 }
 
+pub(crate) fn handle_game_written(app_id: u32, result: Result<(), String>) -> Task<Message> {
+    if let Err(e) = result {
+        tracing::error!("cache: write failed for app {app_id}: {e}");
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_no_ach_written(result: Result<(), String>) -> Task<Message> {
+    if let Err(e) = result {
+        tracing::error!("no_achievements cache: write failed: {e}");
+    }
+    Task::none()
+}
+
+pub(crate) fn handle_persistent_written(
+    app: &mut App,
+    label: &'static str,
+    result: Result<(), String>,
+) -> Task<Message> {
+    if let Err(e) = result {
+        tracing::error!("{label} cache: write failed: {e}");
+        app.context.messaging.push_toast(
+            ToastKind::Error,
+            format!("Cache write failed ({label}): {e}"),
+            None,
+        );
+    }
+    Task::none()
+}
+
 pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Message> {
     let Screen::GameView(gv_state) = &app.screen else {
         return Task::none();
