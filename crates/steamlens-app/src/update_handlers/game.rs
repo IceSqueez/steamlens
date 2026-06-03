@@ -17,21 +17,6 @@ pub(crate) fn handle_game_view_message(app: &mut App, m: GameViewMessage) -> Tas
     routing::dispatch_game_event(app, task, event)
 }
 
-pub(crate) fn handle_game_sort_changed(
-    app: &mut App,
-    sort: crate::game_view::types::AchievementSort,
-) -> Task<Message> {
-    let Screen::GameView(state) = &mut app.screen else {
-        return Task::none();
-    };
-    let (task, _event) = game_view::update(
-        state,
-        GameViewMessage::AchievementSortChanged(sort),
-        &mut app.context,
-    );
-    task.map(Message::GameView)
-}
-
 pub(crate) fn handle_animation_frame(app: &mut App, now: Instant) -> Task<Message> {
     const SKELETON_PER_SEC: f32 = 0.6;
 

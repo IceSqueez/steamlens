@@ -1,8 +1,7 @@
 use iced::Task;
 
 use crate::game_view::{self, GameViewEvent, GameViewMessage, GameViewState};
-use crate::profile_view;
-use crate::profile_view::types::{ProfileViewMessage, ProfileViewState};
+use crate::profile_view::types::ProfileViewState;
 use crate::steam_worker::{SteamRequest, SteamWorker};
 use crate::{App, Message, Screen, cache, capsule_cache};
 
@@ -157,12 +156,4 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     app.screen = Screen::GameView(Box::new(state));
 
     Task::batch(tasks)
-}
-
-pub(crate) fn route_to_profile(app: &mut App, msg: ProfileViewMessage) -> Task<Message> {
-    let Screen::ProfileView(state) = &mut app.screen else {
-        return Task::none();
-    };
-    let (task, _event) = profile_view::update(state, msg, &mut app.context);
-    task.map(Message::ProfileView)
 }

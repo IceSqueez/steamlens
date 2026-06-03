@@ -31,7 +31,7 @@ pub fn header_content<'a>(
         label: Cow::Borrowed(s.short_label()),
         tooltip: Some(s.tooltip()),
         selected: state.sort == s,
-        on_press: crate::Message::GlobalSortChanged(s),
+        on_press: crate::Message::ProfileView(types::ProfileViewMessage::SortChanged(s)),
     })
     .collect();
 
@@ -45,7 +45,7 @@ pub fn header_content<'a>(
         label: Cow::Borrowed(lbl),
         tooltip: None,
         selected: state.capsule_size == sz,
-        on_press: crate::Message::GlobalCapsuleSizeChanged(sz),
+        on_press: crate::Message::ProfileView(types::ProfileViewMessage::CapsuleSizeChanged(sz)),
     })
     .collect();
 

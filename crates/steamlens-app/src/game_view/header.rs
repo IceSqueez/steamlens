@@ -20,7 +20,7 @@ pub fn header_content<'a>(
             label: Cow::Borrowed(s.short_label()),
             tooltip: Some(s.tooltip()),
             selected: state.achievement_sort == s,
-            on_press: crate::Message::GameSortChanged(s),
+            on_press: crate::Message::GameView(GameViewMessage::AchievementSortChanged(s)),
         })
         .collect();
 

@@ -96,9 +96,6 @@ pub(crate) enum Message {
     AnimationFrame(Instant),
     FocusSearch,
     GlobalSearchChanged(String),
-    GlobalSortChanged(profile_view::types::LibrarySort),
-    GlobalCapsuleSizeChanged(capsule_cache::CapsuleSize),
-    GameSortChanged(game_view::types::AchievementSort),
     PersistGameSummary(u32),
     InvalidateGameCache(u32),
     ShowAbout,
@@ -275,14 +272,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             update_handlers::handle_global_search_changed(app, query)
         }
 
-        Message::GlobalSortChanged(sort) => {
-            routing::route_to_profile(app, ProfileViewMessage::SortChanged(sort))
-        }
-
-        Message::GlobalCapsuleSizeChanged(size) => {
-            routing::route_to_profile(app, ProfileViewMessage::CapsuleSizeChanged(size))
-        }
-
         Message::ShowAbout => {
             app.modals.about_open = true;
             Task::none()
@@ -310,8 +299,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::UpdateCheckResult(result) => {
             update_handlers::handle_update_check_result(app, result)
         }
-
-        Message::GameSortChanged(sort) => update_handlers::handle_game_sort_changed(app, sort),
 
         Message::SteamStateRefreshed(Some((state, mtime))) => {
             app.context.steam_state = state;
