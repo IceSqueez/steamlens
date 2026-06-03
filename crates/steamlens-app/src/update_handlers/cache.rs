@@ -226,7 +226,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
             })
         },
     );
-    let game_task = cache::commands::write_game_cache(full_entry);
+    let game_task = cache::commands::write_game_cache(steamid3, full_entry);
 
     Task::batch([summary_task, game_task, icons_task])
 }
@@ -242,6 +242,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
     let pinned = app.context.settings.library.pinned.clone();
+    let steamid3 = app.context.steamid3 as u32;
 
     app.context
         .capsule_handles
@@ -260,7 +261,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
     }
     pv_state.recompute_derived(&app.context.cached_entries, &pinned);
 
-    cache::commands::invalidate_game_cache(app_id, name)
+    cache::commands::invalidate_game_cache(steamid3, app_id, name)
 }
 
 pub(crate) fn handle_game_invalidated(

@@ -42,11 +42,11 @@ pub fn write_library_cache(steamid3: u32, cached: CachedLibrary) -> Task<crate::
     )
 }
 
-pub fn write_game_cache(entry: GameCacheEntry) -> Task<crate::Message> {
+pub fn write_game_cache(steamid3: u32, entry: GameCacheEntry) -> Task<crate::Message> {
     let app_id = entry.app_id;
     Task::perform(
         async move {
-            cache::write_game_cache(&entry)
+            cache::write_game_cache(steamid3, &entry)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -66,10 +66,10 @@ pub fn write_game_summary(steamid3: u32, entry: GameSummaryCache) -> Task<crate:
     )
 }
 
-pub fn invalidate_game_cache(app_id: u32, name: String) -> Task<crate::Message> {
+pub fn invalidate_game_cache(steamid3: u32, app_id: u32, name: String) -> Task<crate::Message> {
     Task::perform(
         async move {
-            let result = cache::store::delete_game_cache_dir(app_id)
+            let result = cache::store::delete_game_cache_dir(steamid3, app_id)
                 .await
                 .map_err(|e| e.to_string());
             crate::capsule_cache::purge_for_app(app_id).await;

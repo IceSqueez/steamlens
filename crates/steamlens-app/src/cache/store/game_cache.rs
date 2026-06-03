@@ -1,17 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::cache::types::{CURRENT_SCHEMA_VERSION, GameCacheEntry};
 
 use super::primitives::{CacheIoError, atomic_write, cache_write_lock};
 
-fn game_cache_path(app_id: u32) -> PathBuf {
-    crate::paths::cache_dir()
-        .join("games")
-        .join(format!("{app_id}.json"))
-}
-
-pub async fn load_game_cache(app_id: u32) -> Option<GameCacheEntry> {
-    load_game_cache_from_path(&game_cache_path(app_id)).await
+pub async fn load_game_cache(steamid3: u32, app_id: u32) -> Option<GameCacheEntry> {
+    load_game_cache_from_path(&crate::paths::user_game_cache_path(steamid3, app_id)).await
 }
 
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
@@ -32,8 +26,12 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
     Some(entry)
 }
 
-pub async fn write_game_cache(entry: &GameCacheEntry) -> Result<(), CacheIoError> {
-    write_game_cache_at(&game_cache_path(entry.app_id), entry).await
+pub async fn write_game_cache(steamid3: u32, entry: &GameCacheEntry) -> Result<(), CacheIoError> {
+    write_game_cache_at(
+        &crate::paths::user_game_cache_path(steamid3, entry.app_id),
+        entry,
+    )
+    .await
 }
 
 pub(super) async fn write_game_cache_at(
@@ -77,10 +75,8 @@ pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEn
     }
 }
 
-pub async fn delete_game_cache_dir(app_id: u32) -> Result<(), CacheIoError> {
-    let dir = crate::paths::cache_dir()
-        .join("games")
-        .join(app_id.to_string());
+pub async fn delete_game_cache_dir(steamid3: u32, app_id: u32) -> Result<(), CacheIoError> {
+    let dir = crate::paths::user_game_dir(steamid3, app_id);
     match tokio::fs::remove_dir_all(&dir).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

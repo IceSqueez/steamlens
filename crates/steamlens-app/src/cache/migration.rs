@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationOutcome {
@@ -16,76 +16,72 @@ pub enum MigrationError {
 pub async fn migrate_legacy_cache_if_present(
     steamid3: u32,
 ) -> Result<MigrationOutcome, MigrationError> {
-    let user_profile = crate::paths::user_profile_path(steamid3);
-    let user_library = crate::paths::user_library_path(steamid3);
+    migrate_at_root(steamid3, &crate::paths::cache_dir()).await
+}
 
-    if user_profile.exists() || user_library.exists() {
-        tracing::trace!(steamid3, "migration: already migrated, skipping");
-        return Ok(MigrationOutcome::AlreadyMigrated);
-    }
+async fn migrate_at_root(
+    steamid3: u32,
+    cache_root: &Path,
+) -> Result<MigrationOutcome, MigrationError> {
+    let users_dir = cache_root.join("users").join(steamid3.to_string());
+    let user_profile = users_dir.join("profile.json");
+    let user_library = users_dir.join("library.json");
+    let user_games_dir = users_dir.join("games");
 
-    let legacy_profile = crate::paths::legacy_profile_path();
-    let legacy_library = crate::paths::legacy_library_path();
+    let legacy_profile = cache_root.join("profile.json");
+    let legacy_library = cache_root.join("library.json");
+    let legacy_games_dir = cache_root.join("games");
 
-    let has_legacy_profile = legacy_profile.exists();
-    let has_legacy_library = legacy_library.exists();
+    let had_legacy = legacy_profile.exists()
+        || legacy_library.exists()
+        || has_any_legacy_game_data(&legacy_games_dir).await;
+    let had_target = user_profile.exists() || user_library.exists();
 
-    if !has_legacy_profile && !has_legacy_library {
-        let legacy_games_dir = crate::paths::cache_dir().join("games");
-        if !has_any_legacy_game_data(&legacy_games_dir).await {
-            tracing::trace!(steamid3, "migration: no legacy data found");
-            return Ok(MigrationOutcome::NothingToMigrate);
-        }
+    if !had_legacy {
+        return Ok(if had_target {
+            MigrationOutcome::AlreadyMigrated
+        } else {
+            MigrationOutcome::NothingToMigrate
+        });
     }
 
     tracing::info!(steamid3, "migration: starting legacy cache migration");
-
-    let user_dir = crate::paths::user_dir(steamid3);
-    tokio::fs::create_dir_all(&user_dir).await?;
+    tokio::fs::create_dir_all(&users_dir).await?;
 
     let mut files_moved: u32 = 0;
 
-    if has_legacy_profile {
-        files_moved += move_file_logged(&legacy_profile, &user_profile).await;
-    }
+    files_moved += move_if_pending(&legacy_profile, &user_profile).await;
+    files_moved += move_if_pending(&legacy_library, &user_library).await;
 
-    if has_legacy_library {
-        files_moved += move_file_logged(&legacy_library, &user_library).await;
-    }
-
-    let legacy_games_dir = crate::paths::cache_dir().join("games");
     if let Ok(mut entries) = tokio::fs::read_dir(&legacy_games_dir).await {
         while let Ok(Some(entry)) = entries.next_entry().await {
             let fname = entry.file_name();
             let name = fname.to_string_lossy();
-            let Ok(app_id) = name.parse::<u32>() else {
+
+            if let Some(stem) = name.strip_suffix(".json")
+                && let Ok(app_id) = stem.parse::<u32>()
+            {
+                let src = legacy_games_dir.join(name.as_ref());
+                let dst = user_games_dir.join(app_id.to_string()).join("cache.json");
+                files_moved += move_if_pending(&src, &dst).await;
                 continue;
-            };
+            }
 
-            let legacy_game_dir = crate::paths::legacy_game_dir(app_id);
-            let user_game_dir = crate::paths::user_game_dir(steamid3, app_id);
-
-            for filename in ["summary.json", "achievements.json"] {
-                let src = legacy_game_dir.join(filename);
-                if !src.exists() {
-                    continue;
+            if let Ok(app_id) = name.parse::<u32>() {
+                let legacy_game_dir = legacy_games_dir.join(name.as_ref());
+                let user_game_dir = user_games_dir.join(app_id.to_string());
+                for filename in ["summary.json", "achievements.json"] {
+                    let src = legacy_game_dir.join(filename);
+                    let dst = user_game_dir.join(filename);
+                    files_moved += move_if_pending(&src, &dst).await;
                 }
-                let dst = user_game_dir.join(filename);
-                if let Some(parent) = dst.parent()
-                    && let Err(e) = tokio::fs::create_dir_all(parent).await
-                {
-                    tracing::warn!(
-                        steamid3,
-                        app_id,
-                        filename,
-                        error = %e,
-                        "migration: could not create user game dir"
-                    );
-                    continue;
-                }
-                files_moved += move_file_logged(&src, &dst).await;
             }
         }
+    }
+
+    if files_moved == 0 {
+        tracing::info!(steamid3, "migration: no new files to move");
+        return Ok(MigrationOutcome::AlreadyMigrated);
     }
 
     tracing::info!(
@@ -93,11 +89,31 @@ pub async fn migrate_legacy_cache_if_present(
         files_moved,
         "migration: completed legacy cache migration"
     );
-
     Ok(MigrationOutcome::Migrated { files_moved })
 }
 
-async fn move_file_logged(src: &PathBuf, dst: &PathBuf) -> u32 {
+async fn move_if_pending(src: &Path, dst: &Path) -> u32 {
+    if !src.exists() {
+        return 0;
+    }
+    if dst.exists() {
+        tracing::warn!(
+            src = %src.display(),
+            dst = %dst.display(),
+            "migration: destination already exists; leaving legacy source as orphan"
+        );
+        return 0;
+    }
+    if let Some(parent) = dst.parent()
+        && let Err(e) = tokio::fs::create_dir_all(parent).await
+    {
+        tracing::warn!(
+            src = %src.display(),
+            error = %e,
+            "migration: could not create destination directory"
+        );
+        return 0;
+    }
     match tokio::fs::rename(src, dst).await {
         Ok(()) => {
             tracing::trace!(
@@ -119,13 +135,18 @@ async fn move_file_logged(src: &PathBuf, dst: &PathBuf) -> u32 {
     }
 }
 
-async fn has_any_legacy_game_data(games_dir: &PathBuf) -> bool {
+async fn has_any_legacy_game_data(games_dir: &Path) -> bool {
     let Ok(mut entries) = tokio::fs::read_dir(games_dir).await else {
         return false;
     };
     while let Ok(Some(entry)) = entries.next_entry().await {
         let fname = entry.file_name();
         let name = fname.to_string_lossy();
+        if let Some(stem) = name.strip_suffix(".json")
+            && stem.parse::<u32>().is_ok()
+        {
+            return true;
+        }
         if name.parse::<u32>().is_ok() {
             let game_dir = games_dir.join(name.as_ref());
             if game_dir.join("summary.json").exists() || game_dir.join("achievements.json").exists()
@@ -143,7 +164,7 @@ mod tests {
 
     const TEST_STEAMID3: u32 = 123456789;
 
-    fn write_file(path: &std::path::Path, content: &[u8]) {
+    fn write_file(path: &Path, content: &[u8]) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
@@ -161,7 +182,7 @@ mod tests {
         write_file(&cache.join("games/570/achievements.json"), b"achievements");
         write_file(&cache.join("games/570/icons/foo.png"), b"icon");
 
-        let outcome = migrate_with_paths(TEST_STEAMID3, &cache).await.unwrap();
+        let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
 
         match outcome {
             MigrationOutcome::Migrated { files_moved } => {
@@ -204,6 +225,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn migration_moves_legacy_full_game_cache_files() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let cache = dir.path().join("cache");
+
+        write_file(&cache.join("games/570.json"), b"full cache for 570");
+        write_file(&cache.join("games/440.json"), b"full cache for 440");
+        write_file(&cache.join("games/570/icons/x.png"), b"icon");
+
+        let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
+
+        match outcome {
+            MigrationOutcome::Migrated { files_moved } => {
+                assert_eq!(files_moved, 2, "two cache.json files must be moved");
+            }
+            other => panic!("expected Migrated, got {other:?}"),
+        }
+
+        let user_games = cache
+            .join("users")
+            .join(TEST_STEAMID3.to_string())
+            .join("games");
+        assert!(user_games.join("570/cache.json").exists());
+        assert!(user_games.join("440/cache.json").exists());
+        assert!(!cache.join("games/570.json").exists());
+        assert!(!cache.join("games/440.json").exists());
+        assert!(
+            cache.join("games/570/icons/x.png").exists(),
+            "icons must NOT be moved"
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_moves_pending_cache_file_after_prior_migration() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let cache = dir.path().join("cache");
+
+        write_file(&cache.join("profile.json"), b"profile");
+        let first = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
+        assert!(matches!(first, MigrationOutcome::Migrated { .. }));
+
+        write_file(&cache.join("games/570.json"), b"latecomer");
+        let second = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
+        match second {
+            MigrationOutcome::Migrated { files_moved } => {
+                assert_eq!(files_moved, 1, "the new cache.json must be moved");
+            }
+            other => panic!("expected Migrated, got {other:?}"),
+        }
+
+        let user_root = cache.join("users").join(TEST_STEAMID3.to_string());
+        assert!(user_root.join("games/570/cache.json").exists());
+        assert!(!cache.join("games/570.json").exists());
+    }
+
+    #[tokio::test]
     async fn migration_is_idempotent() {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let cache = dir.path().join("cache");
@@ -211,10 +287,10 @@ mod tests {
         write_file(&cache.join("profile.json"), b"profile");
         write_file(&cache.join("library.json"), b"library");
 
-        let first = migrate_with_paths(TEST_STEAMID3, &cache).await.unwrap();
+        let first = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
         assert!(matches!(first, MigrationOutcome::Migrated { .. }));
 
-        let second = migrate_with_paths(TEST_STEAMID3, &cache).await.unwrap();
+        let second = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
         assert_eq!(
             second,
             MigrationOutcome::AlreadyMigrated,
@@ -229,7 +305,7 @@ mod tests {
 
         write_file(&cache.join("profile.json"), b"profile");
 
-        let outcome = migrate_with_paths(TEST_STEAMID3, &cache).await.unwrap();
+        let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
         match outcome {
             MigrationOutcome::Migrated { files_moved } => {
                 assert_eq!(files_moved, 1, "only profile should be moved");
@@ -248,89 +324,7 @@ mod tests {
         let cache = dir.path().join("cache");
         std::fs::create_dir_all(&cache).unwrap();
 
-        let outcome = migrate_with_paths(TEST_STEAMID3, &cache).await.unwrap();
+        let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
         assert_eq!(outcome, MigrationOutcome::NothingToMigrate);
-    }
-
-    async fn migrate_with_paths(
-        steamid3: u32,
-        cache_root: &std::path::Path,
-    ) -> Result<MigrationOutcome, MigrationError> {
-        let user_profile = cache_root
-            .join("users")
-            .join(steamid3.to_string())
-            .join("profile.json");
-        let user_library = cache_root
-            .join("users")
-            .join(steamid3.to_string())
-            .join("library.json");
-
-        if user_profile.exists() || user_library.exists() {
-            return Ok(MigrationOutcome::AlreadyMigrated);
-        }
-
-        let legacy_profile = cache_root.join("profile.json");
-        let legacy_library = cache_root.join("library.json");
-        let legacy_games_dir = cache_root.join("games");
-
-        let has_legacy_profile = legacy_profile.exists();
-        let has_legacy_library = legacy_library.exists();
-
-        if !has_legacy_profile && !has_legacy_library {
-            let games_dir_path = legacy_games_dir.to_path_buf();
-            if !has_any_legacy_game_data(&games_dir_path).await {
-                return Ok(MigrationOutcome::NothingToMigrate);
-            }
-        }
-
-        let user_dir = cache_root.join("users").join(steamid3.to_string());
-        tokio::fs::create_dir_all(&user_dir).await?;
-
-        let mut files_moved: u32 = 0;
-
-        if has_legacy_profile {
-            files_moved += move_file_logged(&legacy_profile.to_path_buf(), &user_profile).await;
-        }
-
-        if has_legacy_library {
-            files_moved += move_file_logged(&legacy_library.to_path_buf(), &user_library).await;
-        }
-
-        if let Ok(mut entries) = tokio::fs::read_dir(&legacy_games_dir).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                let fname = entry.file_name();
-                let name = fname.to_string_lossy();
-                let Ok(app_id) = name.parse::<u32>() else {
-                    continue;
-                };
-
-                let legacy_game_dir = legacy_games_dir.join(name.as_ref());
-                let user_game_dir = cache_root
-                    .join("users")
-                    .join(steamid3.to_string())
-                    .join("games")
-                    .join(app_id.to_string());
-
-                for filename in ["summary.json", "achievements.json"] {
-                    let src = legacy_game_dir.join(filename);
-                    if !src.exists() {
-                        continue;
-                    }
-                    let dst = user_game_dir.join(filename);
-                    if let Some(parent) = dst.parent()
-                        && let Err(e) = tokio::fs::create_dir_all(parent).await
-                    {
-                        tracing::warn!(
-                            error = %e,
-                            "migration test: could not create user game dir"
-                        );
-                        continue;
-                    }
-                    files_moved += move_file_logged(&src.to_path_buf(), &dst.to_path_buf()).await;
-                }
-            }
-        }
-
-        Ok(MigrationOutcome::Migrated { files_moved })
     }
 }

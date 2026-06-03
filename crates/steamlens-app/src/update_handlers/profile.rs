@@ -126,10 +126,10 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             no_ach_entries,
         } => {
             let mut tasks: Vec<Task<Message>> = vec![extra];
-            for entry in cache_entries {
-                tasks.push(cache::commands::write_game_cache(entry));
-            }
             let steamid3 = app.context.steamid3 as u32;
+            for entry in cache_entries {
+                tasks.push(cache::commands::write_game_cache(steamid3, entry));
+            }
             for summary in summary_entries {
                 tasks.push(cache::commands::write_game_summary(steamid3, summary));
             }

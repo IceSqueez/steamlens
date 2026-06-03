@@ -102,8 +102,9 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     if steam_off {
         if state.achievements.is_empty() && !app.context.cached_entries.contains_key(&app_id) {
+            let steamid3 = app.context.steamid3 as u32;
             tasks.push(Task::perform(
-                cache::store::load_game_cache(app_id),
+                cache::store::load_game_cache(steamid3, app_id),
                 move |entry| {
                     Message::Cache(cache::CacheEvent::OfflineLoaded {
                         app_id,

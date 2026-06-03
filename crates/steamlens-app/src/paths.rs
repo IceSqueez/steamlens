@@ -66,21 +66,13 @@ pub fn user_game_achievements_path(steamid3: u32, app_id: u32) -> PathBuf {
     user_game_dir(steamid3, app_id).join("achievements.json")
 }
 
+pub fn user_game_cache_path(steamid3: u32, app_id: u32) -> PathBuf {
+    user_game_dir(steamid3, app_id).join("cache.json")
+}
+
 pub fn shared_game_icons_dir(app_id: u32) -> PathBuf {
     cache_dir()
         .join("games")
         .join(app_id.to_string())
         .join("icons")
-}
-
-pub(crate) fn legacy_profile_path() -> PathBuf {
-    cache_dir().join("profile.json")
-}
-
-pub(crate) fn legacy_library_path() -> PathBuf {
-    cache_dir().join("library.json")
-}
-
-pub(crate) fn legacy_game_dir(app_id: u32) -> PathBuf {
-    cache_dir().join("games").join(app_id.to_string())
 }
