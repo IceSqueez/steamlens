@@ -35,26 +35,29 @@ impl RarityTier {
 }
 
 pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, RarityTier> {
-    let mut rated_achievements: Vec<(String, f32)> = achievements
+    let rated_achievements: Vec<(String, f32)> = achievements
         .iter()
         .filter_map(|row| {
             row.rarity_percent
                 .map(|percent| (row.data.id.clone(), percent))
         })
         .collect();
+    assign_tiers_from_percentages(rated_achievements)
+}
 
-    if rated_achievements.is_empty() {
+pub fn assign_tiers_from_percentages(mut rated: Vec<(String, f32)>) -> HashMap<String, RarityTier> {
+    if rated.is_empty() {
         return HashMap::new();
     }
 
-    rated_achievements.sort_by(|left, right| {
+    rated.sort_by(|left, right| {
         left.1
             .partial_cmp(&right.1)
             .unwrap_or(Ordering::Equal)
             .then(left.0.cmp(&right.0))
     });
 
-    let total = rated_achievements.len();
+    let total = rated.len();
     let mut tier_map = HashMap::with_capacity(total);
     let mut cursor = 0usize;
 
@@ -68,16 +71,16 @@ pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, Rari
         let mut slot_end = (cursor + slot_count).min(total);
 
         if slot_end > cursor && slot_end < total {
-            let boundary_percent = rated_achievements[slot_end - 1].1;
+            let boundary_percent = rated[slot_end - 1].1;
             while slot_end < total
-                && (rated_achievements[slot_end].1 - boundary_percent).abs() < TIE_BREAK_EPSILON
+                && (rated[slot_end].1 - boundary_percent).abs() < TIE_BREAK_EPSILON
             {
                 slot_end += 1;
             }
         }
 
         while cursor < slot_end {
-            let (id, percent) = &rated_achievements[cursor];
+            let (id, percent) = &rated[cursor];
             if *percent < ceiling_percent {
                 tier_map.insert(id.clone(), tier);
                 cursor += 1;
@@ -87,7 +90,7 @@ pub fn compute_tier_map(achievements: &[AchievementRow]) -> HashMap<String, Rari
         }
     }
 
-    for (id, _) in &rated_achievements[cursor..] {
+    for (id, _) in &rated[cursor..] {
         tier_map.insert(id.clone(), RarityTier::Common);
     }
 

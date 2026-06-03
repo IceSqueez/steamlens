@@ -18,7 +18,6 @@ use super::types::{GameEntry, ProfileViewMessage, StoredCapsule, TopEntry};
 
 const AVATAR_SIZE: f32 = 100.0;
 const AVATAR_RADIUS: f32 = 8.0;
-const LEGENDARY_TOP_N: usize = 3;
 
 pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) -> WidgetSummary {
     let mut summary = WidgetSummary::default();
@@ -64,63 +63,11 @@ fn bump_tier(summary: &mut WidgetSummary, tier: RarityTier, count: u32) {
 }
 
 fn compute_tier_map_from_cached(achievements: &[CachedAchievement]) -> HashMap<String, RarityTier> {
-    let mut rated: Vec<(String, f64)> = achievements
+    let rated: Vec<(String, f32)> = achievements
         .iter()
-        .filter_map(|a| a.global_percent.map(|p| (a.api_name.clone(), p)))
+        .filter_map(|a| a.global_percent.map(|p| (a.api_name.clone(), p as f32)))
         .collect();
-
-    if rated.is_empty() {
-        return HashMap::new();
-    }
-
-    rated.sort_by(|a, b| {
-        a.1.partial_cmp(&b.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.0.cmp(&b.0))
-    });
-
-    let total = rated.len();
-    let mut legendary_n = total.min(LEGENDARY_TOP_N);
-    if legendary_n > 0 && legendary_n < total {
-        let threshold = rated[legendary_n - 1].1;
-        while legendary_n < total && (rated[legendary_n].1 - threshold).abs() < 0.001 {
-            legendary_n += 1;
-        }
-    }
-    let remaining = total - legendary_n;
-
-    let mythical_n = (remaining as f64 * 0.10).round() as usize;
-    let rare_n = (remaining as f64 * 0.15).round() as usize;
-    let uncommon_n = (remaining as f64 * 0.25).round() as usize;
-    let common_n = remaining
-        .saturating_sub(mythical_n)
-        .saturating_sub(rare_n)
-        .saturating_sub(uncommon_n);
-
-    let mut map = HashMap::with_capacity(total);
-    let mut idx = 0;
-
-    for (id, _) in &rated[idx..idx + legendary_n] {
-        map.insert(id.clone(), RarityTier::Legendary);
-    }
-    idx += legendary_n;
-    for (id, _) in &rated[idx..idx + mythical_n] {
-        map.insert(id.clone(), RarityTier::Mythical);
-    }
-    idx += mythical_n;
-    for (id, _) in &rated[idx..idx + rare_n] {
-        map.insert(id.clone(), RarityTier::Rare);
-    }
-    idx += rare_n;
-    for (id, _) in &rated[idx..idx + uncommon_n] {
-        map.insert(id.clone(), RarityTier::Uncommon);
-    }
-    idx += uncommon_n;
-    for (id, _) in &rated[idx..idx + common_n] {
-        map.insert(id.clone(), RarityTier::Common);
-    }
-
-    map
+    crate::game_view::types::assign_tiers_from_percentages(rated)
 }
 
 pub fn top6_closest_to_complete(

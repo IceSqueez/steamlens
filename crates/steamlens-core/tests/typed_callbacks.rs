@@ -122,7 +122,7 @@ fn unknown_callback_id_returns_unknown_variant() {
         id: 9999,
         payload: vec![0xDE, 0xAD, 0xBE, 0xEF],
     };
-    let cb = SteamCallback::from(raw.clone());
+    let cb = SteamCallback::from(raw);
     match cb {
         SteamCallback::Unknown(inner) => {
             assert_eq!(inner.id, 9999);

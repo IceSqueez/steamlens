@@ -78,7 +78,7 @@ pub fn invalidate_game_cache(account_id: u32, app_id: u32, name: String) -> Task
         move |result| {
             crate::Message::Cache(CacheEvent::GameInvalidated {
                 app_id,
-                name: name.clone(),
+                name,
                 result,
             })
         },

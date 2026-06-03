@@ -616,7 +616,7 @@ mod tests {
             nickname: "DiskFallback".to_owned(),
             avatar_png_bytes: None,
         };
-        app.context.user.profile = Some(prior.clone());
+        app.context.user.profile = Some(prior);
 
         let _t = update(
             &mut app,
