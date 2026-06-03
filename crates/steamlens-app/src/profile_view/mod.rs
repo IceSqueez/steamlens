@@ -498,7 +498,7 @@ fn handle_progress_result(
         .find(|g| g.app_id == scan_app_id)
         .and_then(|g| g.name.as_deref().map(str::to_owned));
 
-    let entry = crate::game_view_seed::build_cache_entry_from_scan(
+    let entry = crate::game_cache_builder::build_cache_entry_from_scan(
         &data,
         scan_app_id,
         game_name.as_deref(),

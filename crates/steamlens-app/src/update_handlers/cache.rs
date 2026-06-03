@@ -6,8 +6,8 @@ use iced::Task;
 use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
 
 use crate::cache::{self, ClassifyResult};
+use crate::game_cache_builder;
 use crate::game_view;
-use crate::game_view_seed;
 use crate::messaging::ToastKind;
 use crate::profile_view::{self, types::ProfileViewMessage};
 use crate::{App, Message, Screen, routing};
@@ -65,7 +65,7 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
             break;
         };
         let mut entry = hit.entry;
-        game_view_seed::recompute_tier_breakdown_if_missing(&mut entry);
+        game_cache_builder::recompute_tier_breakdown_if_missing(&mut entry);
         if let Screen::ProfileView(pv_state) = &mut app.screen
             && let Some(game) = pv_state.games.iter_mut().find(|g| g.app_id == hit.app_id)
         {
@@ -170,7 +170,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
     tracing::info!(app_id, earned, total, change_number, "persist game summary");
 
     let mut full_entry =
-        game_view_seed::build_game_view_cache_entry(gv_state, app_id, &app.context.steam_state);
+        game_cache_builder::build_game_view_cache_entry(gv_state, app_id, &app.context.steam_state);
     if let Some(existing) = app.context.cached_entries.get(&app_id) {
         cache::store::merge_preserved_fields(&mut full_entry, existing);
     }
@@ -390,7 +390,7 @@ pub(crate) fn handle_offline_loaded(
     let seed_task = if full.achievements.is_empty() {
         Task::none()
     } else {
-        game_view_seed::spawn_seed_task(app_id, full.clone())
+        game_cache_builder::spawn_seed_task(app_id, full.clone())
     };
     app.context.cached_entries.insert(app_id, full);
     seed_task

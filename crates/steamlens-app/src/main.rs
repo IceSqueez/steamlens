@@ -8,8 +8,8 @@ mod boot;
 mod cache;
 mod capsule_cache;
 mod capsule_commands;
+mod game_cache_builder;
 mod game_view;
-mod game_view_seed;
 mod ipc_pipe;
 mod logging;
 mod messaging;
@@ -1034,7 +1034,7 @@ mod tests {
             ],
         );
         let game = make_game_entry_for_scan(105600, "TerrariaFallback");
-        let entry = game_view_seed::build_cache_entry_from_scan(
+        let entry = game_cache_builder::build_cache_entry_from_scan(
             &scanned,
             game.app_id,
             game.name.as_deref(),
@@ -1053,7 +1053,7 @@ mod tests {
     fn build_cache_entry_from_scan_falls_back_to_entry_name() {
         let scanned = make_scanned_data(None, vec![("X".to_owned(), false, None)]);
         let game = make_game_entry_for_scan(1, "FallbackName");
-        let entry = game_view_seed::build_cache_entry_from_scan(
+        let entry = game_cache_builder::build_cache_entry_from_scan(
             &scanned,
             game.app_id,
             game.name.as_deref(),
@@ -1074,7 +1074,7 @@ mod tests {
             ],
         );
         let game = make_game_entry_for_scan(99, "Game");
-        let entry = game_view_seed::build_cache_entry_from_scan(
+        let entry = game_cache_builder::build_cache_entry_from_scan(
             &scanned,
             game.app_id,
             game.name.as_deref(),
@@ -1093,7 +1093,7 @@ mod tests {
             vec![("A".to_owned(), true, None), ("B".to_owned(), false, None)],
         );
         let game = make_game_entry_for_scan(99, "Game");
-        let entry = game_view_seed::build_cache_entry_from_scan(
+        let entry = game_cache_builder::build_cache_entry_from_scan(
             &scanned,
             game.app_id,
             game.name.as_deref(),
