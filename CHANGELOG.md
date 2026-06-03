@@ -1,9 +1,65 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-06-03
+### ⚙️ Miscellaneous Tasks
+- Strip references from comments
+- *(vdf)* Remove investigation example binaries
+- *(cache)* Drop dead game_achievements API and migration step
+- *(cache)* Bump schema versions after tier algorithm refactor
+
+### ⚡ Performance
+- *(ui)* Speed up achievement reveal animation to 5ms per card
+
+### 🐛 Bug Fixes
+- *(ci)* Resolve WiX ICE69 by referencing exe via property path
+- *(app)* Sync profile_view library entry after game summary persist
+- *(app)* Partition full game cache file per Steam user
+- *(ui)* Smooth skeleton shimmer wrap-around via triple-band gradient
+- *(worker)* Isolate worker lifecycles to prevent cross-game reply contamination
+- *(ui)* Sync status bar progress with reveal animation
+- *(ui)* Skip cache seed when Steam is running
+- *(ui)* Pin hidden locked achievements to end of all sort orders
+
+### 🚀 Features
+- *(app)* Partition cache per Steam user with one-time migration
+- *(achievements)* Brand-new rarity tier algorithm with absolute ceilings
+- *(ui)* Wire Retry-failed link into profile status bar
+
+### 🚜 Refactor
+- *(cache)* Inline single-use Cached trait into no_achievements
+- *(app)* Drop misleading Task return from AppContext::update_settings
+- *(app)* Store steamid3 as u32 to match its semantic meaning
+- *(game_view)* Dedup status labels via RowStatus enum
+- *(game_view)* Replace hardcoded C_* colors with palette fields
+- *(app)* Rename Message::Noop to DiscardReply for clarity
+- *(core)* Rename WorkerErrorKind to WorkerErrorStage
+- *(app)* Rename game_view_seed to game_cache_builder
+- *(app)* Collapse redundant Message routing variants
+- *(app)* Delegate non-trivial update() arms to handlers
+- *(app)* Group user identity fields into UserState sub-struct
+- *(app)* Group capsule cache fields into CapsuleStore sub-struct
+- *(app)* Group Steam observed state into SteamSnapshot sub-struct
+- *(app)* Group worker channels into WorkerState sub-struct
+- *(app)* Group game cache memory fields into GameCacheMemory sub-struct
+- *(workspace)* Adjusted naming for better clarity and readability
+- *(app)* Remove dead_code allows by deleting unused variants and fields
+- *(ui)* Unify rarity tier algorithm across game and profile views
+- *(ui)* Extract WidgetSummary::add_tier method
+
+### 🧪 Testing
+- Prune tautological assertions across workspace
+
 ## [1.0.0] - 2026-05-29
+### ⚙️ Miscellaneous Tasks
+- Release
+
+### 🐛 Bug Fixes
+- *(ci)* Strip semver build metadata from cargo-wix install-version
+
 ### 📚 Documentation
 - *(readme)* Updated screenshot
+- *(release)* Release v1.0.0
 
 ## [1.0.0-rc.3] - 2026-05-29
 ### ⚙️ Miscellaneous Tasks
