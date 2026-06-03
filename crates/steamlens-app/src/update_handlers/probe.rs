@@ -23,7 +23,7 @@ pub(crate) fn handle_probe_result(
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
 
             let new_steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
-            let previous_steamid3 = app.context.steamid3;
+            let previous_steamid3 = app.context.user.steamid3;
 
             let user_switched = previous_steamid3 != 0 && previous_steamid3 != new_steamid3;
             if user_switched {
@@ -32,19 +32,19 @@ pub(crate) fn handle_probe_result(
                     new = new_steamid3,
                     "probe: user switched accounts, discarding previous user state"
                 );
-                app.context.user_profile = None;
-                app.context.profile_avatar_handle = None;
-                app.context.steam_level = None;
+                app.context.user.profile = None;
+                app.context.user.avatar_handle = None;
+                app.context.user.steam_level = None;
             }
 
-            app.context.steamid3 = new_steamid3;
-            app.context.profile_avatar_handle = p
+            app.context.user.steamid3 = new_steamid3;
+            app.context.user.avatar_handle = p
                 .avatar_image
                 .as_ref()
                 .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
             if let Some(root) = p.steam_root.clone() {
-                app.context.steam_root = root;
+                app.context.user.steam_root = root;
             }
 
             let cached = cache::make_cached_profile(
@@ -54,8 +54,8 @@ pub(crate) fn handle_probe_result(
                 p.steam_root.clone(),
                 p.steam_level,
             );
-            app.context.steam_level = p.steam_level;
-            app.context.user_profile = Some(UserProfile {
+            app.context.user.steam_level = p.steam_level;
+            app.context.user.profile = Some(UserProfile {
                 steam_id: p.steam_id,
                 nickname: p.nickname,
                 avatar_png_bytes: p.avatar_image,
@@ -70,8 +70,8 @@ pub(crate) fn handle_probe_result(
 
             Task::batch(vec![
                 boot::spawn_steam_state_refresh(
-                    app.context.steam_root.clone(),
-                    app.context.steamid3,
+                    app.context.user.steam_root.clone(),
+                    app.context.user.steamid3,
                     app.context.steam_state_mtime,
                 ),
                 cache::commands::write_profile_cache(new_steamid3, cached),
@@ -85,7 +85,7 @@ pub(crate) fn handle_probe_result(
         Err(ProbeFailure::NotLoggedIn) => {
             app.context.connectivity.steam_running = Some(true);
             app.context.connectivity.user_logged_in = Some(false);
-            app.context.steam_level = None;
+            app.context.user.steam_level = None;
             tracing::warn!("probe: connectivity.user_logged_in = false");
 
             steam_connectivity::surface_steam_unavailable(
@@ -102,7 +102,7 @@ pub(crate) fn handle_probe_result(
         Err(ProbeFailure::SteamNotRunning) => {
             app.context.connectivity.steam_running = Some(false);
             app.context.connectivity.user_logged_in = None;
-            app.context.steam_level = None;
+            app.context.user.steam_level = None;
             tracing::warn!("probe: steam_running = false");
 
             steam_connectivity::surface_steam_unavailable(
@@ -119,7 +119,7 @@ pub(crate) fn handle_probe_result(
         Err(ProbeFailure::Other(reason)) => {
             app.context.connectivity.steam_running = None;
             app.context.connectivity.user_logged_in = None;
-            app.context.steam_level = None;
+            app.context.user.steam_level = None;
             tracing::warn!("probe failed: {reason}");
 
             steam_connectivity::surface_steam_unavailable(
@@ -171,7 +171,7 @@ fn fallback_steamid3(app: &App) -> u32 {
     app.context
         .settings
         .last_user_steamid
-        .unwrap_or(app.context.steamid3)
+        .unwrap_or(app.context.user.steamid3)
 }
 
 fn spawn_migrate_then_continue(

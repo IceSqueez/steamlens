@@ -72,10 +72,10 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     let mut tasks: Vec<Task<Message>> = Vec::new();
 
-    if !app.context.steam_root.as_os_str().is_empty() {
+    if !app.context.user.steam_root.as_os_str().is_empty() {
         tasks.push(crate::boot::spawn_steam_state_refresh(
-            app.context.steam_root.clone(),
-            app.context.steamid3,
+            app.context.user.steam_root.clone(),
+            app.context.user.steamid3,
             app.context.steam_state_mtime,
         ));
     }
@@ -101,7 +101,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     if steam_off {
         if state.achievements.is_empty() && !app.context.cached_entries.contains_key(&app_id) {
-            let steamid3 = app.context.steamid3;
+            let steamid3 = app.context.user.steamid3;
             tasks.push(Task::perform(
                 cache::store::load_game_cache(steamid3, app_id),
                 move |entry| {

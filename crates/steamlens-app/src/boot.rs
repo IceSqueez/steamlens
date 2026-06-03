@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use iced::Task;
 use tokio::sync::mpsc;
 
-use crate::app_context::{AnimationState, AppContext, ConnectivityState};
+use crate::app_context::{AnimationState, AppContext, ConnectivityState, UserState};
 use crate::cache;
 use crate::messaging::MessagingCenter;
 use crate::profile_view::types::ProfileViewState;
@@ -30,12 +29,8 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         cached_entries: HashMap::new(),
         pending_hit_queue: VecDeque::new(),
         last_hit_recompute_at: None,
-        steam_root: PathBuf::new(),
-        steamid3: 0,
-        user_profile: None,
-        profile_avatar_handle: None,
+        user: UserState::default(),
         connectivity: ConnectivityState::default(),
-        steam_level: None,
         no_ach_cache: cache::load_no_achievements_cache_blocking(),
         steam_state: HashMap::new(),
         steam_state_mtime: None,

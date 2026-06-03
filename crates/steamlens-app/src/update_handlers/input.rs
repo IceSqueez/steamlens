@@ -120,14 +120,14 @@ pub(crate) fn handle_local_profile_loaded(
     profile: Option<Box<steamlens_core::UserProfile>>,
 ) -> Task<Message> {
     let profile = profile.map(|b| *b);
-    app.context.profile_avatar_handle = profile
+    app.context.user.avatar_handle = profile
         .as_ref()
         .and_then(|p| p.avatar_png_bytes.as_ref())
         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
     if let Some(p) = &profile {
-        app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
+        app.context.user.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
     }
-    app.context.user_profile = profile;
+    app.context.user.profile = profile;
     Task::none()
 }
 

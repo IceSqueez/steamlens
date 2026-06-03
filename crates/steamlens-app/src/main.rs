@@ -292,13 +292,13 @@ fn view(app: &App) -> Element<'_, Message> {
     let body: Element<'_, Message> = match &app.screen {
         Screen::ProfileView(pv_state) => {
             let props = profile_view::ProfileViewProps {
-                user_profile: app.context.user_profile.as_ref(),
-                avatar_handle: app.context.profile_avatar_handle.as_ref(),
+                user_profile: app.context.user.profile.as_ref(),
+                avatar_handle: app.context.user.avatar_handle.as_ref(),
                 cached_entries: &app.context.cached_entries,
                 capsule_handles: &app.context.capsule_handles,
                 skeleton_phase,
                 pinned: &app.context.settings.library.pinned,
-                steam_level: app.context.steam_level,
+                steam_level: app.context.user.steam_level,
                 steam_running: app.context.connectivity.steam_running,
                 theme,
             };
@@ -493,7 +493,7 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
     use crate::app_context::AnimationState;
-    use crate::app_context::ConnectivityState;
+    use crate::app_context::{ConnectivityState, UserState};
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -517,15 +517,14 @@ mod tests {
                     cached_entries: HashMap::new(),
                     pending_hit_queue: VecDeque::new(),
                     last_hit_recompute_at: None,
-                    steam_root: PathBuf::from("/tmp"),
-                    steamid3: 0,
-                    user_profile: None,
-                    profile_avatar_handle: None,
+                    user: UserState {
+                        steam_root: PathBuf::from("/tmp"),
+                        ..UserState::default()
+                    },
                     connectivity: ConnectivityState {
                         steam_running: Some(true),
                         user_logged_in: Some(true),
                     },
-                    steam_level: None,
                     no_ach_cache: cache::NoAchievementsCache::new(),
                     steam_state: HashMap::new(),
                     steam_state_mtime: None,
@@ -565,8 +564,7 @@ mod tests {
             modals: Modals::default(),
             context: AppContext {
                 connectivity: ConnectivityState::default(),
-                user_profile: None,
-                profile_avatar_handle: None,
+                user: UserState::default(),
                 ..App::default().context
             },
         }
@@ -590,16 +588,17 @@ mod tests {
         assert!(app.boot.probe_done);
         let profile = app
             .context
-            .user_profile
+            .user
+            .profile
             .as_ref()
             .expect("profile must be set");
         assert_eq!(profile.nickname, "TestUser");
         assert_eq!(profile.steam_id, 76561198000000042);
         assert_eq!(
-            app.context.steamid3,
+            app.context.user.steamid3,
             (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
         );
-        assert!(app.context.profile_avatar_handle.is_some());
+        assert!(app.context.user.avatar_handle.is_some());
     }
 
     #[test]
@@ -610,7 +609,7 @@ mod tests {
             nickname: "DiskFallback".to_owned(),
             avatar_png_bytes: None,
         };
-        app.context.user_profile = Some(prior.clone());
+        app.context.user.profile = Some(prior.clone());
 
         let _t = update(
             &mut app,
@@ -621,7 +620,8 @@ mod tests {
         assert!(app.boot.probe_done);
         let profile = app
             .context
-            .user_profile
+            .user
+            .profile
             .as_ref()
             .expect("profile must be preserved");
         assert_eq!(profile.nickname, "DiskFallback");
@@ -632,7 +632,7 @@ mod tests {
     fn probe_result_err_with_no_prior_profile_keeps_none() {
         let mut app = make_app_probing();
         assert!(
-            app.context.user_profile.is_none(),
+            app.context.user.profile.is_none(),
             "precondition: no prior profile"
         );
 
@@ -644,7 +644,7 @@ mod tests {
         assert_eq!(app.context.connectivity.steam_running, None);
         assert!(app.boot.probe_done);
         assert!(
-            app.context.user_profile.is_none(),
+            app.context.user.profile.is_none(),
             "no profile should remain None on probe error without disk fallback"
         );
     }
@@ -785,12 +785,13 @@ mod tests {
         );
         let p = app
             .context
-            .user_profile
+            .user
+            .profile
             .as_ref()
             .expect("profile must be set");
         assert_eq!(p.nickname, "FromCache");
         assert_eq!(
-            app.context.steamid3,
+            app.context.user.steamid3,
             (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
         );
     }
@@ -799,7 +800,7 @@ mod tests {
     fn profile_cache_loaded_skipped_when_probe_succeeded_first() {
         let mut app = make_app_probing();
         app.context.connectivity.steam_running = Some(true);
-        app.context.user_profile = Some(UserProfile {
+        app.context.user.profile = Some(UserProfile {
             steam_id: 1,
             nickname: "LiveFromProbe".to_owned(),
             avatar_png_bytes: None,
@@ -817,7 +818,7 @@ mod tests {
             &mut app,
             Message::Cache(cache::CacheEvent::ProfileLoaded(Some(cached))),
         );
-        let p = app.context.user_profile.as_ref().unwrap();
+        let p = app.context.user.profile.as_ref().unwrap();
         assert_eq!(
             p.nickname, "LiveFromProbe",
             "probe-Ok profile must not be overwritten by cache"

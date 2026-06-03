@@ -30,8 +30,8 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
         app.boot.library_cache_resolved = true;
         tracing::info!("library_cache_resolved = true (ScanComplete)");
         let games = enumerated_games.unwrap_or_default();
-        let steam_root = app.context.steam_root.clone();
-        let steamid3 = app.context.steamid3;
+        let steam_root = app.context.user.steam_root.clone();
+        let steamid3 = app.context.user.steamid3;
         let classify_task = cache::commands::classify_games(games, steam_root, steamid3);
 
         let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
@@ -60,7 +60,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
                     })
                     .collect(),
             );
-            let steamid3 = app.context.steamid3;
+            let steamid3 = app.context.user.steamid3;
             tasks.push(cache::commands::write_library_cache(steamid3, cached));
         }
         pv_state.recompute_derived(
@@ -126,7 +126,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             no_ach_entries,
         } => {
             let mut tasks: Vec<Task<Message>> = vec![extra];
-            let steamid3 = app.context.steamid3;
+            let steamid3 = app.context.user.steamid3;
             for entry in cache_entries {
                 tasks.push(cache::commands::write_game_cache(steamid3, entry));
             }

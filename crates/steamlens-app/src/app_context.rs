@@ -34,6 +34,15 @@ pub struct ConnectivityState {
     pub user_logged_in: Option<bool>,
 }
 
+#[derive(Default)]
+pub struct UserState {
+    pub steam_root: std::path::PathBuf,
+    pub steamid3: u32,
+    pub steam_level: Option<u32>,
+    pub profile: Option<steamlens_core::UserProfile>,
+    pub avatar_handle: Option<iced::widget::image::Handle>,
+}
+
 pub struct AppContext {
     pub worker: Option<SteamWorker>,
     pub worker_reply_tx: mpsc::UnboundedSender<SteamReply>,
@@ -44,12 +53,8 @@ pub struct AppContext {
     pub cached_entries: HashMap<u32, GameCacheEntry>,
     pub pending_hit_queue: VecDeque<CacheHit>,
     pub last_hit_recompute_at: Option<Instant>,
-    pub steam_root: std::path::PathBuf,
-    pub steamid3: u32,
-    pub steam_level: Option<u32>,
+    pub user: UserState,
     pub connectivity: ConnectivityState,
-    pub user_profile: Option<steamlens_core::UserProfile>,
-    pub profile_avatar_handle: Option<iced::widget::image::Handle>,
     pub no_ach_cache: cache::NoAchievementsCache,
     pub steam_state: HashMap<u32, SteamAppState>,
     pub steam_state_mtime: Option<SystemTime>,

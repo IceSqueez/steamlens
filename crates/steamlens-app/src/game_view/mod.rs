@@ -28,7 +28,7 @@ pub fn subscription(_state: &GameViewState) -> iced::Subscription<GameViewMessag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_context::{AnimationState, AppContext, ConnectivityState};
+    use crate::app_context::{AnimationState, AppContext, ConnectivityState, UserState};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
@@ -51,15 +51,14 @@ mod tests {
             cached_entries: HashMap::new(),
             pending_hit_queue: VecDeque::new(),
             last_hit_recompute_at: None,
-            steam_root: PathBuf::from("/tmp"),
-            steamid3: 0,
-            user_profile: None,
-            profile_avatar_handle: None,
+            user: UserState {
+                steam_root: PathBuf::from("/tmp"),
+                ..UserState::default()
+            },
             connectivity: ConnectivityState {
                 steam_running: Some(true),
                 user_logged_in: Some(true),
             },
-            steam_level: None,
             no_ach_cache: crate::cache::NoAchievementsCache::new(),
             steam_state: HashMap::new(),
             steam_state_mtime: None,
