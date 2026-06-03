@@ -3,8 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::cached::Cached;
-use crate::cache::store::CacheIoError;
+use crate::cache::store::{CacheIoError, atomic_write};
 
 pub const CURRENT_NO_ACHIEVEMENTS_SCHEMA: u32 = 1;
 
@@ -31,12 +30,6 @@ impl NoAchievementsCache {
 
     pub fn insert(&mut self, app_id: u32, change_number: u32) {
         self.entries.insert(app_id, change_number);
-    }
-}
-
-impl Cached for NoAchievementsCache {
-    fn path() -> PathBuf {
-        cache_path()
     }
 }
 
@@ -71,7 +64,9 @@ pub fn load_blocking() -> NoAchievementsCache {
 }
 
 pub async fn write(cache: &NoAchievementsCache) -> Result<(), CacheIoError> {
-    crate::cache::cached::write(cache).await
+    let bytes =
+        serde_json::to_vec_pretty(cache).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
+    atomic_write(&cache_path(), &bytes).await
 }
 
 #[cfg(test)]

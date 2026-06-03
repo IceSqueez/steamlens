@@ -1,4 +1,3 @@
-pub mod cached;
 pub mod commands;
 pub mod icons;
 pub mod invalidate;
