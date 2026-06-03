@@ -46,7 +46,7 @@ pub fn compute_game_summary_with_tier_map(
     achievements: &[AchievementRow],
     tier_map: &HashMap<String, RarityTier>,
 ) -> WidgetSummary {
-    let mut s = WidgetSummary {
+    let mut summary = WidgetSummary {
         earned_total: achievements.iter().filter(|r| r.data.is_achieved).count() as u32,
         achievement_total: achievements.len() as u32,
         ..WidgetSummary::default()
@@ -57,15 +57,15 @@ pub fn compute_game_summary_with_tier_map(
             continue;
         }
         match tier_map.get(&ach.data.id).copied() {
-            Some(RarityTier::Legendary) => s.legendary_count += 1,
-            Some(RarityTier::Mythical) => s.mythical_count += 1,
-            Some(RarityTier::Rare) => s.rare_count += 1,
-            Some(RarityTier::Uncommon) => s.uncommon_count += 1,
-            Some(RarityTier::Common) => s.common_count += 1,
+            Some(RarityTier::Legendary) => summary.legendary_count += 1,
+            Some(RarityTier::Mythical) => summary.mythical_count += 1,
+            Some(RarityTier::Rare) => summary.rare_count += 1,
+            Some(RarityTier::Uncommon) => summary.uncommon_count += 1,
+            Some(RarityTier::Common) => summary.common_count += 1,
             None => {}
         }
     }
-    s
+    summary
 }
 
 pub struct GameWidgetParams<'a> {
@@ -121,8 +121,8 @@ fn build_left_column<'a>(
     let bar: Element<'a, GameViewMessage> = rarity_bar::<GameViewMessage>(*summary, theme)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
-            Some(t) => GameViewMessage::BarSliceHoverEnter(t),
-            None => GameViewMessage::BarSliceHoverExit,
+            Some(t) => GameViewMessage::BarSliceHoverEntered(t),
+            None => GameViewMessage::BarSliceHoverExited,
         })
         .into();
 
@@ -265,14 +265,14 @@ fn build_invalidate_button<'a>(app_id: u32) -> Element<'a, GameViewMessage> {
 }
 
 fn format_playtime(minutes: Option<u32>) -> String {
-    let Some(m) = minutes else {
+    let Some(total_mins) = minutes else {
         return "Never played".to_owned();
     };
-    if m == 0 {
+    if total_mins == 0 {
         return "Never played".to_owned();
     }
-    let hours = m / 60;
-    let mins = m % 60;
+    let hours = total_mins / 60;
+    let mins = total_mins % 60;
     if hours == 0 {
         format!("{mins}m played")
     } else if mins == 0 {
@@ -359,7 +359,7 @@ mod tests {
             icon: None,
         };
         let mut row = AchievementRow::from(data);
-        row.appeared = true;
+        row.has_appeared = true;
         row.rarity_percent = pct;
         row
     }
@@ -372,8 +372,8 @@ mod tests {
             make_ach("a3", false, Some(10.0)),
             make_ach("a4", true, Some(50.0)),
         ];
-        let s = compute_game_summary(&rows);
-        assert_eq!(s.earned_total, 3);
-        assert_eq!(s.achievement_total, 4);
+        let summary = compute_game_summary(&rows);
+        assert_eq!(summary.earned_total, 3);
+        assert_eq!(summary.achievement_total, 4);
     }
 }

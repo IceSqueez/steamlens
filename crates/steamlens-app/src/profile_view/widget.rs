@@ -8,7 +8,7 @@ use crate::cache::types::{CachedAchievement, GameCacheEntry};
 use crate::capsule_cache::CapsuleSize;
 use crate::game_view::types::RarityTier;
 use crate::ui::theme::{AppTheme, palette, theme_from_iced};
-use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
+use crate::ui::widgets::skeleton::{SKELETON_DEFAULT_RADIUS, skeleton_box};
 use crate::ui::widgets::widget::{
     WidgetSummary, breakdown_row, cards_separator, closest_row, rarity_bar, rarity_cards,
     widget_panel,
@@ -21,15 +21,15 @@ const AVATAR_RADIUS: f32 = 8.0;
 const LEGENDARY_TOP_N: usize = 3;
 
 pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) -> WidgetSummary {
-    let mut s = WidgetSummary::default();
+    let mut summary = WidgetSummary::default();
 
     for entry in cached_entries.values() {
-        s.achievement_total += entry.progress.total;
-        s.earned_total += entry.progress.earned;
+        summary.achievement_total += entry.progress.total;
+        summary.earned_total += entry.progress.earned;
 
         if !entry.tier_breakdown.is_empty() {
             for (tier, count) in &entry.tier_breakdown {
-                bump_tier(&mut s, *tier, *count);
+                bump_tier(&mut summary, *tier, *count);
             }
             continue;
         }
@@ -42,24 +42,24 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
             continue;
         }
         for ach in &entry.achievements {
-            if !ach.earned {
+            if !ach.is_achieved {
                 continue;
             }
             if let Some(tier) = tier_map.get(&ach.api_name).copied() {
-                bump_tier(&mut s, tier, 1);
+                bump_tier(&mut summary, tier, 1);
             }
         }
     }
-    s
+    summary
 }
 
-fn bump_tier(s: &mut WidgetSummary, tier: RarityTier, count: u32) {
+fn bump_tier(summary: &mut WidgetSummary, tier: RarityTier, count: u32) {
     match tier {
-        RarityTier::Legendary => s.legendary_count += count,
-        RarityTier::Mythical => s.mythical_count += count,
-        RarityTier::Rare => s.rare_count += count,
-        RarityTier::Uncommon => s.uncommon_count += count,
-        RarityTier::Common => s.common_count += count,
+        RarityTier::Legendary => summary.legendary_count += count,
+        RarityTier::Mythical => summary.mythical_count += count,
+        RarityTier::Rare => summary.rare_count += count,
+        RarityTier::Uncommon => summary.uncommon_count += count,
+        RarityTier::Common => summary.common_count += count,
     }
 }
 
@@ -234,8 +234,8 @@ fn build_left_column<'a>(
     let bar: Element<'a, ProfileViewMessage> = rarity_bar::<ProfileViewMessage>(*summary, theme)
         .hovered(hovered_bar_slice)
         .on_hover(|tier| match tier {
-            Some(t) => ProfileViewMessage::BarSliceHoverEnter(t),
-            None => ProfileViewMessage::BarSliceHoverExit,
+            Some(t) => ProfileViewMessage::BarSliceHoverEntered(t),
+            None => ProfileViewMessage::BarSliceHoverExited,
         })
         .into();
 
@@ -407,7 +407,12 @@ fn build_closest_row<'a>(
             })
             .into()
         } else {
-            skeleton_box(CAPSULE_W, CAPSULE_H, SKEL_DEFAULT_RADIUS, skeleton_phase)
+            skeleton_box(
+                CAPSULE_W,
+                CAPSULE_H,
+                SKELETON_DEFAULT_RADIUS,
+                skeleton_phase,
+            )
         };
 
     let remaining = entry.total.saturating_sub(entry.earned);
@@ -416,7 +421,7 @@ fn build_closest_row<'a>(
         entry.game_name.clone(),
         format!("{} of {} left", remaining, entry.total),
         format!("{:.0}%", entry.completion_pct),
-        ProfileViewMessage::RequestOpenGame(entry.app_id),
+        ProfileViewMessage::GameOpenRequested(entry.app_id),
     )
 }
 
@@ -455,15 +460,19 @@ mod tests {
         }
     }
 
-    fn make_cached_ach(name: &str, global_percent: Option<f64>, earned: bool) -> CachedAchievement {
+    fn make_cached_ach(
+        name: &str,
+        global_percent: Option<f64>,
+        is_achieved: bool,
+    ) -> CachedAchievement {
         CachedAchievement {
             api_name: name.to_owned(),
             display_name: name.to_owned(),
             description: String::new(),
-            hidden: false,
+            is_hidden: false,
             icon_path: None,
             icon_locked_path: None,
-            earned,
+            is_achieved,
             earned_at: None,
             global_percent,
         }
@@ -513,9 +522,9 @@ mod tests {
         let mut entry = make_cache_entry(1, 10, 20, 0);
         entry.tier_breakdown = vec![(RarityTier::Legendary, 1), (RarityTier::Common, 5)];
         let map: HashMap<u32, GameCacheEntry> = std::iter::once((1u32, entry)).collect();
-        let s = compute_profile_summary(&map);
-        assert_eq!(s.legendary_count, 1);
-        assert_eq!(s.common_count, 5);
+        let summary = compute_profile_summary(&map);
+        assert_eq!(summary.legendary_count, 1);
+        assert_eq!(summary.common_count, 5);
     }
 
     #[test]
@@ -529,9 +538,9 @@ mod tests {
         let mut entry = make_cache_entry(1, 3, 4, 0);
         entry.achievements = achs;
         let map: HashMap<u32, GameCacheEntry> = std::iter::once((1u32, entry)).collect();
-        let s = compute_profile_summary(&map);
-        assert_eq!(s.earned_total, 3);
-        assert_eq!(s.achievement_total, 4);
-        assert!(s.rated_unlocked() >= 1);
+        let summary = compute_profile_summary(&map);
+        assert_eq!(summary.earned_total, 3);
+        assert_eq!(summary.achievement_total, 4);
+        assert!(summary.rated_unlocked() >= 1);
     }
 }

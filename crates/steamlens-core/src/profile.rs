@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::paths;
 
-pub const STEAMID64_INDIVIDUAL_MIN: u64 = 0x0110_0001_0000_0000;
+pub const STEAM_ID_64_INDIVIDUAL_MIN: u64 = 0x0110_0001_0000_0000;
 
 #[derive(Debug, Clone)]
 pub struct UserProfile {
@@ -38,27 +38,25 @@ pub fn load_local_profile() -> Result<UserProfile, ProfileError> {
 pub fn load_profile_from_root(steam_root: &Path) -> Result<UserProfile, ProfileError> {
     let vdf_path = steam_root.join("config").join("loginusers.vdf");
     let content = std::fs::read_to_string(&vdf_path)?;
-    let root = parse_text(&content)?;
-    parse_profile(&root, steam_root)
+    let vdf_root = parse_text(&content)?;
+    parse_profile(&vdf_root, steam_root)
 }
 
-fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, ProfileError> {
-    let users_block = root
+fn parse_profile(vdf_root: &TextValue, steam_root: &Path) -> Result<UserProfile, ProfileError> {
+    let users_block = vdf_root
         .get("users")
-        .and_then(|v| v.as_block())
+        .and_then(TextValue::as_block)
         .ok_or(ProfileError::NoUsers)?;
 
     if users_block.is_empty() {
         return Err(ProfileError::NoUsers);
     }
 
-    let chosen = users_block
+    let (id_str, user_block) = users_block
         .iter()
-        .find(|(_, v)| v.get("MostRecent").and_then(|f| f.as_str()) == Some("1"))
+        .find(|(_id, user)| user.get("MostRecent").and_then(TextValue::as_str) == Some("1"))
         .or_else(|| users_block.iter().next())
         .ok_or(ProfileError::NoUsers)?;
-
-    let (id_str, user_block) = chosen;
 
     let steam_id: u64 = id_str
         .parse()
@@ -66,7 +64,7 @@ fn parse_profile(root: &TextValue, steam_root: &Path) -> Result<UserProfile, Pro
 
     let nickname = user_block
         .get("PersonaName")
-        .and_then(|v| v.as_str())
+        .and_then(TextValue::as_str)
         .unwrap_or("")
         .to_owned();
 
@@ -112,7 +110,7 @@ mod tests {
         );
         let err = load_profile_from_root(dir).unwrap_err();
         assert!(
-            matches!(err, ProfileError::InvalidSteamId(ref s) if s == "not_a_number"),
+            matches!(err, ProfileError::InvalidSteamId(ref bad_id) if bad_id == "not_a_number"),
             "expected InvalidSteamId(\"not_a_number\"), got {err:?}"
         );
     }

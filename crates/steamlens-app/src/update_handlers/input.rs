@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 use iced::Task;
 use iced::keyboard;
 
-use steamlens_core::{AppLibraryAssets, STEAMID64_INDIVIDUAL_MIN, SteamAppState};
+use steamlens_core::{AppLibraryAssets, STEAM_ID_64_INDIVIDUAL_MIN, SteamAppState};
 
 use crate::app_context::ConnectivityState;
 use crate::game_view::{self, GameViewMessage};
@@ -125,7 +125,7 @@ pub(crate) fn handle_local_profile_loaded(
         .and_then(|p| p.avatar_png_bytes.as_ref())
         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
     if let Some(p) = &profile {
-        app.context.user.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
+        app.context.user.account_id = p.steam_id.saturating_sub(STEAM_ID_64_INDIVIDUAL_MIN) as u32;
     }
     app.context.user.profile = profile;
     Task::none()
@@ -137,10 +137,10 @@ pub(crate) fn handle_messaging(app: &mut App, msg: messaging::MessagingEvent) ->
         messaging::MessagingEvent::ToastHovered(id, hovered) => {
             app.context.messaging.set_toast_hovered(id, hovered);
         }
-        messaging::MessagingEvent::DismissToast(id) => {
+        messaging::MessagingEvent::ToastDismissed(id) => {
             app.context.messaging.dismiss_toast(id);
         }
-        messaging::MessagingEvent::DismissBanner(id) => {
+        messaging::MessagingEvent::BannerDismissed(id) => {
             app.context.messaging.dismiss_banner(id);
         }
     }

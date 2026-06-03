@@ -84,7 +84,7 @@ pub(crate) enum Message {
     SplashMinElapsed,
     ProbeResult(Result<Box<ProbedProfile>, ProbeFailure>),
     ProbeLibraryReady {
-        steamid3: u32,
+        account_id: u32,
         summaries: Vec<steamlens_core::GameSummary>,
         no_ach: cache::NoAchievementsCache,
     },
@@ -146,7 +146,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DiscardReply => Task::none(),
 
         Message::GoBack => match &app.screen {
-            Screen::GameView(_) => Task::done(Message::GameView(GameViewMessage::RequestGoBack)),
+            Screen::GameView(_) => Task::done(Message::GameView(GameViewMessage::GoBackRequested)),
             _ => Task::none(),
         },
 
@@ -176,7 +176,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             result,
         }) => update_handlers::handle_game_invalidated(app, app_id, name, result),
 
-        Message::GameView(m) => update_handlers::handle_game_view_message(app, m),
+        Message::GameView(message) => update_handlers::handle_game_view_message(app, message),
 
         Message::WorkerReply(reply) => worker_drain::handle_worker_reply(app, reply),
 
@@ -194,20 +194,20 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::ProbeResult(result) => update_handlers::handle_probe_result(app, result),
 
         Message::ProbeLibraryReady {
-            steamid3,
+            account_id,
             summaries,
             no_ach,
-        } => update_handlers::handle_probe_library_ready(app, steamid3, summaries, no_ach),
+        } => update_handlers::handle_probe_library_ready(app, account_id, summaries, no_ach),
 
-        Message::Cache(cache::CacheEvent::ProfileLoaded(maybe)) => {
-            update_handlers::handle_profile_loaded(app, maybe)
+        Message::Cache(cache::CacheEvent::ProfileLoaded(cached)) => {
+            update_handlers::handle_profile_loaded(app, cached)
         }
 
-        Message::Cache(cache::CacheEvent::LibraryLoaded(maybe)) => {
-            update_handlers::handle_library_loaded(app, maybe)
+        Message::Cache(cache::CacheEvent::LibraryLoaded(cached)) => {
+            update_handlers::handle_library_loaded(app, cached)
         }
 
-        Message::Cache(cache::CacheEvent::NoAchWritten(result)) => {
+        Message::Cache(cache::CacheEvent::NoAchievementsWritten(result)) => {
             update_handlers::handle_no_ach_written(result)
         }
 
@@ -281,8 +281,12 @@ fn view(app: &App) -> Element<'_, Message> {
 
     let theme = app.context.settings.ui.theme;
     let header: Option<Element<'_, Message>> = match &app.screen {
-        Screen::ProfileView(pv_state) => Some(crate::screen::render_app_header(
-            profile_view::header_content(pv_state, app.context.connectivity.steam_running, theme),
+        Screen::ProfileView(profile_view_state) => Some(crate::screen::render_app_header(
+            profile_view::header_content(
+                profile_view_state,
+                app.context.connectivity.steam_running,
+                theme,
+            ),
         )),
         Screen::GameView(state) => Some(crate::screen::render_app_header(
             game_view::header_content(state, theme),
@@ -290,7 +294,7 @@ fn view(app: &App) -> Element<'_, Message> {
     };
 
     let body: Element<'_, Message> = match &app.screen {
-        Screen::ProfileView(pv_state) => {
+        Screen::ProfileView(profile_view_state) => {
             let props = profile_view::ProfileViewProps {
                 user_profile: app.context.user.profile.as_ref(),
                 avatar_handle: app.context.user.avatar_handle.as_ref(),
@@ -302,7 +306,7 @@ fn view(app: &App) -> Element<'_, Message> {
                 steam_running: app.context.connectivity.steam_running,
                 theme,
             };
-            crate::screen::compose_screen(profile_view::render(pv_state, props))
+            crate::screen::compose_screen(profile_view::render(profile_view_state, props))
                 .map(Message::ProfileView)
         }
 
@@ -319,11 +323,11 @@ fn view(app: &App) -> Element<'_, Message> {
     let banner_slot = messaging::banner_stack(&app.context.messaging);
 
     let mut shell = column![].spacing(0);
-    if let Some(h) = header {
-        shell = shell.push(h);
+    if let Some(header) = header {
+        shell = shell.push(header);
     }
-    if let Some(b) = banner_slot {
-        shell = shell.push(b);
+    if let Some(banner) = banner_slot {
+        shell = shell.push(banner);
     }
     shell = shell.push(body);
     let shell: Element<'_, Message> = shell.into();
@@ -501,7 +505,7 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::sync::Mutex;
-    use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
+    use steamlens_core::{STEAM_ID_64_INDIVIDUAL_MIN, UserProfile};
     use tokio::sync::mpsc;
 
     impl Default for App {
@@ -593,8 +597,8 @@ mod tests {
         assert_eq!(profile.nickname, "TestUser");
         assert_eq!(profile.steam_id, 76561198000000042);
         assert_eq!(
-            app.context.user.steamid3,
-            (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
+            app.context.user.account_id,
+            (76561198000000042u64 - STEAM_ID_64_INDIVIDUAL_MIN) as u32
         );
         assert!(app.context.user.avatar_handle.is_some());
     }
@@ -781,16 +785,16 @@ mod tests {
             &mut app,
             Message::Cache(cache::CacheEvent::ProfileLoaded(Some(cached))),
         );
-        let p = app
+        let profile = app
             .context
             .user
             .profile
             .as_ref()
             .expect("profile must be set");
-        assert_eq!(p.nickname, "FromCache");
+        assert_eq!(profile.nickname, "FromCache");
         assert_eq!(
-            app.context.user.steamid3,
-            (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
+            app.context.user.account_id,
+            (76561198000000042u64 - STEAM_ID_64_INDIVIDUAL_MIN) as u32
         );
     }
 
@@ -816,9 +820,9 @@ mod tests {
             &mut app,
             Message::Cache(cache::CacheEvent::ProfileLoaded(Some(cached))),
         );
-        let p = app.context.user.profile.as_ref().unwrap();
+        let profile = app.context.user.profile.as_ref().unwrap();
         assert_eq!(
-            p.nickname, "LiveFromProbe",
+            profile.nickname, "LiveFromProbe",
             "probe-Ok profile must not be overwritten by cache"
         );
     }
@@ -921,18 +925,18 @@ mod tests {
         app_name: Option<&str>,
         achievements: Vec<(String, bool, Option<f32>)>,
     ) -> progress_scan::ScannedGameData {
-        use steamlens_core::CardOnlyAchievement;
+        use steamlens_core::AchievementSummary;
 
         let mut percentages = HashMap::new();
         for (id, _, pct) in &achievements {
-            if let Some(p) = pct {
-                percentages.insert(id.clone(), *p);
+            if let Some(pct) = pct {
+                percentages.insert(id.clone(), *pct);
             }
         }
 
-        let achievement_data: Vec<CardOnlyAchievement> = achievements
+        let achievement_data: Vec<AchievementSummary> = achievements
             .into_iter()
-            .map(|(id, achieved, _)| CardOnlyAchievement {
+            .map(|(id, achieved, _)| AchievementSummary {
                 id,
                 is_achieved: achieved,
             })
@@ -1073,7 +1077,7 @@ mod tests {
         use crate::profile_view::types::{CapsuleAsset, GameEntry, LoaderPhase, ProfileViewState};
         use crate::progress_scan::ProgressData;
 
-        let mk_entry = |app_id: u32, with_progress: bool| GameEntry {
+        let make_entry = |app_id: u32, with_progress: bool| GameEntry {
             app_id,
             change_number: 0,
             last_played: None,
@@ -1091,9 +1095,9 @@ mod tests {
         };
 
         let mut state = ProfileViewState::new();
-        state.games.push(mk_entry(1, true));
-        state.games.push(mk_entry(2, true));
-        state.games.push(mk_entry(3, false));
+        state.games.push(make_entry(1, true));
+        state.games.push(make_entry(2, true));
+        state.games.push(make_entry(3, false));
         state.failed_app_ids.insert(3);
 
         assert_eq!(
@@ -1114,13 +1118,13 @@ mod tests {
     }
 
     #[test]
-    fn loader_phase_alpha_when_no_games_and_steam_unknown() {
+    fn loader_phase_initial_when_no_games_and_steam_unknown() {
         use crate::profile_view::types::{LoaderPhase, ProfileViewState};
         let state = ProfileViewState::new();
         assert_eq!(
             state.loader_phase(None),
-            LoaderPhase::Alpha,
-            "steam_running=None during boot probe → Alpha not SteamOff"
+            LoaderPhase::Initial,
+            "steam_running=None during boot probe → Initial not SteamOff"
         );
     }
 
@@ -1134,7 +1138,7 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::RetryFailedScans),
+            Message::ProfileView(ProfileViewMessage::FailedScansRetryRequested),
         );
 
         if let Screen::ProfileView(pv) = &app.screen {
@@ -1160,7 +1164,7 @@ mod tests {
         let mut app = make_app_probing();
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::RetryFailedScans),
+            Message::ProfileView(ProfileViewMessage::FailedScansRetryRequested),
         );
         if let Screen::ProfileView(pv) = &app.screen {
             assert!(pv.progress_scanner.is_none(), "no scanner spawned");
@@ -1306,7 +1310,7 @@ mod tests {
         };
         state.achievements.push(AchievementRow::from(data));
         assert!(
-            !state.achievements[0].revealed,
+            !state.achievements[0].is_revealed,
             "precondition: revealed must be false"
         );
 
@@ -1318,7 +1322,7 @@ mod tests {
         );
 
         assert!(
-            state.achievements[0].revealed,
+            state.achievements[0].is_revealed,
             "revealed must be true after RevealHidden"
         );
     }
@@ -1335,7 +1339,7 @@ mod tests {
             name: &str,
             is_achieved: bool,
             is_hidden: bool,
-            revealed: bool,
+            is_revealed: bool,
         ) -> AchievementRow {
             let mut r = AchievementRow::from(AchievementData {
                 id: id.to_owned(),
@@ -1347,8 +1351,8 @@ mod tests {
                 permission: 0,
                 icon: None,
             });
-            r.revealed = revealed;
-            r.appeared = true;
+            r.is_revealed = is_revealed;
+            r.has_appeared = true;
             r
         }
 
@@ -1395,7 +1399,7 @@ mod tests {
             icon: None,
         });
         zebra.is_dirty = true;
-        zebra.appeared = true;
+        zebra.has_appeared = true;
 
         let mut ant = AchievementRow::from(AchievementData {
             id: "ANT".to_owned(),
@@ -1407,7 +1411,7 @@ mod tests {
             permission: 0,
             icon: None,
         });
-        ant.appeared = true;
+        ant.has_appeared = true;
 
         let achievements = vec![zebra, ant];
         let ids = visible_achievement_ids(
@@ -1447,7 +1451,7 @@ mod tests {
                 permission: 0,
                 icon: None,
             });
-            r.appeared = true;
+            r.has_appeared = true;
             r
         }
 
@@ -1479,7 +1483,7 @@ mod tests {
 
         let mut state = GameViewState::new(0);
 
-        let make_row = |id: &str| {
+        let make_achievement_row = |id: &str| {
             AchievementRow::from(AchievementData {
                 id: id.to_owned(),
                 display_name: id.to_owned(),
@@ -1492,7 +1496,10 @@ mod tests {
             })
         };
 
-        state.achievements = vec![make_row("ACH_RARE"), make_row("ACH_COMMON")];
+        state.achievements = vec![
+            make_achievement_row("ACH_RARE"),
+            make_achievement_row("ACH_COMMON"),
+        ];
 
         let mut map = HashMap::new();
         map.insert("ACH_RARE".to_owned(), 4.0f32);
@@ -1534,12 +1541,12 @@ mod tests {
             icon: None,
         };
         let mut row = AchievementRow::from(data.clone());
-        row.revealed = true;
+        row.is_revealed = true;
         state.achievements.push(row);
 
         let _task = handle_steam_reply(
             &mut state,
-            SteamReply::AchievementsAndStats {
+            SteamReply::AchievementsFull {
                 achievements: vec![data],
                 stats: vec![],
             },
@@ -1547,8 +1554,8 @@ mod tests {
         );
 
         assert!(
-            state.achievements[0].revealed,
-            "revealed state must survive AchievementsAndStats refresh"
+            state.achievements[0].is_revealed,
+            "revealed state must survive AchievementsFull refresh"
         );
     }
 
@@ -1567,14 +1574,14 @@ mod tests {
 
     #[test]
     fn progress_result_success_path_inserts_cached_entry() {
-        use steamlens_core::CardOnlyAchievement;
+        use steamlens_core::AchievementSummary;
 
         let app_id: u32 = 105600;
-        let mut pv_state = ProfileViewState::new();
-        pv_state.games.push(make_game_entry(app_id, 7));
+        let mut profile_view_state = ProfileViewState::new();
+        profile_view_state.games.push(make_game_entry(app_id, 7));
 
         let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
+            screen: Screen::ProfileView(Box::new(profile_view_state)),
             ..App::default()
         };
 
@@ -1585,7 +1592,7 @@ mod tests {
                     app_id,
                     data: Some(progress_scan::ScannedGameData {
                         app_name: Some("Terraria".to_owned()),
-                        achievements: vec![CardOnlyAchievement {
+                        achievements: vec![AchievementSummary {
                             id: "ACH_KILL_BOSS".to_owned(),
                             is_achieved: true,
                         }],
@@ -1622,11 +1629,13 @@ mod tests {
     fn progress_result_empty_achievements_marks_no_ach_cache() {
         let app_id: u32 = 99999;
         let change_number: u32 = 42;
-        let mut pv_state = ProfileViewState::new();
-        pv_state.games.push(make_game_entry(app_id, change_number));
+        let mut profile_view_state = ProfileViewState::new();
+        profile_view_state
+            .games
+            .push(make_game_entry(app_id, change_number));
 
         let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
+            screen: Screen::ProfileView(Box::new(profile_view_state)),
             ..App::default()
         };
 
@@ -1669,11 +1678,11 @@ mod tests {
     #[test]
     fn progress_result_failed_scan_records_failed_app_id() {
         let app_id: u32 = 12345;
-        let mut pv_state = ProfileViewState::new();
-        pv_state.games.push(make_game_entry(app_id, 0));
+        let mut profile_view_state = ProfileViewState::new();
+        profile_view_state.games.push(make_game_entry(app_id, 0));
 
         let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
+            screen: Screen::ProfileView(Box::new(profile_view_state)),
             ..App::default()
         };
 
@@ -1701,9 +1710,9 @@ mod tests {
     #[tokio::test]
     async fn open_game_view_then_go_back_round_trip() {
         let app_id: u32 = 440;
-        let pv_state = ProfileViewState::new();
+        let profile_view_state = ProfileViewState::new();
         let mut app = App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
+            screen: Screen::ProfileView(Box::new(profile_view_state)),
             ..App::default()
         };
         app.context.game_cache.entries.insert(
@@ -1728,19 +1737,19 @@ mod tests {
 
         let _t = update(
             &mut app,
-            Message::ProfileView(ProfileViewMessage::RequestOpenGame(app_id)),
+            Message::ProfileView(ProfileViewMessage::GameOpenRequested(app_id)),
         );
         assert!(
             matches!(app.screen, Screen::GameView(_)),
-            "RequestOpenGame must switch to GameView screen"
+            "GameOpenRequested must switch to GameView screen"
         );
         assert!(
             app.context.worker.current.is_some(),
-            "RequestOpenGame must respawn worker for the new app"
+            "GameOpenRequested must respawn worker for the new app"
         );
         assert!(
             app.context.game_cache.entries.contains_key(&app_id),
-            "cached entry must survive RequestOpenGame"
+            "cached entry must survive GameOpenRequested"
         );
 
         if let Screen::GameView(_) = &app.screen {
@@ -1752,10 +1761,13 @@ mod tests {
             panic!("expected GameView screen");
         }
 
-        let _t = update(&mut app, Message::GameView(GameViewMessage::RequestGoBack));
+        let _t = update(
+            &mut app,
+            Message::GameView(GameViewMessage::GoBackRequested),
+        );
         assert!(
             matches!(app.screen, Screen::ProfileView(_)),
-            "RequestGoBack from GameView must restore ProfileView screen"
+            "GoBackRequested from GameView must restore ProfileView screen"
         );
         assert!(
             app.context.game_cache.entries.contains_key(&app_id),
@@ -1820,12 +1832,12 @@ mod tests {
     }
 
     fn make_app_with_n_games(n: u32) -> App {
-        let mut pv_state = ProfileViewState::new();
+        let mut profile_view_state = ProfileViewState::new();
         for i in 1..=n {
-            pv_state.games.push(make_game_entry(i, 0));
+            profile_view_state.games.push(make_game_entry(i, 0));
         }
         App {
-            screen: Screen::ProfileView(Box::new(pv_state)),
+            screen: Screen::ProfileView(Box::new(profile_view_state)),
             ..App::default()
         }
     }

@@ -10,8 +10,8 @@ const MAX_VISIBLE_TOASTS: usize = 5;
 pub enum MessagingEvent {
     ToastTick,
     ToastHovered(u32, bool),
-    DismissToast(u32),
-    DismissBanner(u32),
+    ToastDismissed(u32),
+    BannerDismissed(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,7 +240,7 @@ fn render_banner(banner: &Banner) -> Element<'_, crate::Message> {
         b = b.action(action.label, action.message.clone());
     }
     if banner.dismissible {
-        b = b.on_dismiss(crate::Message::Messaging(MessagingEvent::DismissBanner(
+        b = b.on_dismiss(crate::Message::Messaging(MessagingEvent::BannerDismissed(
             banner.id,
         )));
     }
@@ -271,7 +271,7 @@ fn render_toast(toast: &Toast) -> Element<'_, crate::Message> {
     let mut t = toast_widget::<crate::Message>()
         .kind(kind)
         .title(toast.title.clone())
-        .on_close(crate::Message::Messaging(MessagingEvent::DismissToast(
+        .on_close(crate::Message::Messaging(MessagingEvent::ToastDismissed(
             toast.id,
         )))
         .on_hover_enter(crate::Message::Messaging(MessagingEvent::ToastHovered(

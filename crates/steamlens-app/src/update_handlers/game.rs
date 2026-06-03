@@ -5,14 +5,16 @@ use iced::Task;
 use crate::game_view::{self, GameViewMessage};
 use crate::{App, Message, Screen, routing};
 
-pub(crate) fn handle_game_view_message(app: &mut App, m: GameViewMessage) -> Task<Message> {
+pub(crate) fn handle_game_view_message(app: &mut App, message: GameViewMessage) -> Task<Message> {
     let Screen::GameView(state) = &mut app.screen else {
         #[cfg(debug_assertions)]
-        tracing::warn!("dropped stale GameView message: {m:?} (current screen: not GameView)");
+        tracing::warn!(
+            "dropped stale GameView message: {message:?} (current screen: not GameView)"
+        );
         return Task::none();
     };
 
-    let (task, event) = game_view::update(state, m, &mut app.context);
+    let (task, event) = game_view::update(state, message, &mut app.context);
     let task = task.map(Message::GameView);
     routing::dispatch_game_event(app, task, event)
 }

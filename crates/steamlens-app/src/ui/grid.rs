@@ -10,7 +10,7 @@ pub struct GridLayout {
     pub padding_bottom: f32,
 }
 
-const VIRT_BUFFER_ROWS: usize = 2;
+const VIRTUAL_BUFFER_ROWS: usize = 2;
 
 pub fn responsive_card_grid<'a, T, M, F>(
     items: Vec<T>,
@@ -40,14 +40,14 @@ where
         let total_rows = items.len().div_ceil(cols);
 
         let first_row = if scroll_y > 0.0 {
-            ((scroll_y / row_h).floor() as usize).saturating_sub(VIRT_BUFFER_ROWS)
+            ((scroll_y / row_h).floor() as usize).saturating_sub(VIRTUAL_BUFFER_ROWS)
         } else {
             0
         };
 
         let viewport_rows = ((size.height / row_h).ceil() as usize).max(1);
         let last_row =
-            (first_row + viewport_rows + VIRT_BUFFER_ROWS * 2).min(total_rows.saturating_sub(1));
+            (first_row + viewport_rows + VIRTUAL_BUFFER_ROWS * 2).min(total_rows.saturating_sub(1));
 
         let top_pad = first_row as f32 * row_h + padding_top;
         let bottom_rows = total_rows.saturating_sub(last_row + 1);
@@ -61,17 +61,17 @@ where
         let render_end = ((last_row + 1) * cols).min(items.len());
 
         for chunk in items[render_start..render_end].chunks(cols) {
-            let mut r: Row<'_, M> =
+            let mut cells_row: Row<'_, M> =
                 row![Space::new().width(Length::Fixed(gap))].align_y(Alignment::Start);
             for item in chunk {
-                r = r.push(make_cell(item));
-                r = r.push(Space::new().width(Length::Fixed(gap)));
+                cells_row = cells_row.push(make_cell(item));
+                cells_row = cells_row.push(Space::new().width(Length::Fixed(gap)));
             }
             for _ in 0..(cols - chunk.len()) {
-                r = r.push(Space::new().width(Length::Fixed(card_w)));
-                r = r.push(Space::new().width(Length::Fixed(gap)));
+                cells_row = cells_row.push(Space::new().width(Length::Fixed(card_w)));
+                cells_row = cells_row.push(Space::new().width(Length::Fixed(gap)));
             }
-            rows_col = rows_col.push(r);
+            rows_col = rows_col.push(cells_row);
         }
 
         rows_col = rows_col.push(Space::new().height(Length::Fixed(bottom_pad)));

@@ -33,10 +33,10 @@ mod tests {
                     api_name: "KILL_BOSS".to_owned(),
                     display_name: "Miner for Fire".to_owned(),
                     description: "Defeat the Wall of Flesh.".to_owned(),
-                    hidden: false,
+                    is_hidden: false,
                     icon_path: Some("achievements/105600/KILL_BOSS.jpg".to_owned()),
                     icon_locked_path: Some("achievements/105600/KILL_BOSS_locked.jpg".to_owned()),
-                    earned: true,
+                    is_achieved: true,
                     earned_at: Some(1_700_000_000),
                     global_percent: Some(18.5),
                 },
@@ -44,10 +44,10 @@ mod tests {
                     api_name: "NEVER_EARNED".to_owned(),
                     display_name: "Hidden Gem".to_owned(),
                     description: String::new(),
-                    hidden: true,
+                    is_hidden: true,
                     icon_path: None,
                     icon_locked_path: None,
-                    earned: false,
+                    is_achieved: false,
                     earned_at: None,
                     global_percent: None,
                 },
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(restored.cached_at, original.cached_at);
         assert_eq!(restored.achievements.len(), original.achievements.len());
         assert_eq!(restored.achievements[0].api_name, "KILL_BOSS");
-        assert!(restored.achievements[0].earned);
+        assert!(restored.achievements[0].is_achieved);
         assert_eq!(restored.achievements[0].earned_at, Some(1_700_000_000));
         assert_eq!(restored.achievements[0].global_percent, Some(18.5));
         assert_eq!(restored.achievements[1].earned_at, None);
@@ -304,10 +304,10 @@ mod tests {
                 api_name: "KILL_BOSS".to_owned(),
                 display_name: "Miner for Fire".to_owned(),
                 description: "Defeat the Wall of Flesh.".to_owned(),
-                hidden: false,
+                is_hidden: false,
                 icon_path: None,
                 icon_locked_path: None,
-                earned: true,
+                is_achieved: true,
                 earned_at: Some(1_700_000_000),
                 global_percent: Some(18.5),
             }],
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(restored.app_id, achievements.app_id);
         assert_eq!(restored.achievements.len(), 1);
         assert_eq!(restored.achievements[0].api_name, "KILL_BOSS");
-        assert!(restored.achievements[0].earned);
+        assert!(restored.achievements[0].is_achieved);
         assert_eq!(restored.stats[0].value, CachedStatValue::Int(42));
         assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
     }
@@ -368,24 +368,24 @@ mod tests {
             api_name: api.to_owned(),
             display_name: String::new(),
             description: String::new(),
-            hidden: false,
+            is_hidden: false,
             icon_path: None,
             icon_locked_path: None,
-            earned: false,
+            is_achieved: false,
             earned_at: None,
             global_percent: None,
         }
     }
 
-    fn filled_ach(api: &str, name: &str, desc: &str, hidden: bool) -> CachedAchievement {
+    fn filled_ach(api: &str, name: &str, desc: &str, is_hidden: bool) -> CachedAchievement {
         CachedAchievement {
             api_name: api.to_owned(),
             display_name: name.to_owned(),
             description: desc.to_owned(),
-            hidden,
+            is_hidden,
             icon_path: None,
             icon_locked_path: None,
-            earned: false,
+            is_achieved: false,
             earned_at: None,
             global_percent: None,
         }
@@ -422,7 +422,7 @@ mod tests {
 
         assert_eq!(new.achievements[0].display_name, "Boss Killer");
         assert_eq!(new.achievements[0].description, "Defeat the boss.");
-        assert!(new.achievements[0].hidden);
+        assert!(new.achievements[0].is_hidden);
         assert_eq!(new.genre.as_deref(), Some("RPG"));
     }
 
@@ -441,7 +441,7 @@ mod tests {
 
         assert_eq!(new.achievements[0].display_name, "New Name");
         assert_eq!(new.achievements[0].description, "New desc.");
-        assert!(new.achievements[0].hidden);
+        assert!(new.achievements[0].is_hidden);
         assert_eq!(new.genre.as_deref(), Some("New"));
     }
 
@@ -509,10 +509,10 @@ mod tests {
                 api_name: "ACH_X".to_owned(),
                 display_name: "Filled Display".to_owned(),
                 description: "Filled Description.".to_owned(),
-                hidden: true,
+                is_hidden: true,
                 icon_path: None,
                 icon_locked_path: None,
-                earned: false,
+                is_achieved: false,
                 earned_at: None,
                 global_percent: None,
             }],
@@ -531,7 +531,7 @@ mod tests {
                 api_name: "ACH_X".to_owned(),
                 display_name: String::new(),
                 description: String::new(),
-                hidden: false,
+                is_hidden: false,
                 ..filled.achievements[0].clone()
             }],
             genre: None,
@@ -560,7 +560,7 @@ mod tests {
             ach.description, "Filled Description.",
             "filled description must survive the race"
         );
-        assert!(ach.hidden, "filled `hidden` flag must survive the race");
+        assert!(ach.is_hidden, "filled `hidden` flag must survive the race");
         assert_eq!(
             final_entry.genre.as_deref(),
             Some("Action"),

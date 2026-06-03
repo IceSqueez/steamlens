@@ -43,7 +43,7 @@ pub fn handle_steam_reply(
             state.error_message = e;
             Task::none()
         }
-        SteamReply::AchievementsAndStats {
+        SteamReply::AchievementsFull {
             achievements,
             stats,
         } => {
@@ -51,7 +51,7 @@ pub fn handle_steam_reply(
                 app_id = state.app_id,
                 ach_count = achievements.len(),
                 stats_count = stats.len(),
-                "game_view: AchievementsAndStats received"
+                "game_view: AchievementsFull received"
             );
             state.global_percentages_retries = 0;
             let mut existing_icons: HashMap<String, steamlens_core::AchievementIcon> =
@@ -60,7 +60,7 @@ pub fn handle_steam_reply(
             let mut prev_revealed: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
             for row in state.achievements.drain(..) {
-                if row.revealed {
+                if row.is_revealed {
                     prev_revealed.insert(row.data.id.clone());
                 }
                 if let Some(pct) = row.rarity_percent {
@@ -83,7 +83,7 @@ pub fn handle_steam_reply(
                     }
                     let mut row = AchievementRow::from(data);
                     if prev_revealed.contains(&row.data.id) {
-                        row.revealed = true;
+                        row.is_revealed = true;
                     }
                     row.rarity_percent = pending_pct
                         .as_ref()
@@ -107,13 +107,13 @@ pub fn handle_steam_reply(
 
             state.icon_handles.clear();
             for row in &state.achievements {
-                if let Some(ico) = &row.data.icon {
+                if let Some(icon) = &row.data.icon {
                     state.icon_handles.insert(
                         row.data.id.clone(),
                         iced::widget::image::Handle::from_rgba(
-                            ico.width,
-                            ico.height,
-                            ico.rgba.clone(),
+                            icon.width,
+                            icon.height,
+                            icon.rgba.clone(),
                         ),
                     );
                 }
@@ -244,10 +244,10 @@ pub fn update(
                 attempt = state.global_percentages_retries,
                 "game_view: dispatching RetryGlobalPercentages"
             );
-            if let Some(w) = worker {
+            if let Some(worker) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match w.dispatch_checked(
+                match worker.dispatch_checked(
                     SteamRequest::RequestGlobalPercentages,
                     steam_running,
                     user_logged_in,
@@ -319,10 +319,9 @@ pub fn update(
             state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
-        GameViewMessage::AchievementSortChanged(s) => {
-            let sort = s;
-            ctx.update_settings(|s| s.manager.sort = sort);
-            state.achievement_sort = s;
+        GameViewMessage::AchievementSortChanged(new_sort) => {
+            ctx.update_settings(|s| s.manager.sort = new_sort);
+            state.achievement_sort = new_sort;
             state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }
@@ -435,10 +434,10 @@ pub fn update(
             state.global_percentages_retries = 0;
             state.recompute_derived();
             let mut tasks: Vec<Task<GameViewMessage>> = Vec::new();
-            if let Some(w) = worker {
+            if let Some(worker) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match w.dispatch_checked(
+                match worker.dispatch_checked(
                     SteamRequest::RequestUserStats,
                     steam_running,
                     user_logged_in,
@@ -450,7 +449,7 @@ pub fn update(
                         return (Task::none(), GameViewEvent::None);
                     }
                 }
-                match w.dispatch_checked(
+                match worker.dispatch_checked(
                     SteamRequest::RequestGlobalPercentages,
                     steam_running,
                     user_logged_in,
@@ -493,10 +492,10 @@ pub fn update(
             }
             let payload = build_apply_payload(&state.achievements, &state.stats);
             state.phase = GameViewPhase::Saving;
-            if let Some(w) = worker {
+            if let Some(worker) = worker {
                 let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
                 let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match w.dispatch_checked(
+                match worker.dispatch_checked(
                     SteamRequest::ApplyChanges {
                         achievements_to_set: payload.achievements_to_set,
                         achievements_to_clear: payload.achievements_to_clear,
@@ -536,7 +535,7 @@ pub fn update(
         }
         GameViewMessage::RevealHidden(id) => {
             if let Some(row) = state.achievements.iter_mut().find(|r| r.data.id == id) {
-                row.revealed = true;
+                row.is_revealed = true;
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -546,7 +545,7 @@ pub fn update(
                 app_id: state.app_id,
             },
         ),
-        GameViewMessage::RequestGoBack => (Task::none(), GameViewEvent::GoBack),
+        GameViewMessage::GoBackRequested => (Task::none(), GameViewEvent::GoBack),
         GameViewMessage::CapsuleLoaded {
             app_id,
             size,
@@ -570,12 +569,12 @@ pub fn update(
             (Task::none(), GameViewEvent::None)
         }
 
-        GameViewMessage::BarSliceHoverEnter(tier) => {
+        GameViewMessage::BarSliceHoverEntered(tier) => {
             state.hovered_bar_slice = Some(tier);
             (Task::none(), GameViewEvent::None)
         }
 
-        GameViewMessage::BarSliceHoverExit => {
+        GameViewMessage::BarSliceHoverExited => {
             state.hovered_bar_slice = None;
             (Task::none(), GameViewEvent::None)
         }
@@ -594,13 +593,13 @@ pub fn update(
 
                 state.icon_handles.clear();
                 for row in &state.achievements {
-                    if let Some(ico) = &row.data.icon {
+                    if let Some(icon) = &row.data.icon {
                         state.icon_handles.insert(
                             row.data.id.clone(),
                             iced::widget::image::Handle::from_rgba(
-                                ico.width,
-                                ico.height,
-                                ico.rgba.clone(),
+                                icon.width,
+                                icon.height,
+                                icon.rgba.clone(),
                             ),
                         );
                     }

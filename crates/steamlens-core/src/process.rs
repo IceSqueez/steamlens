@@ -55,8 +55,8 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
 
         // SAFETY: nulls are valid for both lpJobAttributes and lpName per MSDN
         // (anonymous job, default security descriptor).
-        let job = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
-        if job.is_null() {
+        let job_handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
+        if job_handle.is_null() {
             let err = io::Error::last_os_error();
             // SAFETY: proc_handle was successfully opened above.
             unsafe { CloseHandle(proc_handle) };
@@ -73,7 +73,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
         // in `cbJobObjectInformationLength`.
         let ok = unsafe {
             SetInformationJobObject(
-                job,
+                job_handle,
                 JobObjectExtendedLimitInformation,
                 &info as *const _ as *const c_void,
                 size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
@@ -83,7 +83,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
             let err = io::Error::last_os_error();
             // SAFETY: both handles were opened above.
             unsafe {
-                CloseHandle(job);
+                CloseHandle(job_handle);
                 CloseHandle(proc_handle);
             }
             return Err(err);
@@ -91,7 +91,7 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
 
         // SAFETY: both handles are live; AssignProcessToJobObject requires
         // PROCESS_TERMINATE + PROCESS_SET_QUOTA which we requested.
-        let assigned = unsafe { AssignProcessToJobObject(job, proc_handle) };
+        let assigned = unsafe { AssignProcessToJobObject(job_handle, proc_handle) };
 
         // SAFETY: proc_handle is no longer needed regardless of assignment
         // outcome; the job retains its own reference to the process.
@@ -100,11 +100,11 @@ pub fn associate_kill_on_parent_exit(pid: u32) -> io::Result<ChildLifetimeGuard>
         if assigned == 0 {
             let err = io::Error::last_os_error();
             // SAFETY: job handle still owned by us.
-            unsafe { CloseHandle(job) };
+            unsafe { CloseHandle(job_handle) };
             return Err(err);
         }
 
-        Ok(ChildLifetimeGuard { job_handle: job })
+        Ok(ChildLifetimeGuard { job_handle })
     }
 
     #[cfg(not(target_os = "windows"))]

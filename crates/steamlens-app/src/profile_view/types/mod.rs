@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn loader_phase_beta_when_partial_progress() {
+    fn loader_phase_in_progress_when_partial_progress() {
         let mut state = make_state_with_games(vec![
             GameEntry {
                 app_id: 1,
@@ -280,7 +280,7 @@ mod tests {
         state.phase = ProfileViewPhase::Loaded;
         assert_eq!(
             state.loader_phase(None),
-            LoaderPhase::Beta {
+            LoaderPhase::InProgress {
                 loaded: 1,
                 total: 2
             }
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn loader_phase_gamma_when_all_have_progress() {
+    fn loader_phase_finished_when_all_have_progress() {
         let mut state = make_state_with_games(vec![GameEntry {
             app_id: 1,
             change_number: 0,
@@ -302,7 +302,7 @@ mod tests {
             genre: None,
         }]);
         state.phase = ProfileViewPhase::Loaded;
-        assert_eq!(state.loader_phase(None), LoaderPhase::Gamma);
+        assert_eq!(state.loader_phase(None), LoaderPhase::Finished);
     }
 
     #[test]

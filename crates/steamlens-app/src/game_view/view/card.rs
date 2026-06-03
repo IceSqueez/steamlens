@@ -9,7 +9,7 @@ use super::grid::{
 };
 use super::{dracula_border_radius, tier_color};
 use crate::game_view::GameViewMessage;
-use crate::game_view::types::{AchievementRow, RarityTier, RowStatus};
+use crate::game_view::types::{AchievementRow, AchievementStatus, RarityTier};
 use crate::ui::theme::{palette, theme_from_iced};
 use crate::ui::widgets::card::card;
 use crate::ui::widgets::pill::pill;
@@ -18,7 +18,7 @@ use crate::ui::widgets::pill::pill;
 struct AchievementCardDeps {
     id_hash: u64,
     is_dirty: bool,
-    revealed: bool,
+    is_revealed: bool,
     is_achieved: bool,
     is_hidden: bool,
     permission: u32,
@@ -45,7 +45,7 @@ impl AchievementCardDeps {
         Self {
             id_hash: fnv64(row.data.id.as_bytes()),
             is_dirty: row.is_dirty,
-            revealed: row.revealed,
+            is_revealed: row.is_revealed,
             is_achieved: row.data.is_achieved,
             is_hidden: row.data.is_hidden,
             permission: row.data.permission,
@@ -144,7 +144,7 @@ fn render_achievement_card(
     let fg = p.text_primary;
     let effective = row.effective_achieved();
     let spoiler_hidden = row.is_spoiler_hidden();
-    let is_hidden_meta = row.data.is_hidden;
+    let is_hidden_attribute = row.data.is_hidden;
 
     let icon_el: Element<'static, GameViewMessage> = if spoiler_hidden {
         container(text("\u{2754}").size(22).color(Color {
@@ -208,7 +208,7 @@ fn render_achievement_card(
         .into()
     };
 
-    let icon_el: Element<'static, GameViewMessage> = if is_hidden_meta && !spoiler_hidden {
+    let icon_el: Element<'static, GameViewMessage> = if is_hidden_attribute && !spoiler_hidden {
         let badge = container(text("H").size(11).color(p.text_locked_desc))
             .width(Length::Fixed(18.0))
             .height(Length::Fixed(18.0))
@@ -369,10 +369,10 @@ fn render_achievement_card(
 
     let status = row.status();
     let fixed_badge_color: Option<Color> = match status {
-        RowStatus::Protected => Some(p.severity.warning),
-        RowStatus::Pending => Some(p.accent_pending),
-        RowStatus::Unlocked => Some(p.rarity_common),
-        RowStatus::Hidden | RowStatus::Locked => None,
+        AchievementStatus::Protected => Some(p.severity.warning),
+        AchievementStatus::Pending => Some(p.accent_pending),
+        AchievementStatus::Unlocked => Some(p.rarity_common),
+        AchievementStatus::Hidden | AchievementStatus::Locked => None,
     };
 
     let badge = if let Some(badge_color) = fixed_badge_color {
@@ -484,25 +484,26 @@ fn render_achievement_card(
         None
     };
 
-    let mut c = card(card_container).on_press(GameViewMessage::AchievementToggled(toggle_id));
+    let mut card_widget =
+        card(card_container).on_press(GameViewMessage::AchievementToggled(toggle_id));
 
     if is_hidden_card {
-        c = c
+        card_widget = card_widget
             .border_accent_when(true)
             .accent_border_width(1.0, 1.0)
             .accent_alpha(0.40, 0.55)
             .radius(10.0);
-    } else if let Some(gc) = glow_color {
-        c = c
-            .accent(gc)
+    } else if let Some(glow) = glow_color {
+        card_widget = card_widget
+            .accent(glow)
             .accent_border_width(1.0, 2.0)
             .accent_alpha(0.45, 0.85)
             .radius(8.0);
     } else {
-        c = c.radius(8.0);
+        card_widget = card_widget.radius(8.0);
     }
 
-    c.into()
+    card_widget.into()
 }
 
 pub(super) fn highlight_split<'a>(

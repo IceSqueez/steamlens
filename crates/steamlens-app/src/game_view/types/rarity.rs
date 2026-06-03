@@ -97,7 +97,7 @@ mod tests {
     use super::*;
     use crate::game_view::types::rows::AchievementData;
 
-    fn make_row(id: &str, rarity: Option<f32>) -> AchievementRow {
+    fn make_achievement_row(id: &str, rarity: Option<f32>) -> AchievementRow {
         AchievementRow {
             data: AchievementData {
                 id: id.to_owned(),
@@ -110,8 +110,8 @@ mod tests {
                 icon: None,
             },
             is_dirty: false,
-            revealed: false,
-            appeared: false,
+            is_revealed: false,
+            has_appeared: false,
             card_opacity: 0.0,
             rarity_percent: rarity,
         }
@@ -121,7 +121,7 @@ mod tests {
         (0..count)
             .map(|i| {
                 let pct = (i as f32 / (count - 1).max(1) as f32) * 100.0;
-                make_row(&format!("a{i}"), Some(pct))
+                make_achievement_row(&format!("a{i}"), Some(pct))
             })
             .collect()
     }
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn compute_tier_map_skewed_low_distribution() {
         let rows: Vec<AchievementRow> = (0..100)
-            .map(|i| make_row(&format!("a{i}"), Some(i as f32 * 0.1)))
+            .map(|i| make_achievement_row(&format!("a{i}"), Some(i as f32 * 0.1)))
             .collect();
         let map = compute_tier_map(&rows);
 
@@ -188,7 +188,10 @@ mod tests {
 
     #[test]
     fn compute_tier_map_handles_fewer_than_3_total() {
-        let rows = vec![make_row("a1", Some(2.0)), make_row("a2", Some(5.0))];
+        let rows = vec![
+            make_achievement_row("a1", Some(2.0)),
+            make_achievement_row("a2", Some(5.0)),
+        ];
         let map = compute_tier_map(&rows);
         assert_eq!(map.len(), 2);
         assert_eq!(map["a1"], RarityTier::Legendary);
@@ -198,10 +201,10 @@ mod tests {
     #[test]
     fn compute_tier_map_excludes_unrated() {
         let rows = vec![
-            make_row("rated1", Some(10.0)),
-            make_row("rated2", Some(50.0)),
-            make_row("rated3", Some(90.0)),
-            make_row("unrated", None),
+            make_achievement_row("rated1", Some(10.0)),
+            make_achievement_row("rated2", Some(50.0)),
+            make_achievement_row("rated3", Some(90.0)),
+            make_achievement_row("unrated", None),
         ];
         let map = compute_tier_map(&rows);
         assert!(
@@ -214,11 +217,11 @@ mod tests {
     #[test]
     fn legendary_no_tie_at_third_position() {
         let rows = vec![
-            make_row("a", Some(1.0)),
-            make_row("b", Some(1.0)),
-            make_row("c", Some(2.0)),
-            make_row("d", Some(3.0)),
-            make_row("e", Some(3.0)),
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(1.0)),
+            make_achievement_row("c", Some(2.0)),
+            make_achievement_row("d", Some(3.0)),
+            make_achievement_row("e", Some(3.0)),
         ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 3);
@@ -231,11 +234,11 @@ mod tests {
     #[test]
     fn legendary_three_with_same_value_no_extension() {
         let rows = vec![
-            make_row("a", Some(1.0)),
-            make_row("b", Some(1.0)),
-            make_row("c", Some(1.0)),
-            make_row("d", Some(2.0)),
-            make_row("e", Some(3.0)),
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(1.0)),
+            make_achievement_row("c", Some(1.0)),
+            make_achievement_row("d", Some(2.0)),
+            make_achievement_row("e", Some(3.0)),
         ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 3);
@@ -244,11 +247,11 @@ mod tests {
     #[test]
     fn legendary_extends_when_fourth_matches_third() {
         let rows = vec![
-            make_row("a", Some(1.0)),
-            make_row("b", Some(1.0)),
-            make_row("c", Some(1.0)),
-            make_row("d", Some(1.0)),
-            make_row("e", Some(2.0)),
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(1.0)),
+            make_achievement_row("c", Some(1.0)),
+            make_achievement_row("d", Some(1.0)),
+            make_achievement_row("e", Some(2.0)),
         ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 4);
@@ -264,11 +267,11 @@ mod tests {
     #[test]
     fn legendary_extends_through_multiple_ties() {
         let rows = vec![
-            make_row("a", Some(1.0)),
-            make_row("b", Some(2.0)),
-            make_row("c", Some(3.0)),
-            make_row("d", Some(3.0)),
-            make_row("e", Some(3.0)),
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(2.0)),
+            make_achievement_row("c", Some(3.0)),
+            make_achievement_row("d", Some(3.0)),
+            make_achievement_row("e", Some(3.0)),
         ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 5);
@@ -276,14 +279,20 @@ mod tests {
 
     #[test]
     fn legendary_fewer_than_three_rated() {
-        let rows = vec![make_row("a", Some(1.0)), make_row("b", Some(2.0))];
+        let rows = vec![
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(2.0)),
+        ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 2);
     }
 
     #[test]
     fn legendary_zero_rated_returns_empty() {
-        let rows = vec![make_row("a", None), make_row("b", None)];
+        let rows = vec![
+            make_achievement_row("a", None),
+            make_achievement_row("b", None),
+        ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 0);
         assert!(map.is_empty());
@@ -292,11 +301,11 @@ mod tests {
     #[test]
     fn legendary_all_same_percent() {
         let rows = vec![
-            make_row("a", Some(1.0)),
-            make_row("b", Some(1.0)),
-            make_row("c", Some(1.0)),
-            make_row("d", Some(1.0)),
-            make_row("e", Some(1.0)),
+            make_achievement_row("a", Some(1.0)),
+            make_achievement_row("b", Some(1.0)),
+            make_achievement_row("c", Some(1.0)),
+            make_achievement_row("d", Some(1.0)),
+            make_achievement_row("e", Some(1.0)),
         ];
         let map = compute_tier_map(&rows);
         assert_eq!(count_legendary(&map), 5);

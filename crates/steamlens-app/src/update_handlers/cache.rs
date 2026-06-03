@@ -3,7 +3,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use iced::Task;
 
-use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
+use steamlens_core::{STEAM_ID_64_INDIVIDUAL_MIN, UserProfile};
 
 use crate::cache::{self, ClassifyResult};
 use crate::game_cache_builder;
@@ -23,21 +23,20 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
         invalidation_count,
     } = result;
 
-    let hit_count = hits.len();
     app.context.game_cache.pending_hits.extend(hits);
 
     let steam_off = app.context.connectivity.steam_running == Some(false);
 
-    let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    let profile_view_state =
+        routing::current_profile_view_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
     if !dirty.is_empty() && !steam_off {
-        pv_state.scan_target_count = dirty.len();
-        pv_state.scan_started_at = Some(Instant::now());
-        pv_state.start_scan(dirty);
+        profile_view_state.scan_target_count = dirty.len();
+        profile_view_state.scan_started_at = Some(Instant::now());
+        profile_view_state.start_scan(dirty);
     } else {
-        pv_state.last_scan_completed_at = Some(Instant::now());
+        profile_view_state.last_scan_completed_at = Some(Instant::now());
     }
-    let _ = hit_count;
 
     if invalidation_count > 0 {
         app.context.messaging.push_toast(
@@ -66,8 +65,11 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
         };
         let mut entry = hit.entry;
         game_cache_builder::recompute_tier_breakdown_if_missing(&mut entry);
-        if let Screen::ProfileView(pv_state) = &mut app.screen
-            && let Some(game) = pv_state.games.iter_mut().find(|g| g.app_id == hit.app_id)
+        if let Screen::ProfileView(profile_view_state) = &mut app.screen
+            && let Some(game) = profile_view_state
+                .games
+                .iter_mut()
+                .find(|g| g.app_id == hit.app_id)
         {
             use crate::progress_scan::ProgressData;
             game.name = Some(entry.name.clone());
@@ -91,10 +93,12 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
             .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
         if queue_empty || due {
             let pinned = app.context.settings.library.pinned.clone();
-            let pv_state =
-                routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-            pv_state.rebuild_available_genres();
-            pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
+            let profile_view_state = routing::current_profile_view_state_mut(
+                &mut app.screen,
+                &mut app.preserved_profile_state,
+            );
+            profile_view_state.rebuild_available_genres();
+            profile_view_state.recompute_derived(&app.context.game_cache.entries, &pinned);
             app.context.game_cache.last_recompute_at = Some(now);
         }
     }
@@ -132,19 +136,19 @@ pub(crate) fn handle_persistent_written(
 }
 
 pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Message> {
-    let Screen::GameView(gv_state) = &app.screen else {
+    let Screen::GameView(game_view_state) = &app.screen else {
         return Task::none();
     };
-    if gv_state.app_id != app_id {
+    if game_view_state.app_id != app_id {
         return Task::none();
     }
 
-    let earned = gv_state
+    let earned = game_view_state
         .achievements
         .iter()
         .filter(|a| a.effective_achieved())
         .count() as u32;
-    let total = gv_state.achievements.len() as u32;
+    let total = game_view_state.achievements.len() as u32;
 
     let change_number = app
         .preserved_profile_state
@@ -164,8 +168,8 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         .get(&app_id)
         .and_then(|e| e.genre.clone());
 
-    let name = gv_state.game_name.clone();
-    let tier_breakdown = gv_state.tier_breakdown.clone();
+    let name = game_view_state.game_name.clone();
+    let tier_breakdown = game_view_state.tier_breakdown.clone();
 
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -203,7 +207,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
     tracing::info!(app_id, earned, total, change_number, "persist game summary");
 
     let mut full_entry = game_cache_builder::build_game_view_cache_entry(
-        gv_state,
+        game_view_state,
         app_id,
         &app.context.steam.app_state,
     );
@@ -216,19 +220,24 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         .insert(app_id, full_entry.clone());
 
     let pinned = app.context.settings.library.pinned.clone();
-    let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-    if let Some(entry) = pv_state.games.iter_mut().find(|e| e.app_id == app_id) {
+    let profile_view_state =
+        routing::current_profile_view_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    if let Some(entry) = profile_view_state
+        .games
+        .iter_mut()
+        .find(|e| e.app_id == app_id)
+    {
         entry.change_number = summary.cached_change_number;
         entry.name = Some(summary.name.clone());
         entry.genre = summary.genre.clone();
         entry.progress = Some(crate::progress_scan::ProgressData { earned, total });
     }
-    pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
+    profile_view_state.recompute_derived(&app.context.game_cache.entries, &pinned);
 
-    let Screen::GameView(gv_state) = &app.screen else {
+    let Screen::GameView(game_view_state) = &app.screen else {
         return Task::none();
     };
-    let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = gv_state
+    let icons_to_write: Vec<(String, steamlens_core::AchievementIcon)> = game_view_state
         .achievements
         .iter()
         .filter_map(|r| r.data.icon.as_ref().map(|i| (r.data.id.clone(), i.clone())))
@@ -253,9 +262,9 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         },
     );
 
-    let steamid3 = app.context.user.steamid3;
+    let account_id = app.context.user.account_id;
     let summary_task = Task::perform(
-        async move { cache::store::write_game_summary(steamid3, &summary).await },
+        async move { cache::store::write_game_summary(account_id, &summary).await },
         move |result| {
             Message::Cache(cache::CacheEvent::GameWritten {
                 app_id,
@@ -263,7 +272,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
             })
         },
     );
-    let game_task = cache::commands::write_game_cache(steamid3, full_entry);
+    let game_task = cache::commands::write_game_cache(account_id, full_entry);
 
     Task::batch([summary_task, game_task, icons_task])
 }
@@ -280,7 +289,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
     let pinned = app.context.settings.library.pinned.clone();
-    let steamid3 = app.context.user.steamid3;
+    let account_id = app.context.user.account_id;
 
     app.context
         .capsules
@@ -291,17 +300,22 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
         .unavailable
         .retain(|(id, _)| *id != app_id);
 
-    let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-    if let Some(entry) = pv_state.games.iter_mut().find(|g| g.app_id == app_id) {
+    let profile_view_state =
+        routing::current_profile_view_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    if let Some(entry) = profile_view_state
+        .games
+        .iter_mut()
+        .find(|g| g.app_id == app_id)
+    {
         entry.progress = None;
         entry.capsule = profile_view::types::CapsuleAsset::Pending;
     }
     if steam_on {
-        pv_state.start_scan(vec![app_id]);
+        profile_view_state.start_scan(vec![app_id]);
     }
-    pv_state.recompute_derived(&app.context.game_cache.entries, &pinned);
+    profile_view_state.recompute_derived(&app.context.game_cache.entries, &pinned);
 
-    cache::commands::invalidate_game_cache(steamid3, app_id, name)
+    cache::commands::invalidate_game_cache(account_id, app_id, name)
 }
 
 pub(crate) fn handle_game_invalidated(
@@ -326,17 +340,18 @@ pub(crate) fn handle_game_invalidated(
             return Task::none();
         }
     }
-    let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
-    let size = pv_state.capsule_size;
+    let profile_view_state =
+        routing::current_profile_view_state_mut(&mut app.screen, &mut app.preserved_profile_state);
+    let size = profile_view_state.capsule_size;
     profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.steam.library_assets)
         .map(Message::ProfileView)
 }
 
 pub(crate) fn handle_profile_loaded(
     app: &mut App,
-    maybe: Option<cache::CachedProfile>,
+    cached_profile: Option<cache::CachedProfile>,
 ) -> Task<Message> {
-    let Some(cached) = maybe else {
+    let Some(cached) = cached_profile else {
         return Task::none();
     };
     if app.context.user.profile.is_some()
@@ -345,7 +360,7 @@ pub(crate) fn handle_profile_loaded(
     {
         return Task::none();
     }
-    app.context.user.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
+    app.context.user.account_id = cached.steam_id.saturating_sub(STEAM_ID_64_INDIVIDUAL_MIN) as u32;
     app.context.user.steam_level = cached.steam_level;
     app.context.user.avatar_handle = cached
         .avatar_png_bytes
@@ -361,7 +376,7 @@ pub(crate) fn handle_profile_loaded(
 
 pub(crate) fn handle_library_loaded(
     app: &mut App,
-    maybe: Option<cache::CachedLibrary>,
+    cached_library: Option<cache::CachedLibrary>,
 ) -> Task<Message> {
     let games_present = if let Screen::ProfileView(pv) = &app.screen {
         !pv.games.is_empty()
@@ -371,7 +386,7 @@ pub(crate) fn handle_library_loaded(
     if games_present {
         return Task::none();
     }
-    let Some(cached) = maybe else {
+    let Some(cached) = cached_library else {
         return Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
             Vec::new(),
         )));
@@ -391,8 +406,8 @@ pub(crate) fn handle_library_loaded(
         .filter(|e| !e.name.is_empty())
         .map(|e| (e.app_id, e.name))
         .collect();
-    if let Screen::ProfileView(pv_state) = &mut app.screen {
-        pv_state.library_name_map = name_map;
+    if let Screen::ProfileView(profile_view_state) = &mut app.screen {
+        profile_view_state.library_name_map = name_map;
     }
     app.boot.library_cache_resolved = true;
     tracing::info!("library_cache_resolved = true (LibraryCacheLoaded)");

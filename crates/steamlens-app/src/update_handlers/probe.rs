@@ -1,6 +1,6 @@
 use iced::Task;
 
-use steamlens_core::{STEAMID64_INDIVIDUAL_MIN, UserProfile};
+use steamlens_core::{STEAM_ID_64_INDIVIDUAL_MIN, UserProfile};
 
 use crate::cache;
 use crate::cache::migration;
@@ -14,22 +14,22 @@ pub(crate) fn handle_probe_result(
 ) -> Task<Message> {
     app.boot.probe_done = true;
     match result {
-        Ok(p) => {
-            let p = *p;
+        Ok(boxed) => {
+            let profile = *boxed;
             app.context.connectivity.steam_running = Some(true);
             app.context.connectivity.user_logged_in = Some(true);
             app.context
                 .messaging
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
 
-            let new_steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
-            let previous_steamid3 = app.context.user.steamid3;
+            let new_account_id = profile.steam_id.saturating_sub(STEAM_ID_64_INDIVIDUAL_MIN) as u32;
+            let previous_account_id = app.context.user.account_id;
 
-            let user_switched = previous_steamid3 != 0 && previous_steamid3 != new_steamid3;
+            let user_switched = previous_account_id != 0 && previous_account_id != new_account_id;
             if user_switched {
                 tracing::info!(
-                    old = previous_steamid3,
-                    new = new_steamid3,
+                    old = previous_account_id,
+                    new = new_account_id,
                     "probe: user switched accounts, discarding previous user state"
                 );
                 app.context.user.profile = None;
@@ -37,47 +37,47 @@ pub(crate) fn handle_probe_result(
                 app.context.user.steam_level = None;
             }
 
-            app.context.user.steamid3 = new_steamid3;
-            app.context.user.avatar_handle = p
+            app.context.user.account_id = new_account_id;
+            app.context.user.avatar_handle = profile
                 .avatar_image
                 .as_ref()
                 .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
 
-            if let Some(root) = p.steam_root.clone() {
+            if let Some(root) = profile.steam_root.clone() {
                 app.context.user.steam_root = root;
             }
 
             let cached = cache::make_cached_profile(
-                p.steam_id,
-                p.nickname.clone(),
-                p.avatar_image.clone(),
-                p.steam_root.clone(),
-                p.steam_level,
+                profile.steam_id,
+                profile.nickname.clone(),
+                profile.avatar_image.clone(),
+                profile.steam_root.clone(),
+                profile.steam_level,
             );
-            app.context.user.steam_level = p.steam_level;
+            app.context.user.steam_level = profile.steam_level;
             app.context.user.profile = Some(UserProfile {
-                steam_id: p.steam_id,
-                nickname: p.nickname,
-                avatar_png_bytes: p.avatar_image,
+                steam_id: profile.steam_id,
+                nickname: profile.nickname,
+                avatar_png_bytes: profile.avatar_image,
             });
 
-            let last_saved = app.context.settings.last_user_steamid;
-            if last_saved != Some(new_steamid3) {
+            let last_saved = app.context.settings.last_user_account_id;
+            if last_saved != Some(new_account_id) {
                 app.context.update_settings(|s| {
-                    s.last_user_steamid = Some(new_steamid3);
+                    s.last_user_account_id = Some(new_account_id);
                 });
             }
 
             Task::batch(vec![
                 boot::spawn_steam_state_refresh(
                     app.context.user.steam_root.clone(),
-                    app.context.user.steamid3,
+                    app.context.user.account_id,
                     app.context.steam.app_state_mtime,
                 ),
-                cache::commands::write_profile_cache(new_steamid3, cached),
+                cache::commands::write_profile_cache(new_account_id, cached),
                 spawn_migrate_then_continue(
-                    new_steamid3,
-                    p.game_summaries,
+                    new_account_id,
+                    profile.game_summaries,
                     app.context.no_ach_cache.clone(),
                 ),
             ])
@@ -93,10 +93,10 @@ pub(crate) fn handle_probe_result(
                 steam_connectivity::SteamUnavailable::NotLoggedIn,
             );
 
-            let steamid3 = fallback_steamid3(app);
+            let account_id = fallback_account_id(app);
             Task::batch([
-                cache::commands::load_profile_cache(steamid3),
-                cache::commands::load_library_cache(steamid3),
+                cache::commands::load_profile_cache(account_id),
+                cache::commands::load_library_cache(account_id),
             ])
         }
         Err(ProbeFailure::SteamNotRunning) => {
@@ -110,10 +110,10 @@ pub(crate) fn handle_probe_result(
                 steam_connectivity::SteamUnavailable::NotRunning,
             );
 
-            let steamid3 = fallback_steamid3(app);
+            let account_id = fallback_account_id(app);
             Task::batch([
-                cache::commands::load_profile_cache(steamid3),
-                cache::commands::load_library_cache(steamid3),
+                cache::commands::load_profile_cache(account_id),
+                cache::commands::load_library_cache(account_id),
             ])
         }
         Err(ProbeFailure::Other(reason)) => {
@@ -127,10 +127,10 @@ pub(crate) fn handle_probe_result(
                 steam_connectivity::SteamUnavailable::NotRunning,
             );
 
-            let steamid3 = fallback_steamid3(app);
+            let account_id = fallback_account_id(app);
             Task::batch([
-                cache::commands::load_profile_cache(steamid3),
-                cache::commands::load_library_cache(steamid3),
+                cache::commands::load_profile_cache(account_id),
+                cache::commands::load_library_cache(account_id),
             ])
         }
     }
@@ -138,7 +138,7 @@ pub(crate) fn handle_probe_result(
 
 pub(crate) fn handle_probe_library_ready(
     app: &mut App,
-    steamid3: u32,
+    account_id: u32,
     game_summaries: Vec<steamlens_core::GameSummary>,
     no_ach: cache::NoAchievementsCache,
 ) -> Task<Message> {
@@ -163,32 +163,32 @@ pub(crate) fn handle_probe_library_ready(
             filtered,
         )))
     } else {
-        cache::commands::load_library_cache(steamid3)
+        cache::commands::load_library_cache(account_id)
     }
 }
 
-fn fallback_steamid3(app: &App) -> u32 {
+fn fallback_account_id(app: &App) -> u32 {
     app.context
         .settings
-        .last_user_steamid
-        .unwrap_or(app.context.user.steamid3)
+        .last_user_account_id
+        .unwrap_or(app.context.user.account_id)
 }
 
 fn spawn_migrate_then_continue(
-    steamid3: u32,
+    account_id: u32,
     game_summaries: Vec<steamlens_core::GameSummary>,
     no_ach: cache::NoAchievementsCache,
 ) -> Task<Message> {
     Task::perform(
         async move {
-            match migration::migrate_legacy_cache_if_present(steamid3).await {
-                Ok(outcome) => tracing::trace!(steamid3, ?outcome, "migration outcome"),
-                Err(e) => tracing::warn!(steamid3, error = %e, "migration error"),
+            match migration::migrate_legacy_cache_if_present(account_id).await {
+                Ok(outcome) => tracing::trace!(account_id, ?outcome, "migration outcome"),
+                Err(e) => tracing::warn!(account_id, error = %e, "migration error"),
             }
             (game_summaries, no_ach)
         },
         move |(summaries, no_ach)| Message::ProbeLibraryReady {
-            steamid3,
+            account_id,
             summaries,
             no_ach,
         },

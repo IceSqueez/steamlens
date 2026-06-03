@@ -12,16 +12,12 @@ use tracing_subscriber::layer::SubscriberExt;
 #[cfg(target_os = "windows")]
 static SEH_OUTPUT_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
-/// Host process only. Truncates `steamlens.log` and opens it as the writer.
 pub fn init() -> io::Result<()> {
     init_with_path(&crate::paths::log_path())?;
     install_panic_hook();
     Ok(())
 }
 
-/// Subprocess only. Writes to stderr with a minimal `<LEVEL> <message>` format —
-/// the host parses the level prefix and re-emits each line into its own writer
-/// with proper timestamp + target, so worker output is not double-wrapped.
 pub fn init_worker() -> io::Result<()> {
     install_worker_subscriber(std::io::stderr)?;
     #[cfg(target_os = "windows")]

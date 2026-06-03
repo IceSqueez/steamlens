@@ -44,11 +44,11 @@ pub fn visible_achievement_indices(
         .iter()
         .enumerate()
         .filter(|(_, row)| {
-            if !row.appeared {
+            if !row.has_appeared {
                 return false;
             }
             let is_spoiler = row.is_spoiler_hidden();
-            let is_hidden_meta = row.data.is_hidden;
+            let is_hidden_attribute = row.data.is_hidden;
             let filter_ok = match filter {
                 AchievementFilter::All => true,
                 AchievementFilter::Unlocked => row.data.is_achieved,
@@ -67,7 +67,7 @@ pub fn visible_achievement_indices(
                         Some(tier) => rarity_tier_set.contains(&tier),
                         None => false,
                     };
-                let hidden_match = is_hidden_meta && include_hidden;
+                let hidden_match = is_hidden_attribute && include_hidden;
                 tier_match || hidden_match
             };
             filter_ok && search_ok && rarity_ok
@@ -178,7 +178,7 @@ mod tests {
     use super::*;
     use crate::game_view::types::rows::AchievementData;
 
-    fn make_row(id: &str, rarity: Option<f32>) -> AchievementRow {
+    fn make_achievement_row(id: &str, rarity: Option<f32>) -> AchievementRow {
         AchievementRow {
             data: AchievementData {
                 id: id.to_owned(),
@@ -191,8 +191,8 @@ mod tests {
                 icon: None,
             },
             is_dirty: false,
-            revealed: false,
-            appeared: false,
+            is_revealed: false,
+            has_appeared: false,
             card_opacity: 0.0,
             rarity_percent: rarity,
         }
@@ -200,8 +200,8 @@ mod tests {
 
     fn make_appeared(id: &str, rarity: Option<f32>) -> AchievementRow {
         AchievementRow {
-            appeared: true,
-            ..make_row(id, rarity)
+            has_appeared: true,
+            ..make_achievement_row(id, rarity)
         }
     }
 
@@ -209,7 +209,7 @@ mod tests {
         (0..count)
             .map(|i| {
                 let pct = (i as f32 / (count - 1).max(1) as f32) * 100.0;
-                make_row(&format!("a{i}"), Some(pct))
+                make_achievement_row(&format!("a{i}"), Some(pct))
             })
             .collect()
     }
@@ -217,7 +217,7 @@ mod tests {
     fn make_hidden_row(
         id: &str,
         is_achieved: bool,
-        revealed: bool,
+        is_revealed: bool,
         rarity: Option<f32>,
     ) -> AchievementRow {
         AchievementRow {
@@ -232,8 +232,8 @@ mod tests {
                 icon: None,
             },
             is_dirty: false,
-            revealed,
-            appeared: true,
+            is_revealed,
+            has_appeared: true,
             card_opacity: 1.0,
             rarity_percent: rarity,
         }
@@ -300,7 +300,7 @@ mod tests {
         let rows: Vec<AchievementRow> = make_linear_rows(10)
             .into_iter()
             .map(|mut r| {
-                r.appeared = true;
+                r.has_appeared = true;
                 r
             })
             .collect();
@@ -350,9 +350,9 @@ mod tests {
     #[test]
     fn filter_locked_keeps_dirty_unlock_toggle_in_locked_group() {
         let row = AchievementRow {
-            appeared: true,
+            has_appeared: true,
             is_dirty: true,
-            ..make_row("dirty_unlock", None)
+            ..make_achievement_row("dirty_unlock", None)
         };
         let rows = [row];
         let ids = visible_achievement_ids(
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn filter_unlocked_keeps_dirty_lock_toggle_in_unlocked_group() {
         let row = AchievementRow {
-            appeared: true,
+            has_appeared: true,
             is_dirty: true,
             data: AchievementData {
                 id: "dirty_lock".to_owned(),
@@ -384,7 +384,7 @@ mod tests {
                 permission: 0,
                 icon: None,
             },
-            revealed: false,
+            is_revealed: false,
             card_opacity: 1.0,
             rarity_percent: None,
         };

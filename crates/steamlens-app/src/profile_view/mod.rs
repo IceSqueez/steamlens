@@ -131,7 +131,7 @@ fn build_profile_genre_strip<'a>(
             let tint = genre_color(g);
             let label = text(g.clone()).size(11).color(tint);
             let is_selected = state.genre_filter.contains(g);
-            let mut p = pill(label, tint)
+            let mut chip = pill(label, tint)
                 .radius(GENRE_PILL_RADIUS)
                 .padding(GENRE_PILL_PAD_H, GENRE_PILL_PAD_V)
                 .reserve_dot_space(true)
@@ -140,9 +140,9 @@ fn build_profile_genre_strip<'a>(
                     types::ProfileViewMessage::GenreFilterToggled(g.clone()),
                 ));
             if !any_selected || is_selected {
-                p = p.with_dot(tint);
+                chip = chip.with_dot(tint);
             }
-            p.into()
+            chip.into()
         })
         .collect();
 
@@ -349,19 +349,19 @@ pub fn update(
             (Task::none(), ProfileEvent::OpenGame(app_id))
         }
 
-        ProfileViewMessage::CardHoverEnter(app_id) => {
+        ProfileViewMessage::CardHoverEntered(app_id) => {
             state.hovered_card = Some(app_id);
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::CardHoverExit(app_id) => {
+        ProfileViewMessage::CardHoverExited(app_id) => {
             if state.hovered_card == Some(app_id) {
                 state.hovered_card = None;
             }
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::RetryFailedScans => {
+        ProfileViewMessage::FailedScansRetryRequested => {
             let ids: Vec<u32> = state.failed_app_ids.iter().copied().collect();
             state.failed_app_ids.clear();
             if !ids.is_empty() {
@@ -370,18 +370,18 @@ pub fn update(
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::RetrySingleFailedScan(app_id) => {
+        ProfileViewMessage::SingleScanRetryRequested(app_id) => {
             state.failed_app_ids.remove(&app_id);
             state.start_scan(vec![app_id]);
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::BarSliceHoverEnter(tier) => {
+        ProfileViewMessage::BarSliceHoverEntered(tier) => {
             state.hovered_bar_slice = Some(tier);
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::BarSliceHoverExit => {
+        ProfileViewMessage::BarSliceHoverExited => {
             state.hovered_bar_slice = None;
             (Task::none(), ProfileEvent::None)
         }
@@ -391,11 +391,11 @@ pub fn update(
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::RequestToggleGamePin(id) => {
+        ProfileViewMessage::GamePinToggleRequested(id) => {
             (Task::none(), ProfileEvent::ToggleGamePin(id))
         }
 
-        ProfileViewMessage::RequestOpenGame(id) => (Task::none(), ProfileEvent::OpenGame(id)),
+        ProfileViewMessage::GameOpenRequested(id) => (Task::none(), ProfileEvent::OpenGame(id)),
 
         ProfileViewMessage::ProgressResultReceived(result) => {
             let outcome = handle_progress_result(state, ctx, *result);

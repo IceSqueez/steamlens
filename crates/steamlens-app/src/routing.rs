@@ -5,7 +5,7 @@ use crate::profile_view::types::ProfileViewState;
 use crate::steam_worker::{SteamRequest, SteamWorker};
 use crate::{App, Message, Screen, cache, capsule_cache};
 
-pub(crate) fn current_pv_state_mut<'a>(
+pub(crate) fn current_profile_view_state_mut<'a>(
     screen: &'a mut Screen,
     preserved: &'a mut Option<Box<ProfileViewState>>,
 ) -> &'a mut ProfileViewState {
@@ -45,11 +45,11 @@ pub(crate) fn go_back_to_profile(app: &mut App) -> Task<Message> {
 }
 
 pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
-    let prev = if let Screen::ProfileView(pv_state) = std::mem::replace(
+    let prev = if let Screen::ProfileView(profile_view_state) = std::mem::replace(
         &mut app.screen,
         Screen::ProfileView(Box::new(ProfileViewState::new())),
     ) {
-        pv_state
+        profile_view_state
     } else {
         Box::new(ProfileViewState::new())
     };
@@ -75,7 +75,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     if !app.context.user.steam_root.as_os_str().is_empty() {
         tasks.push(crate::boot::spawn_steam_state_refresh(
             app.context.user.steam_root.clone(),
-            app.context.user.steamid3,
+            app.context.user.account_id,
             app.context.steam.app_state_mtime,
         ));
     }
@@ -102,9 +102,9 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     if steam_off {
         if state.achievements.is_empty() && !app.context.game_cache.entries.contains_key(&app_id) {
-            let steamid3 = app.context.user.steamid3;
+            let account_id = app.context.user.account_id;
             tasks.push(Task::perform(
-                cache::store::load_game_cache(steamid3, app_id),
+                cache::store::load_game_cache(account_id, app_id),
                 move |entry| {
                     Message::Cache(cache::CacheEvent::OfflineLoaded {
                         app_id,

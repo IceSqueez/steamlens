@@ -148,10 +148,10 @@ pub fn derive_status_bar<'a, M: 'a + Clone>(
 }
 
 impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
-    fn from(b: StatusBar<'a, M>) -> Self {
+    fn from(bar: StatusBar<'a, M>) -> Self {
         let mut left = row![].spacing(14).align_y(Alignment::Center);
 
-        match b.mode {
+        match bar.mode {
             Mode::Empty => {}
             Mode::Connected {
                 count,
@@ -232,9 +232,9 @@ impl<'a, M: 'a + Clone> From<StatusBar<'a, M>> for Element<'a, M> {
             .align_y(Alignment::Center)
             .width(Length::Fill);
 
-        if let Some((label, msg)) = b.retry {
+        if let Some((label, msg)) = bar.retry {
             footer_row = footer_row.push(link_button(label, DotKind::Offline, msg));
-        } else if let Some(msg) = b.reconnect {
+        } else if let Some(msg) = bar.reconnect {
             footer_row = footer_row.push(link_button_accent(msg));
         }
 

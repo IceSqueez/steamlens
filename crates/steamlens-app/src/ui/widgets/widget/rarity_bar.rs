@@ -48,9 +48,9 @@ impl<'a, M: 'a + Clone> RarityBar<'a, M> {
 }
 
 impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
-    fn from(b: RarityBar<'a, M>) -> Self {
-        let summary = b.summary;
-        let theme = b.theme;
+    fn from(bar: RarityBar<'a, M>) -> Self {
+        let summary = bar.summary;
+        let theme = bar.theme;
         let tier_counts: [(RarityTier, u32); 5] = [
             (RarityTier::Common, summary.common_count),
             (RarityTier::Uncommon, summary.uncommon_count),
@@ -114,7 +114,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             ));
         }
 
-        let hovered_idx = b
+        let hovered_idx = bar
             .hovered
             .and_then(|t| tier_at.iter().position(|x| *x == Some(t)));
 
@@ -124,7 +124,7 @@ impl<'a, M: 'a + Clone> From<RarityBar<'a, M>> for Element<'a, M> {
             .hovered(hovered_idx)
             .tooltip(move |idx| tip_lookup.get(idx).cloned().unwrap_or_default());
 
-        if let Some(on_hover) = b.on_hover {
+        if let Some(on_hover) = bar.on_hover {
             let tier_lookup = tier_at.clone();
             bar_builder = bar_builder.on_hover(move |idx| {
                 let tier = idx.and_then(|i| tier_lookup.get(i).copied().flatten());

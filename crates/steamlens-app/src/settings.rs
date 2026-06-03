@@ -108,7 +108,7 @@ pub struct Settings {
     #[serde(default)]
     pub manager: ManagerSettings,
     #[serde(default)]
-    pub last_user_steamid: Option<u32>,
+    pub last_user_account_id: Option<u32>,
 }
 
 fn default_schema_version() -> u32 {
@@ -122,19 +122,17 @@ impl Default for Settings {
             ui: UiSettings::default(),
             library: LibrarySettings::default(),
             manager: ManagerSettings::default(),
-            last_user_steamid: None,
+            last_user_account_id: None,
         }
     }
 }
 
-pub async fn write_settings(s: &Settings) -> Result<(), crate::cache::store::CacheIoError> {
-    let text = toml::to_string_pretty(s)
+pub async fn write_settings(settings: &Settings) -> Result<(), crate::cache::store::CacheIoError> {
+    let text = toml::to_string_pretty(settings)
         .map_err(|e| crate::cache::store::CacheIoError::Serialize(e.to_string()))?;
     crate::cache::store::atomic_write(&crate::paths::settings_path(), text.as_bytes()).await
 }
 
-/// Returns `Settings::default()` on any error (missing file, TOML parse
-/// failure, schema mismatch, path-is-a-directory). Logs and never panics.
 pub fn load_settings() -> Settings {
     let path = crate::paths::settings_path();
 
@@ -249,7 +247,7 @@ mod tests {
                 include_hidden: true,
                 unlocked_at_top: true,
             },
-            last_user_steamid: Some(123456789),
+            last_user_account_id: Some(123456789),
         };
         let restored = round_trip(&original);
         assert_eq!(original, restored);

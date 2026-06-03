@@ -25,7 +25,7 @@ pub enum GameViewMessage {
     ApplyCancelled,
     DiscardChanges,
     RevealHidden(String),
-    RequestGoBack,
+    GoBackRequested,
     AchievementsFullyLoaded,
     CapsuleLoaded {
         app_id: u32,
@@ -38,8 +38,8 @@ pub enum GameViewMessage {
         app_id: u32,
         size: crate::capsule_cache::CapsuleSize,
     },
-    BarSliceHoverEnter(RarityTier),
-    BarSliceHoverExit,
+    BarSliceHoverEntered(RarityTier),
+    BarSliceHoverExited,
     InvalidateCacheClicked(u32),
     CacheSeeded {
         app_id: u32,

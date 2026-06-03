@@ -6,8 +6,8 @@ use tokio::sync::mpsc;
 
 use super::callbacks::forward_icon_callbacks;
 use super::commands::{
-    fetch_global_percentages, load_achievements_and_stats, load_achievements_card_only,
-    quick_achievement_count, store_stats_and_wait,
+    fetch_global_percentages, load_achievement_count, load_achievements_and_stats,
+    load_achievements_summary, store_stats_and_wait,
 };
 use super::error::WorkerError;
 use super::ipc_io::{read_command, write_response};
@@ -19,14 +19,15 @@ pub(super) enum DispatchOutcome {
 }
 
 pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<Result<Option<WorkerCommand>, WorkerError>>(1);
+    let (command_sender, mut command_receiver) =
+        mpsc::channel::<Result<Option<WorkerCommand>, WorkerError>>(1);
 
     tokio::spawn(async move {
         let mut stdin = tokio::io::stdin();
         loop {
             let result = read_command(&mut stdin).await;
             let stop = matches!(result, Err(_) | Ok(None));
-            if cmd_tx.send(result).await.is_err() {
+            if command_sender.send(result).await.is_err() {
                 break;
             }
             if stop {
@@ -44,19 +45,19 @@ pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
         tokio::select! {
             biased;
 
-            cmd = cmd_rx.recv() => {
-                let cmd = match cmd {
+            command = command_receiver.recv() => {
+                let command = match command {
                     Some(c) => c,
                     None => {
                         tracing::debug!("stdin reader task ended");
                         return 1;
                     }
                 };
-                match cmd {
+                match command {
                     Err(e) => {
                         tracing::error!("read_command err: {e}");
                         let _ = write_response(&WorkerResponse::Error {
-                            kind: WorkerErrorStage::Generic,
+                            stage: WorkerErrorStage::Generic,
                             message: e.to_string(),
                         }).await;
                         return 1;
@@ -67,7 +68,7 @@ pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
                     }
                     Ok(Some(command)) => {
                         tracing::debug!(
-                            "cmd received: {}",
+                            "command received: {}",
                             command_label(&command)
                         );
                         match handle_command(command, &client, app_id).await {
@@ -94,11 +95,11 @@ pub(super) async fn dispatch_loop(client: Client, app_id: u32) -> i32 {
     }
 }
 
-fn command_label(cmd: &WorkerCommand) -> &'static str {
-    match cmd {
-        WorkerCommand::LoadAchievementsAndStats => "LoadAchievementsAndStats",
-        WorkerCommand::LoadAchievementsAndStatsCardOnly => "LoadAchievementsAndStatsCardOnly",
-        WorkerCommand::QuickAchievementCount => "QuickAchievementCount",
+fn command_label(command: &WorkerCommand) -> &'static str {
+    match command {
+        WorkerCommand::LoadAchievementsFull => "LoadAchievementsFull",
+        WorkerCommand::LoadAchievementsSummary => "LoadAchievementsSummary",
+        WorkerCommand::LoadAchievementsCount => "LoadAchievementsCount",
         WorkerCommand::StoreStats => "StoreStats",
         WorkerCommand::RequestGlobalPercentages => "RequestGlobalPercentages",
         WorkerCommand::SetAchievement(_) => "SetAchievement",
@@ -109,95 +110,95 @@ fn command_label(cmd: &WorkerCommand) -> &'static str {
     }
 }
 
-async fn handle_command(cmd: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
-    match cmd {
-        WorkerCommand::LoadAchievementsAndStats => {
-            let resp = load_achievements_and_stats(client, app_id).await;
-            if write_response(&resp).await.is_err() {
+async fn handle_command(command: WorkerCommand, client: &Client, app_id: u32) -> DispatchOutcome {
+    match command {
+        WorkerCommand::LoadAchievementsFull => {
+            let response = load_achievements_and_stats(client, app_id).await;
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
-            let pct = fetch_global_percentages(client).await;
-            if write_response(&pct).await.is_err() {
+            let percent = fetch_global_percentages(client).await;
+            if write_response(&percent).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::SetAchievement(name) => {
-            let resp = match client.user_stats().set_achievement(&name) {
+            let response = match client.user_stats().set_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorStage::Generic,
+                    stage: WorkerErrorStage::Generic,
                     message: format!("SetAchievement({name}): {e}"),
                 },
             };
-            if write_response(&resp).await.is_err() {
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::ClearAchievement(name) => {
-            let resp = match client.user_stats().clear_achievement(&name) {
+            let response = match client.user_stats().clear_achievement(&name) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorStage::Generic,
+                    stage: WorkerErrorStage::Generic,
                     message: format!("ClearAchievement({name}): {e}"),
                 },
             };
-            if write_response(&resp).await.is_err() {
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::SetStatInt { name, value } => {
-            let resp = match client.user_stats().set_stat_int(&name, value) {
+            let response = match client.user_stats().set_stat_int(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorStage::Generic,
+                    stage: WorkerErrorStage::Generic,
                     message: format!("SetStatInt({name}): {e}"),
                 },
             };
-            if write_response(&resp).await.is_err() {
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::SetStatFloat { name, value } => {
-            let resp = match client.user_stats().set_stat_float(&name, value) {
+            let response = match client.user_stats().set_stat_float(&name, value) {
                 Ok(()) => WorkerResponse::Ack,
                 Err(e) => WorkerResponse::Error {
-                    kind: WorkerErrorStage::Generic,
+                    stage: WorkerErrorStage::Generic,
                     message: format!("SetStatFloat({name}): {e}"),
                 },
             };
-            if write_response(&resp).await.is_err() {
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::StoreStats => {
-            let resp = store_stats_and_wait(client).await;
-            if write_response(&resp).await.is_err() {
+            let response = store_stats_and_wait(client).await;
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
         WorkerCommand::RequestGlobalPercentages => {
-            let resp = fetch_global_percentages(client).await;
-            if write_response(&resp).await.is_err() {
+            let response = fetch_global_percentages(client).await;
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
-        WorkerCommand::QuickAchievementCount => {
-            let resp = quick_achievement_count(client).await;
-            if write_response(&resp).await.is_err() {
+        WorkerCommand::LoadAchievementsCount => {
+            let response = load_achievement_count(client).await;
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }
 
-        WorkerCommand::LoadAchievementsAndStatsCardOnly => {
-            let resp = load_achievements_card_only(client, app_id).await;
-            if write_response(&resp).await.is_err() {
+        WorkerCommand::LoadAchievementsSummary => {
+            let response = load_achievements_summary(client, app_id).await;
+            if write_response(&response).await.is_err() {
                 return DispatchOutcome::Fatal;
             }
         }

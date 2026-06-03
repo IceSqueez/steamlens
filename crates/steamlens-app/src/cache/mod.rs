@@ -29,7 +29,7 @@ pub enum CacheEvent {
         app_id: u32,
         result: Result<(), String>,
     },
-    NoAchWritten(Result<(), String>),
+    NoAchievementsWritten(Result<(), String>),
     GameInvalidated {
         app_id: u32,
         name: String,

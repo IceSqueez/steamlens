@@ -23,41 +23,42 @@ pub struct StatDescriptor {
 }
 
 pub(crate) fn load(app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
-    let root = paths::steam_install_root_candidates()
+    let steam_root = paths::steam_install_root_candidates()
         .into_iter()
         .next()
         .unwrap_or_else(|| PathBuf::from("."));
-    let path = paths::appcache_stats_dir(&root).join(format!("UserGameStatsSchema_{app_id}.bin"));
+    let path =
+        paths::appcache_stats_dir(&steam_root).join(format!("UserGameStatsSchema_{app_id}.bin"));
 
     let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
+        Ok(bytes) => bytes,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(_) => return Ok(Vec::new()),
     };
 
-    let root =
+    let vdf_root =
         steamlens_vdf::parse(&bytes).map_err(|source| SteamError::SchemaParseError { source })?;
 
-    Ok(extract_stats(&root, app_id))
+    Ok(extract_stats(&vdf_root, app_id))
 }
 
-fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
+fn extract_stats(vdf_root: &Value, app_id: u32) -> Vec<StatDescriptor> {
     let path = format!("{app_id}/stats");
-    let stats_section = match root.get(&path) {
-        Some(v) => v,
+    let stats_section = match vdf_root.get(&path) {
+        Some(value) => value,
         None => return Vec::new(),
     };
 
     let pairs = match stats_section.as_section() {
-        Some(p) => p,
+        Some(pairs) => pairs,
         None => return Vec::new(),
     };
 
-    let mut out = Vec::new();
+    let mut descriptors = Vec::new();
 
     for stat_pair in pairs {
         let children = match stat_pair.value.as_section() {
-            Some(c) => c,
+            Some(children) => children,
             None => continue,
         };
 
@@ -78,7 +79,7 @@ fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
             .find(|p| p.key == "name")
             .and_then(|p| p.value.as_str())
         {
-            Some(n) if !n.is_empty() => n.to_owned(),
+            Some(name) if !name.is_empty() => name.to_owned(),
             _ => continue,
         };
 
@@ -113,7 +114,7 @@ fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
                     .map(|s| s.to_owned())
             });
 
-        out.push(StatDescriptor {
+        descriptors.push(StatDescriptor {
             name,
             display_name,
             kind,
@@ -123,7 +124,7 @@ fn extract_stats(root: &Value, app_id: u32) -> Vec<StatDescriptor> {
         });
     }
 
-    out
+    descriptors
 }
 
 #[cfg(test)]

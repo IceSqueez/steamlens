@@ -9,7 +9,7 @@ use crate::game_view::types::{AchievementRow, BulkOp};
 use crate::game_view::{GameViewMessage, GameViewState};
 use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{palette, theme_from_iced};
-use crate::ui::widgets::skeleton::{SKEL_DEFAULT_RADIUS, skeleton_box};
+use crate::ui::widgets::skeleton::{SKELETON_DEFAULT_RADIUS, skeleton_box};
 
 pub(super) const ACH_CARD_GAP: f32 = 12.0;
 pub(super) const ACH_MIN_GAP: f32 = 12.0;
@@ -19,9 +19,9 @@ pub(super) const ACH_CARD_ICON: f32 = 64.0;
 pub(super) const ACH_CARD_HEIGHT: f32 = 140.0;
 pub(super) const ACH_CARD_TITLE_TEXT_SIZE: f32 = 13.0;
 pub(super) const ACH_CARD_DESCRIPTION_TEXT_SIZE: f32 = 11.0;
-pub(super) const SKEL_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
-pub(super) const SKEL_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
-pub(super) const SKEL_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
+pub(super) const SKELETON_ACH_CARD_STATUS_PILL_WIDTH: f32 = 80.0;
+pub(super) const SKELETON_ACH_CARD_RARITY_PILL_WIDTH: f32 = 60.0;
+pub(super) const SKELETON_ACH_CARD_PILL_HEIGHT: f32 = 18.0;
 
 static ACH_GRID_SCROLL_ID: LazyLock<iced::widget::Id> =
     LazyLock::new(|| iced::widget::Id::new("achievement-grid"));
@@ -188,7 +188,7 @@ pub(super) fn build_skeleton_ach_card(
     card_w: f32,
     phase: f32,
 ) -> Element<'static, GameViewMessage> {
-    let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, SKEL_DEFAULT_RADIUS, phase);
+    let icon = skeleton_box(ACH_CARD_ICON, ACH_CARD_ICON, SKELETON_DEFAULT_RADIUS, phase);
 
     let title_w = card_w * 0.60;
     let desc_w = card_w * 0.80;
@@ -197,13 +197,13 @@ pub(super) fn build_skeleton_ach_card(
         skeleton_box(
             title_w,
             ACH_CARD_TITLE_TEXT_SIZE,
-            SKEL_DEFAULT_RADIUS,
+            SKELETON_DEFAULT_RADIUS,
             phase
         ),
         skeleton_box(
             desc_w,
             ACH_CARD_DESCRIPTION_TEXT_SIZE,
-            SKEL_DEFAULT_RADIUS,
+            SKELETON_DEFAULT_RADIUS,
             phase
         ),
     ]
@@ -215,15 +215,15 @@ pub(super) fn build_skeleton_ach_card(
         .padding(Padding::from([8u16, 8]));
 
     let pill1 = skeleton_box(
-        SKEL_ACH_CARD_STATUS_PILL_WIDTH,
-        SKEL_ACH_CARD_PILL_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_ACH_CARD_STATUS_PILL_WIDTH,
+        SKELETON_ACH_CARD_PILL_HEIGHT,
+        SKELETON_DEFAULT_RADIUS,
         phase,
     );
     let pill2 = skeleton_box(
-        SKEL_ACH_CARD_RARITY_PILL_WIDTH,
-        SKEL_ACH_CARD_PILL_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_ACH_CARD_RARITY_PILL_WIDTH,
+        SKELETON_ACH_CARD_PILL_HEIGHT,
+        SKELETON_DEFAULT_RADIUS,
         phase,
     );
 

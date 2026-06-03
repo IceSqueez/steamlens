@@ -14,7 +14,7 @@ pub(super) async fn run_apply_sequence(
     stats_int: HashMap<String, i32>,
     stats_float: HashMap<String, f32>,
     handle: &mut WorkerHandle,
-    rep_tx: &mpsc::UnboundedSender<SteamReply>,
+    reply_sender: &mpsc::UnboundedSender<SteamReply>,
 ) {
     let staging_timeout = timeouts::STAGING;
 
@@ -32,16 +32,16 @@ pub(super) async fn run_apply_sequence(
         staging_cmds.push(WorkerCommand::SetStatFloat { name, value });
     }
 
-    for cmd in &staging_cmds {
-        match round_trip(handle, cmd, staging_timeout, rep_tx).await {
+    for command in &staging_cmds {
+        match round_trip(handle, command, staging_timeout, reply_sender).await {
             Some(WorkerResponse::Ack) => {}
-            Some(WorkerResponse::Error { kind, message }) => {
-                reply(rep_tx, error_reply(kind, message));
+            Some(WorkerResponse::Error { stage, message }) => {
+                reply(reply_sender, error_reply(stage, message));
                 return;
             }
             Some(other) => {
                 reply(
-                    rep_tx,
+                    reply_sender,
                     SteamReply::SaveFailed(format!(
                         "unexpected response during staging: {:?}",
                         std::mem::discriminant(&other)
@@ -51,7 +51,7 @@ pub(super) async fn run_apply_sequence(
             }
             None => {
                 reply(
-                    rep_tx,
+                    reply_sender,
                     SteamReply::SaveFailed("timed out waiting for staging Ack".to_owned()),
                 );
                 return;
@@ -60,31 +60,38 @@ pub(super) async fn run_apply_sequence(
     }
 
     let store_timeout = timeouts::LIVE_LOAD;
-    match round_trip(handle, &WorkerCommand::StoreStats, store_timeout, rep_tx).await {
-        Some(WorkerResponse::Stored) => {
-            reply(rep_tx, SteamReply::ChangesSaved);
+    match round_trip(
+        handle,
+        &WorkerCommand::StoreStats,
+        store_timeout,
+        reply_sender,
+    )
+    .await
+    {
+        Some(WorkerResponse::StatsStored) => {
+            reply(reply_sender, SteamReply::ChangesSaved);
             let load_timeout = timeouts::LIVE_LOAD;
             match round_trip(
                 handle,
-                &WorkerCommand::LoadAchievementsAndStats,
+                &WorkerCommand::LoadAchievementsFull,
                 load_timeout,
-                rep_tx,
+                reply_sender,
             )
             .await
             {
-                Some(resp) => handle_worker_response(resp, rep_tx),
+                Some(response) => handle_worker_response(response, reply_sender),
                 None => reply(
-                    rep_tx,
+                    reply_sender,
                     SteamReply::LoadFailed("timed out after store".into()),
                 ),
             }
         }
-        Some(WorkerResponse::Error { kind, message }) => {
-            reply(rep_tx, error_reply(kind, message));
+        Some(WorkerResponse::Error { stage, message }) => {
+            reply(reply_sender, error_reply(stage, message));
         }
         Some(other) => {
             reply(
-                rep_tx,
+                reply_sender,
                 SteamReply::SaveFailed(format!(
                     "unexpected StoreStats response: {:?}",
                     std::mem::discriminant(&other)
@@ -93,7 +100,7 @@ pub(super) async fn run_apply_sequence(
         }
         None => {
             reply(
-                rep_tx,
+                reply_sender,
                 SteamReply::SaveFailed("timed out waiting for StoreStats".to_owned()),
             );
         }

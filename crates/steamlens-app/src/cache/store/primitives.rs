@@ -26,10 +26,6 @@ pub enum CacheIoError {
     Serialize(String),
 }
 
-/// Writes `bytes` to a per-call unique `<path>.tmp.<pid>.<seq>` file, fsyncs,
-/// then renames over `path`. Atomic on POSIX. Unique tmp names allow concurrent
-/// writers to the same target without ENOENT racing on the rename step;
-/// last-writer-wins semantics for the final file.
 pub async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CacheIoError> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;

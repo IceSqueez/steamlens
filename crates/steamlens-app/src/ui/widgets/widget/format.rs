@@ -3,9 +3,9 @@ pub fn format_thousands(n: u32) -> String {
 }
 
 fn format_thousands_u64(n: u64) -> String {
-    let s = n.to_string();
-    let mut result = String::with_capacity(s.len() + s.len() / 3);
-    for (i, ch) in s.chars().rev().enumerate() {
+    let digits = n.to_string();
+    let mut result = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, ch) in digits.chars().rev().enumerate() {
         if i > 0 && i % 3 == 0 {
             result.push(',');
         }

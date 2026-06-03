@@ -24,8 +24,8 @@ pub(crate) fn recompute_tier_breakdown_if_missing(entry: &mut GameCacheEntry) {
                 id: a.api_name.clone(),
                 display_name: a.display_name.clone(),
                 description: a.description.clone(),
-                is_hidden: a.hidden,
-                is_achieved: a.earned,
+                is_hidden: a.is_hidden,
+                is_achieved: a.is_achieved,
                 unlock_time: a.earned_at.map(|t| t as u32),
                 permission: 0,
                 icon: None,
@@ -53,14 +53,14 @@ pub(crate) fn compute_seed_from_cache(cached: &GameCacheEntry) -> game_view::See
                 id: a.api_name.clone(),
                 display_name: a.display_name.clone(),
                 description: a.description.clone(),
-                is_hidden: a.hidden,
-                is_achieved: a.earned,
+                is_hidden: a.is_hidden,
+                is_achieved: a.is_achieved,
                 unlock_time: a.earned_at.map(|t| t as u32),
                 permission: 0,
                 icon,
             };
             let mut row = AchievementRow::from(data);
-            row.appeared = true;
+            row.has_appeared = true;
             row.card_opacity = 1.0;
             row.rarity_percent = a.global_percent.map(|p| p as f32);
             row
@@ -201,10 +201,10 @@ pub(crate) fn build_cache_entry_from_scan(
             api_name: a.id.clone(),
             display_name: String::new(),
             description: String::new(),
-            hidden: false,
+            is_hidden: false,
             icon_path: None,
             icon_locked_path: None,
-            earned: a.is_achieved,
+            is_achieved: a.is_achieved,
             earned_at: None,
             global_percent: scanned.global_percentages.get(&a.id).map(|p| *p as f64),
         })
@@ -246,10 +246,10 @@ pub(crate) fn build_game_view_cache_entry(
             api_name: r.data.id.clone(),
             display_name: r.data.display_name.clone(),
             description: r.data.description.clone(),
-            hidden: r.data.is_hidden,
+            is_hidden: r.data.is_hidden,
             icon_path: None,
             icon_locked_path: None,
-            earned: r.data.is_achieved,
+            is_achieved: r.data.is_achieved,
             earned_at: r.data.unlock_time.map(|t| t as u64),
             global_percent: r.rarity_percent.map(|p| p as f64),
         })

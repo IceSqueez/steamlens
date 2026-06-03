@@ -12,10 +12,10 @@ pub(super) const CARD_COUNTER_TEXT_SIZE: f32 = 11.0;
 pub(super) const CARD_PILL_HEIGHT: f32 = 18.0;
 pub(super) const CARD_PROGRESS_BAR_HEIGHT: f32 = 8.0;
 pub(super) const CARD_PROGRESS_BAR_INSET: f32 = 16.0;
-pub(super) const SKEL_COUNTER_PILL_WIDTH_RATIO: f32 = 0.18;
-pub(super) const SKEL_GENRE_PILL_WIDTH_RATIO: f32 = 0.28;
+pub(super) const SKELETON_COUNTER_PILL_WIDTH_RATIO: f32 = 0.18;
+pub(super) const SKELETON_GENRE_PILL_WIDTH_RATIO: f32 = 0.28;
 
-pub(super) const CARD_H_PAD: f32 = 8.0;
+pub(super) const CARD_HORIZONTAL_PADDING: f32 = 8.0;
 pub(super) const CARD_NAME_ROW_HEIGHT: f32 = 24.0;
 pub(super) const CARD_NAME_ROW_PAD_TOP: f32 = 4.0;
 pub(super) const CARD_TAGS_ROW_HEIGHT: f32 = 32.0;

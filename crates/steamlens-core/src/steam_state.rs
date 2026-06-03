@@ -8,28 +8,28 @@ pub type SteamAppState = AppLocalState;
 
 pub fn read_steam_state(
     steam_root: &Path,
-    steamid3: u64,
+    account_id: u64,
 ) -> (HashMap<u32, SteamAppState>, Option<SystemTime>) {
-    let path = localconfig_path(steam_root, steamid3);
+    let path = localconfig_path(steam_root, account_id);
     let mtime = std::fs::metadata(&path)
         .ok()
-        .and_then(|m| m.modified().ok());
-    let map = std::fs::read_to_string(&path)
+        .and_then(|metadata| metadata.modified().ok());
+    let states = std::fs::read_to_string(&path)
         .ok()
         .map(|content| parse_localconfig_states(&content))
         .unwrap_or_default();
-    (map, mtime)
+    (states, mtime)
 }
 
-pub fn read_steam_state_mtime(steam_root: &Path, steamid3: u64) -> Option<SystemTime> {
-    let path = localconfig_path(steam_root, steamid3);
+pub fn read_steam_state_mtime(steam_root: &Path, account_id: u64) -> Option<SystemTime> {
+    let path = localconfig_path(steam_root, account_id);
     std::fs::metadata(&path).ok()?.modified().ok()
 }
 
-fn localconfig_path(steam_root: &Path, steamid3: u64) -> PathBuf {
+fn localconfig_path(steam_root: &Path, account_id: u64) -> PathBuf {
     steam_root
         .join("userdata")
-        .join(steamid3.to_string())
+        .join(account_id.to_string())
         .join("config")
         .join("localconfig.vdf")
 }
@@ -40,10 +40,10 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    fn write_localconfig(steam_root: &Path, steamid3: u64, body: &str) {
+    fn write_localconfig(steam_root: &Path, account_id: u64, body: &str) {
         let config_dir = steam_root
             .join("userdata")
-            .join(steamid3.to_string())
+            .join(account_id.to_string())
             .join("config");
         std::fs::create_dir_all(&config_dir).unwrap();
 
@@ -80,8 +80,8 @@ mod tests {
                         "Playtime"    "120"
                     }"#,
         );
-        let (map, mtime) = read_steam_state(tmp.path(), 111721205);
-        let entry = map.get(&105600).copied().unwrap();
+        let (states, mtime) = read_steam_state(tmp.path(), 111721205);
+        let entry = states.get(&105600).copied().unwrap();
         assert_eq!(entry.last_played, Some(1_777_926_953));
         assert_eq!(entry.playtime_minutes, Some(120));
         assert!(mtime.is_some());
@@ -90,8 +90,8 @@ mod tests {
     #[test]
     fn read_steam_state_missing_file_returns_empty_with_none_mtime() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (map, mtime) = read_steam_state(tmp.path(), 111721205);
-        assert!(map.is_empty());
+        let (states, mtime) = read_steam_state(tmp.path(), 111721205);
+        assert!(states.is_empty());
         assert!(mtime.is_none());
     }
 

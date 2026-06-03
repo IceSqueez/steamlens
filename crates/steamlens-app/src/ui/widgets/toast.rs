@@ -105,17 +105,17 @@ impl<'a, M: 'a + Clone> Toast<'a, M> {
 }
 
 impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
-    fn from(t: Toast<'a, M>) -> Self {
-        let accent = t.kind.accent();
-        let icon = text(t.kind.glyph()).size(14).color(accent);
+    fn from(toast: Toast<'a, M>) -> Self {
+        let accent = toast.kind.accent();
+        let icon = text(toast.kind.glyph()).size(14).color(accent);
 
-        let mut info_col = column![text(t.title).size(12).style(|t: &iced::Theme| {
+        let mut info_col = column![text(toast.title).size(12).style(|t: &iced::Theme| {
             iced::widget::text::Style {
                 color: Some(palette(theme_from_iced(t)).text_primary),
             }
         })]
         .spacing(1);
-        if let Some(body) = t.body {
+        if let Some(body) = toast.body {
             info_col = info_col.push(text(body).size(10).style(|t: &iced::Theme| {
                 iced::widget::text::Style {
                     color: Some(palette(theme_from_iced(t)).text_muted),
@@ -127,11 +127,11 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
             .spacing(10)
             .align_y(Alignment::Center);
 
-        if let Some((label, msg)) = t.action {
+        if let Some((label, msg)) = toast.action {
             content_row = content_row.push(link_button(label, msg));
         }
 
-        if let Some(close_msg) = t.on_close {
+        if let Some(close_msg) = toast.on_close {
             content_row = content_row.push(close_button(close_msg));
         }
 
@@ -175,7 +175,7 @@ impl<'a, M: 'a + Clone> From<Toast<'a, M>> for Element<'a, M> {
                 ..container::Style::default()
             });
 
-        match (t.on_hover_enter, t.on_hover_exit) {
+        match (toast.on_hover_enter, toast.on_hover_exit) {
             (Some(enter), Some(exit)) => mouse_area(composed).on_enter(enter).on_exit(exit).into(),
             (Some(enter), None) => mouse_area(composed).on_enter(enter).into(),
             (None, Some(exit)) => mouse_area(composed).on_exit(exit).into(),

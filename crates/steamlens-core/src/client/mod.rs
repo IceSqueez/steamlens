@@ -76,8 +76,6 @@ impl Client {
         self.apps.app_type(app_id)
     }
 
-    /// `None` when not cached locally; a subsequent call after Steam fires
-    /// `AppDataChanged_t` may succeed once the daemon resolves the key.
     pub fn get_app_data(&self, app_id: u32, key: &core::ffi::CStr) -> Option<String> {
         self.apps.get_app_data(app_id, key)
     }
@@ -89,21 +87,14 @@ impl Client {
         enumerate_owned_games_impl(self, apply_subscribed_filter)
     }
 
-    /// Getters return Steam defaults (0 / `false`) until `RequestUserStats`
-    /// completes; setters stage locally and require `store_stats` to persist.
     pub fn user_stats(&self) -> UserStats<'_> {
         UserStats::from_raw(self.conn.steam_user_stats)
     }
 
-    /// `Ok(None)` for handle 0 — Steam is still fetching; retry once
-    /// `AchievementIconFetched` (id 1408) fires.
     pub fn get_image(&self, handle: i32) -> Result<Option<Image>, SteamError> {
         self.utils.get_image(handle)
     }
 
-    /// Per-call async result bound to a `SteamAPICall_t`; these do NOT
-    /// appear in the broadcast queue drained by [`Self::poll_callbacks`].
-    /// Returns `None` while pending — caller retries ~50 ms later.
     pub fn poll_call_result(
         &self,
         handle: u64,
@@ -114,8 +105,6 @@ impl Client {
             .poll_call_result(handle, expected_callback_id, payload_size)
     }
 
-    /// Pure disk read of `appcache/stats/UserGameStatsSchema_<app_id>.bin`;
-    /// `Ok(vec![])` when the file is missing (game never launched).
     pub fn stat_descriptors(&self, app_id: u32) -> Result<Vec<StatDescriptor>, SteamError> {
         load_stat_descriptors(app_id)
     }
@@ -125,10 +114,6 @@ impl Client {
     }
 }
 
-/// `app_id == 0` connects without an app context. A non-zero `app_id`
-/// writes `SteamAppId` into the process environment — Steam reads it
-/// exactly once during first-touch init, so call `connect` before
-/// spawning any thread that reads `std::env`.
 pub fn connect(app_id: u32) -> Result<Client, SteamError> {
     let conn = SteamConnection::establish(app_id)?;
 

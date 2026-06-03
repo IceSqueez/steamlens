@@ -71,9 +71,6 @@ impl Utils {
         }))
     }
 
-    /// Per-call async result bound to a `SteamAPICall_t`; these do NOT
-    /// appear in the broadcast queue drained by `Callbacks::poll_callbacks`.
-    /// Returns `None` while pending — caller retries ~50 ms later.
     pub(super) fn poll_call_result(
         &self,
         handle: u64,

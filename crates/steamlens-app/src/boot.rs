@@ -16,8 +16,8 @@ use crate::steam_worker::SteamWorker;
 use crate::{App, BootStage, Message, Modals, Screen, splash_commands, update_check};
 
 pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Message>) {
-    let mut pv_state = ProfileViewState::new();
-    pv_state.sort = loaded_settings.library.sort;
+    let mut profile_view_state = ProfileViewState::new();
+    profile_view_state.sort = loaded_settings.library.sort;
 
     let (reply_tx, reply_rx) = mpsc::unbounded_channel();
     let worker = SteamWorker::spawn(reply_tx.clone());
@@ -46,13 +46,13 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
 
     let app = App {
         context,
-        screen: Screen::ProfileView(Box::new(pv_state)),
+        screen: Screen::ProfileView(Box::new(profile_view_state)),
         preserved_profile_state: None,
         boot: BootStage::default(),
         modals: Modals::default(),
     };
 
-    let last_steamid3 = app.context.settings.last_user_steamid;
+    let last_account_id = app.context.settings.last_user_account_id;
 
     let mut boot_tasks = vec![
         splash_commands::min_splash_wait(),
@@ -62,10 +62,10 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         Task::perform(update_check::check_for_update(), Message::UpdateCheckResult),
     ];
 
-    if let Some(steamid3) = last_steamid3 {
+    if let Some(account_id) = last_account_id {
         use crate::cache;
-        boot_tasks.push(cache::commands::load_profile_cache(steamid3));
-        boot_tasks.push(cache::commands::load_library_cache(steamid3));
+        boot_tasks.push(cache::commands::load_profile_cache(account_id));
+        boot_tasks.push(cache::commands::load_library_cache(account_id));
     }
 
     (app, Task::batch(boot_tasks))
@@ -99,19 +99,19 @@ pub(crate) fn spawn_app_assets_load() -> Task<Message> {
 
 pub(crate) fn spawn_steam_state_refresh(
     steam_root: std::path::PathBuf,
-    steamid3: u32,
+    account_id: u32,
     known_mtime: Option<std::time::SystemTime>,
 ) -> Task<Message> {
-    let steamid64_low = u64::from(steamid3);
+    let account_id_u64 = u64::from(account_id);
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
                 let current_mtime =
-                    steamlens_core::read_steam_state_mtime(&steam_root, steamid64_low);
+                    steamlens_core::read_steam_state_mtime(&steam_root, account_id_u64);
                 if current_mtime.is_some() && current_mtime == known_mtime {
                     return None;
                 }
-                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, steamid64_low);
+                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, account_id_u64);
                 Some((map, mtime))
             })
             .await

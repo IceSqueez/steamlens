@@ -115,7 +115,7 @@ fn build_rarity_tier_strip(
         .align_y(Alignment::Center);
 
         let is_selected = state.rarity_tier_set.contains(&tier);
-        let mut p = pill(inner, color)
+        let mut chip = pill(inner, color)
             .radius(TIER_PILL_RADIUS)
             .padding(TIER_PILL_PAD_H, TIER_PILL_PAD_V)
             .reserve_dot_space(true)
@@ -124,9 +124,9 @@ fn build_rarity_tier_strip(
                 GameViewMessage::RarityTierToggled(tier),
             ));
         if !any_selected || is_selected {
-            p = p.with_dot(color);
+            chip = chip.with_dot(color);
         }
-        chips.push(p.into());
+        chips.push(chip.into());
     }
 
     let hidden_color = crate::ui::theme::palette(crate::ui::theme::AppTheme::Dark).text_muted;

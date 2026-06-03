@@ -173,29 +173,29 @@ impl ProfileViewState {
             if steam_running == Some(false) {
                 return LoaderPhase::SteamOff;
             }
-            return LoaderPhase::Alpha;
+            return LoaderPhase::Initial;
         }
         let total = self.games.len();
         let with_progress = self.games.iter().filter(|g| g.progress.is_some()).count();
         let failed = self.failed_app_ids.len();
         let pending = total.saturating_sub(with_progress).saturating_sub(failed);
         if pending > 0 {
-            LoaderPhase::Beta {
+            LoaderPhase::InProgress {
                 loaded: with_progress,
                 total,
             }
         } else if failed > 0 {
             LoaderPhase::Failed { failed, total }
         } else {
-            LoaderPhase::Gamma
+            LoaderPhase::Finished
         }
     }
 
     pub fn loader_needs_pulse_subscription(&self, steam_running: Option<bool>) -> bool {
         match self.loader_phase(steam_running) {
-            LoaderPhase::Alpha | LoaderPhase::Beta { .. } => true,
+            LoaderPhase::Initial | LoaderPhase::InProgress { .. } => true,
             LoaderPhase::Failed { .. } | LoaderPhase::SteamOff => false,
-            LoaderPhase::Gamma => self
+            LoaderPhase::Finished => self
                 .loader_hiding_since
                 .map(|t| t.elapsed().as_millis() < 300)
                 .unwrap_or(true),
@@ -213,7 +213,7 @@ impl ProfileViewState {
         if self.loader_needs_pulse_subscription(steam_running) {
             self.loader_pulse_phase =
                 (self.loader_pulse_phase + LOADER_PULSE_PER_SEC * delta_secs).rem_euclid(1.0);
-            if let LoaderPhase::Gamma = self.loader_phase(steam_running) {
+            if let LoaderPhase::Finished = self.loader_phase(steam_running) {
                 if self.loader_hiding_since.is_none() {
                     self.loader_hiding_since = Some(Instant::now());
                 }
@@ -303,9 +303,9 @@ fn compute_visible_indices(
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoaderPhase {
-    Alpha,
-    Beta { loaded: usize, total: usize },
-    Gamma,
+    Initial,
+    InProgress { loaded: usize, total: usize },
+    Finished,
     Failed { failed: usize, total: usize },
     SteamOff,
 }

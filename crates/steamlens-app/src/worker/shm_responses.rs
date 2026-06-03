@@ -3,44 +3,44 @@ use std::collections::HashMap;
 use steamlens_core::AchievementIcon;
 use steamlens_core::ipc::{WorkerErrorStage, WorkerResponse};
 
-pub(super) fn shm_response_for_aas(
-    payload: steamlens_core::AchievementsAndStatsPayload,
+pub(super) fn shm_response_for_achievements_full(
+    payload: steamlens_core::AchievementsFullPayload,
 ) -> WorkerResponse {
     match steamlens_core::write_payload(&payload) {
-        Ok((path, region_bytes)) => WorkerResponse::AchievementsAndStats {
+        Ok((path, region_bytes)) => WorkerResponse::AchievementsFull {
             shm_path: path.to_string_lossy().into_owned(),
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorStage::Generic,
+            stage: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
 }
 
-pub(super) fn shm_response_for_count(
-    payload: steamlens_core::AchievementCountPayload,
+pub(super) fn shm_response_for_achievements_count(
+    payload: steamlens_core::AchievementsCountPayload,
 ) -> WorkerResponse {
     match steamlens_core::write_payload(&payload) {
-        Ok((path, region_bytes)) => WorkerResponse::AchievementCount {
+        Ok((path, region_bytes)) => WorkerResponse::AchievementsCount {
             shm_path: path.to_string_lossy().into_owned(),
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorStage::Generic,
+            stage: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
 }
 
-pub(super) fn shm_response_for_pct(payload: HashMap<String, f32>) -> WorkerResponse {
+pub(super) fn shm_response_for_global_percentages(payload: HashMap<String, f32>) -> WorkerResponse {
     match steamlens_core::write_payload(&payload) {
         Ok((path, region_bytes)) => WorkerResponse::GlobalPercentagesReady {
             shm_path: path.to_string_lossy().into_owned(),
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorStage::Generic,
+            stage: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
@@ -59,7 +59,7 @@ pub(super) fn shm_response_for_icon(name: String, icon: AchievementIcon) -> Work
         Err(e) => {
             tracing::trace!(name = %name, error = %e, "shm_response_for_icon: write_payload failed");
             WorkerResponse::Error {
-                kind: WorkerErrorStage::Generic,
+                stage: WorkerErrorStage::Generic,
                 message: e.to_string(),
             }
         }
@@ -75,22 +75,22 @@ pub(super) fn shm_response_for_probe(
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorStage::Generic,
+            stage: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }
 }
 
-pub(super) fn shm_response_for_card_only(
-    payload: steamlens_core::CardOnlyPayload,
+pub(super) fn shm_response_for_achievements_summary(
+    payload: steamlens_core::AchievementsSummaryPayload,
 ) -> WorkerResponse {
     match steamlens_core::write_payload(&payload) {
-        Ok((path, region_bytes)) => WorkerResponse::CardOnlyAchievements {
+        Ok((path, region_bytes)) => WorkerResponse::AchievementsSummary {
             shm_path: path.to_string_lossy().into_owned(),
             region_bytes,
         },
         Err(e) => WorkerResponse::Error {
-            kind: WorkerErrorStage::Generic,
+            stage: WorkerErrorStage::Generic,
             message: e.to_string(),
         },
     }

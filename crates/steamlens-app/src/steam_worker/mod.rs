@@ -6,10 +6,10 @@ mod dispatch;
 pub use api::{SteamReply, SteamRequest, SteamWorker};
 
 #[cfg(test)]
-pub(crate) fn translate_request(req: &SteamRequest) -> Vec<steamlens_core::ipc::WorkerCommand> {
+pub(crate) fn translate_request(request: &SteamRequest) -> Vec<steamlens_core::ipc::WorkerCommand> {
     use steamlens_core::ipc::WorkerCommand;
-    match req {
-        SteamRequest::RequestUserStats => vec![WorkerCommand::LoadAchievementsAndStats],
+    match request {
+        SteamRequest::RequestUserStats => vec![WorkerCommand::LoadAchievementsFull],
 
         SteamRequest::RequestGlobalPercentages => vec![WorkerCommand::RequestGlobalPercentages],
 
@@ -19,27 +19,27 @@ pub(crate) fn translate_request(req: &SteamRequest) -> Vec<steamlens_core::ipc::
             stats_int,
             stats_float,
         } => {
-            let mut cmds = Vec::new();
+            let mut commands = Vec::new();
             for name in achievements_to_set {
-                cmds.push(WorkerCommand::SetAchievement(name.clone()));
+                commands.push(WorkerCommand::SetAchievement(name.clone()));
             }
             for name in achievements_to_clear {
-                cmds.push(WorkerCommand::ClearAchievement(name.clone()));
+                commands.push(WorkerCommand::ClearAchievement(name.clone()));
             }
             for (name, value) in stats_int {
-                cmds.push(WorkerCommand::SetStatInt {
+                commands.push(WorkerCommand::SetStatInt {
                     name: name.clone(),
                     value: *value,
                 });
             }
             for (name, value) in stats_float {
-                cmds.push(WorkerCommand::SetStatFloat {
+                commands.push(WorkerCommand::SetStatFloat {
                     name: name.clone(),
                     value: *value,
                 });
             }
-            cmds.push(WorkerCommand::StoreStats);
-            cmds
+            commands.push(WorkerCommand::StoreStats);
+            commands
         }
 
         SteamRequest::ConnectWithApp(_) | SteamRequest::Disconnect => {
@@ -57,8 +57,8 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_checked_blocks_when_steam_not_running() {
-        let (reply_tx, _reply_rx) = mpsc::unbounded_channel();
-        let worker = SteamWorker::spawn(reply_tx);
+        let (reply_sender, _reply_rx) = mpsc::unbounded_channel();
+        let worker = SteamWorker::spawn(reply_sender);
         let err = worker
             .dispatch_checked(SteamRequest::RequestUserStats, false, true, ())
             .unwrap_err();
@@ -90,54 +90,61 @@ mod tests {
 
     #[test]
     fn translate_request_user_stats() {
-        let cmds = translate_request(&SteamRequest::RequestUserStats);
-        assert_eq!(cmds.len(), 1);
-        assert!(matches!(cmds[0], WorkerCommand::LoadAchievementsAndStats));
+        let commands = translate_request(&SteamRequest::RequestUserStats);
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(commands[0], WorkerCommand::LoadAchievementsFull));
     }
 
     #[test]
     fn translate_request_global_percentages() {
-        let cmds = translate_request(&SteamRequest::RequestGlobalPercentages);
-        assert_eq!(cmds.len(), 1);
-        assert!(matches!(cmds[0], WorkerCommand::RequestGlobalPercentages));
+        let commands = translate_request(&SteamRequest::RequestGlobalPercentages);
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(
+            commands[0],
+            WorkerCommand::RequestGlobalPercentages
+        ));
     }
 
     #[test]
     fn translate_request_apply_changes_ordering() {
-        let req = make_apply(
+        let request = make_apply(
             &["ACH_A", "ACH_B"],
             &["ACH_C"],
             &[("kills", 10)],
             &[("ratio", 1.5)],
         );
-        let cmds = translate_request(&req);
-        assert_eq!(cmds.len(), 6);
-        assert!(matches!(&cmds[0], WorkerCommand::SetAchievement(n) if n == "ACH_A"));
-        assert!(matches!(&cmds[1], WorkerCommand::SetAchievement(n) if n == "ACH_B"));
-        assert!(matches!(&cmds[2], WorkerCommand::ClearAchievement(n) if n == "ACH_C"));
-        let has_int = cmds[3..5]
+        let commands = translate_request(&request);
+        assert_eq!(commands.len(), 6);
+        assert!(matches!(&commands[0], WorkerCommand::SetAchievement(n) if n == "ACH_A"));
+        assert!(matches!(&commands[1], WorkerCommand::SetAchievement(n) if n == "ACH_B"));
+        assert!(matches!(&commands[2], WorkerCommand::ClearAchievement(n) if n == "ACH_C"));
+        let has_int = commands[3..5]
             .iter()
             .any(|c| matches!(c, WorkerCommand::SetStatInt { name, value } if name == "kills" && *value == 10));
-        let has_float = cmds[3..5]
+        let has_float = commands[3..5]
             .iter()
             .any(|c| matches!(c, WorkerCommand::SetStatFloat { name, value } if name == "ratio" && (*value - 1.5).abs() < f32::EPSILON));
         assert!(has_int, "SetStatInt(kills,10) must be present");
         assert!(has_float, "SetStatFloat(ratio,1.5) must be present");
-        assert!(matches!(&cmds[5], WorkerCommand::StoreStats));
+        assert!(matches!(&commands[5], WorkerCommand::StoreStats));
     }
 
     #[test]
     fn translate_request_apply_empty_changes_still_has_store_stats() {
-        let req = make_apply(&[], &[], &[], &[]);
-        let cmds = translate_request(&req);
-        assert_eq!(cmds.len(), 1, "empty apply must still produce StoreStats");
-        assert!(matches!(cmds[0], WorkerCommand::StoreStats));
+        let request = make_apply(&[], &[], &[], &[]);
+        let commands = translate_request(&request);
+        assert_eq!(
+            commands.len(),
+            1,
+            "empty apply must still produce StoreStats"
+        );
+        assert!(matches!(commands[0], WorkerCommand::StoreStats));
     }
 
     #[test]
     fn translate_request_disconnect_produces_no_commands() {
-        let cmds = translate_request(&SteamRequest::Disconnect);
-        assert!(cmds.is_empty());
+        let commands = translate_request(&SteamRequest::Disconnect);
+        assert!(commands.is_empty());
     }
 
     use steamlens_core::ipc::{WorkerResponse, decode_frame, encode_frame, parse_header};
@@ -158,11 +165,13 @@ mod tests {
         use tokio::io::AsyncWriteExt as _;
 
         let (mut tx, rx) = tokio::io::duplex(4096);
-        let resp = WorkerResponse::SteamConnected {
+        let response = WorkerResponse::SteamConnected {
             steam_id: 12345,
             app_name: Some("TestGame".to_owned()),
         };
-        tx.write_all(&encode_frame(&resp).unwrap()).await.unwrap();
+        tx.write_all(&encode_frame(&response).unwrap())
+            .await
+            .unwrap();
         drop(tx);
 
         let result = read_from_duplex(rx).await;
@@ -189,18 +198,20 @@ mod tests {
         use tokio::io::AsyncWriteExt as _;
 
         let (mut tx, rx) = tokio::io::duplex(4096);
-        let resp = WorkerResponse::Error {
-            kind: WorkerErrorStage::Connect,
+        let response = WorkerResponse::Error {
+            stage: WorkerErrorStage::Connect,
             message: "steam not running".to_owned(),
         };
-        tx.write_all(&encode_frame(&resp).unwrap()).await.unwrap();
+        tx.write_all(&encode_frame(&response).unwrap())
+            .await
+            .unwrap();
         drop(tx);
 
         let result = read_from_duplex(rx).await;
         assert!(matches!(
             result,
             Some(WorkerResponse::Error {
-                kind: WorkerErrorStage::Connect,
+                stage: WorkerErrorStage::Connect,
                 ..
             })
         ));

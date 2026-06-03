@@ -5,13 +5,13 @@ use crate::messaging::{self, BannerSeverity};
 use crate::{App, Message, Screen};
 
 pub(crate) fn looks_like_steam_died(reason: &str) -> bool {
-    let r = reason.to_lowercase();
-    r.contains("steam client is not running")
-        || r.contains("steam is not running")
-        || r.contains("timed out waiting for userstatsreceived")
-        || r.contains("connect:")
-        || r.contains("unexpectedeof")
-        || r.contains("worker killed by signal")
+    let lower = reason.to_lowercase();
+    lower.contains("steam client is not running")
+        || lower.contains("steam is not running")
+        || lower.contains("timed out waiting for userstatsreceived")
+        || lower.contains("connect:")
+        || lower.contains("unexpectedeof")
+        || lower.contains("worker killed by signal")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,9 +45,9 @@ pub(crate) fn surface_steam_unavailable(ctx: &mut AppContext, state: SteamUnavai
 
 pub(crate) fn mark_steam_offline_and_warn(app: &mut App) {
     app.context.connectivity.steam_running = Some(false);
-    if let Screen::ProfileView(pv_state) = &mut app.screen {
-        pv_state.stop_scan();
-        pv_state.last_scan_completed_at = Some(Instant::now());
+    if let Screen::ProfileView(profile_view_state) = &mut app.screen {
+        profile_view_state.stop_scan();
+        profile_view_state.last_scan_completed_at = Some(Instant::now());
     }
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }

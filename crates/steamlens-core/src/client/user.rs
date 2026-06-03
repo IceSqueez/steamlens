@@ -21,7 +21,6 @@ impl User {
         self.app_id
     }
 
-    /// Returns `None` when Steam reports a negative value (error sentinel).
     pub(super) fn get_player_steam_level(&self) -> Option<u32> {
         // SAFETY: `steam_user` is the live `SteamUser023` interface acquired
         // in `establish`; vtable slot 24 = `GetPlayerSteamLevel`; called on
@@ -61,8 +60,8 @@ impl User {
     }
 
     pub(super) fn steam_root(&self) -> Result<PathBuf, SteamError> {
-        let udf = self.user_data_folder()?;
-        strip_userdata_suffix(udf)
+        let path = self.user_data_folder()?;
+        strip_userdata_suffix(path)
     }
 }
 
@@ -84,50 +83,50 @@ mod tests {
 
     #[test]
     fn steam_root_from_userdata_path_standard() {
-        let udf = PathBuf::from("/home/x/.local/share/Steam/userdata/12345");
-        let root = strip_userdata_suffix(udf).unwrap();
+        let path = PathBuf::from("/home/x/.local/share/Steam/userdata/12345");
+        let root = strip_userdata_suffix(path).unwrap();
         assert_eq!(root, PathBuf::from("/home/x/.local/share/Steam"));
     }
 
     #[test]
     fn steam_root_from_real_steam_format_with_app_id_and_local() {
-        let udf = PathBuf::from("/home/x/.local/share/Steam/userdata/12345/0/local");
-        let root = strip_userdata_suffix(udf).unwrap();
+        let path = PathBuf::from("/home/x/.local/share/Steam/userdata/12345/0/local");
+        let root = strip_userdata_suffix(path).unwrap();
         assert_eq!(root, PathBuf::from("/home/x/.local/share/Steam"));
     }
 
     #[test]
     fn steam_root_from_real_format_with_specific_app_id() {
-        let udf = PathBuf::from("/opt/steam/userdata/9876/480/remote/cloud");
-        let root = strip_userdata_suffix(udf).unwrap();
+        let path = PathBuf::from("/opt/steam/userdata/9876/480/remote/cloud");
+        let root = strip_userdata_suffix(path).unwrap();
         assert_eq!(root, PathBuf::from("/opt/steam"));
     }
 
     #[test]
     fn steam_root_from_short_path() {
-        let udf = PathBuf::from("/opt/steam/userdata/9876");
-        let root = strip_userdata_suffix(udf).unwrap();
+        let path = PathBuf::from("/opt/steam/userdata/9876");
+        let root = strip_userdata_suffix(path).unwrap();
         assert_eq!(root, PathBuf::from("/opt/steam"));
     }
 
     #[test]
     fn steam_root_missing_userdata_component_returns_error() {
-        let udf = PathBuf::from("/home/x/.local/share/Steam/12345");
-        let err = strip_userdata_suffix(udf).unwrap_err();
+        let path = PathBuf::from("/home/x/.local/share/Steam/12345");
+        let err = strip_userdata_suffix(path).unwrap_err();
         assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
     }
 
     #[test]
     fn steam_root_wrong_parent_name_returns_error() {
-        let udf = PathBuf::from("/home/x/notsteam/notuserdata/12345");
-        let err = strip_userdata_suffix(udf).unwrap_err();
+        let path = PathBuf::from("/home/x/notsteam/notuserdata/12345");
+        let err = strip_userdata_suffix(path).unwrap_err();
         assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
     }
 
     #[test]
     fn steam_root_only_two_components_returns_error() {
-        let udf = PathBuf::from("userdata/12345");
-        let err = strip_userdata_suffix(udf).unwrap_err();
+        let path = PathBuf::from("userdata/12345");
+        let err = strip_userdata_suffix(path).unwrap_err();
         assert!(matches!(err, SteamError::MalformedUserDataPath { .. }));
     }
 }

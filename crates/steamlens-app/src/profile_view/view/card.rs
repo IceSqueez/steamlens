@@ -58,8 +58,8 @@ pub(super) fn build_card<'a>(
         let shimmer = build_skeleton_shimmer_overlay(card_w, total_h, skeleton_phase);
         let card_stack = stack![static_layer, shimmer];
         return mouse_area(card_stack)
-            .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
-            .on_exit(ProfileViewMessage::CardHoverExit(app_id))
+            .on_enter(ProfileViewMessage::CardHoverEntered(app_id))
+            .on_exit(ProfileViewMessage::CardHoverExited(app_id))
             .into();
     }
 
@@ -92,8 +92,8 @@ pub(super) fn build_card<'a>(
     lazy(deps, move |_| {
         let inner = render_hydrated_card(&owned);
         let area = mouse_area(inner)
-            .on_enter(ProfileViewMessage::CardHoverEnter(app_id))
-            .on_exit(ProfileViewMessage::CardHoverExit(app_id));
+            .on_enter(ProfileViewMessage::CardHoverEntered(app_id))
+            .on_exit(ProfileViewMessage::CardHoverExited(app_id));
         Element::<'static, ProfileViewMessage>::from(area)
     })
     .into()
@@ -227,16 +227,16 @@ impl HydratedCardOwned {
     }
 }
 
-fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMessage> {
-    let entry = &p.entry;
+fn render_hydrated_card(props: &HydratedCardOwned) -> Element<'static, ProfileViewMessage> {
+    let entry = &props.entry;
     let app_id = entry.app_id;
-    let card_w = p.card_w;
-    let capsule_h = p.capsule_h;
-    let total_h = p.total_h;
-    let is_hovered = p.is_hovered;
-    let is_pinned = p.is_pinned;
-    let hovered_tier = p.hovered_tier;
-    let theme = p.theme;
+    let card_w = props.card_w;
+    let capsule_h = props.capsule_h;
+    let total_h = props.total_h;
+    let is_hovered = props.is_hovered;
+    let is_pinned = props.is_pinned;
+    let hovered_tier = props.hovered_tier;
+    let theme = props.theme;
 
     let capsule_area: Element<'static, ProfileViewMessage> = match &entry.capsule {
         CapsuleAsset::Loaded {
@@ -245,7 +245,7 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
             height,
         } => {
             let (rendered_w, rendered_h) =
-                fit_contain(*width as f32, *height as f32, p.capsule_w, capsule_h);
+                fit_contain(*width as f32, *height as f32, props.capsule_w, capsule_h);
             let handle = handle.clone();
             container(
                 container(
@@ -292,7 +292,7 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
                         color: Some(palette(theme_from_iced(t)).text_muted),
                     },
                 ))
-                .width(Length::Fixed(p.capsule_w))
+                .width(Length::Fixed(props.capsule_w))
                 .height(Length::Fixed(capsule_h))
                 .padding(Padding::default().left(8).right(8))
                 .align_x(Alignment::Center)
@@ -339,7 +339,7 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
 
     let tier_bar = build_tier_stacked_bar(
         app_id,
-        &p.tier_breakdown,
+        &props.tier_breakdown,
         entry.progress.as_ref().map(|pr| pr.earned).unwrap_or(0),
         entry.progress.as_ref().map(|pr| pr.total).unwrap_or(0),
         card_w,
@@ -347,7 +347,7 @@ fn render_hydrated_card(p: &HydratedCardOwned) -> Element<'static, ProfileViewMe
         theme,
     );
 
-    let tags_row = build_tags_row(entry, card_w, p.genre.as_deref(), theme);
+    let tags_row = build_tags_row(entry, card_w, props.genre.as_deref(), theme);
 
     let card_inner = column![
         capsule_stack,
@@ -382,7 +382,7 @@ fn build_skeleton_card_static(
     capsule_h: f32,
     total_h: f32,
 ) -> Element<'static, ProfileViewMessage> {
-    use crate::ui::widgets::skeleton::SKEL_DEFAULT_RADIUS;
+    use crate::ui::widgets::skeleton::SKELETON_DEFAULT_RADIUS;
 
     let title_width_ratio = match app_id % 5 {
         0 => 0.75,
@@ -392,39 +392,44 @@ fn build_skeleton_card_static(
         _ => 0.70,
     };
 
-    let capsule_skel = container(skeleton_box(capsule_w, capsule_h, SKEL_DEFAULT_RADIUS, 0.0))
-        .width(Length::Fixed(card_w))
-        .height(Length::Fixed(capsule_h))
-        .align_x(Alignment::Center);
+    let capsule_skel = container(skeleton_box(
+        capsule_w,
+        capsule_h,
+        SKELETON_DEFAULT_RADIUS,
+        0.0,
+    ))
+    .width(Length::Fixed(card_w))
+    .height(Length::Fixed(capsule_h))
+    .align_x(Alignment::Center);
 
     let name_skel = skeleton_box(
         card_w * title_width_ratio,
         CARD_NAME_TEXT_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_DEFAULT_RADIUS,
         0.0,
     );
     let counter_skel = skeleton_box(
-        card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
+        card_w * SKELETON_COUNTER_PILL_WIDTH_RATIO,
         CARD_COUNTER_TEXT_SIZE,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_DEFAULT_RADIUS,
         0.0,
     );
     let progress_skel = skeleton_box(
         card_w - CARD_PROGRESS_BAR_INSET,
         CARD_PROGRESS_BAR_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_DEFAULT_RADIUS,
         0.0,
     );
     let tag_skel_genre = skeleton_box(
-        card_w * SKEL_GENRE_PILL_WIDTH_RATIO,
+        card_w * SKELETON_GENRE_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_DEFAULT_RADIUS,
         0.0,
     );
     let tag_skel_pct = skeleton_box(
-        card_w * SKEL_COUNTER_PILL_WIDTH_RATIO,
+        card_w * SKELETON_COUNTER_PILL_WIDTH_RATIO,
         CARD_PILL_HEIGHT,
-        SKEL_DEFAULT_RADIUS,
+        SKELETON_DEFAULT_RADIUS,
         0.0,
     );
 
@@ -446,8 +451,8 @@ fn build_skeleton_card_static(
     .align_y(Alignment::Center)
     .padding(
         Padding::default()
-            .left(CARD_H_PAD)
-            .right(CARD_H_PAD)
+            .left(CARD_HORIZONTAL_PADDING)
+            .right(CARD_HORIZONTAL_PADDING)
             .top(CARD_NAME_ROW_PAD_TOP)
             .bottom(0),
     );
@@ -455,7 +460,11 @@ fn build_skeleton_card_static(
     let bar_container = container(progress_skel)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(CARD_PROGRESS_BAR_HEIGHT))
-        .padding(Padding::default().left(CARD_H_PAD).right(CARD_H_PAD));
+        .padding(
+            Padding::default()
+                .left(CARD_HORIZONTAL_PADDING)
+                .right(CARD_HORIZONTAL_PADDING),
+        );
 
     let tags_row = container(
         row![
@@ -470,8 +479,8 @@ fn build_skeleton_card_static(
     .height(Length::Fixed(CARD_TAGS_ROW_HEIGHT))
     .padding(
         Padding::default()
-            .left(CARD_H_PAD)
-            .right(CARD_H_PAD)
+            .left(CARD_HORIZONTAL_PADDING)
+            .right(CARD_HORIZONTAL_PADDING)
             .top(CARD_TAGS_ROW_PAD_TOP)
             .bottom(CARD_TAGS_ROW_PAD_BOTTOM),
     )

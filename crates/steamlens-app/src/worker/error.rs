@@ -28,12 +28,12 @@ impl From<FrameError> for WorkerError {
 }
 
 pub(super) fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
-    let mut out = err.to_string();
-    let mut cur = err.source();
-    while let Some(e) = cur {
-        out.push_str(": ");
-        out.push_str(&e.to_string());
-        cur = e.source();
+    let mut chain = err.to_string();
+    let mut current = err.source();
+    while let Some(e) = current {
+        chain.push_str(": ");
+        chain.push_str(&e.to_string());
+        current = e.source();
     }
-    out
+    chain
 }

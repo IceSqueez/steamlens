@@ -4,8 +4,8 @@ use crate::cache::types::{CURRENT_SCHEMA_VERSION, GameCacheEntry};
 
 use super::primitives::{CacheIoError, atomic_write, cache_write_lock};
 
-pub async fn load_game_cache(steamid3: u32, app_id: u32) -> Option<GameCacheEntry> {
-    load_game_cache_from_path(&crate::paths::user_game_cache_path(steamid3, app_id)).await
+pub async fn load_game_cache(account_id: u32, app_id: u32) -> Option<GameCacheEntry> {
+    load_game_cache_from_path(&crate::paths::user_game_cache_path(account_id, app_id)).await
 }
 
 pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEntry> {
@@ -26,9 +26,9 @@ pub(crate) async fn load_game_cache_from_path(path: &Path) -> Option<GameCacheEn
     Some(entry)
 }
 
-pub async fn write_game_cache(steamid3: u32, entry: &GameCacheEntry) -> Result<(), CacheIoError> {
+pub async fn write_game_cache(account_id: u32, entry: &GameCacheEntry) -> Result<(), CacheIoError> {
     write_game_cache_at(
-        &crate::paths::user_game_cache_path(steamid3, entry.app_id),
+        &crate::paths::user_game_cache_path(account_id, entry.app_id),
         entry,
     )
     .await
@@ -66,8 +66,8 @@ pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEn
         if ach.description.is_empty() && !prev.description.is_empty() {
             ach.description = prev.description.clone();
         }
-        if !ach.hidden && prev.hidden {
-            ach.hidden = true;
+        if !ach.is_hidden && prev.is_hidden {
+            ach.is_hidden = true;
         }
     }
     if new.genre.is_none() && old.genre.is_some() {
@@ -75,8 +75,8 @@ pub(crate) fn merge_preserved_fields(new: &mut GameCacheEntry, old: &GameCacheEn
     }
 }
 
-pub async fn delete_game_cache_dir(steamid3: u32, app_id: u32) -> Result<(), CacheIoError> {
-    let dir = crate::paths::user_game_dir(steamid3, app_id);
+pub async fn delete_game_cache_dir(account_id: u32, app_id: u32) -> Result<(), CacheIoError> {
+    let dir = crate::paths::user_game_dir(account_id, app_id);
     match tokio::fs::remove_dir_all(&dir).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

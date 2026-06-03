@@ -27,7 +27,7 @@ pub enum ProfileViewMessage {
         size: CapsuleSize,
     },
     GameSelected(u32),
-    RetrySingleFailedScan(u32),
+    SingleScanRetryRequested(u32),
     StatusFilterChanged(GameStatusFilter),
     GenreFilterToggled(String),
     GenreFilterCleared,
@@ -37,21 +37,21 @@ pub enum ProfileViewMessage {
         total: u32,
     },
     ProgressScanDone,
-    CardHoverEnter(u32),
-    CardHoverExit(u32),
+    CardHoverEntered(u32),
+    CardHoverExited(u32),
     #[allow(
         dead_code,
         reason = "re-wired when status_bar gets a Retry-Failed link"
     )]
-    RetryFailedScans,
-    BarSliceHoverEnter(RarityTier),
-    BarSliceHoverExit,
+    FailedScansRetryRequested,
+    BarSliceHoverEntered(RarityTier),
+    BarSliceHoverExited,
     CardTierHovered {
         app_id: u32,
         tier: Option<RarityTier>,
     },
-    RequestToggleGamePin(u32),
-    RequestOpenGame(u32),
+    GamePinToggleRequested(u32),
+    GameOpenRequested(u32),
     ProgressResultReceived(Box<crate::progress_scan::ProgressResult>),
     GridScrolled(f32),
 }
@@ -97,18 +97,24 @@ impl std::fmt::Debug for ProfileViewMessage {
                 total,
             } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
             ProfileViewMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
-            ProfileViewMessage::CardHoverEnter(id) => write!(f, "CardHoverEnter({id})"),
-            ProfileViewMessage::CardHoverExit(id) => write!(f, "CardHoverExit({id})"),
-            ProfileViewMessage::RetryFailedScans => write!(f, "RetryFailedScans"),
-            ProfileViewMessage::BarSliceHoverEnter(t) => write!(f, "BarSliceHoverEnter({t:?})"),
-            ProfileViewMessage::BarSliceHoverExit => write!(f, "BarSliceHoverExit"),
+            ProfileViewMessage::CardHoverEntered(id) => write!(f, "CardHoverEntered({id})"),
+            ProfileViewMessage::CardHoverExited(id) => write!(f, "CardHoverExited({id})"),
+            ProfileViewMessage::FailedScansRetryRequested => {
+                write!(f, "FailedScansRetryRequested")
+            }
+            ProfileViewMessage::BarSliceHoverEntered(t) => {
+                write!(f, "BarSliceHoverEntered({t:?})")
+            }
+            ProfileViewMessage::BarSliceHoverExited => write!(f, "BarSliceHoverExited"),
             ProfileViewMessage::CardTierHovered { app_id, tier } => {
                 write!(f, "CardTierHovered(app={app_id}, tier={tier:?})")
             }
-            ProfileViewMessage::RequestToggleGamePin(id) => write!(f, "RequestToggleGamePin({id})"),
-            ProfileViewMessage::RequestOpenGame(id) => write!(f, "RequestOpenGame({id})"),
-            ProfileViewMessage::RetrySingleFailedScan(id) => {
-                write!(f, "RetrySingleFailedScan({id})")
+            ProfileViewMessage::GamePinToggleRequested(id) => {
+                write!(f, "GamePinToggleRequested({id})")
+            }
+            ProfileViewMessage::GameOpenRequested(id) => write!(f, "GameOpenRequested({id})"),
+            ProfileViewMessage::SingleScanRetryRequested(id) => {
+                write!(f, "SingleScanRetryRequested({id})")
             }
             ProfileViewMessage::ProgressResultReceived(r) => {
                 write!(f, "ProgressResultReceived(app={})", r.app_id)

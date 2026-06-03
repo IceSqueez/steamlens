@@ -43,17 +43,17 @@ fn now_epoch() -> u64 {
 }
 
 pub async fn write_profile_cache(
-    steamid3: u32,
+    account_id: u32,
     profile: &CachedProfile,
 ) -> Result<(), CacheIoError> {
-    let path = crate::paths::user_profile_path(steamid3);
+    let path = crate::paths::user_profile_path(account_id);
     let bytes =
         serde_json::to_vec_pretty(profile).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     crate::cache::store::atomic_write(&path, &bytes).await
 }
 
-pub async fn load_profile_cache(steamid3: u32) -> Option<CachedProfile> {
-    let path = crate::paths::user_profile_path(steamid3);
+pub async fn load_profile_cache(account_id: u32) -> Option<CachedProfile> {
+    let path = crate::paths::user_profile_path(account_id);
     load_profile_from_path(&path).await
 }
 
@@ -76,17 +76,17 @@ pub(crate) async fn load_profile_from_path(path: &PathBuf) -> Option<CachedProfi
 }
 
 pub async fn write_library_cache(
-    steamid3: u32,
+    account_id: u32,
     library: &CachedLibrary,
 ) -> Result<(), CacheIoError> {
-    let path = crate::paths::user_library_path(steamid3);
+    let path = crate::paths::user_library_path(account_id);
     let bytes =
         serde_json::to_vec_pretty(library).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
     crate::cache::store::atomic_write(&path, &bytes).await
 }
 
-pub async fn load_library_cache(steamid3: u32) -> Option<CachedLibrary> {
-    let path = crate::paths::user_library_path(steamid3);
+pub async fn load_library_cache(account_id: u32) -> Option<CachedLibrary> {
+    let path = crate::paths::user_library_path(account_id);
     load_library_from_path(&path).await
 }
 

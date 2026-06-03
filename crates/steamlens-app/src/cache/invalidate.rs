@@ -6,7 +6,7 @@ use steamlens_core::GameSummary;
 use crate::cache::CacheHit;
 use crate::cache::store::load_game_summary_from_path;
 
-const LP_RACE_GRACE_SECS: u64 = 30;
+const LAST_PLAYED_RACE_GRACE_SECS: u64 = 30;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClassifyResult {
@@ -19,9 +19,9 @@ pub struct ClassifyResult {
 pub async fn classify_games(
     game_summaries: &[GameSummary],
     _steam_root: &Path,
-    steamid3: u32,
+    account_id: u32,
 ) -> ClassifyResult {
-    let user_games_root = crate::paths::user_dir(steamid3).join("games");
+    let user_games_root = crate::paths::user_dir(account_id).join("games");
     classify_games_with_root(game_summaries, &user_games_root).await
 }
 
@@ -102,11 +102,11 @@ pub(crate) async fn classify_games_with_root(
             continue;
         }
 
-        if let Some(lp) = game.last_played
-            && (lp as u64) > summary.cached_at + LP_RACE_GRACE_SECS
+        if let Some(last_played) = game.last_played
+            && (last_played as u64) > summary.cached_at + LAST_PLAYED_RACE_GRACE_SECS
         {
             tracing::warn!(
-                "invalidate app_id={app_id} reason={:?} lp={lp} cached_at={} grace={LP_RACE_GRACE_SECS}s",
+                "invalidate app_id={app_id} reason={:?} last_played={last_played} cached_at={} grace={LAST_PLAYED_RACE_GRACE_SECS}s",
                 InvalidationReason::LastPlayed,
                 summary.cached_at
             );

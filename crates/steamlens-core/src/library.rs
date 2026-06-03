@@ -26,16 +26,16 @@ pub(crate) fn enumerate_owned_games_impl(
     let candidate_ids =
         steamlens_vdf::parse_packageinfo(&bytes).map_err(LibraryError::PackageInfoParse)?;
 
-    let flags_map = load_appinfo_flags(&steam_root);
+    let app_flags = load_appinfo_flags(&steam_root);
 
-    let steamid3 = (client.steam_id() & 0xFFFF_FFFF) as u32;
+    let account_id = (client.steam_id() & 0xFFFF_FFFF) as u32;
     let localconfig_path = steam_root
         .join("userdata")
-        .join(steamid3.to_string())
+        .join(account_id.to_string())
         .join("config")
         .join("localconfig.vdf");
 
-    let last_played_map = std::fs::read_to_string(&localconfig_path)
+    let last_played_times = std::fs::read_to_string(&localconfig_path)
         .ok()
         .map(|content| steamlens_vdf::parse_localconfig_last_played(&content))
         .unwrap_or_default();
@@ -53,7 +53,7 @@ pub(crate) fn enumerate_owned_games_impl(
             continue;
         }
 
-        if let Some(flags) = flags_map.get(&app_id) {
+        if let Some(flags) = app_flags.get(&app_id) {
             let is_ownersonly = flags.visibility.as_deref() == Some("ownersonly");
             let no_store_presence = !flags.has_store_asset_mtime
                 && !flags.has_library_assets
@@ -90,7 +90,7 @@ pub(crate) fn enumerate_owned_games_impl(
         game_summaries.push(GameSummary {
             app_id,
             change_number,
-            last_played: last_played_map.get(&app_id).copied(),
+            last_played: last_played_times.get(&app_id).copied(),
         });
     }
 
@@ -132,7 +132,7 @@ fn load_appinfo_flags(steam_root: &std::path::Path) -> HashMap<u32, steamlens_vd
 
 fn is_released_game(client: &Client, app_id: u32) -> bool {
     match client.app_type(app_id) {
-        Some(t) if t.eq_ignore_ascii_case("game") => {}
+        Some(app_type) if app_type.eq_ignore_ascii_case("game") => {}
         _ => return false,
     }
 

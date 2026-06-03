@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use steamlens_core::ipc::{WorkerCommand, WorkerResponse};
-use steamlens_core::{CardOnlyAchievement, CardOnlyPayload, StatData};
+use steamlens_core::{AchievementSummary, AchievementsSummaryPayload, StatData};
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinHandle;
 
@@ -14,12 +14,12 @@ use crate::worker_subprocess::{WorkerHandle, WorkerProtocolError};
 
 const MAX_CONCURRENT: usize = 4;
 
-pub use steamlens_core::AchievementCountPayload as ProgressData;
+pub use steamlens_core::AchievementsCountPayload as ProgressData;
 
 #[derive(Debug, Clone)]
 pub struct ScannedGameData {
     pub app_name: Option<String>,
-    pub achievements: Vec<CardOnlyAchievement>,
+    pub achievements: Vec<AchievementSummary>,
     pub stats: Vec<StatData>,
     pub global_percentages: HashMap<String, f32>,
     pub genre: Option<String>,
@@ -48,24 +48,24 @@ pub struct ProgressScanner {
 
 impl ProgressScanner {
     pub fn spawn(app_ids: Vec<u32>) -> (Self, mpsc::UnboundedReceiver<ProgressResult>) {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::unbounded_channel();
         let permits = Arc::new(Semaphore::new(MAX_CONCURRENT));
         let handles = app_ids
             .into_iter()
             .map(|app_id| {
-                let tx = tx.clone();
+                let sender = sender.clone();
                 let permits = Arc::clone(&permits);
                 tokio::spawn(async move {
                     let _permit = match permits.acquire().await {
-                        Ok(p) => p,
+                        Ok(permit) => permit,
                         Err(_) => return,
                     };
                     let result = scan_one_app(app_id).await;
-                    let _ = tx.send(result);
+                    let _ = sender.send(result);
                 })
             })
             .collect();
-        (Self { handles }, rx)
+        (Self { handles }, receiver)
     }
 }
 
@@ -84,14 +84,14 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
             data: Some(data),
             error: None,
         },
-        Err((err, diag)) => {
+        Err((err, diagnostics)) => {
             let err_str = err.to_string();
-            if diag.is_empty() {
+            if diagnostics.is_empty() {
                 tracing::error!("progress_scan: app_id={app_id} failed: {err}");
             } else {
                 tracing::error!(
                     "progress_scan: app_id={app_id} failed: {err}\n--- worker diagnostics ---\n{}--- end diagnostics ---",
-                    diag
+                    diagnostics
                 );
             }
             ProgressResult {
@@ -103,8 +103,6 @@ async fn scan_one_app(app_id: u32) -> ProgressResult {
     }
 }
 
-/// `(err, diag)` — `err` is `io::Error` for spawn failures or `WorkerProtocolError`
-/// for in-session failures. `diag` is the worker's captured stderr + exit status.
 type ScanError = (Box<dyn std::error::Error + Send>, String);
 
 async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
@@ -130,17 +128,20 @@ async fn try_full_scan(app_id: u32) -> Result<ScannedGameData, ScanError> {
         .map(String::from_utf8_lossy)
         .map(|s| s.into_owned())
         .unwrap_or_default();
-    let mut diag = format!("worker {}\n", format_exit_status(exit_status.as_ref()));
+    let mut diagnostics = format!("worker {}\n", format_exit_status(exit_status.as_ref()));
     if !stderr_str.is_empty() {
-        diag.push_str(&stderr_str);
+        diagnostics.push_str(&stderr_str);
     }
 
     match result {
         Err(_) => Err((
             Box::new(WorkerProtocolError::Timeout) as Box<dyn std::error::Error + Send>,
-            diag,
+            diagnostics,
         )),
-        Ok(Err(e)) => Err((Box::new(e) as Box<dyn std::error::Error + Send>, diag)),
+        Ok(Err(e)) => Err((
+            Box::new(e) as Box<dyn std::error::Error + Send>,
+            diagnostics,
+        )),
         Ok(Ok(data)) => Ok(data),
     }
 }
@@ -199,24 +200,22 @@ async fn run_full_scan_protocol(
 
     let app_name = match connected {
         WorkerResponse::SteamConnected { app_name, .. } => app_name,
-        WorkerResponse::Error { kind, message } => {
-            return Err(WorkerProtocolError::WorkerError { kind, message });
+        WorkerResponse::Error { stage, message } => {
+            return Err(WorkerProtocolError::WorkerError { stage, message });
         }
         _ => {
             return Err(WorkerProtocolError::UnexpectedMessage);
         }
     };
 
-    let t_card = Instant::now();
-    tracing::debug!("scan: send LoadAchievementsAndStatsCardOnly");
-    handle
-        .send(&WorkerCommand::LoadAchievementsAndStatsCardOnly)
-        .await?;
+    let summary_request_start = Instant::now();
+    tracing::debug!("scan: send LoadAchievementsSummary");
+    handle.send(&WorkerCommand::LoadAchievementsSummary).await?;
     let (achievements, stats, genre) =
-        read_card_only_skipping_async(handle, timeouts::COLD_SCAN_LOAD).await?;
+        read_summary_skipping_async(handle, timeouts::COLD_SCAN_LOAD).await?;
     tracing::info!(
-        "scan: CardOnly response in {:?} ({} achievements)",
-        t_card.elapsed(),
+        "scan: AchievementsSummary response in {:?} ({} achievements)",
+        summary_request_start.elapsed(),
         achievements.len()
     );
 
@@ -238,10 +237,10 @@ async fn run_full_scan_protocol(
     })
 }
 
-async fn read_card_only_skipping_async(
+async fn read_summary_skipping_async(
     handle: &mut WorkerHandle,
     total_timeout: Duration,
-) -> Result<(Vec<CardOnlyAchievement>, Vec<StatData>, Option<String>), WorkerProtocolError> {
+) -> Result<(Vec<AchievementSummary>, Vec<StatData>, Option<String>), WorkerProtocolError> {
     use WorkerProtocolError;
 
     let deadline = tokio::time::Instant::now() + total_timeout;
@@ -255,15 +254,15 @@ async fn read_card_only_skipping_async(
             .map_err(|_| WorkerProtocolError::Timeout)??
             .ok_or(WorkerProtocolError::UnexpectedEof)?;
         match frame {
-            WorkerResponse::CardOnlyAchievements {
+            WorkerResponse::AchievementsSummary {
                 shm_path,
                 region_bytes,
             } => {
                 let path = PathBuf::from(&shm_path);
-                let payload: CardOnlyPayload = steamlens_core::read_payload(&path, region_bytes)
-                    .map_err(|e| {
+                let payload: AchievementsSummaryPayload =
+                    steamlens_core::read_payload(&path, region_bytes).map_err(|e| {
                         WorkerProtocolError::Decode(std::io::Error::other(format!(
-                            "CardOnlyAchievements shm read: {e}"
+                            "AchievementsSummary shm read: {e}"
                         )))
                     })?;
                 return Ok((payload.achievements, Vec::new(), payload.genre));
@@ -272,15 +271,15 @@ async fn read_card_only_skipping_async(
                 steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
             }
-            WorkerResponse::AchievementsAndStats { shm_path, .. }
-            | WorkerResponse::AchievementCount { shm_path, .. }
+            WorkerResponse::AchievementsFull { shm_path, .. }
+            | WorkerResponse::AchievementsCount { shm_path, .. }
             | WorkerResponse::ProbeResult { shm_path, .. }
             | WorkerResponse::GlobalPercentagesReady { shm_path, .. } => {
                 steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
             }
-            WorkerResponse::Error { kind, message } => {
-                return Err(WorkerProtocolError::WorkerError { kind, message });
+            WorkerResponse::Error { stage, message } => {
+                return Err(WorkerProtocolError::WorkerError { stage, message });
             }
             _ => continue,
         }
@@ -310,9 +309,9 @@ async fn read_percentages_skipping_async(
                 return steamlens_core::read_payload::<HashMap<String, f32>>(&path, region_bytes)
                     .unwrap_or_default();
             }
-            WorkerResponse::AchievementsAndStats { shm_path, .. }
+            WorkerResponse::AchievementsFull { shm_path, .. }
             | WorkerResponse::IconUpdated { shm_path, .. }
-            | WorkerResponse::AchievementCount { shm_path, .. }
+            | WorkerResponse::AchievementsCount { shm_path, .. }
             | WorkerResponse::ProbeResult { shm_path, .. } => {
                 steamlens_core::unlink_at(&PathBuf::from(shm_path));
                 continue;
@@ -327,8 +326,8 @@ async fn read_percentages_skipping_async(
 mod tests {
     use super::*;
 
-    fn make_ach(id: &str, achieved: bool) -> CardOnlyAchievement {
-        CardOnlyAchievement {
+    fn make_ach(id: &str, achieved: bool) -> AchievementSummary {
+        AchievementSummary {
             id: id.to_owned(),
             is_achieved: achieved,
         }

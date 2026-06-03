@@ -27,7 +27,7 @@ pub enum SteamReply {
     },
     ConnectFailed(String),
     RequestStatsFailed(String),
-    AchievementsAndStats {
+    AchievementsFull {
         achievements: Vec<steamlens_core::AchievementData>,
         stats: Vec<steamlens_core::StatData>,
     },
@@ -44,32 +44,32 @@ pub enum SteamReply {
 }
 
 pub struct SteamWorker {
-    request_tx: mpsc::UnboundedSender<SteamRequest>,
+    request_sender: mpsc::UnboundedSender<SteamRequest>,
 }
 
 impl SteamWorker {
-    pub fn spawn(reply_tx: mpsc::UnboundedSender<SteamReply>) -> Self {
-        let (req_tx, req_rx) = mpsc::unbounded_channel::<SteamRequest>();
-        tokio::spawn(bridge_loop(req_rx, reply_tx));
-        SteamWorker { request_tx: req_tx }
+    pub fn spawn(reply_sender: mpsc::UnboundedSender<SteamReply>) -> Self {
+        let (request_sender, request_receiver) = mpsc::unbounded_channel::<SteamRequest>();
+        tokio::spawn(bridge_loop(request_receiver, reply_sender));
+        SteamWorker { request_sender }
     }
 
-    pub fn dispatch<M: 'static + Send>(&self, req: SteamRequest, noop: M) -> Task<M> {
-        let tx = self.request_tx.clone();
+    pub fn dispatch<M: 'static + Send>(&self, request: SteamRequest, message: M) -> Task<M> {
+        let request_sender = self.request_sender.clone();
         Task::future(async move {
-            let _ = tx.send(req);
-            noop
+            let _ = request_sender.send(request);
+            message
         })
     }
 
     pub fn dispatch_checked<M: 'static + Send>(
         &self,
-        req: SteamRequest,
+        request: SteamRequest,
         steam_running: bool,
         user_logged_in: bool,
-        noop: M,
+        message: M,
     ) -> Result<Task<M>, crate::worker_subprocess::ConnectivityError> {
         crate::worker_subprocess::preflight(steam_running, user_logged_in)?;
-        Ok(self.dispatch(req, noop))
+        Ok(self.dispatch(request, message))
     }
 }

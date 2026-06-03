@@ -53,10 +53,10 @@ fn sweep_orphans_in(dir: &Path, min_age: Duration) -> usize {
         if !name_str.starts_with("steamlens-") {
             continue;
         }
-        let Ok(meta) = entry.metadata() else {
+        let Ok(metadata) = entry.metadata() else {
             continue;
         };
-        let Ok(mtime) = meta.modified() else {
+        let Ok(mtime) = metadata.modified() else {
             continue;
         };
         let Ok(age) = now.duration_since(mtime) else {

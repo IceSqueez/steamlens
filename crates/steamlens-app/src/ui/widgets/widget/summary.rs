@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn summary_derives_locked_and_pct() {
-        let s = WidgetSummary {
+        let summary = WidgetSummary {
             earned_total: 75,
             achievement_total: 100,
             legendary_count: 5,
@@ -120,18 +120,18 @@ mod tests {
             uncommon_count: 20,
             common_count: 25,
         };
-        assert_eq!(s.locked(), 25);
-        assert_eq!(s.rated_unlocked(), 75);
-        assert_eq!(s.unrated_unlocked(), 0);
-        assert!((s.unlocked_pct() - 75.0).abs() < 0.01);
-        assert!((s.pct_to_go() - 25.0).abs() < 0.01);
+        assert_eq!(summary.locked(), 25);
+        assert_eq!(summary.rated_unlocked(), 75);
+        assert_eq!(summary.unrated_unlocked(), 0);
+        assert!((summary.unlocked_pct() - 75.0).abs() < 0.01);
+        assert!((summary.pct_to_go() - 25.0).abs() < 0.01);
     }
 
     #[test]
     fn summary_zero_total_safe() {
-        let s = WidgetSummary::default();
-        assert_eq!(s.locked(), 0);
-        assert_eq!(s.unlocked_pct(), 0.0);
-        assert_eq!(s.pct_to_go(), 0.0);
+        let summary = WidgetSummary::default();
+        assert_eq!(summary.locked(), 0);
+        assert_eq!(summary.unlocked_pct(), 0.0);
+        assert_eq!(summary.pct_to_go(), 0.0);
     }
 }

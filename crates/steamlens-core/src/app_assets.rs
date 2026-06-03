@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn read_app_assets_missing_file_returns_empty() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let map = read_app_assets(tmp.path());
-        assert!(map.is_empty());
+        let assets = read_app_assets(tmp.path());
+        assert!(assets.is_empty());
     }
 }

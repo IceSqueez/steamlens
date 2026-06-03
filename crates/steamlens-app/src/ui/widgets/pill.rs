@@ -94,16 +94,16 @@ impl<'a, M: 'a> Pill<'a, M> {
 }
 
 impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
-    fn from(p: Pill<'a, M>) -> Self {
-        let tint = p.tint;
-        let (bg_alpha, border_alpha, border_width) = match p.selected {
+    fn from(pill: Pill<'a, M>) -> Self {
+        let tint = pill.tint;
+        let (bg_alpha, border_alpha, border_width) = match pill.selected {
             Some(true) => (
                 SELECTED_BG_ALPHA,
                 SELECTED_BORDER_ALPHA,
                 SELECTED_BORDER_WIDTH,
             ),
             Some(false) => (INACTIVE_BG_ALPHA, INACTIVE_BORDER_ALPHA, 1.0),
-            None => (p.bg_alpha, p.border_alpha, 1.0),
+            None => (pill.bg_alpha, pill.border_alpha, 1.0),
         };
         let bg = Color {
             a: bg_alpha,
@@ -113,15 +113,15 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
             a: border_alpha,
             ..tint
         };
-        let radius = p.radius;
-        let shadow = p.shadow.unwrap_or_default();
+        let radius = pill.radius;
+        let shadow = pill.shadow.unwrap_or_default();
         let padding = Padding::default()
-            .left(p.pad_h)
-            .right(p.pad_h)
-            .top(p.pad_v)
-            .bottom(p.pad_v);
+            .left(pill.pad_h)
+            .right(pill.pad_h)
+            .top(pill.pad_v)
+            .bottom(pill.pad_v);
 
-        let inner: Element<'a, M> = match (p.dot, p.reserve_dot_space) {
+        let inner: Element<'a, M> = match (pill.dot, pill.reserve_dot_space) {
             (Some(dot_color), _) => {
                 let dot_widget = container(iced::widget::Space::new())
                     .width(Length::Fixed(6.0))
@@ -134,22 +134,22 @@ impl<'a, M: 'a + Clone> From<Pill<'a, M>> for Element<'a, M> {
                         },
                         ..container::Style::default()
                     });
-                iced::widget::row![dot_widget, p.content]
+                iced::widget::row![dot_widget, pill.content]
                     .spacing(5)
                     .align_y(Alignment::Center)
                     .into()
             }
             (None, true) => iced::widget::row![
                 iced::widget::Space::new().width(Length::Fixed(6.0)),
-                p.content,
+                pill.content,
             ]
             .spacing(5)
             .align_y(Alignment::Center)
             .into(),
-            (None, false) => p.content,
+            (None, false) => pill.content,
         };
 
-        if let Some(msg) = p.on_press {
+        if let Some(msg) = pill.on_press {
             button(inner)
                 .on_press(msg)
                 .padding(padding)

@@ -44,8 +44,8 @@ impl BarColor {
 }
 
 impl From<Color> for BarColor {
-    fn from(c: Color) -> Self {
-        BarColor::Fixed(c)
+    fn from(color: Color) -> Self {
+        BarColor::Fixed(color)
     }
 }
 
@@ -215,12 +215,12 @@ impl<'a, M: Clone + 'a> From<SegmentedBar<'a, M>> for Element<'a, M> {
     }
 }
 
-fn brighten(c: Color, factor: f32) -> Color {
+fn brighten(color: Color, factor: f32) -> Color {
     Color {
-        r: (c.r * factor).min(1.0),
-        g: (c.g * factor).min(1.0),
-        b: (c.b * factor).min(1.0),
-        a: c.a,
+        r: (color.r * factor).min(1.0),
+        g: (color.g * factor).min(1.0),
+        b: (color.b * factor).min(1.0),
+        a: color.a,
     }
 }
 

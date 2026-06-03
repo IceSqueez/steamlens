@@ -46,26 +46,26 @@ pub struct StatData {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AchievementsAndStatsPayload {
+pub struct AchievementsFullPayload {
     pub achievements: Vec<AchievementData>,
     pub stats: Vec<StatData>,
     pub genre: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct CardOnlyAchievement {
+pub struct AchievementSummary {
     pub id: String,
     pub is_achieved: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CardOnlyPayload {
-    pub achievements: Vec<CardOnlyAchievement>,
+pub struct AchievementsSummaryPayload {
+    pub achievements: Vec<AchievementSummary>,
     pub genre: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AchievementCountPayload {
+pub struct AchievementsCountPayload {
     pub earned: u32,
     pub total: u32,
 }

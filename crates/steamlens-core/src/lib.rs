@@ -23,9 +23,9 @@ pub use ipc::shm::{
     ShmError, ShmReader, ShmWriter, read_payload, sweep_orphans, unlink_at, write_payload,
 };
 pub use ipc::{
-    AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
-    CardOnlyAchievement, CardOnlyPayload, FrameError, ProbeResultPayload, StatData, StatValue,
-    WorkerCommand, WorkerErrorStage, WorkerResponse,
+    AchievementData, AchievementIcon, AchievementSummary, AchievementsCountPayload,
+    AchievementsFullPayload, AchievementsSummaryPayload, FrameError, ProbeResultPayload, StatData,
+    StatValue, WorkerCommand, WorkerErrorStage, WorkerResponse,
 };
 pub use library::GameSummary;
 pub use paths::{
@@ -33,7 +33,7 @@ pub use paths::{
 };
 pub use probe::{ProbeError, ProbedProfile, probe_steam};
 pub use process::{ChildLifetimeGuard, associate_kill_on_parent_exit, current_exe_resilient};
-pub use profile::{ProfileError, STEAMID64_INDIVIDUAL_MIN, UserProfile, load_local_profile};
+pub use profile::{ProfileError, STEAM_ID_64_INDIVIDUAL_MIN, UserProfile, load_local_profile};
 pub use raw_callback::RawCallback;
 pub use stat_schema::{StatDescriptor, StatKind};
 pub use steam_callback::{

@@ -4,8 +4,8 @@ pub mod types;
 use thiserror::Error;
 
 pub use types::{
-    AchievementCountPayload, AchievementData, AchievementIcon, AchievementsAndStatsPayload,
-    CardOnlyAchievement, CardOnlyPayload, ProbeResultPayload, StatData, StatValue,
+    AchievementData, AchievementIcon, AchievementSummary, AchievementsCountPayload,
+    AchievementsFullPayload, AchievementsSummaryPayload, ProbeResultPayload, StatData, StatValue,
 };
 
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
@@ -21,7 +21,7 @@ pub enum WorkerErrorStage {
     UserStatsStored,
     RequestGlobalPercentages,
     GlobalPercentagesReady,
-    GlobalPercentagesAPICall,
+    GlobalPercentagesApiCall,
     Generic,
 }
 
@@ -37,7 +37,7 @@ impl WorkerErrorStage {
             Self::UserStatsStored => "user_stats_stored",
             Self::RequestGlobalPercentages => "request_global_percentages",
             Self::GlobalPercentagesReady => "global_percentages_ready",
-            Self::GlobalPercentagesAPICall => "global_percentages_api_call",
+            Self::GlobalPercentagesApiCall => "global_percentages_api_call",
             Self::Generic => "generic",
         }
     }
@@ -55,16 +55,16 @@ pub enum FrameError {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WorkerCommand {
-    LoadAchievementsAndStats,
+    LoadAchievementsFull,
     SetAchievement(String),
     ClearAchievement(String),
     SetStatInt { name: String, value: i32 },
     SetStatFloat { name: String, value: f32 },
     StoreStats,
     RequestGlobalPercentages,
-    QuickAchievementCount,
+    LoadAchievementsCount,
     Shutdown,
-    LoadAchievementsAndStatsCardOnly,
+    LoadAchievementsSummary,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -74,7 +74,7 @@ pub enum WorkerResponse {
         app_name: Option<String>,
     },
     Ack,
-    AchievementsAndStats {
+    AchievementsFull {
         shm_path: String,
         region_bytes: u64,
     },
@@ -87,8 +87,8 @@ pub enum WorkerResponse {
         shm_path: String,
         region_bytes: u64,
     },
-    Stored,
-    AchievementCount {
+    StatsStored,
+    AchievementsCount {
         shm_path: String,
         region_bytes: u64,
     },
@@ -97,11 +97,11 @@ pub enum WorkerResponse {
         region_bytes: u64,
     },
     Error {
-        kind: WorkerErrorStage,
+        stage: WorkerErrorStage,
         message: String,
     },
     Disconnected,
-    CardOnlyAchievements {
+    AchievementsSummary {
         shm_path: String,
         region_bytes: u64,
     },
@@ -157,7 +157,7 @@ mod tests {
 
     fn all_commands() -> Vec<WorkerCommand> {
         vec![
-            WorkerCommand::LoadAchievementsAndStats,
+            WorkerCommand::LoadAchievementsFull,
             WorkerCommand::SetAchievement("ACH_WIN".to_owned()),
             WorkerCommand::ClearAchievement("ACH_LOSE".to_owned()),
             WorkerCommand::SetStatInt {
@@ -170,9 +170,9 @@ mod tests {
             },
             WorkerCommand::StoreStats,
             WorkerCommand::RequestGlobalPercentages,
-            WorkerCommand::QuickAchievementCount,
+            WorkerCommand::LoadAchievementsCount,
             WorkerCommand::Shutdown,
-            WorkerCommand::LoadAchievementsAndStatsCardOnly,
+            WorkerCommand::LoadAchievementsSummary,
         ]
     }
 
@@ -187,7 +187,7 @@ mod tests {
                 app_name: None,
             },
             WorkerResponse::Ack,
-            WorkerResponse::AchievementsAndStats {
+            WorkerResponse::AchievementsFull {
                 shm_path: "/dev/shm/steamlens-test-aas-XYZ".to_owned(),
                 region_bytes: 8192,
             },
@@ -200,8 +200,8 @@ mod tests {
                 shm_path: "/dev/shm/steamlens-test-pct-XYZ".to_owned(),
                 region_bytes: 1024,
             },
-            WorkerResponse::Stored,
-            WorkerResponse::AchievementCount {
+            WorkerResponse::StatsStored,
+            WorkerResponse::AchievementsCount {
                 shm_path: "/dev/shm/steamlens-test-count-XYZ".to_owned(),
                 region_bytes: 16,
             },
@@ -210,18 +210,18 @@ mod tests {
                 region_bytes: 4096,
             },
             WorkerResponse::Error {
-                kind: WorkerErrorStage::StoreStats,
+                stage: WorkerErrorStage::StoreStats,
                 message: "pipe closed".to_owned(),
             },
             WorkerResponse::Disconnected,
-            WorkerResponse::CardOnlyAchievements {
+            WorkerResponse::AchievementsSummary {
                 shm_path: "/dev/shm/steamlens-test-card-XYZ".to_owned(),
                 region_bytes: 512,
             },
         ]
     }
 
-    fn all_error_kinds() -> Vec<WorkerErrorStage> {
+    fn all_error_stages() -> Vec<WorkerErrorStage> {
         vec![
             WorkerErrorStage::Connect,
             WorkerErrorStage::NotLoggedIn,
@@ -232,15 +232,15 @@ mod tests {
             WorkerErrorStage::UserStatsStored,
             WorkerErrorStage::RequestGlobalPercentages,
             WorkerErrorStage::GlobalPercentagesReady,
-            WorkerErrorStage::GlobalPercentagesAPICall,
+            WorkerErrorStage::GlobalPercentagesApiCall,
             WorkerErrorStage::Generic,
         ]
     }
 
     #[test]
-    fn worker_error_kind_tags_are_unique_and_nonempty() {
-        let kinds = all_error_kinds();
-        let tags: Vec<&str> = kinds.iter().map(|k| k.tag()).collect();
+    fn worker_error_stage_tags_are_unique_and_nonempty() {
+        let stages = all_error_stages();
+        let tags: Vec<&str> = stages.iter().map(|s| s.tag()).collect();
         for tag in &tags {
             assert!(!tag.is_empty(), "tag must not be empty");
         }
@@ -255,23 +255,23 @@ mod tests {
     }
 
     #[test]
-    fn worker_error_kind_roundtrip_via_response_frame() {
-        for kind in all_error_kinds() {
+    fn worker_error_stage_roundtrip_via_response_frame() {
+        for stage in all_error_stages() {
             let resp = WorkerResponse::Error {
-                kind,
-                message: format!("test error for {:?}", kind),
+                stage,
+                message: format!("test error for {:?}", stage),
             };
             let framed = encode_frame(&resp).expect("encode must succeed");
             let payload = &framed[4..];
             let decoded: WorkerResponse = decode_frame(payload).expect("decode must succeed");
             match decoded {
                 WorkerResponse::Error {
-                    kind: decoded_kind,
+                    stage: decoded_stage,
                     message: decoded_msg,
                 } => {
-                    assert_eq!(decoded_kind, kind, "kind must round-trip: {:?}", kind);
+                    assert_eq!(decoded_stage, stage, "stage must round-trip: {:?}", stage);
                     assert!(
-                        decoded_msg.contains(kind.tag()) || !decoded_msg.is_empty(),
+                        decoded_msg.contains(stage.tag()) || !decoded_msg.is_empty(),
                         "message must be non-empty"
                     );
                 }
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn card_only_response_roundtrip() {
-        let resp = WorkerResponse::CardOnlyAchievements {
+        let resp = WorkerResponse::AchievementsSummary {
             shm_path: "/dev/shm/steamlens-card-abc123".to_owned(),
             region_bytes: 1024,
         };
@@ -417,31 +417,31 @@ mod tests {
         let re_framed = encode_frame(&decoded).expect("re-encode must succeed");
         assert_eq!(
             framed, re_framed,
-            "CardOnlyAchievements response must round-trip byte-stable"
+            "AchievementsSummary response must round-trip byte-stable"
         );
         match decoded {
-            WorkerResponse::CardOnlyAchievements {
+            WorkerResponse::AchievementsSummary {
                 shm_path,
                 region_bytes,
             } => {
                 assert_eq!(shm_path, "/dev/shm/steamlens-card-abc123");
                 assert_eq!(region_bytes, 1024);
             }
-            _ => panic!("decoded variant must be CardOnlyAchievements"),
+            _ => panic!("decoded variant must be AchievementsSummary"),
         }
     }
 
     #[test]
     fn card_only_payload_roundtrip_with_achievements() {
-        use types::CardOnlyAchievement;
+        use types::AchievementSummary;
 
-        let payload = types::CardOnlyPayload {
+        let payload = types::AchievementsSummaryPayload {
             achievements: vec![
-                CardOnlyAchievement {
+                AchievementSummary {
                     id: "ACH_FIRST_KILL".to_owned(),
                     is_achieved: true,
                 },
-                CardOnlyAchievement {
+                AchievementSummary {
                     id: "ACH_HUNDRED".to_owned(),
                     is_achieved: false,
                 },
@@ -450,7 +450,8 @@ mod tests {
         };
 
         let bytes = postcard::to_allocvec(&payload).expect("serialize");
-        let restored: types::CardOnlyPayload = postcard::from_bytes(&bytes).expect("decode");
+        let restored: types::AchievementsSummaryPayload =
+            postcard::from_bytes(&bytes).expect("decode");
 
         assert_eq!(restored.achievements.len(), 2);
         assert_eq!(restored.achievements[0].id, "ACH_FIRST_KILL");
@@ -463,9 +464,9 @@ mod tests {
     #[test]
     fn achievement_count_payload_roundtrip() {
         for (earned, total) in [(0u32, 0u32), (12, 30), (u32::MAX, u32::MAX)] {
-            let p = AchievementCountPayload { earned, total };
+            let p = AchievementsCountPayload { earned, total };
             let bytes = postcard::to_allocvec(&p).expect("serialize");
-            let restored: AchievementCountPayload = postcard::from_bytes(&bytes).expect("decode");
+            let restored: AchievementsCountPayload = postcard::from_bytes(&bytes).expect("decode");
             assert_eq!(restored.earned, earned);
             assert_eq!(restored.total, total);
         }

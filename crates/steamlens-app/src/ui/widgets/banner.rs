@@ -102,8 +102,8 @@ impl<'a, M: 'a + Clone> Banner<'a, M> {
 }
 
 impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
-    fn from(b: Banner<'a, M>) -> Self {
-        let severity = b.severity;
+    fn from(banner: Banner<'a, M>) -> Self {
+        let severity = banner.severity;
         let accent_static = severity.accent_static();
         let border_color = Color {
             a: 0.30,
@@ -116,9 +116,9 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
                 color: Some(severity.accent_for_theme(t)),
             });
 
-        let text_col: Element<'a, M> = match b.text {
+        let text_col: Element<'a, M> = match banner.text {
             Some(sub) => column![
-                text(b.title).size(13).style(|t: &iced::Theme| {
+                text(banner.title).size(13).style(|t: &iced::Theme| {
                     iced::widget::text::Style {
                         color: Some(palette(theme_from_iced(t)).text_primary),
                     }
@@ -131,7 +131,7 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
             ]
             .spacing(2)
             .into(),
-            None => text(b.title)
+            None => text(banner.title)
                 .size(13)
                 .style(|t: &iced::Theme| iced::widget::text::Style {
                     color: Some(palette(theme_from_iced(t)).text_primary),
@@ -143,11 +143,11 @@ impl<'a, M: 'a + Clone> From<Banner<'a, M>> for Element<'a, M> {
         content_row = content_row.push(iced::widget::Space::new().width(Length::Fill));
 
         let filled = severity.action_filled();
-        if let Some((label, msg)) = b.action {
+        if let Some((label, msg)) = banner.action {
             content_row = content_row.push(action_button(label, accent_static, filled, msg));
         }
 
-        if let Some(msg) = b.on_dismiss {
+        if let Some(msg) = banner.on_dismiss {
             content_row = content_row.push(dismiss_button(msg));
         }
 

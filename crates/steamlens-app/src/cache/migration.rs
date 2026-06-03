@@ -14,16 +14,16 @@ pub enum MigrationError {
 }
 
 pub async fn migrate_legacy_cache_if_present(
-    steamid3: u32,
+    account_id: u32,
 ) -> Result<MigrationOutcome, MigrationError> {
-    migrate_at_root(steamid3, &crate::paths::cache_dir()).await
+    migrate_at_root(account_id, &crate::paths::cache_dir()).await
 }
 
 async fn migrate_at_root(
-    steamid3: u32,
+    account_id: u32,
     cache_root: &Path,
 ) -> Result<MigrationOutcome, MigrationError> {
-    let users_dir = cache_root.join("users").join(steamid3.to_string());
+    let users_dir = cache_root.join("users").join(account_id.to_string());
     let user_profile = users_dir.join("profile.json");
     let user_library = users_dir.join("library.json");
     let user_games_dir = users_dir.join("games");
@@ -45,7 +45,7 @@ async fn migrate_at_root(
         });
     }
 
-    tracing::info!(steamid3, "migration: starting legacy cache migration");
+    tracing::info!(account_id, "migration: starting legacy cache migration");
     tokio::fs::create_dir_all(&users_dir).await?;
 
     let mut files_moved: u32 = 0;
@@ -76,12 +76,12 @@ async fn migrate_at_root(
     }
 
     if files_moved == 0 {
-        tracing::info!(steamid3, "migration: no new files to move");
+        tracing::info!(account_id, "migration: no new files to move");
         return Ok(MigrationOutcome::AlreadyMigrated);
     }
 
     tracing::info!(
-        steamid3,
+        account_id,
         files_moved,
         "migration: completed legacy cache migration"
     );

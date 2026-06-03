@@ -51,10 +51,12 @@ pub struct CachedAchievement {
     pub api_name: String,
     pub display_name: String,
     pub description: String,
-    pub hidden: bool,
+    #[serde(rename = "hidden")]
+    pub is_hidden: bool,
     pub icon_path: Option<String>,
     pub icon_locked_path: Option<String>,
-    pub earned: bool,
+    #[serde(rename = "earned")]
+    pub is_achieved: bool,
     pub earned_at: Option<u64>,
     pub global_percent: Option<f64>,
 }
@@ -77,7 +79,7 @@ pub struct CachedStat {
     pub permission: u32,
 }
 
-pub use steamlens_core::AchievementCountPayload as CachedProgress;
+pub use steamlens_core::AchievementsCountPayload as CachedProgress;
 
 #[derive(Debug, Clone)]
 pub struct CacheHit {

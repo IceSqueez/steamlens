@@ -142,7 +142,7 @@ impl GameViewState {
         );
         let summary = compute_game_summary_with_tier_map(&self.achievements, &tier_map);
         let has_legendary_visible = self.achievements.iter().any(|r| {
-            r.appeared
+            r.has_appeared
                 && tier_map
                     .get(&r.data.id)
                     .is_some_and(|&t| t == RarityTier::Legendary)
@@ -190,7 +190,7 @@ impl GameViewState {
     pub fn has_fading_cards(&self) -> bool {
         self.achievements
             .iter()
-            .any(|r| r.appeared && r.card_opacity < 1.0)
+            .any(|r| r.has_appeared && r.card_opacity < 1.0)
     }
 
     pub fn tick_animations(&mut self, delta_secs: f32) {
@@ -214,7 +214,7 @@ impl GameViewState {
 
         if self.has_fading_cards() {
             for row in &mut self.achievements {
-                if row.appeared && row.card_opacity < 1.0 {
+                if row.has_appeared && row.card_opacity < 1.0 {
                     row.card_opacity =
                         (row.card_opacity + CARD_OPACITY_PER_SEC * delta_secs).min(1.0);
                 }
@@ -236,7 +236,7 @@ impl GameViewState {
                     break;
                 };
                 if let Some(row) = self.achievements.iter_mut().find(|r| r.data.id == id) {
-                    row.appeared = true;
+                    row.has_appeared = true;
                     popped_any = true;
                 }
             }

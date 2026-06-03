@@ -43,14 +43,6 @@ pub enum ConnectivityError {
     NotLoggedIn,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum SendCheckedError {
-    #[error(transparent)]
-    Connectivity(#[from] ConnectivityError),
-    #[error(transparent)]
-    Protocol(#[from] WorkerProtocolError),
-}
-
 pub(crate) fn preflight(
     steam_running: bool,
     user_logged_in: bool,
@@ -66,9 +58,9 @@ pub(crate) fn preflight(
 
 #[derive(Debug, thiserror::Error)]
 pub enum WorkerProtocolError {
-    #[error("worker error: {kind:?}: {message}")]
+    #[error("worker error: {stage:?}: {message}")]
     WorkerError {
-        kind: WorkerErrorStage,
+        stage: WorkerErrorStage,
         message: String,
     },
 
@@ -88,11 +80,10 @@ pub enum WorkerProtocolError {
     Write(std::io::Error),
 }
 
-/// Call `finish` exactly once to release the child; `Drop` alone will kill abruptly.
 pub struct WorkerHandle {
     child: Child,
     stdin: ChildStdin,
-    responses: mpsc::UnboundedReceiver<WorkerResponse>,
+    response_receiver: mpsc::UnboundedReceiver<WorkerResponse>,
     _reader_task: JoinHandle<()>,
     stderr_task: Option<JoinHandle<Vec<u8>>>,
     _guard: steamlens_core::ChildLifetimeGuard,
@@ -147,11 +138,11 @@ impl WorkerHandle {
             buf
         });
 
-        let (resp_tx, responses) = mpsc::unbounded_channel::<WorkerResponse>();
+        let (response_sender, response_receiver) = mpsc::unbounded_channel::<WorkerResponse>();
         let reader_task = tokio::spawn(async move {
             let mut stdout = stdout;
-            while let Some(resp) = crate::ipc_pipe::read_response(&mut stdout).await {
-                if resp_tx.send(resp).is_err() {
+            while let Some(response) = crate::ipc_pipe::read_response(&mut stdout).await {
+                if response_sender.send(response).is_err() {
                     break;
                 }
             }
@@ -160,7 +151,7 @@ impl WorkerHandle {
         Ok(Self {
             child,
             stdin,
-            responses,
+            response_receiver,
             _reader_task: reader_task,
             stderr_task: Some(stderr_task),
             _guard: guard,
@@ -170,32 +161,19 @@ impl WorkerHandle {
 
     pub async fn send(
         &mut self,
-        cmd: &steamlens_core::ipc::WorkerCommand,
+        command: &steamlens_core::ipc::WorkerCommand,
     ) -> Result<(), WorkerProtocolError> {
-        crate::ipc_pipe::write_command(&mut self.stdin, cmd)
+        crate::ipc_pipe::write_command(&mut self.stdin, command)
             .await
             .map_err(WorkerProtocolError::Write)
-    }
-
-    #[allow(dead_code, reason = "callsites migrate in next chunk")]
-    pub async fn send_checked(
-        &mut self,
-        cmd: &steamlens_core::ipc::WorkerCommand,
-        steam_running: bool,
-        user_logged_in: bool,
-    ) -> Result<(), SendCheckedError> {
-        preflight(steam_running, user_logged_in).map_err(SendCheckedError::Connectivity)?;
-        self.send(cmd).await.map_err(SendCheckedError::Protocol)
     }
 
     pub async fn recv(
         &mut self,
     ) -> Result<Option<steamlens_core::ipc::WorkerResponse>, WorkerProtocolError> {
-        Ok(self.responses.recv().await)
+        Ok(self.response_receiver.recv().await)
     }
 
-    /// Interactive: graceful Shutdown command, then kill on `CHILD_DRAIN` timeout. Returns `(status, None)`.
-    /// OneShot: immediate kill, drains stderr capture buffer. Returns `(status, Some(bytes))`.
     pub async fn finish(mut self) -> (Option<ExitStatus>, Option<Vec<u8>>) {
         match self.mode {
             WorkerMode::Interactive => {
@@ -238,9 +216,9 @@ impl WorkerHandle {
 }
 
 async fn abort_task(task: Option<JoinHandle<Vec<u8>>>) {
-    if let Some(t) = task {
-        t.abort();
-        let _ = t.await;
+    if let Some(handle) = task {
+        handle.abort();
+        let _ = handle.await;
     }
 }
 
@@ -305,14 +283,14 @@ mod tests {
     }
 
     #[test]
-    fn worker_protocol_error_display_includes_kind_and_message() {
+    fn worker_protocol_error_display_includes_stage_and_message() {
         let err = WorkerProtocolError::WorkerError {
-            kind: WorkerErrorStage::Connect,
+            stage: WorkerErrorStage::Connect,
             message: "no pipe".to_owned(),
         };
-        let s = format!("{err}");
-        assert!(s.contains("Connect"));
-        assert!(s.contains("no pipe"));
+        let formatted = format!("{err}");
+        assert!(formatted.contains("Connect"));
+        assert!(formatted.contains("no pipe"));
     }
 
     #[test]
@@ -332,18 +310,18 @@ mod tests {
             ("ERROR pipe broken", tracing::Level::ERROR, "pipe broken"),
             ("TRACE tick", tracing::Level::TRACE, "tick"),
         ];
-        for (line, expected_level, expected_msg) in cases {
-            let (level, msg) = parse_worker_line(line);
+        for (line, expected_level, expected_message) in cases {
+            let (level, message) = parse_worker_line(line);
             assert_eq!(level, expected_level, "level for {line:?}");
-            assert_eq!(msg, expected_msg, "message for {line:?}");
+            assert_eq!(message, expected_message, "message for {line:?}");
         }
     }
 
     #[test]
     fn parse_worker_line_falls_back_to_info_when_no_prefix() {
-        let (level, msg) = parse_worker_line("steamlens: BLoggedOn = true");
+        let (level, message) = parse_worker_line("steamlens: BLoggedOn = true");
         assert_eq!(level, tracing::Level::INFO);
-        assert_eq!(msg, "steamlens: BLoggedOn = true");
+        assert_eq!(message, "steamlens: BLoggedOn = true");
     }
 
     #[test]
@@ -367,10 +345,10 @@ mod tests {
             ("stderr", WorkerSpawnError::StderrUnavailable),
         ];
         for (needle, err) in variants {
-            let s = format!("{err}");
+            let formatted = format!("{err}");
             assert!(
-                s.to_lowercase().contains(needle),
-                "expected {needle:?} in {s:?}"
+                formatted.to_lowercase().contains(needle),
+                "expected {needle:?} in {formatted:?}"
             );
         }
     }

@@ -20,8 +20,8 @@ pub(super) async fn read_command(
     let len = parse_header(header)?;
     let mut buf = vec![0u8; len];
     stdin.read_exact(&mut buf).await?;
-    let cmd = decode_frame::<WorkerCommand>(&buf)?;
-    Ok(Some(cmd))
+    let command = decode_frame::<WorkerCommand>(&buf)?;
+    Ok(Some(command))
 }
 
 pub(super) async fn write_response(msg: &WorkerResponse) -> Result<(), WorkerError> {

@@ -24,11 +24,11 @@ pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSumma
 }
 
 pub async fn write_game_summary(
-    steamid3: u32,
+    account_id: u32,
     entry: &GameSummaryCache,
 ) -> Result<(), CacheIoError> {
     let bytes =
         serde_json::to_vec_pretty(entry).map_err(|e| CacheIoError::Serialize(e.to_string()))?;
-    let path = crate::paths::user_game_summary_path(steamid3, entry.app_id);
+    let path = crate::paths::user_game_summary_path(account_id, entry.app_id);
     atomic_write(&path, &bytes).await
 }

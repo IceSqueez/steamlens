@@ -512,12 +512,12 @@ fn divider<M: 'static>() -> Element<'static, M> {
         .into()
 }
 
-fn current_max_pair(r: &StatRow) -> (f64, bool, bool) {
-    let current = match r.data.value {
+fn current_max_pair(row: &StatRow) -> (f64, bool, bool) {
+    let current = match row.data.value {
         StatValue::Int(v) => v as f64,
         StatValue::Float(v) => v as f64,
     };
-    let max = r.data.max_value.unwrap_or(0);
+    let max = row.data.max_value.unwrap_or(0);
     let maxed = max > 0 && current >= max as f64;
     let has_progress = current > 0.0;
     (current, maxed, has_progress)
@@ -526,8 +526,8 @@ fn current_max_pair(r: &StatRow) -> (f64, bool, bool) {
 fn summarize(stats: &[StatRow]) -> (usize, usize, usize) {
     let mut maxed = 0;
     let mut in_progress = 0;
-    for r in stats {
-        let (current, is_maxed, has_progress) = current_max_pair(r);
+    for row in stats {
+        let (current, is_maxed, has_progress) = current_max_pair(row);
         let _ = current;
         if is_maxed {
             maxed += 1;
@@ -538,12 +538,13 @@ fn summarize(stats: &[StatRow]) -> (usize, usize, usize) {
     (stats.len(), maxed, in_progress)
 }
 
-fn stat_matches(r: &StatRow, query: &str) -> bool {
+fn stat_matches(row: &StatRow, query: &str) -> bool {
     if query.is_empty() {
         return true;
     }
-    let q = query.to_lowercase();
-    r.data.display_name.to_lowercase().contains(&q) || r.data.id.to_lowercase().contains(&q)
+    let lower = query.to_lowercase();
+    row.data.display_name.to_lowercase().contains(&lower)
+        || row.data.id.to_lowercase().contains(&lower)
 }
 
 fn format_value(current: f64, max: Option<u64>, maxed: bool) -> String {

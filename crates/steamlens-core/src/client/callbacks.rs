@@ -12,7 +12,7 @@ pub(super) struct Callbacks {
 impl Callbacks {
     pub(super) fn poll_callbacks(&self) -> Result<Vec<SteamCallback>, SteamError> {
         let library = loader::shared()?;
-        let mut out = Vec::new();
+        let mut callbacks = Vec::new();
 
         loop {
             let mut msg = CallbackMessage {
@@ -47,12 +47,12 @@ impl Callbacks {
 
             library.free_last_callback(self.pipe)?;
 
-            out.push(callback_decode::decode(crate::raw_callback::RawCallback {
+            callbacks.push(callback_decode::decode(crate::raw_callback::RawCallback {
                 id,
                 payload,
             }));
         }
 
-        Ok(out)
+        Ok(callbacks)
     }
 }

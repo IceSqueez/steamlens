@@ -159,7 +159,7 @@ mod tests {
             "all 3 reveals must have popped in a single 100ms frame"
         );
         assert!(
-            state.achievements.iter().all(|r| r.appeared),
+            state.achievements.iter().all(|r| r.has_appeared),
             "all 3 achievements must be appeared after accumulator drains"
         );
     }

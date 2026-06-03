@@ -6,24 +6,24 @@ use crate::cache::types::GameSummaryCache;
 use crate::cache::{self, CacheEvent, CachedLibrary, GameCacheEntry, NoAchievementsCache};
 use steamlens_core::GameSummary;
 
-pub fn load_library_cache(steamid3: u32) -> Task<crate::Message> {
+pub fn load_library_cache(account_id: u32) -> Task<crate::Message> {
     Task::perform(
-        async move { cache::load_library_cache(steamid3).await },
+        async move { cache::load_library_cache(account_id).await },
         |c| crate::Message::Cache(CacheEvent::LibraryLoaded(c)),
     )
 }
 
-pub fn load_profile_cache(steamid3: u32) -> Task<crate::Message> {
+pub fn load_profile_cache(account_id: u32) -> Task<crate::Message> {
     Task::perform(
-        async move { cache::load_profile_cache(steamid3).await },
+        async move { cache::load_profile_cache(account_id).await },
         |c| crate::Message::Cache(CacheEvent::ProfileLoaded(c)),
     )
 }
 
-pub fn write_profile_cache(steamid3: u32, cached: cache::CachedProfile) -> Task<crate::Message> {
+pub fn write_profile_cache(account_id: u32, cached: cache::CachedProfile) -> Task<crate::Message> {
     Task::perform(
         async move {
-            cache::write_profile_cache(steamid3, &cached)
+            cache::write_profile_cache(account_id, &cached)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -31,10 +31,10 @@ pub fn write_profile_cache(steamid3: u32, cached: cache::CachedProfile) -> Task<
     )
 }
 
-pub fn write_library_cache(steamid3: u32, cached: CachedLibrary) -> Task<crate::Message> {
+pub fn write_library_cache(account_id: u32, cached: CachedLibrary) -> Task<crate::Message> {
     Task::perform(
         async move {
-            cache::write_library_cache(steamid3, &cached)
+            cache::write_library_cache(account_id, &cached)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -42,11 +42,11 @@ pub fn write_library_cache(steamid3: u32, cached: CachedLibrary) -> Task<crate::
     )
 }
 
-pub fn write_game_cache(steamid3: u32, entry: GameCacheEntry) -> Task<crate::Message> {
+pub fn write_game_cache(account_id: u32, entry: GameCacheEntry) -> Task<crate::Message> {
     let app_id = entry.app_id;
     Task::perform(
         async move {
-            cache::write_game_cache(steamid3, &entry)
+            cache::write_game_cache(account_id, &entry)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -54,11 +54,11 @@ pub fn write_game_cache(steamid3: u32, entry: GameCacheEntry) -> Task<crate::Mes
     )
 }
 
-pub fn write_game_summary(steamid3: u32, entry: GameSummaryCache) -> Task<crate::Message> {
+pub fn write_game_summary(account_id: u32, entry: GameSummaryCache) -> Task<crate::Message> {
     let app_id = entry.app_id;
     Task::perform(
         async move {
-            cache::store::write_game_summary(steamid3, &entry)
+            cache::store::write_game_summary(account_id, &entry)
                 .await
                 .map_err(|e| e.to_string())
         },
@@ -66,10 +66,10 @@ pub fn write_game_summary(steamid3: u32, entry: GameSummaryCache) -> Task<crate:
     )
 }
 
-pub fn invalidate_game_cache(steamid3: u32, app_id: u32, name: String) -> Task<crate::Message> {
+pub fn invalidate_game_cache(account_id: u32, app_id: u32, name: String) -> Task<crate::Message> {
     Task::perform(
         async move {
-            let result = cache::store::delete_game_cache_dir(steamid3, app_id)
+            let result = cache::store::delete_game_cache_dir(account_id, app_id)
                 .await
                 .map_err(|e| e.to_string());
             crate::capsule_cache::purge_for_app(app_id).await;
@@ -92,17 +92,17 @@ pub fn write_no_ach_cache(snapshot: NoAchievementsCache) -> Task<crate::Message>
                 .await
                 .map_err(|e| e.to_string())
         },
-        |r| crate::Message::Cache(CacheEvent::NoAchWritten(r)),
+        |r| crate::Message::Cache(CacheEvent::NoAchievementsWritten(r)),
     )
 }
 
 pub fn classify_games(
     games: Vec<GameSummary>,
     steam_root: PathBuf,
-    steamid3: u32,
+    account_id: u32,
 ) -> Task<crate::Message> {
     Task::perform(
-        async move { cache::classify_games(&games, &steam_root, steamid3).await },
+        async move { cache::classify_games(&games, &steam_root, account_id).await },
         |r| crate::Message::Cache(CacheEvent::Classified(r)),
     )
 }

@@ -10,9 +10,9 @@ use crate::ui::theme::{AppTheme, ThemePalette, palette};
 
 const MODAL_WIDTH: f32 = 480.0;
 const ICON_SIZE: f32 = 100.0;
-const BTN_ICON_SIZE: f32 = 13.0;
+const BUTTON_ICON_SIZE: f32 = 13.0;
 
-const C_BUILT_WITH: Color = Color::from_rgb(
+const BUILT_WITH_COLOR: Color = Color::from_rgb(
     0xaa as f32 / 255.0,
     0xa6 as f32 / 255.0,
     0xc0 as f32 / 255.0,
@@ -215,8 +215,8 @@ fn build_actions<M: 'static + Clone>(
     let action_btn =
         move |icon_handle: svg::Handle, label: &'static str, msg: M| -> Element<'static, M> {
             let svg_icon = svg(icon_handle)
-                .width(Length::Fixed(BTN_ICON_SIZE))
-                .height(Length::Fixed(BTN_ICON_SIZE));
+                .width(Length::Fixed(BUTTON_ICON_SIZE))
+                .height(Length::Fixed(BUTTON_ICON_SIZE));
 
             let body = row![svg_icon, text(label).size(12).color(p.accent),]
                 .spacing(6)
@@ -264,7 +264,9 @@ fn build_actions<M: 'static + Clone>(
 
 fn build_built_with<M: 'static>(p: ThemePalette) -> Element<'static, M> {
     let label = text("BUILT WITH").size(10).color(p.text_muted);
-    let stack_line = text("Rust  ·  iced  ·  tokio").size(11).color(C_BUILT_WITH);
+    let stack_line = text("Rust  ·  iced  ·  tokio")
+        .size(11)
+        .color(BUILT_WITH_COLOR);
 
     let col = column![label, Space::new().height(Length::Fixed(8.0)), stack_line,];
 

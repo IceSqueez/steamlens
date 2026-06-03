@@ -37,7 +37,7 @@ pub struct ConnectivityState {
 #[derive(Default)]
 pub struct UserState {
     pub steam_root: std::path::PathBuf,
-    pub steamid3: u32,
+    pub account_id: u32,
     pub steam_level: Option<u32>,
     pub profile: Option<steamlens_core::UserProfile>,
     pub avatar_handle: Option<iced::widget::image::Handle>,

@@ -5,9 +5,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub(crate) async fn write_command<W: AsyncWrite + Unpin>(
     writer: &mut W,
-    cmd: &WorkerCommand,
+    command: &WorkerCommand,
 ) -> std::io::Result<()> {
-    let framed = encode_frame(cmd)
+    let framed = encode_frame(command)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
     writer.write_all(&framed).await?;
     writer.flush().await
@@ -79,7 +79,7 @@ mod tests {
         write_frame(
             &mut tx,
             &WorkerResponse::Error {
-                kind: WorkerErrorStage::Connect,
+                stage: WorkerErrorStage::Connect,
                 message: "no pipe".to_owned(),
             },
         )
@@ -88,8 +88,8 @@ mod tests {
 
         let resp = read_response(&mut rx).await.expect("decoded");
         match resp {
-            WorkerResponse::Error { kind, message } => {
-                assert_eq!(kind, WorkerErrorStage::Connect);
+            WorkerResponse::Error { stage, message } => {
+                assert_eq!(stage, WorkerErrorStage::Connect);
                 assert_eq!(message, "no pipe");
             }
             other => panic!("expected Error, got {other:?}"),
@@ -100,13 +100,13 @@ mod tests {
     async fn round_trip_two_frames_sequential() {
         let (mut tx, mut rx) = tokio::io::duplex(4096);
         write_frame(&mut tx, &WorkerResponse::Ack).await;
-        write_frame(&mut tx, &WorkerResponse::Stored).await;
+        write_frame(&mut tx, &WorkerResponse::StatsStored).await;
         drop(tx);
 
         let first = read_response(&mut rx).await.expect("first decoded");
         assert!(matches!(first, WorkerResponse::Ack));
         let second = read_response(&mut rx).await.expect("second decoded");
-        assert!(matches!(second, WorkerResponse::Stored));
+        assert!(matches!(second, WorkerResponse::StatsStored));
     }
 
     #[tokio::test]

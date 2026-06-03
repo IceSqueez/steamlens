@@ -273,8 +273,8 @@ async fn try_http_candidate(
     let response = loop {
         attempt += 1;
 
-        let r = match client.get(&url).send().await {
-            Ok(r) => r,
+        let response = match client.get(&url).send().await {
+            Ok(response) => response,
             Err(e) => {
                 if attempt < 2 {
                     tracing::trace!(
@@ -292,9 +292,9 @@ async fn try_http_candidate(
             }
         };
 
-        let status = r.status();
+        let status = response.status();
         if status.is_success() {
-            break r;
+            break response;
         }
 
         let transient =

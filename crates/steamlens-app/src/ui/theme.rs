@@ -137,10 +137,10 @@ pub fn palette(theme: AppTheme) -> &'static ThemePalette {
     }
 }
 
-pub fn theme_from_iced(t: &iced::Theme) -> AppTheme {
+pub fn theme_from_iced(iced_theme: &iced::Theme) -> AppTheme {
     use iced::theme::Base;
-    match t.name() {
-        n if n == THEME_NAME_LIGHT => AppTheme::Light,
+    match iced_theme.name() {
+        name if name == THEME_NAME_LIGHT => AppTheme::Light,
         _ => AppTheme::Dark,
     }
 }
@@ -178,12 +178,12 @@ mod tests {
 
     #[test]
     fn palette_dispatches_to_distinct_data() {
-        let d = palette(AppTheme::Dark);
-        let l = palette(AppTheme::Light);
-        assert_ne!(d.app, l.app);
-        assert_ne!(d.surface, l.surface);
-        assert_ne!(d.text_primary, l.text_primary);
-        assert_ne!(d.accent, l.accent);
+        let dark = palette(AppTheme::Dark);
+        let light = palette(AppTheme::Light);
+        assert_ne!(dark.app, light.app);
+        assert_ne!(dark.surface, light.surface);
+        assert_ne!(dark.text_primary, light.text_primary);
+        assert_ne!(dark.accent, light.accent);
     }
 
     #[test]

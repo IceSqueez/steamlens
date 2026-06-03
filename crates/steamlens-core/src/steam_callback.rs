@@ -30,7 +30,7 @@ impl SteamResult {
     pub fn raw(&self) -> i32 {
         match self {
             Self::Ok => 1,
-            Self::Other(c) => *c,
+            Self::Other(code) => *code,
         }
     }
 }
@@ -173,9 +173,9 @@ pub(crate) mod callback_decode {
             payload
         }
 
-        fn name_buf(s: &str) -> [u8; 128] {
+        fn name_buf(name: &str) -> [u8; 128] {
             let mut buf = [0u8; 128];
-            let bytes = s.as_bytes();
+            let bytes = name.as_bytes();
             let len = bytes.len().min(128);
             buf[..len].copy_from_slice(&bytes[..len]);
             buf
@@ -260,10 +260,10 @@ pub(crate) mod callback_decode {
             let cb = crate::SteamCallback::from(raw);
             match cb {
                 crate::SteamCallback::GlobalAchievementPercentagesReady {
-                    game_id: gid,
+                    game_id: decoded_game_id,
                     result,
                 } => {
-                    assert_eq!(gid, 105600);
+                    assert_eq!(decoded_game_id, 105600);
                     assert!(result.is_ok());
                 }
                 other => panic!("expected GlobalAchievementPercentagesReady, got {other:?}"),

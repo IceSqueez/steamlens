@@ -86,7 +86,11 @@ pub(super) fn build_tier_stacked_bar(
     container(bar)
         .width(Length::Fixed(card_w))
         .height(Length::Fixed(BAR_H))
-        .padding(Padding::default().left(CARD_H_PAD).right(CARD_H_PAD))
+        .padding(
+            Padding::default()
+                .left(CARD_HORIZONTAL_PADDING)
+                .right(CARD_HORIZONTAL_PADDING),
+        )
         .into()
 }
 
@@ -113,7 +117,7 @@ pub(super) fn build_hover_overlay(
                     }),
                 }),
         )
-        .on_press(ProfileViewMessage::RequestToggleGamePin(app_id))
+        .on_press(ProfileViewMessage::GamePinToggleRequested(app_id))
         .padding(Padding::default().left(10).right(10).top(4).bottom(4))
         .style(move |t: &iced::Theme, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -187,7 +191,8 @@ pub(super) fn build_name_row(
 
     let name_clipped = container(name_text).width(Length::Fill).clip(true);
 
-    let available_for_name = card_w - 2.0 * CARD_H_PAD - counter_w_estimate - ROW_SPACING_PX;
+    let available_for_name =
+        card_w - 2.0 * CARD_HORIZONTAL_PADDING - counter_w_estimate - ROW_SPACING_PX;
     let estimated_name_w = name_str.chars().count() as f32 * NAME_CHAR_W_PX;
     let truncated = estimated_name_w > available_for_name;
 
@@ -207,8 +212,8 @@ pub(super) fn build_name_row(
         .align_y(Alignment::Center)
         .padding(
             Padding::default()
-                .left(CARD_H_PAD)
-                .right(CARD_H_PAD)
+                .left(CARD_HORIZONTAL_PADDING)
+                .right(CARD_HORIZONTAL_PADDING)
                 .top(CARD_NAME_ROW_PAD_TOP)
                 .bottom(0),
         )
@@ -277,8 +282,8 @@ pub(super) fn build_tags_row(
         .height(Length::Fixed(CARD_TAGS_ROW_HEIGHT))
         .padding(
             Padding::default()
-                .left(CARD_H_PAD)
-                .right(CARD_H_PAD)
+                .left(CARD_HORIZONTAL_PADDING)
+                .right(CARD_HORIZONTAL_PADDING)
                 .top(CARD_TAGS_ROW_PAD_TOP)
                 .bottom(CARD_TAGS_ROW_PAD_BOTTOM),
         )

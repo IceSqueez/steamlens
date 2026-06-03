@@ -158,13 +158,13 @@ fn decode_user_stats_received_exact_min_len() {
     let cb = SteamCallback::from(raw);
     match cb {
         SteamCallback::UserStatsReceived {
-            game_id: g,
-            result: r,
-            user_steam_id: u,
+            game_id: decoded_game_id,
+            result: decoded_result,
+            user_steam_id: decoded_user_steam_id,
         } => {
-            assert_eq!(g, game_id);
-            assert!(r.is_ok());
-            assert_eq!(u, user_steam_id);
+            assert_eq!(decoded_game_id, game_id);
+            assert!(decoded_result.is_ok());
+            assert_eq!(decoded_user_steam_id, user_steam_id);
         }
         other => panic!("expected UserStatsReceived at exact min size, got {other:?}"),
     }
@@ -184,11 +184,11 @@ fn decode_user_stats_stored_exact_min_len() {
     let cb = SteamCallback::from(raw);
     match cb {
         SteamCallback::UserStatsStored {
-            game_id: g,
-            result: r,
+            game_id: decoded_game_id,
+            result: decoded_result,
         } => {
-            assert_eq!(g, game_id);
-            assert!(r.is_ok());
+            assert_eq!(decoded_game_id, game_id);
+            assert!(decoded_result.is_ok());
         }
         other => panic!("expected UserStatsStored at exact min size, got {other:?}"),
     }

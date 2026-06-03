@@ -56,10 +56,10 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         .ok_or_else(|| io::Error::other("child stdout missing"))?;
     let stderr = child.stderr.take();
 
-    let stderr_thread = stderr.map(|mut s| {
+    let stderr_thread = stderr.map(|mut stderr_pipe| {
         thread::spawn(move || {
             let mut buf = Vec::with_capacity(2048);
-            let _ = s.read_to_end(&mut buf);
+            let _ = stderr_pipe.read_to_end(&mut buf);
             String::from_utf8_lossy(&buf).into_owned()
         })
     });
@@ -110,19 +110,19 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
             region_bytes,
         } => {
             let path = PathBuf::from(&shm_path);
-            let payload: crate::ipc::ProbeResultPayload =
+            let probe_payload: crate::ipc::ProbeResultPayload =
                 crate::ipc::shm::read_payload(&path, region_bytes)
                     .map_err(|e| ProbeError::Worker(format!("ProbeResult shm: {e}")))?;
             Ok(ProbedProfile {
-                steam_id: payload.steam_id,
-                nickname: payload.nickname,
-                avatar_image: payload.avatar_png,
-                game_summaries: payload.game_summaries,
-                steam_level: payload.steam_level,
-                steam_root: payload.steam_root,
+                steam_id: probe_payload.steam_id,
+                nickname: probe_payload.nickname,
+                avatar_image: probe_payload.avatar_png,
+                game_summaries: probe_payload.game_summaries,
+                steam_level: probe_payload.steam_level,
+                steam_root: probe_payload.steam_root,
             })
         }
-        WorkerResponse::Error { kind, message } => match kind {
+        WorkerResponse::Error { stage, message } => match stage {
             WorkerErrorStage::Connect => Err(ProbeError::SteamNotRunning),
             WorkerErrorStage::NotLoggedIn => Err(ProbeError::NotLoggedIn),
             _ => Err(ProbeError::Worker(message)),
@@ -171,7 +171,7 @@ fn read_with_deadline(
                     "child closed stdout before sending a complete frame",
                 )));
             }
-            Ok(n) => filled += n,
+            Ok(bytes_read) => filled += bytes_read,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(ProbeReadError::Io(e)),
         }
@@ -192,10 +192,11 @@ mod tests {
     #[test]
     fn probe_error_not_logged_in_display() {
         let e = ProbeError::NotLoggedIn;
-        let s = format!("{e}");
+        let formatted = format!("{e}");
         assert!(
-            s.to_lowercase().contains("logged in") || s.to_lowercase().contains("signed in"),
-            "NotLoggedIn display must mention login state, got: {s:?}"
+            formatted.to_lowercase().contains("logged in")
+                || formatted.to_lowercase().contains("signed in"),
+            "NotLoggedIn display must mention login state, got: {formatted:?}"
         );
     }
 
