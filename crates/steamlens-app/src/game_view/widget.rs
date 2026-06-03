@@ -56,13 +56,8 @@ pub fn compute_game_summary_with_tier_map(
         if !ach.data.is_achieved {
             continue;
         }
-        match tier_map.get(&ach.data.id).copied() {
-            Some(RarityTier::Legendary) => summary.legendary_count += 1,
-            Some(RarityTier::Mythical) => summary.mythical_count += 1,
-            Some(RarityTier::Rare) => summary.rare_count += 1,
-            Some(RarityTier::Uncommon) => summary.uncommon_count += 1,
-            Some(RarityTier::Common) => summary.common_count += 1,
-            None => {}
+        if let Some(tier) = tier_map.get(&ach.data.id).copied() {
+            summary.add_tier(tier, 1);
         }
     }
     summary

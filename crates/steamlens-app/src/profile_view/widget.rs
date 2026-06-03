@@ -28,7 +28,7 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
 
         if !entry.tier_breakdown.is_empty() {
             for (tier, count) in &entry.tier_breakdown {
-                bump_tier(&mut summary, *tier, *count);
+                summary.add_tier(*tier, *count);
             }
             continue;
         }
@@ -45,21 +45,11 @@ pub fn compute_profile_summary(cached_entries: &HashMap<u32, GameCacheEntry>) ->
                 continue;
             }
             if let Some(tier) = tier_map.get(&ach.api_name).copied() {
-                bump_tier(&mut summary, tier, 1);
+                summary.add_tier(tier, 1);
             }
         }
     }
     summary
-}
-
-fn bump_tier(summary: &mut WidgetSummary, tier: RarityTier, count: u32) {
-    match tier {
-        RarityTier::Legendary => summary.legendary_count += count,
-        RarityTier::Mythical => summary.mythical_count += count,
-        RarityTier::Rare => summary.rare_count += count,
-        RarityTier::Uncommon => summary.uncommon_count += count,
-        RarityTier::Common => summary.common_count += count,
-    }
 }
 
 fn compute_tier_map_from_cached(achievements: &[CachedAchievement]) -> HashMap<String, RarityTier> {

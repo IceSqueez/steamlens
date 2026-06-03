@@ -1,6 +1,7 @@
 use iced::widget::{column, row, text};
 use iced::{Alignment, Element, Length};
 
+use crate::game_view::types::RarityTier;
 use crate::ui::theme::{palette, theme_from_iced};
 
 use super::format::format_thousands;
@@ -46,6 +47,16 @@ impl WidgetSummary {
             self.locked() as f64 / self.achievement_total as f64 * 100.0
         } else {
             0.0
+        }
+    }
+
+    pub fn add_tier(&mut self, tier: RarityTier, count: u32) {
+        match tier {
+            RarityTier::Legendary => self.legendary_count += count,
+            RarityTier::Mythical => self.mythical_count += count,
+            RarityTier::Rare => self.rare_count += count,
+            RarityTier::Uncommon => self.uncommon_count += count,
+            RarityTier::Common => self.common_count += count,
         }
     }
 }
