@@ -139,6 +139,9 @@ fn game_status_bar(state: &GameViewState) -> Option<Element<'_, GameViewMessage>
         .achievements
         .iter()
         .filter(|r| {
+            if !r.has_appeared {
+                return false;
+            }
             if r.is_spoiler_hidden() {
                 return true;
             }
