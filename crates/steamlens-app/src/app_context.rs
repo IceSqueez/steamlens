@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
-use iced::Task;
 use steamlens_core::{AppLibraryAssets, SteamAppState};
 use tokio::sync::mpsc;
 
@@ -61,11 +60,10 @@ pub struct AppContext {
 }
 
 impl AppContext {
-    pub fn update_settings(&mut self, f: impl FnOnce(&mut Settings)) -> Task<crate::Message> {
+    pub fn update_settings(&mut self, f: impl FnOnce(&mut Settings)) {
         f(&mut self.settings);
         if self.settings_dirty_since.is_none() {
             self.settings_dirty_since = Some(Instant::now());
         }
-        Task::none()
     }
 }

@@ -237,7 +237,7 @@ pub fn update(
         }
 
         ProfileViewMessage::SortChanged(sort) => {
-            let _ = ctx.update_settings(|s| s.library.sort = sort);
+            ctx.update_settings(|s| s.library.sort = sort);
             state.sort = sort;
             state.recompute_derived(&ctx.cached_entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)

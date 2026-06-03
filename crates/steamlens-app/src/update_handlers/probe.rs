@@ -63,7 +63,7 @@ pub(crate) fn handle_probe_result(
 
             let last_saved = app.context.settings.last_user_steamid;
             if last_saved != Some(new_steamid3) {
-                let _ = app.context.update_settings(|s| {
+                app.context.update_settings(|s| {
                     s.last_user_steamid = Some(new_steamid3);
                 });
             }

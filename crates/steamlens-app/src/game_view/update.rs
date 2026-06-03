@@ -291,7 +291,7 @@ pub fn update(
             }
             let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
             let include_hidden = state.include_hidden;
-            let _ = ctx.update_settings(|s| {
+            ctx.update_settings(|s| {
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
@@ -302,7 +302,7 @@ pub fn update(
             state.include_hidden = !state.include_hidden;
             let tiers: Vec<_> = state.rarity_tier_set.iter().copied().collect();
             let include_hidden = state.include_hidden;
-            let _ = ctx.update_settings(|s| {
+            ctx.update_settings(|s| {
                 s.manager.rarity_tiers = tiers;
                 s.manager.include_hidden = include_hidden;
             });
@@ -312,7 +312,7 @@ pub fn update(
         GameViewMessage::RarityFilterCleared => {
             state.rarity_tier_set.clear();
             state.include_hidden = false;
-            let _ = ctx.update_settings(|s| {
+            ctx.update_settings(|s| {
                 s.manager.rarity_tiers = Vec::new();
                 s.manager.include_hidden = false;
             });
@@ -321,7 +321,7 @@ pub fn update(
         }
         GameViewMessage::AchievementSortChanged(s) => {
             let sort = s;
-            let _ = ctx.update_settings(|s| s.manager.sort = sort);
+            ctx.update_settings(|s| s.manager.sort = sort);
             state.achievement_sort = s;
             state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
@@ -329,7 +329,7 @@ pub fn update(
         GameViewMessage::UnlockedAtTopToggled => {
             state.unlocked_at_top = !state.unlocked_at_top;
             let unlocked_at_top = state.unlocked_at_top;
-            let _ = ctx.update_settings(|s| s.manager.unlocked_at_top = unlocked_at_top);
+            ctx.update_settings(|s| s.manager.unlocked_at_top = unlocked_at_top);
             state.recompute_visible_only();
             (Task::none(), GameViewEvent::None)
         }

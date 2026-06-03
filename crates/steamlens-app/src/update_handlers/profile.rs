@@ -107,7 +107,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             Task::batch([extra, open_task])
         }
         ProfileEvent::ToggleGamePin(id) => {
-            let pin_task = app.context.update_settings(|s| {
+            app.context.update_settings(|s| {
                 if let Some(pos) = s.library.pinned.iter().position(|&pid| pid == id) {
                     s.library.pinned.remove(pos);
                 } else {
@@ -118,7 +118,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             let pv_state =
                 routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
             pv_state.recompute_derived(&app.context.cached_entries, &pinned);
-            Task::batch([extra, pin_task])
+            extra
         }
         ProfileEvent::DrainedProgress {
             cache_entries,

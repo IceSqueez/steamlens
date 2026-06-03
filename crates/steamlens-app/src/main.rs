@@ -303,7 +303,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 crate::ui::theme::AppTheme::Dark => crate::ui::theme::AppTheme::Light,
                 crate::ui::theme::AppTheme::Light => crate::ui::theme::AppTheme::Dark,
             };
-            let _ = app.context.update_settings(|s| s.ui.theme = new_theme);
+            app.context.update_settings(|s| s.ui.theme = new_theme);
             Task::none()
         }
 
