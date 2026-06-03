@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(profile.steam_id, 76561198000000042);
         assert_eq!(
             app.context.steamid3,
-            76561198000000042 - STEAMID64_INDIVIDUAL_MIN
+            (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
         );
         assert!(app.context.profile_avatar_handle.is_some());
     }
@@ -866,7 +866,7 @@ mod tests {
         assert_eq!(p.nickname, "FromCache");
         assert_eq!(
             app.context.steamid3,
-            76561198000000042 - STEAMID64_INDIVIDUAL_MIN
+            (76561198000000042u64 - STEAMID64_INDIVIDUAL_MIN) as u32
         );
     }
 

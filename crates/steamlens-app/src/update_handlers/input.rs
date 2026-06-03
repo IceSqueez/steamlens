@@ -121,7 +121,7 @@ pub(crate) fn handle_local_profile_loaded(
         .and_then(|p| p.avatar_png_bytes.as_ref())
         .map(|bytes| iced::widget::image::Handle::from_bytes(bytes.clone()));
     if let Some(p) = &profile {
-        app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
+        app.context.steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
     }
     app.context.user_profile = profile;
     Task::none()

@@ -19,10 +19,9 @@ pub struct ClassifyResult {
 pub async fn classify_games(
     game_summaries: &[GameSummary],
     _steam_root: &Path,
-    steamid3: u64,
+    steamid3: u32,
 ) -> ClassifyResult {
-    let steamid3_u32 = steamid3 as u32;
-    let user_games_root = crate::paths::user_dir(steamid3_u32).join("games");
+    let user_games_root = crate::paths::user_dir(steamid3).join("games");
     classify_games_with_root(game_summaries, &user_games_root).await
 }
 

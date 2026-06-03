@@ -60,7 +60,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
                     })
                     .collect(),
             );
-            let steamid3 = app.context.steamid3 as u32;
+            let steamid3 = app.context.steamid3;
             tasks.push(cache::commands::write_library_cache(steamid3, cached));
         }
         pv_state.recompute_derived(
@@ -126,7 +126,7 @@ pub(crate) fn handle_profile_view(app: &mut App, msg: ProfileViewMessage) -> Tas
             no_ach_entries,
         } => {
             let mut tasks: Vec<Task<Message>> = vec![extra];
-            let steamid3 = app.context.steamid3 as u32;
+            let steamid3 = app.context.steamid3;
             for entry in cache_entries {
                 tasks.push(cache::commands::write_game_cache(steamid3, entry));
             }

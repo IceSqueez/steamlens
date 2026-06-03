@@ -23,7 +23,7 @@ pub(crate) fn handle_probe_result(
                 .dismiss_all_banners_by_severity(BannerSeverity::Warning);
 
             let new_steamid3 = p.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
-            let previous_steamid3 = app.context.steamid3 as u32;
+            let previous_steamid3 = app.context.steamid3;
 
             let user_switched = previous_steamid3 != 0 && previous_steamid3 != new_steamid3;
             if user_switched {
@@ -37,7 +37,7 @@ pub(crate) fn handle_probe_result(
                 app.context.steam_level = None;
             }
 
-            app.context.steamid3 = new_steamid3 as u64;
+            app.context.steamid3 = new_steamid3;
             app.context.profile_avatar_handle = p
                 .avatar_image
                 .as_ref()
@@ -171,7 +171,7 @@ fn fallback_steamid3(app: &App) -> u32 {
     app.context
         .settings
         .last_user_steamid
-        .unwrap_or(app.context.steamid3 as u32)
+        .unwrap_or(app.context.steamid3)
 }
 
 fn spawn_migrate_then_continue(

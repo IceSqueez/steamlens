@@ -45,7 +45,7 @@ pub struct AppContext {
     pub pending_hit_queue: VecDeque<CacheHit>,
     pub last_hit_recompute_at: Option<Instant>,
     pub steam_root: std::path::PathBuf,
-    pub steamid3: u64,
+    pub steamid3: u32,
     pub steam_level: Option<u32>,
     pub connectivity: ConnectivityState,
     pub user_profile: Option<steamlens_core::UserProfile>,

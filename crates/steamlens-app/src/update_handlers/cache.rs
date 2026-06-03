@@ -216,7 +216,7 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         },
     );
 
-    let steamid3 = app.context.steamid3 as u32;
+    let steamid3 = app.context.steamid3;
     let summary_task = Task::perform(
         async move { cache::store::write_game_summary(steamid3, &summary).await },
         move |result| {
@@ -242,7 +242,7 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
 
     let steam_on = app.context.connectivity.steam_running == Some(true);
     let pinned = app.context.settings.library.pinned.clone();
-    let steamid3 = app.context.steamid3 as u32;
+    let steamid3 = app.context.steamid3;
 
     app.context
         .capsule_handles
@@ -305,7 +305,7 @@ pub(crate) fn handle_profile_loaded(
     {
         return Task::none();
     }
-    app.context.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN);
+    app.context.steamid3 = cached.steam_id.saturating_sub(STEAMID64_INDIVIDUAL_MIN) as u32;
     app.context.steam_level = cached.steam_level;
     app.context.profile_avatar_handle = cached
         .avatar_png_bytes

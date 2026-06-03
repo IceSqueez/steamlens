@@ -99,7 +99,7 @@ pub fn write_no_ach_cache(snapshot: NoAchievementsCache) -> Task<crate::Message>
 pub fn classify_games(
     games: Vec<GameSummary>,
     steam_root: PathBuf,
-    steamid3: u64,
+    steamid3: u32,
 ) -> Task<crate::Message> {
     Task::perform(
         async move { cache::classify_games(&games, &steam_root, steamid3).await },

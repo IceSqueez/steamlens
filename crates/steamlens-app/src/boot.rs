@@ -104,17 +104,19 @@ pub(crate) fn spawn_app_assets_load() -> Task<Message> {
 
 pub(crate) fn spawn_steam_state_refresh(
     steam_root: std::path::PathBuf,
-    steamid3: u64,
+    steamid3: u32,
     known_mtime: Option<std::time::SystemTime>,
 ) -> Task<Message> {
+    let steamid64_low = u64::from(steamid3);
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                let current_mtime = steamlens_core::read_steam_state_mtime(&steam_root, steamid3);
+                let current_mtime =
+                    steamlens_core::read_steam_state_mtime(&steam_root, steamid64_low);
                 if current_mtime.is_some() && current_mtime == known_mtime {
                     return None;
                 }
-                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, steamid3);
+                let (map, mtime) = steamlens_core::read_steam_state(&steam_root, steamid64_low);
                 Some((map, mtime))
             })
             .await
