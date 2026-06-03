@@ -68,13 +68,9 @@ async fn migrate_at_root(
             }
 
             if let Ok(app_id) = name.parse::<u32>() {
-                let legacy_game_dir = legacy_games_dir.join(name.as_ref());
-                let user_game_dir = user_games_dir.join(app_id.to_string());
-                for filename in ["summary.json", "achievements.json"] {
-                    let src = legacy_game_dir.join(filename);
-                    let dst = user_game_dir.join(filename);
-                    files_moved += move_if_pending(&src, &dst).await;
-                }
+                let src = legacy_games_dir.join(name.as_ref()).join("summary.json");
+                let dst = user_games_dir.join(app_id.to_string()).join("summary.json");
+                files_moved += move_if_pending(&src, &dst).await;
             }
         }
     }
@@ -147,12 +143,10 @@ async fn has_any_legacy_game_data(games_dir: &Path) -> bool {
         {
             return true;
         }
-        if name.parse::<u32>().is_ok() {
-            let game_dir = games_dir.join(name.as_ref());
-            if game_dir.join("summary.json").exists() || game_dir.join("achievements.json").exists()
-            {
-                return true;
-            }
+        if name.parse::<u32>().is_ok()
+            && games_dir.join(name.as_ref()).join("summary.json").exists()
+        {
+            return true;
         }
     }
     false
@@ -179,7 +173,6 @@ mod tests {
         write_file(&cache.join("profile.json"), b"profile");
         write_file(&cache.join("library.json"), b"library");
         write_file(&cache.join("games/570/summary.json"), b"summary");
-        write_file(&cache.join("games/570/achievements.json"), b"achievements");
         write_file(&cache.join("games/570/icons/foo.png"), b"icon");
 
         let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
@@ -187,8 +180,8 @@ mod tests {
         match outcome {
             MigrationOutcome::Migrated { files_moved } => {
                 assert_eq!(
-                    files_moved, 4,
-                    "must move 4 files (profile, library, summary, achievements)"
+                    files_moved, 3,
+                    "must move 3 files (profile, library, summary)"
                 );
             }
             other => panic!("expected Migrated, got {other:?}"),
@@ -200,10 +193,6 @@ mod tests {
         assert!(
             user_root.join("games/570/summary.json").exists(),
             "summary moved"
-        );
-        assert!(
-            user_root.join("games/570/achievements.json").exists(),
-            "achievements moved"
         );
 
         assert!(

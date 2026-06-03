@@ -62,10 +62,6 @@ pub fn user_game_summary_path(steamid3: u32, app_id: u32) -> PathBuf {
     user_game_dir(steamid3, app_id).join("summary.json")
 }
 
-pub fn user_game_achievements_path(steamid3: u32, app_id: u32) -> PathBuf {
-    user_game_dir(steamid3, app_id).join("achievements.json")
-}
-
 pub fn user_game_cache_path(steamid3: u32, app_id: u32) -> PathBuf {
     user_game_dir(steamid3, app_id).join("cache.json")
 }

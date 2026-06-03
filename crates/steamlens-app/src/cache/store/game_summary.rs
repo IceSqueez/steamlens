@@ -23,11 +23,6 @@ pub(crate) async fn load_game_summary_from_path(path: &Path) -> Option<GameSumma
     Some(entry)
 }
 
-#[allow(dead_code)]
-pub async fn load_game_summary(steamid3: u32, app_id: u32) -> Option<GameSummaryCache> {
-    load_game_summary_from_path(&crate::paths::user_game_summary_path(steamid3, app_id)).await
-}
-
 pub async fn write_game_summary(
     steamid3: u32,
     entry: &GameSummaryCache,
