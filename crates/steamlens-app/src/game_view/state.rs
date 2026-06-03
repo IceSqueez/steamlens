@@ -198,7 +198,7 @@ impl GameViewState {
         const FADE_PER_SEC: f32 = 2.4;
         const CARD_OPACITY_PER_SEC: f32 = 6.0;
         const GLOW_RAD_PER_SEC: f32 = 3.0;
-        const REVEAL_INTERVAL_SECS: f32 = 0.030;
+        const REVEAL_INTERVAL_SECS: f32 = 0.005;
 
         let busy = matches!(
             self.phase,
