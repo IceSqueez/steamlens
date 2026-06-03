@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use iced::Task;
 use tokio::sync::mpsc;
 
-use crate::app_context::{AnimationState, AppContext, ConnectivityState, UserState};
+use crate::app_context::{AnimationState, AppContext, CapsuleStore, ConnectivityState, UserState};
 use crate::cache;
 use crate::messaging::MessagingCenter;
 use crate::profile_view::types::ProfileViewState;
@@ -35,8 +35,7 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         steam_state: HashMap::new(),
         steam_state_mtime: None,
         app_assets: HashMap::new(),
-        capsule_handles: HashMap::new(),
-        capsule_unavailable: HashSet::new(),
+        capsules: CapsuleStore::default(),
         animation: AnimationState::new(),
     };
     tracing::info!(

@@ -554,7 +554,7 @@ pub fn update(
             width,
             height,
         } => {
-            ctx.capsule_handles.insert(
+            ctx.capsules.handles.insert(
                 (app_id, size),
                 crate::profile_view::types::StoredCapsule {
                     handle,
@@ -566,7 +566,7 @@ pub fn update(
         }
         GameViewMessage::CapsuleFailed { app_id, size } => {
             tracing::warn!("game_view: capsule fetch failed for app_id={app_id} size={size:?}");
-            ctx.capsule_unavailable.insert((app_id, size));
+            ctx.capsules.unavailable.insert((app_id, size));
             (Task::none(), GameViewEvent::None)
         }
 

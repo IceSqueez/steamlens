@@ -28,12 +28,7 @@ pub fn achievement_search_id() -> WidgetId {
 pub struct GameViewProps<'a> {
     pub skeleton_phase: f32,
     pub app_theme: crate::ui::theme::AppTheme,
-    pub capsule_handles: &'a std::collections::HashMap<
-        (u32, crate::capsule_cache::CapsuleSize),
-        crate::profile_view::types::StoredCapsule,
-    >,
-    pub capsule_unavailable:
-        &'a std::collections::HashSet<(u32, crate::capsule_cache::CapsuleSize)>,
+    pub capsules: &'a crate::app_context::CapsuleStore,
 }
 
 pub fn render<'a>(
@@ -43,18 +38,11 @@ pub fn render<'a>(
     let GameViewProps {
         skeleton_phase,
         app_theme,
-        capsule_handles,
-        capsule_unavailable,
+        capsules,
     } = props;
     match state.phase {
         GameViewPhase::Saving => {
-            let base = loaded_view(
-                state,
-                skeleton_phase,
-                app_theme,
-                capsule_handles,
-                capsule_unavailable,
-            );
+            let base = loaded_view(state, skeleton_phase, app_theme, capsules);
             stack![
                 base,
                 opaque(saving_overlay(
@@ -66,13 +54,7 @@ pub fn render<'a>(
             .into()
         }
         GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Ready => {
-            let base = loaded_view(
-                state,
-                skeleton_phase,
-                app_theme,
-                capsule_handles,
-                capsule_unavailable,
-            );
+            let base = loaded_view(state, skeleton_phase, app_theme, capsules);
             if state.show_apply_modal {
                 stack![base, opaque(apply_modal(state, app_theme))].into()
             } else {
@@ -121,11 +103,7 @@ fn loaded_view<'a>(
     state: &'a GameViewState,
     skeleton_phase: f32,
     app_theme: crate::ui::theme::AppTheme,
-    capsule_handles: &'a std::collections::HashMap<
-        (u32, crate::capsule_cache::CapsuleSize),
-        crate::profile_view::types::StoredCapsule,
-    >,
-    capsule_unavailable: &'a std::collections::HashSet<(u32, crate::capsule_cache::CapsuleSize)>,
+    capsules: &'a crate::app_context::CapsuleStore,
 ) -> Element<'a, GameViewMessage> {
     use crate::game_view::widget::{GameWidgetParams, game_widget};
 
@@ -136,8 +114,7 @@ fn loaded_view<'a>(
         playtime_minutes: state.playtime_minutes,
         stats: state.stats.as_slice(),
         stats_search_query: state.stats_search_query.as_str(),
-        capsule_handles,
-        capsule_unavailable,
+        capsules,
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
         summary: state.derived.summary,

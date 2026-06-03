@@ -275,10 +275,12 @@ pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<M
     let steamid3 = app.context.user.steamid3;
 
     app.context
-        .capsule_handles
+        .capsules
+        .handles
         .retain(|(id, _), _| *id != app_id);
     app.context
-        .capsule_unavailable
+        .capsules
+        .unavailable
         .retain(|(id, _)| *id != app_id);
 
     let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);

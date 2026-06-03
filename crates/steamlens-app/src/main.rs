@@ -295,7 +295,7 @@ fn view(app: &App) -> Element<'_, Message> {
                 user_profile: app.context.user.profile.as_ref(),
                 avatar_handle: app.context.user.avatar_handle.as_ref(),
                 cached_entries: &app.context.cached_entries,
-                capsule_handles: &app.context.capsule_handles,
+                capsules: &app.context.capsules,
                 skeleton_phase,
                 pinned: &app.context.settings.library.pinned,
                 steam_level: app.context.user.steam_level,
@@ -310,8 +310,7 @@ fn view(app: &App) -> Element<'_, Message> {
             let props = game_view::GameViewProps {
                 skeleton_phase,
                 app_theme: theme,
-                capsule_handles: &app.context.capsule_handles,
-                capsule_unavailable: &app.context.capsule_unavailable,
+                capsules: &app.context.capsules,
             };
             game_view::view(state, props).map(Message::GameView)
         }
@@ -493,7 +492,7 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
     use crate::app_context::AnimationState;
-    use crate::app_context::{ConnectivityState, UserState};
+    use crate::app_context::{CapsuleStore, ConnectivityState, UserState};
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -529,8 +528,7 @@ mod tests {
                     steam_state: HashMap::new(),
                     steam_state_mtime: None,
                     app_assets: HashMap::new(),
-                    capsule_handles: HashMap::new(),
-                    capsule_unavailable: std::collections::HashSet::new(),
+                    capsules: CapsuleStore::default(),
                     animation: AnimationState::new(),
                 },
                 screen: Screen::ProfileView(Box::new(ProfileViewState::new())),

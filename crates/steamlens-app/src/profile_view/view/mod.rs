@@ -10,9 +10,8 @@ use iced::widget::{container, text};
 use iced::{Alignment, Element, Length};
 
 use crate::cache::GameCacheEntry;
-use crate::capsule_cache::CapsuleSize;
 use crate::profile_view::ProfileViewState;
-use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase, StoredCapsule};
+use crate::profile_view::types::{GameEntry, ProfileViewMessage, ProfileViewPhase};
 use crate::profile_view::widget::{ProfileWidgetParams, profile_widget};
 use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{AppTheme, palette, theme_from_iced};
@@ -27,7 +26,7 @@ pub struct ProfileViewProps<'a> {
     pub user_profile: Option<&'a steamlens_core::UserProfile>,
     pub avatar_handle: Option<&'a iced::widget::image::Handle>,
     pub cached_entries: &'a HashMap<u32, GameCacheEntry>,
-    pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub capsules: &'a crate::app_context::CapsuleStore,
     pub skeleton_phase: f32,
     pub pinned: &'a [u32],
     pub steam_level: Option<u32>,
@@ -43,7 +42,7 @@ pub fn render<'a>(
         state,
         props.user_profile,
         props.avatar_handle,
-        props.capsule_handles,
+        props.capsules,
         props.skeleton_phase,
         props.steam_level,
         props.theme,
@@ -117,7 +116,7 @@ fn build_profile_section<'a>(
     state: &'a ProfileViewState,
     user_profile: Option<&'a steamlens_core::UserProfile>,
     avatar_handle: Option<&'a iced::widget::image::Handle>,
-    capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    capsules: &'a crate::app_context::CapsuleStore,
     skeleton_phase: f32,
     steam_level: Option<u32>,
     theme: AppTheme,
@@ -130,7 +129,7 @@ fn build_profile_section<'a>(
         games_count: state.games.len(),
         skeleton_phase,
         hovered_bar_slice: state.hovered_bar_slice,
-        capsule_handles,
+        capsules,
         capsule_size: state.capsule_size,
         steam_level,
         theme,

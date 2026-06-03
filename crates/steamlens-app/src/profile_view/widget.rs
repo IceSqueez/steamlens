@@ -178,7 +178,7 @@ pub struct ProfileWidgetParams<'a> {
     pub games_count: usize,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
-    pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub capsules: &'a crate::app_context::CapsuleStore,
     pub capsule_size: CapsuleSize,
     pub steam_level: Option<u32>,
     pub theme: AppTheme,
@@ -197,7 +197,7 @@ pub fn profile_widget<'a>(params: ProfileWidgetParams<'a>) -> Element<'a, Profil
     );
     let right_col = build_right_column(
         params.top6,
-        params.capsule_handles,
+        &params.capsules.handles,
         params.capsule_size,
         params.skeleton_phase,
     );

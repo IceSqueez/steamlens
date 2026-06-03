@@ -28,7 +28,9 @@ pub fn subscription(_state: &GameViewState) -> iced::Subscription<GameViewMessag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_context::{AnimationState, AppContext, ConnectivityState, UserState};
+    use crate::app_context::{
+        AnimationState, AppContext, CapsuleStore, ConnectivityState, UserState,
+    };
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
     use crate::steam_worker::SteamReply;
@@ -63,8 +65,7 @@ mod tests {
             steam_state: HashMap::new(),
             steam_state_mtime: None,
             app_assets: HashMap::new(),
-            capsule_handles: HashMap::new(),
-            capsule_unavailable: std::collections::HashSet::new(),
+            capsules: CapsuleStore::default(),
             animation: AnimationState::new(),
         }
     }

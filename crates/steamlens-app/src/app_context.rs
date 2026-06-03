@@ -43,6 +43,12 @@ pub struct UserState {
     pub avatar_handle: Option<iced::widget::image::Handle>,
 }
 
+#[derive(Default)]
+pub struct CapsuleStore {
+    pub handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
+    pub unavailable: HashSet<(u32, CapsuleSize)>,
+}
+
 pub struct AppContext {
     pub worker: Option<SteamWorker>,
     pub worker_reply_tx: mpsc::UnboundedSender<SteamReply>,
@@ -59,8 +65,7 @@ pub struct AppContext {
     pub steam_state: HashMap<u32, SteamAppState>,
     pub steam_state_mtime: Option<SystemTime>,
     pub app_assets: HashMap<u32, AppLibraryAssets>,
-    pub capsule_handles: HashMap<(u32, CapsuleSize), StoredCapsule>,
-    pub capsule_unavailable: HashSet<(u32, CapsuleSize)>,
+    pub capsules: CapsuleStore,
     pub animation: AnimationState,
 }
 

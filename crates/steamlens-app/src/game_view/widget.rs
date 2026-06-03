@@ -75,8 +75,7 @@ pub struct GameWidgetParams<'a> {
     pub playtime_minutes: Option<u32>,
     pub stats: &'a [super::types::StatRow],
     pub stats_search_query: &'a str,
-    pub capsule_handles: &'a HashMap<(u32, CapsuleSize), StoredCapsule>,
-    pub capsule_unavailable: &'a HashSet<(u32, CapsuleSize)>,
+    pub capsules: &'a crate::app_context::CapsuleStore,
     pub skeleton_phase: f32,
     pub hovered_bar_slice: Option<RarityTier>,
     pub summary: WidgetSummary,
@@ -86,8 +85,8 @@ pub struct GameWidgetParams<'a> {
 pub fn game_widget<'a>(params: GameWidgetParams<'a>) -> Element<'a, GameViewMessage> {
     let capsule_el = build_capsule(
         params.app_id,
-        params.capsule_handles,
-        params.capsule_unavailable,
+        &params.capsules.handles,
+        &params.capsules.unavailable,
         params.skeleton_phase,
     );
     let inner_col = build_left_column(
