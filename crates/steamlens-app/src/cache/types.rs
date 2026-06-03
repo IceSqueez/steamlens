@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::RarityTier;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
-pub const SUMMARY_SCHEMA_VERSION: u32 = 6;
+pub const SUMMARY_SCHEMA_VERSION: u32 = 7;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameCacheEntry {
