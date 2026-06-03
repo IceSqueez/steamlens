@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
+
 use iced::widget::{Space, container};
-use iced::{Background, Border, Element, Length, Radians, gradient};
+use iced::{Background, Border, Color, Element, Length, Radians, gradient};
 
 use crate::ui::theme::{palette, theme_from_iced};
 
@@ -8,7 +10,8 @@ use crate::ui::theme::AppTheme;
 
 pub const SKELETON_DEFAULT_RADIUS: f32 = 4.0;
 
-/// `phase` in `[0.0, 1.0)` cycles a bright band left-to-right across the box.
+const BAND_HALF_WIDTH: f32 = 0.20;
+
 pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, radius: f32, phase: f32) -> Element<'a, M> {
     container(Space::new())
         .width(Length::Fixed(width))
@@ -29,39 +32,15 @@ pub fn skeleton_box<'a, M: 'a>(width: f32, height: f32, radius: f32, phase: f32)
         .into()
 }
 
-fn build_shimmer_gradient(phase: f32, base: iced::Color, shine: iced::Color) -> gradient::Linear {
+fn build_shimmer_gradient(phase: f32, base: Color, shine: Color) -> gradient::Linear {
     let angle = Radians(std::f32::consts::FRAC_PI_2);
-    let band_half_width = 0.20f32;
 
-    let lo = phase - band_half_width;
-    let hi = phase + band_half_width;
-
-    let mut stops: Vec<(f32, iced::Color)> = Vec::with_capacity(8);
-    stops.push((0.0, base));
-
-    if lo < 0.0 {
-        let wrapped_lo = lo + 1.0;
-        stops.push((wrapped_lo.max(0.001), base));
-        stops.push((1.0f32.min(wrapped_lo + 0.001), shine));
-        stops.push((1.0, shine));
-    } else {
-        stops.push(((lo - 0.001).max(0.001), base));
+    let mut stops: Vec<(f32, Color)> = Vec::with_capacity(9);
+    for center in [phase - 1.0, phase, phase + 1.0] {
+        push_band_stops(&mut stops, center, base, shine);
     }
 
-    if hi > 1.0 {
-        stops.push((1.0f32.min(phase), shine));
-        let wrapped_hi = hi - 1.0;
-        stops.push((0.0f32.max(wrapped_hi - 0.001), shine));
-        stops.push(((wrapped_hi + 0.001).min(1.0), base));
-    } else {
-        stops.push((lo.clamp(0.001, 0.999), base));
-        stops.push((phase.clamp(0.001, 0.999), shine));
-        stops.push((hi.clamp(0.001, 0.999), base));
-    }
-
-    stops.push((1.0, base));
-
-    stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
     stops.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-5);
     stops.truncate(8);
 
@@ -70,6 +49,47 @@ fn build_shimmer_gradient(phase: f32, base: iced::Color, shine: iced::Color) -> 
         grad = grad.add_stop(offset, color);
     }
     grad
+}
+
+fn push_band_stops(stops: &mut Vec<(f32, Color)>, center: f32, base: Color, shine: Color) {
+    let lo = center - BAND_HALF_WIDTH;
+    let hi = center + BAND_HALF_WIDTH;
+
+    if hi <= 0.0 || lo >= 1.0 {
+        return;
+    }
+
+    if lo >= 0.0 {
+        stops.push((lo, base));
+    } else {
+        stops.push((0.0, band_color_at(0.0, center, base, shine)));
+    }
+
+    if (0.0..=1.0).contains(&center) {
+        stops.push((center, shine));
+    }
+
+    if hi <= 1.0 {
+        stops.push((hi, base));
+    } else {
+        stops.push((1.0, band_color_at(1.0, center, base, shine)));
+    }
+}
+
+fn band_color_at(x: f32, center: f32, base: Color, shine: Color) -> Color {
+    let dist = (x - center).abs();
+    let t = (1.0 - dist / BAND_HALF_WIDTH).max(0.0);
+    lerp_color(base, shine, t)
+}
+
+fn lerp_color(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a + (b.a - a.a) * t,
+    }
 }
 
 #[cfg(test)]
