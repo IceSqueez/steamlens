@@ -223,7 +223,7 @@ pub fn update(
 
             let app_ids: Vec<u32> = enumerated.iter().map(|g| g.app_id).collect();
             (
-                spawn_capsule_queue(app_ids, state.capsule_size, &ctx.app_assets),
+                spawn_capsule_queue(app_ids, state.capsule_size, &ctx.steam.library_assets),
                 ProfileEvent::None,
             )
         }
@@ -266,7 +266,7 @@ pub fn update(
             let task = if miss_ids.is_empty() {
                 Task::none()
             } else {
-                spawn_capsule_queue(miss_ids, new_size, &ctx.app_assets)
+                spawn_capsule_queue(miss_ids, new_size, &ctx.steam.library_assets)
             };
             (task, ProfileEvent::None)
         }
@@ -502,7 +502,7 @@ fn handle_progress_result(
         &data,
         scan_app_id,
         game_name.as_deref(),
-        &ctx.steam_state,
+        &ctx.steam.app_state,
     );
 
     if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {

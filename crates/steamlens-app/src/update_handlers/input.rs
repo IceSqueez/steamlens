@@ -199,8 +199,8 @@ pub(crate) fn handle_steam_state_refreshed(
     payload: Option<(HashMap<u32, SteamAppState>, Option<SystemTime>)>,
 ) -> Task<Message> {
     if let Some((state, mtime)) = payload {
-        app.context.steam_state = state;
-        app.context.steam_state_mtime = mtime;
+        app.context.steam.app_state = state;
+        app.context.steam.app_state_mtime = mtime;
     }
     Task::none()
 }
@@ -213,6 +213,6 @@ pub(crate) fn handle_app_assets_loaded(
         count = assets.len(),
         "app_assets: loaded library_assets_full hashes from appinfo.vdf"
     );
-    app.context.app_assets = assets;
+    app.context.steam.library_assets = assets;
     Task::none()
 }

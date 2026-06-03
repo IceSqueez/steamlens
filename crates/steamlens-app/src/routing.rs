@@ -76,7 +76,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         tasks.push(crate::boot::spawn_steam_state_refresh(
             app.context.user.steam_root.clone(),
             app.context.user.steamid3,
-            app.context.steam_state_mtime,
+            app.context.steam.app_state_mtime,
         ));
     }
 
@@ -94,7 +94,8 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     if state.playtime_minutes.is_none() {
         state.playtime_minutes = app
             .context
-            .steam_state
+            .steam
+            .app_state
             .get(&app_id)
             .and_then(|s| s.playtime_minutes);
     }
@@ -124,7 +125,8 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
 
     let portrait_assets = app
         .context
-        .app_assets
+        .steam
+        .library_assets
         .get(&app_id)
         .cloned()
         .unwrap_or_default();

@@ -72,7 +72,7 @@ pub(crate) fn handle_probe_result(
                 boot::spawn_steam_state_refresh(
                     app.context.user.steam_root.clone(),
                     app.context.user.steamid3,
-                    app.context.steam_state_mtime,
+                    app.context.steam.app_state_mtime,
                 ),
                 cache::commands::write_profile_cache(new_steamid3, cached),
                 spawn_migrate_then_continue(

@@ -492,7 +492,7 @@ fn main() -> iced::Result {
 mod tests {
     use super::*;
     use crate::app_context::AnimationState;
-    use crate::app_context::{CapsuleStore, ConnectivityState, UserState};
+    use crate::app_context::{CapsuleStore, ConnectivityState, SteamSnapshot, UserState};
     use crate::cache::{CachedLibrary, CachedLibraryEntry, CachedProfile, ClassifyResult};
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -525,9 +525,7 @@ mod tests {
                         user_logged_in: Some(true),
                     },
                     no_ach_cache: cache::NoAchievementsCache::new(),
-                    steam_state: HashMap::new(),
-                    steam_state_mtime: None,
-                    app_assets: HashMap::new(),
+                    steam: SteamSnapshot::default(),
                     capsules: CapsuleStore::default(),
                     animation: AnimationState::new(),
                 },

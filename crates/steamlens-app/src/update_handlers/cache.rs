@@ -172,7 +172,8 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
 
     let playtime_minutes = app
         .context
-        .steam_state
+        .steam
+        .app_state
         .get(&app_id)
         .and_then(|s| s.playtime_minutes);
 
@@ -199,8 +200,11 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
 
     tracing::info!(app_id, earned, total, change_number, "persist game summary");
 
-    let mut full_entry =
-        game_cache_builder::build_game_view_cache_entry(gv_state, app_id, &app.context.steam_state);
+    let mut full_entry = game_cache_builder::build_game_view_cache_entry(
+        gv_state,
+        app_id,
+        &app.context.steam.app_state,
+    );
     if let Some(existing) = app.context.cached_entries.get(&app_id) {
         cache::store::merge_preserved_fields(&mut full_entry, existing);
     }
@@ -320,7 +324,7 @@ pub(crate) fn handle_game_invalidated(
     }
     let pv_state = routing::current_pv_state_mut(&mut app.screen, &mut app.preserved_profile_state);
     let size = pv_state.capsule_size;
-    profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.app_assets)
+    profile_view::spawn_capsule_queue(vec![app_id], size, &app.context.steam.library_assets)
         .map(Message::ProfileView)
 }
 

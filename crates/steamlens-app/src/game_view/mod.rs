@@ -29,7 +29,7 @@ pub fn subscription(_state: &GameViewState) -> iced::Subscription<GameViewMessag
 mod tests {
     use super::*;
     use crate::app_context::{
-        AnimationState, AppContext, CapsuleStore, ConnectivityState, UserState,
+        AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
     };
     use crate::messaging::MessagingCenter;
     use crate::settings::Settings;
@@ -62,9 +62,7 @@ mod tests {
                 user_logged_in: Some(true),
             },
             no_ach_cache: crate::cache::NoAchievementsCache::new(),
-            steam_state: HashMap::new(),
-            steam_state_mtime: None,
-            app_assets: HashMap::new(),
+            steam: SteamSnapshot::default(),
             capsules: CapsuleStore::default(),
             animation: AnimationState::new(),
         }

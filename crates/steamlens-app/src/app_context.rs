@@ -49,6 +49,13 @@ pub struct CapsuleStore {
     pub unavailable: HashSet<(u32, CapsuleSize)>,
 }
 
+#[derive(Default)]
+pub struct SteamSnapshot {
+    pub app_state: HashMap<u32, SteamAppState>,
+    pub app_state_mtime: Option<SystemTime>,
+    pub library_assets: HashMap<u32, AppLibraryAssets>,
+}
+
 pub struct AppContext {
     pub worker: Option<SteamWorker>,
     pub worker_reply_tx: mpsc::UnboundedSender<SteamReply>,
@@ -62,9 +69,7 @@ pub struct AppContext {
     pub user: UserState,
     pub connectivity: ConnectivityState,
     pub no_ach_cache: cache::NoAchievementsCache,
-    pub steam_state: HashMap<u32, SteamAppState>,
-    pub steam_state_mtime: Option<SystemTime>,
-    pub app_assets: HashMap<u32, AppLibraryAssets>,
+    pub steam: SteamSnapshot,
     pub capsules: CapsuleStore,
     pub animation: AnimationState,
 }

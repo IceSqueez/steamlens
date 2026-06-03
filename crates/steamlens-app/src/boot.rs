@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 use iced::Task;
 use tokio::sync::mpsc;
 
-use crate::app_context::{AnimationState, AppContext, CapsuleStore, ConnectivityState, UserState};
+use crate::app_context::{
+    AnimationState, AppContext, CapsuleStore, ConnectivityState, SteamSnapshot, UserState,
+};
 use crate::cache;
 use crate::messaging::MessagingCenter;
 use crate::profile_view::types::ProfileViewState;
@@ -32,9 +34,7 @@ pub(crate) fn boot_with_settings(loaded_settings: Settings) -> (App, Task<Messag
         user: UserState::default(),
         connectivity: ConnectivityState::default(),
         no_ach_cache: cache::load_no_achievements_cache_blocking(),
-        steam_state: HashMap::new(),
-        steam_state_mtime: None,
-        app_assets: HashMap::new(),
+        steam: SteamSnapshot::default(),
         capsules: CapsuleStore::default(),
         animation: AnimationState::new(),
     };
