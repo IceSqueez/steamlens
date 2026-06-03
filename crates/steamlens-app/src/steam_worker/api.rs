@@ -64,7 +64,8 @@ impl SteamWorker {
         let (request_sender, request_receiver) = mpsc::unbounded_channel::<SteamRequest>();
         let (reply_sender, reply_receiver) = mpsc::unbounded_channel::<WorkerReply>();
         let generation = NEXT_WORKER_GENERATION.fetch_add(1, Ordering::Relaxed);
-        tokio::spawn(bridge_loop(request_receiver, reply_sender));
+        tracing::trace!(generation, "SteamWorker spawned");
+        tokio::spawn(bridge_loop(request_receiver, reply_sender, generation));
         SteamWorker {
             request_sender,
             reply_receiver: Arc::new(Mutex::new(Some(reply_receiver))),
@@ -99,5 +100,16 @@ impl SteamWorker {
     ) -> Result<Task<M>, crate::worker_subprocess::ConnectivityError> {
         crate::worker_subprocess::preflight(steam_running, user_logged_in)?;
         Ok(self.dispatch(request, message))
+    }
+}
+
+impl Drop for SteamWorker {
+    fn drop(&mut self) {
+        tracing::trace!(
+            generation = self.generation,
+            strong = self.request_sender.strong_count(),
+            weak = self.request_sender.weak_count(),
+            "SteamWorker dropping"
+        );
     }
 }

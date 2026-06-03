@@ -36,11 +36,17 @@ async fn await_steam_connected(
 pub(super) async fn bridge_loop(
     mut request_receiver: async_mpsc::UnboundedReceiver<SteamRequest>,
     reply_sender: mpsc::UnboundedSender<WorkerReply>,
+    generation: u64,
 ) {
     let connect_timeout = timeouts::STEAM_CONNECT;
+    tracing::trace!(generation, "bridge_loop started");
 
     let (mut handle, mut current_app_id) = loop {
         let Some(request) = request_receiver.recv().await else {
+            tracing::trace!(
+                generation,
+                "bridge_loop exit: channel closed before any connect"
+            );
             return;
         };
         match request {
@@ -94,6 +100,15 @@ pub(super) async fn bridge_loop(
 
     loop {
         let request = tokio::select! {
+            biased;
+            request = request_receiver.recv() => match request {
+                Some(request) => request,
+                None => {
+                    tracing::trace!(generation, app_id = current_app_id, "bridge_loop exit: request channel closed");
+                    let _ = handle.finish().await;
+                    return;
+                }
+            },
             response = handle.recv() => {
                 match response {
                     Ok(Some(response)) => {
@@ -101,18 +116,12 @@ pub(super) async fn bridge_loop(
                         continue;
                     }
                     Ok(None) | Err(_) => {
+                        tracing::trace!(generation, app_id = current_app_id, "bridge_loop exit: subprocess pipe closed");
                         let _ = handle.finish().await;
                         return;
                     }
                 }
             }
-            request = request_receiver.recv() => match request {
-                Some(request) => request,
-                None => {
-                    let _ = handle.finish().await;
-                    return;
-                }
-            },
         };
 
         match request {

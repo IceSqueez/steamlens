@@ -4,7 +4,6 @@ use crate::game_view::types::RarityTier;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 pub const SUMMARY_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +21,6 @@ pub struct GameCacheEntry {
     pub playtime_minutes: Option<u32>,
 }
 
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameSummaryCache {
     pub schema_version: u32,
@@ -34,16 +32,6 @@ pub struct GameSummaryCache {
     pub tier_breakdown: Vec<(RarityTier, u32)>,
     pub genre: Option<String>,
     pub playtime_minutes: Option<u32>,
-}
-
-#[allow(dead_code, reason = "consumers land in subsequent migration chunks")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameAchievementsCache {
-    pub schema_version: u32,
-    pub app_id: u32,
-    pub cached_at: u64,
-    pub achievements: Vec<CachedAchievement>,
-    pub stats: Vec<CachedStat>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

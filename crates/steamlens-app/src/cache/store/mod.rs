@@ -13,7 +13,7 @@ mod tests {
     use super::*;
     use crate::cache::types::{
         CURRENT_SCHEMA_VERSION, CachedAchievement, CachedProgress, CachedStat, CachedStatValue,
-        GameAchievementsCache, GameCacheEntry, GameSummaryCache, SUMMARY_SCHEMA_VERSION,
+        GameCacheEntry, GameSummaryCache, SUMMARY_SCHEMA_VERSION,
     };
     use std::path::Path;
     use std::sync::Arc;
@@ -291,46 +291,6 @@ mod tests {
         assert_eq!(restored.progress.earned, 18);
         assert_eq!(restored.progress.total, 88);
         assert_eq!(restored.genre.as_deref(), Some("Action"));
-        assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
-    }
-
-    #[tokio::test]
-    async fn game_achievements_round_trip() {
-        let achievements = GameAchievementsCache {
-            schema_version: SUMMARY_SCHEMA_VERSION,
-            app_id: 105600,
-            cached_at: 1_746_360_000,
-            achievements: vec![CachedAchievement {
-                api_name: "KILL_BOSS".to_owned(),
-                display_name: "Miner for Fire".to_owned(),
-                description: "Defeat the Wall of Flesh.".to_owned(),
-                is_hidden: false,
-                icon_path: None,
-                icon_locked_path: None,
-                is_achieved: true,
-                earned_at: Some(1_700_000_000),
-                global_percent: Some(18.5),
-            }],
-            stats: vec![CachedStat {
-                api_name: "NumDeaths".to_owned(),
-                display_name: "Deaths".to_owned(),
-                value: CachedStatValue::Int(42),
-                max_value: None,
-                min_value: None,
-                default_value: None,
-                is_increment_only: false,
-                permission: 0,
-            }],
-        };
-
-        let bytes = serde_json::to_vec_pretty(&achievements).expect("serialize");
-        let restored: GameAchievementsCache = serde_json::from_slice(&bytes).expect("deserialize");
-
-        assert_eq!(restored.app_id, achievements.app_id);
-        assert_eq!(restored.achievements.len(), 1);
-        assert_eq!(restored.achievements[0].api_name, "KILL_BOSS");
-        assert!(restored.achievements[0].is_achieved);
-        assert_eq!(restored.stats[0].value, CachedStatValue::Int(42));
         assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
     }
 

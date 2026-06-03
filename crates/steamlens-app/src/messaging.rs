@@ -18,17 +18,11 @@ pub enum MessagingEvent {
 pub enum BannerSeverity {
     Info,
     Warning,
-    #[allow(
-        dead_code,
-        reason = "kept for future critical-state banners; Error now routes to toast"
-    )]
-    Error,
 }
 
 impl BannerSeverity {
     fn sort_key(self) -> u8 {
         match self {
-            BannerSeverity::Error => 2,
             BannerSeverity::Warning => 1,
             BannerSeverity::Info => 0,
         }
@@ -52,7 +46,6 @@ pub struct Banner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
-    #[allow(dead_code, reason = "available for future success-feedback toasts")]
     Success,
     Info,
     Error,
@@ -222,7 +215,6 @@ fn render_banner(banner: &Banner) -> Element<'_, crate::Message> {
     let severity = match banner.severity {
         BannerSeverity::Info => Severity::Info,
         BannerSeverity::Warning => Severity::Warning,
-        BannerSeverity::Error => Severity::Error,
     };
 
     let (title, text_line) = match banner.body.split_once('\n') {
@@ -318,11 +310,9 @@ mod tests {
     fn banners_sorted_highest_severity_first() {
         let mut mc = MessagingCenter::new();
         mc.push_banner(BannerSeverity::Info, "info", None, false);
-        mc.push_banner(BannerSeverity::Error, "error", None, false);
         mc.push_banner(BannerSeverity::Warning, "warn", None, false);
-        assert_eq!(mc.banners[0].severity, BannerSeverity::Error);
-        assert_eq!(mc.banners[1].severity, BannerSeverity::Warning);
-        assert_eq!(mc.banners[2].severity, BannerSeverity::Info);
+        assert_eq!(mc.banners[0].severity, BannerSeverity::Warning);
+        assert_eq!(mc.banners[1].severity, BannerSeverity::Info);
     }
 
     #[test]

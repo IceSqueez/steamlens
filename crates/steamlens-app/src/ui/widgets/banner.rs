@@ -8,14 +8,12 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 use crate::ui::theme::{palette, theme_from_iced};
 
 const C_WARNING: Color = Color::from_rgb(0.941, 0.784, 0.478);
-const C_ERROR: Color = Color::from_rgb(0.863, 0.392, 0.392);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Severity {
     #[default]
     Info,
     Warning,
-    Error,
 }
 
 impl Severity {
@@ -23,7 +21,6 @@ impl Severity {
         match self {
             Severity::Info => palette(crate::ui::theme::AppTheme::Dark).accent,
             Severity::Warning => C_WARNING,
-            Severity::Error => C_ERROR,
         }
     }
 
@@ -31,7 +28,6 @@ impl Severity {
         match self {
             Severity::Info => palette(theme_from_iced(t)).accent,
             Severity::Warning => C_WARNING,
-            Severity::Error => C_ERROR,
         }
     }
 
@@ -39,7 +35,6 @@ impl Severity {
         match self {
             Severity::Info => "i",
             Severity::Warning => "!",
-            Severity::Error => "\u{2715}",
         }
     }
 

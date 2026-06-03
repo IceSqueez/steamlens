@@ -9,7 +9,6 @@ pub enum AppTheme {
     Light,
 }
 
-#[expect(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ThemePalette {
     pub app: Color,
@@ -20,13 +19,11 @@ pub struct ThemePalette {
     pub placeholder: Color,
 
     pub text_primary: Color,
-    pub text_secondary: Color,
     pub text_muted: Color,
     pub text_dim: Color,
     pub text_locked_desc: Color,
 
     pub accent: Color,
-    pub accent_soft_border: Color,
     pub accent_pending: Color,
 
     pub rarity_common: Color,
@@ -59,18 +56,11 @@ pub const DARK: ThemePalette = ThemePalette {
     placeholder: Color::from_rgb(0.188, 0.192, 0.247),
 
     text_primary: Color::from_rgb8(0xf0, 0xee, 0xf8),
-    text_secondary: Color::from_rgb8(0xe4, 0xe2, 0xf0),
     text_muted: Color::from_rgb8(0x8a, 0x86, 0xa3),
     text_dim: Color::from_rgb8(0x6b, 0x68, 0x84),
     text_locked_desc: Color::from_rgb8(0x99, 0x94, 0xb0),
 
     accent: Color::from_rgb8(0xc9, 0xa6, 0xf0),
-    accent_soft_border: Color {
-        r: 0.788,
-        g: 0.651,
-        b: 0.941,
-        a: 0.40,
-    },
     accent_pending: Color::from_rgb(0.945, 0.980, 0.549),
 
     rarity_common: Color::from_rgb(0.314, 0.980, 0.482),
@@ -100,13 +90,11 @@ pub const LIGHT: ThemePalette = ThemePalette {
     placeholder: Color::from_rgb8(0xdc, 0xe0, 0xe8),
 
     text_primary: Color::from_rgb8(0x1f, 0x1c, 0x2c),
-    text_secondary: Color::from_rgb8(0x2a, 0x26, 0x38),
     text_muted: Color::from_rgb8(0x6b, 0x68, 0x84),
     text_dim: Color::from_rgb8(0x99, 0x94, 0xa8),
     text_locked_desc: Color::from_rgb8(0x55, 0x52, 0x6e),
 
     accent: Color::from_rgb8(0x88, 0x39, 0xef),
-    accent_soft_border: Color::from_rgb8(0xc8, 0xa8, 0xeb),
     accent_pending: Color::from_rgb8(0x9a, 0x6d, 0x00),
 
     rarity_common: Color::from_rgb8(0x4c, 0xaf, 0x50),
