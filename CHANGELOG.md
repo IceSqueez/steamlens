@@ -1,12 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-06-04
+### 🐛 Bug Fixes
+- *(ui)* Keep library scan subscription alive across screen changes
+- *(ui)* Stabilize game card tag row with fixed pct pill and genre ellipsis
+- *(ui)* Drop virtual scrolling causing wheel scroll jumps and jerks
+
+### 🛠️ Build
+- Speed up release builds and add cache-aware audit
+
 ## [1.0.1] - 2026-06-03
 ### ⚙️ Miscellaneous Tasks
 - Strip references from comments
 - *(vdf)* Remove investigation example binaries
 - *(cache)* Drop dead game_achievements API and migration step
 - *(cache)* Bump schema versions after tier algorithm refactor
+- Release
 
 ### ⚡ Performance
 - *(ui)* Speed up achievement reveal animation to 5ms per card
@@ -20,6 +30,9 @@ All notable changes to this project will be documented in this file.
 - *(ui)* Sync status bar progress with reveal animation
 - *(ui)* Skip cache seed when Steam is running
 - *(ui)* Pin hidden locked achievements to end of all sort orders
+
+### 📚 Documentation
+- *(release)* Release v1.0.1
 
 ### 🚀 Features
 - *(app)* Partition cache per Steam user with one-time migration
