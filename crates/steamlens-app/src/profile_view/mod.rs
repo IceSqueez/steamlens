@@ -180,19 +180,16 @@ fn build_profile_genre_strip<'a>(
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 use std::time::Instant;
 
 use iced::Task;
-use iced::futures::channel::mpsc as iced_mpsc;
 
 use crate::app_context::AppContext;
 use crate::capsule_cache::CapsuleSize;
 use crate::progress_scan::ProgressData;
 use types::{
     CapsuleAsset, GameEntry, ProfileEvent, ProfileViewMessage, ProfileViewPhase, ProfileViewState,
-    SharedProgressRx, StoredCapsule,
+    StoredCapsule,
 };
 
 pub fn update(
@@ -399,8 +396,17 @@ pub fn update(
 
         ProfileViewMessage::ProgressResultReceived(result) => {
             let outcome = handle_progress_result(state, ctx, *result);
-            state.rebuild_available_genres();
-            state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
+            const RECOMPUTE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
+            let now = Instant::now();
+            let due = ctx
+                .game_cache
+                .last_recompute_at
+                .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
+            if due {
+                state.rebuild_available_genres();
+                state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
+                ctx.game_cache.last_recompute_at = Some(now);
+            }
             outcome
         }
 
@@ -552,56 +558,6 @@ pub(crate) fn spawn_capsule_queue(
         })
         .collect();
     Task::batch(tasks)
-}
-
-pub fn subscription(
-    state: &ProfileViewState,
-    _steam_running: Option<bool>,
-) -> iced::Subscription<ProfileViewMessage> {
-    if state.progress_scanner.is_some() {
-        iced::Subscription::run_with(
-            ProgressRxHandle {
-                rx: Arc::clone(&state.progress_rx),
-                generation: state.scan_generation,
-            },
-            |handle: &ProgressRxHandle| {
-                let rx_holder = Arc::clone(&handle.rx);
-                iced::stream::channel(
-                    64,
-                    |mut output: iced_mpsc::Sender<ProfileViewMessage>| async move {
-                        let Some(mut rx) = rx_holder.lock().expect("progress_rx poisoned").take()
-                        else {
-                            return;
-                        };
-                        while let Some(result) = rx.recv().await {
-                            if output
-                                .try_send(ProfileViewMessage::ProgressResultReceived(Box::new(
-                                    result,
-                                )))
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        let _ = output.try_send(ProfileViewMessage::ProgressScanDone);
-                    },
-                )
-            },
-        )
-    } else {
-        iced::Subscription::none()
-    }
-}
-
-struct ProgressRxHandle {
-    rx: SharedProgressRx,
-    generation: u64,
-}
-
-impl Hash for ProgressRxHandle {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.generation.hash(state);
-    }
 }
 
 pub fn render<'a>(

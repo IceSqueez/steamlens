@@ -38,6 +38,7 @@ use std::process::{self, Command};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
+use iced::futures::SinkExt;
 use iced::futures::channel::mpsc as iced_mpsc;
 use iced::keyboard;
 use iced::widget::column;
@@ -118,6 +119,17 @@ struct WorkerReplyHandle {
 }
 
 impl Hash for WorkerReplyHandle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.generation.hash(state);
+    }
+}
+
+struct ProgressRxHandle {
+    rx: profile_view::types::SharedProgressRx,
+    generation: u64,
+}
+
+impl Hash for ProgressRxHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.generation.hash(state);
     }
@@ -387,7 +399,7 @@ fn subscription(app: &App) -> Subscription<Message> {
                         return;
                     };
                     while let Some(reply) = receiver.recv().await {
-                        if output.try_send(Message::WorkerReply(reply)).is_err() {
+                        if output.send(Message::WorkerReply(reply)).await.is_err() {
                             break;
                         }
                     }
@@ -422,11 +434,42 @@ fn subscription(app: &App) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let profile_progress_sub =
+        match routing::current_profile_view_state(&app.screen, &app.preserved_profile_state) {
+            Some(state) if state.progress_scanner.is_some() => Subscription::run_with(
+                ProgressRxHandle {
+                    rx: Arc::clone(&state.progress_rx),
+                    generation: state.scan_generation,
+                },
+                |handle: &ProgressRxHandle| {
+                    let rx_holder = Arc::clone(&handle.rx);
+                    iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
+                        let Some(mut rx) = rx_holder.lock().expect("progress_rx poisoned").take()
+                        else {
+                            return;
+                        };
+                        while let Some(result) = rx.recv().await {
+                            if output
+                                .send(Message::ProfileView(
+                                    ProfileViewMessage::ProgressResultReceived(Box::new(result)),
+                                ))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        let _ = output
+                            .send(Message::ProfileView(ProfileViewMessage::ProgressScanDone))
+                            .await;
+                    })
+                },
+            ),
+            _ => Subscription::none(),
+        };
+
     let screen_sub: Subscription<Message> = match &app.screen {
-        Screen::ProfileView(state) => {
-            profile_view::subscription(state, app.context.connectivity.steam_running)
-                .map(Message::ProfileView)
-        }
+        Screen::ProfileView(_) => Subscription::none(),
         Screen::GameView(state) => game_view::subscription(state).map(Message::GameView),
     };
 
@@ -437,6 +480,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         settings_flush_sub,
         toast_sub,
         hit_drain_sub,
+        profile_progress_sub,
         screen_sub,
     ])
 }

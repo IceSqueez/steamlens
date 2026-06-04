@@ -18,6 +18,16 @@ pub(crate) fn current_profile_view_state_mut<'a>(
     }
 }
 
+pub(crate) fn current_profile_view_state<'a>(
+    screen: &'a Screen,
+    preserved: &'a Option<Box<ProfileViewState>>,
+) -> Option<&'a ProfileViewState> {
+    match screen {
+        Screen::ProfileView(state) => Some(state.as_ref()),
+        Screen::GameView(_) => preserved.as_ref().map(|b| b.as_ref()),
+    }
+}
+
 pub(crate) fn dispatch_game_event(
     app: &mut App,
     task: Task<Message>,
