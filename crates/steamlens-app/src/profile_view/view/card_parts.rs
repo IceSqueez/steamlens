@@ -9,6 +9,18 @@ use crate::ui::widgets::bar::{BarColor, BarSegment, segmented_bar};
 use crate::ui::widgets::pill::pill;
 use crate::ui::widgets::tooltip_box::tooltip_box;
 
+fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_chars {
+        s.to_owned()
+    } else if max_chars <= 1 {
+        "\u{2026}".to_owned()
+    } else {
+        let truncated: String = s.chars().take(max_chars - 1).collect();
+        format!("{}\u{2026}", truncated.trim_end())
+    }
+}
+
 pub(super) fn build_tier_stacked_bar(
     app_id: u32,
     tier_breakdown: &[(RarityTier, u32)],
@@ -225,6 +237,12 @@ pub(super) fn build_tags_row(
     genre: Option<&str>,
     theme: AppTheme,
 ) -> Element<'static, ProfileViewMessage> {
+    const PCT_TEXT_WIDTH: f32 = 24.0;
+    const PCT_PILL_TOTAL_WIDTH: f32 = 51.0;
+    const TAGS_ROW_GAP: f32 = 6.0;
+    const PILL_PADDING_H: f32 = 16.0;
+    const GENRE_CHAR_WIDTH: f32 = 5.5;
+
     let progress = entry.progress.as_ref();
 
     let completion_tag: Option<Element<'static, ProfileViewMessage>> = progress.and_then(|p| {
@@ -240,6 +258,8 @@ pub(super) fn build_tags_row(
 
         let pct_text = text(format!("{pct:.0}%"))
             .size(11)
+            .width(Length::Fixed(PCT_TEXT_WIDTH))
+            .align_x(Alignment::Center)
             .style(move |t: &iced::Theme| iced::widget::text::Style {
                 color: Some(
                     tier_color_opt.unwrap_or_else(|| palette(theme_from_iced(t)).text_muted),
@@ -256,9 +276,17 @@ pub(super) fn build_tags_row(
         Some(pill_el.into())
     });
 
+    let genre_budget = card_w
+        - 2.0 * CARD_HORIZONTAL_PADDING
+        - PCT_PILL_TOTAL_WIDTH
+        - TAGS_ROW_GAP
+        - PILL_PADDING_H;
+    let genre_max_chars = (genre_budget / GENRE_CHAR_WIDTH).max(3.0) as usize;
+
     let genre_tag: Option<Element<'static, ProfileViewMessage>> = genre.map(|g| {
         let tint = crate::ui::genre_color::genre_color(g);
-        pill(text(g.to_owned()).size(11).color(tint), tint).into()
+        let display = truncate_with_ellipsis(g, genre_max_chars);
+        pill(text(display).size(11).color(tint), tint).into()
     });
 
     let mut left_tags: iced::widget::Row<'static, ProfileViewMessage> =
