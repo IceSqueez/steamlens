@@ -1,9 +1,26 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-06-05
+### ⚙️ Miscellaneous Tasks
+- Default log level INFO
+
+### ⚡ Performance
+- *(ui)* Debounce library search to defer recompute until typing settles
+
+### 🐛 Bug Fixes
+- *(ui)* Recompute derived state when returning from game view
+- *(ui)* Avoid duplicate library scan and stale ProgressScanDone race
+
 ## [1.0.3] - 2026-06-05
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### 🐛 Bug Fixes
 - *(ui)* Force derived recompute when scan removes a game from library
+
+### 📚 Documentation
+- *(release)* Release v1.0.3
 
 ## [1.0.2] - 2026-06-04
 ### ⚙️ Miscellaneous Tasks
