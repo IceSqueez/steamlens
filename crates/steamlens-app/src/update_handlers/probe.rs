@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use iced::Task;
 
 use steamlens_core::{STEAM_ID_64_INDIVIDUAL_MIN, UserProfile};
@@ -6,7 +8,7 @@ use crate::cache;
 use crate::cache::migration;
 use crate::messaging::BannerSeverity;
 use crate::profile_view::types::ProfileViewMessage;
-use crate::{App, Message, ProbeFailure, boot, steam_connectivity};
+use crate::{App, Message, ProbeFailure, Screen, boot, steam_connectivity};
 
 pub(crate) fn handle_probe_result(
     app: &mut App,
@@ -159,6 +161,26 @@ pub(crate) fn handle_probe_library_ready(
             "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
         );
         let _ = total;
+
+        if app.boot.library_cache_resolved
+            && let Screen::ProfileView(pv) = &app.screen
+        {
+            let probe_ids: HashSet<u32> = filtered.iter().map(|g| g.app_id).collect();
+            let current_ids: HashSet<u32> = pv.games.iter().map(|g| g.app_id).collect();
+            if probe_ids == current_ids {
+                tracing::info!(
+                    "probe: library_cache_resolved already true and probe matches current library ({} games); skipping duplicate ScanComplete",
+                    probe_ids.len()
+                );
+                return Task::none();
+            }
+            tracing::info!(
+                "probe: library_cache_resolved already true but probe diverges (libcache={}, probe={}); firing ScanComplete to reconcile",
+                current_ids.len(),
+                probe_ids.len()
+            );
+        }
+
         Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
             filtered,
         )))

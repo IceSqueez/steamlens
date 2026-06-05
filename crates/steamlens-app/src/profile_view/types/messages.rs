@@ -36,7 +36,7 @@ pub enum ProfileViewMessage {
         earned: u32,
         total: u32,
     },
-    ProgressScanDone,
+    ProgressScanDone(u64),
     CardHoverEntered(u32),
     CardHoverExited(u32),
     FailedScansRetryRequested,
@@ -92,7 +92,9 @@ impl std::fmt::Debug for ProfileViewMessage {
                 earned,
                 total,
             } => write!(f, "ProgressFetched(app={app_id}, {earned}/{total})"),
-            ProfileViewMessage::ProgressScanDone => write!(f, "ProgressScanDone"),
+            ProfileViewMessage::ProgressScanDone(generation) => {
+                write!(f, "ProgressScanDone(gen={generation})")
+            }
             ProfileViewMessage::CardHoverEntered(id) => write!(f, "CardHoverEntered({id})"),
             ProfileViewMessage::CardHoverExited(id) => write!(f, "CardHoverExited({id})"),
             ProfileViewMessage::FailedScansRetryRequested => {

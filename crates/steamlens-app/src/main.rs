@@ -443,26 +443,35 @@ fn subscription(app: &App) -> Subscription<Message> {
                 },
                 |handle: &ProgressRxHandle| {
                     let rx_holder = Arc::clone(&handle.rx);
-                    iced::stream::channel(64, |mut output: iced_mpsc::Sender<Message>| async move {
-                        let Some(mut rx) = rx_holder.lock().expect("progress_rx poisoned").take()
-                        else {
-                            return;
-                        };
-                        while let Some(result) = rx.recv().await {
-                            if output
-                                .send(Message::ProfileView(
-                                    ProfileViewMessage::ProgressResultReceived(Box::new(result)),
-                                ))
-                                .await
-                                .is_err()
-                            {
-                                break;
+                    let generation = handle.generation;
+                    iced::stream::channel(
+                        64,
+                        move |mut output: iced_mpsc::Sender<Message>| async move {
+                            let Some(mut rx) =
+                                rx_holder.lock().expect("progress_rx poisoned").take()
+                            else {
+                                return;
+                            };
+                            while let Some(result) = rx.recv().await {
+                                if output
+                                    .send(Message::ProfileView(
+                                        ProfileViewMessage::ProgressResultReceived(Box::new(
+                                            result,
+                                        )),
+                                    ))
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
                             }
-                        }
-                        let _ = output
-                            .send(Message::ProfileView(ProfileViewMessage::ProgressScanDone))
-                            .await;
-                    })
+                            let _ = output
+                                .send(Message::ProfileView(ProfileViewMessage::ProgressScanDone(
+                                    generation,
+                                )))
+                                .await;
+                        },
+                    )
                 },
             ),
             _ => Subscription::none(),

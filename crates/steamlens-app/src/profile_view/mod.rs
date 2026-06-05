@@ -320,7 +320,14 @@ pub fn update(
             (Task::none(), ProfileEvent::None)
         }
 
-        ProfileViewMessage::ProgressScanDone => {
+        ProfileViewMessage::ProgressScanDone(generation) => {
+            if generation != state.scan_generation {
+                tracing::debug!(
+                    "scan: stale ProgressScanDone(gen={generation}) ignored (current gen={})",
+                    state.scan_generation
+                );
+                return (Task::none(), ProfileEvent::None);
+            }
             types::sort_games_in_place(&mut state.games, state.sort, &ctx.settings.library.pinned);
             let now = Instant::now();
             if let Some(started) = state.scan_started_at.take() {
