@@ -13,6 +13,7 @@ pub enum ProfileViewMessage {
         reason: String,
     },
     SearchChanged(String),
+    SearchDebounceElapsed(u64),
     SortChanged(LibrarySort),
     CapsuleSizeChanged(CapsuleSize),
     CapsuleLoaded {
@@ -74,6 +75,9 @@ impl std::fmt::Debug for ProfileViewMessage {
                 write!(f, "ScanFailed({{ app_id: {app_id}, reason: {reason:?} }})")
             }
             ProfileViewMessage::SearchChanged(s) => write!(f, "SearchChanged({s:?})"),
+            ProfileViewMessage::SearchDebounceElapsed(generation) => {
+                write!(f, "SearchDebounceElapsed(gen={generation})")
+            }
             ProfileViewMessage::SortChanged(s) => write!(f, "SortChanged({s:?})"),
             ProfileViewMessage::CapsuleSizeChanged(s) => write!(f, "CapsuleSizeChanged({s})"),
             ProfileViewMessage::CapsuleLoaded {

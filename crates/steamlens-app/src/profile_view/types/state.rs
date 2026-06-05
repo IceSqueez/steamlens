@@ -55,6 +55,7 @@ pub struct ProfileViewState {
     pub last_scan_completed_at: Option<Instant>,
     pub scan_started_at: Option<Instant>,
     pub scan_target_count: usize,
+    pub search_debounce_generation: u64,
     pub derived: DerivedProfileView,
 }
 
@@ -95,6 +96,7 @@ impl ProfileViewState {
             last_scan_completed_at: None,
             scan_started_at: None,
             scan_target_count: 0,
+            search_debounce_generation: 0,
             derived: DerivedProfileView::default(),
         }
     }

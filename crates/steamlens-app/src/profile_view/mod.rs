@@ -229,6 +229,22 @@ pub fn update(
 
         ProfileViewMessage::SearchChanged(query) => {
             state.search = query;
+            state.search_debounce_generation = state.search_debounce_generation.wrapping_add(1);
+            let generation = state.search_debounce_generation;
+            let task = Task::perform(
+                async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    generation
+                },
+                ProfileViewMessage::SearchDebounceElapsed,
+            );
+            (task, ProfileEvent::None)
+        }
+
+        ProfileViewMessage::SearchDebounceElapsed(generation) => {
+            if generation != state.search_debounce_generation {
+                return (Task::none(), ProfileEvent::None);
+            }
             state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);
             (Task::none(), ProfileEvent::None)
         }
