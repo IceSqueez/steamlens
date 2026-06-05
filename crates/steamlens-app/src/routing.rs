@@ -49,6 +49,10 @@ pub(crate) fn go_back_to_profile(app: &mut App) -> Task<Message> {
     let disconnect_task = crate::worker_drain::disconnect_worker(app);
     if let Some(mut prev) = app.preserved_profile_state.take() {
         prev.search.clear();
+        prev.recompute_derived(
+            &app.context.game_cache.entries,
+            &app.context.settings.library.pinned,
+        );
         app.screen = Screen::ProfileView(prev);
     }
     disconnect_task
