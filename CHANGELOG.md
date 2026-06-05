@@ -1,11 +1,21 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-06-05
+### 🐛 Bug Fixes
+- *(ui)* Force derived recompute when scan removes a game from library
+
 ## [1.0.2] - 2026-06-04
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### 🐛 Bug Fixes
 - *(ui)* Keep library scan subscription alive across screen changes
 - *(ui)* Stabilize game card tag row with fixed pct pill and genre ellipsis
 - *(ui)* Drop virtual scrolling causing wheel scroll jumps and jerks
+
+### 📚 Documentation
+- *(release)* Release v1.0.2
 
 ### 🛠️ Build
 - Speed up release builds and add cache-aware audit
