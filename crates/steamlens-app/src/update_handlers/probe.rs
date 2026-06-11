@@ -169,10 +169,11 @@ pub(crate) fn handle_probe_library_ready(
             let current_ids: HashSet<u32> = pv.games.iter().map(|g| g.app_id).collect();
             if probe_ids == current_ids {
                 tracing::info!(
-                    "probe: library_cache_resolved already true and probe matches current library ({} games); skipping duplicate ScanComplete",
+                    "probe: library_cache_resolved already true and probe matches current library ({} games); skipping duplicate ScanComplete but re-classifying with fresh probe data",
                     probe_ids.len()
                 );
-                return Task::none();
+                let steam_root = app.context.user.steam_root.clone();
+                return cache::commands::classify_games(filtered, steam_root, account_id);
             }
             tracing::info!(
                 "probe: library_cache_resolved already true but probe diverges (libcache={}, probe={}); firing ScanComplete to reconcile",
