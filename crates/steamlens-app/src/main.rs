@@ -141,6 +141,7 @@ struct BootStage {
     library_cache_resolved: bool,
     cache_classified: bool,
     probe_done: bool,
+    probe_classified: bool,
 }
 
 #[derive(Default)]
@@ -600,6 +601,7 @@ mod tests {
                     library_cache_resolved: true,
                     cache_classified: true,
                     probe_done: true,
+                    probe_classified: true,
                 },
                 modals: Modals::default(),
             }

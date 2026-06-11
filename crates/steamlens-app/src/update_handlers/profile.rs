@@ -34,9 +34,26 @@ pub(crate) fn handle_profile_view(app: &mut App, message: ProfileViewMessage) ->
         let games = enumerated_games.unwrap_or_default();
         let steam_root = app.context.user.steam_root.clone();
         let account_id = app.context.user.account_id;
-        let classify_task = cache::commands::classify_games(games, steam_root, account_id);
 
-        let mut tasks: Vec<Task<Message>> = vec![classify_task, task];
+        let needs_classify = app.boot.probe_done && !app.boot.probe_classified;
+
+        let mut tasks: Vec<Task<Message>> = vec![task];
+        if needs_classify {
+            tracing::info!(
+                "ScanComplete: probe done but did not classify, classifying with libcache data ({} games)",
+                games.len()
+            );
+            app.boot.probe_classified = true;
+            tasks.push(cache::commands::classify_games(
+                games, steam_root, account_id,
+            ));
+        } else {
+            tracing::info!(
+                "ScanComplete: classify deferred (probe_done={}, probe_classified={})",
+                app.boot.probe_done,
+                app.boot.probe_classified
+            );
+        }
 
         let profile_view_state = routing::current_profile_view_state_mut(
             &mut app.screen,

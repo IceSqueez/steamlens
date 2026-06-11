@@ -383,7 +383,11 @@ pub(crate) fn handle_library_loaded(
     } else {
         true
     };
-    if games_present {
+    if games_present || app.boot.probe_classified {
+        tracing::info!(
+            "library_loaded: skip (games_present={games_present}, probe_classified={})",
+            app.boot.probe_classified
+        );
         return Task::none();
     }
     let Some(cached) = cached_library else {

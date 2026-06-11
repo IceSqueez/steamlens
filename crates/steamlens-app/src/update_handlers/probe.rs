@@ -96,10 +96,7 @@ pub(crate) fn handle_probe_result(
             );
 
             let account_id = fallback_account_id(app);
-            Task::batch([
-                cache::commands::load_profile_cache(account_id),
-                cache::commands::load_library_cache(account_id),
-            ])
+            classify_with_libcache_or_load(app, account_id)
         }
         Err(ProbeFailure::SteamNotRunning) => {
             app.context.connectivity.steam_running = Some(false);
@@ -113,10 +110,7 @@ pub(crate) fn handle_probe_result(
             );
 
             let account_id = fallback_account_id(app);
-            Task::batch([
-                cache::commands::load_profile_cache(account_id),
-                cache::commands::load_library_cache(account_id),
-            ])
+            classify_with_libcache_or_load(app, account_id)
         }
         Err(ProbeFailure::Other(reason)) => {
             app.context.connectivity.steam_running = None;
@@ -130,12 +124,39 @@ pub(crate) fn handle_probe_result(
             );
 
             let account_id = fallback_account_id(app);
-            Task::batch([
-                cache::commands::load_profile_cache(account_id),
-                cache::commands::load_library_cache(account_id),
-            ])
+            classify_with_libcache_or_load(app, account_id)
         }
     }
+}
+
+fn classify_with_libcache_or_load(app: &mut App, account_id: u32) -> Task<Message> {
+    if let Screen::ProfileView(pv) = &app.screen
+        && !pv.games.is_empty()
+    {
+        let summaries: Vec<steamlens_core::GameSummary> = pv
+            .games
+            .iter()
+            .map(|g| steamlens_core::GameSummary {
+                app_id: g.app_id,
+                change_number: g.change_number,
+                last_played: g.last_played,
+            })
+            .collect();
+        let steam_root = app.context.user.steam_root.clone();
+        tracing::info!(
+            "probe fallback: libcache already loaded, classifying directly ({} games)",
+            summaries.len()
+        );
+        app.boot.probe_classified = true;
+        return Task::batch([
+            cache::commands::load_profile_cache(account_id),
+            cache::commands::classify_games(summaries, steam_root, account_id),
+        ]);
+    }
+    Task::batch([
+        cache::commands::load_profile_cache(account_id),
+        cache::commands::load_library_cache(account_id),
+    ])
 }
 
 pub(crate) fn handle_probe_library_ready(
@@ -146,48 +167,49 @@ pub(crate) fn handle_probe_library_ready(
 ) -> Task<Message> {
     app.context.no_ach_cache = no_ach;
 
-    if !game_summaries.is_empty() {
-        let pkginfo_count = game_summaries.len();
-        tracing::info!("packageinfo: {pkginfo_count} games after type-filter");
-        let no_ach = &app.context.no_ach_cache;
-        let cache_entries = no_ach.entries.len();
-        let filtered: Vec<_> = game_summaries
-            .into_iter()
-            .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
-            .collect();
-        let total = filtered.len();
-        let dropped = pkginfo_count - total;
-        tracing::info!(
-            "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
-        );
-        let _ = total;
+    let pkginfo_count = game_summaries.len();
+    tracing::info!("packageinfo: {pkginfo_count} games after type-filter");
+    let no_ach = &app.context.no_ach_cache;
+    let cache_entries = no_ach.entries.len();
+    let filtered: Vec<_> = game_summaries
+        .into_iter()
+        .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
+        .collect();
+    let total = filtered.len();
+    let dropped = pkginfo_count.saturating_sub(total);
+    tracing::info!(
+        "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
+    );
 
-        if app.boot.library_cache_resolved
-            && let Screen::ProfileView(pv) = &app.screen
-        {
-            let probe_ids: HashSet<u32> = filtered.iter().map(|g| g.app_id).collect();
-            let current_ids: HashSet<u32> = pv.games.iter().map(|g| g.app_id).collect();
-            if probe_ids == current_ids {
-                tracing::info!(
-                    "probe: library_cache_resolved already true and probe matches current library ({} games); skipping duplicate ScanComplete but re-classifying with fresh probe data",
-                    probe_ids.len()
-                );
-                let steam_root = app.context.user.steam_root.clone();
-                return cache::commands::classify_games(filtered, steam_root, account_id);
-            }
+    let steam_root = app.context.user.steam_root.clone();
+    app.boot.probe_classified = true;
+
+    if app.boot.library_cache_resolved
+        && let Screen::ProfileView(pv) = &app.screen
+    {
+        let probe_ids: HashSet<u32> = filtered.iter().map(|g| g.app_id).collect();
+        let current_ids: HashSet<u32> = pv.games.iter().map(|g| g.app_id).collect();
+        if probe_ids == current_ids {
             tracing::info!(
-                "probe: library_cache_resolved already true but probe diverges (libcache={}, probe={}); firing ScanComplete to reconcile",
-                current_ids.len(),
+                "probe: library matches libcache ({} games); skipping ScanComplete, classifying with fresh probe data",
                 probe_ids.len()
             );
+            return cache::commands::classify_games(filtered, steam_root, account_id);
         }
+        tracing::info!(
+            "probe: library diverges from libcache (libcache={}, probe={}); firing ScanComplete + classify with probe data (libcache discarded — pipe is authoritative)",
+            current_ids.len(),
+            probe_ids.len()
+        );
+    }
 
+    let classify_task = cache::commands::classify_games(filtered.clone(), steam_root, account_id);
+    Task::batch([
+        classify_task,
         Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
             filtered,
-        )))
-    } else {
-        cache::commands::load_library_cache(account_id)
-    }
+        ))),
+    ])
 }
 
 fn fallback_account_id(app: &App) -> u32 {
