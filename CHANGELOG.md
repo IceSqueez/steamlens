@@ -1,9 +1,25 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2026-06-11
+### ⚡ Performance
+- *(ui)* Remove dead animation state and throttle frame ticks to 30fps
+
+### 🐛 Bug Fixes
+- *(cache)* Re-classify with fresh probe data when libcache load races ahead
+- *(cache)* Single classify per boot, always with freshest available data
+- *(ui)* Defer capsule fetch until library_assets loaded to avoid false Unavailable
+- *(cache)* Merge preserved fields into in-memory entry on progress scan
+- *(ui)* Wrap long achievement names per-glyph to prevent overflow
+- *(ui)* Reconnect refreshes both game_view and library without worker conflict
+
+### 🚜 Refactor
+- *(cache)* Drop summary.json
+
 ## [1.0.4] - 2026-06-05
 ### ⚙️ Miscellaneous Tasks
 - Default log level INFO
+- Release
 
 ### ⚡ Performance
 - *(ui)* Debounce library search to defer recompute until typing settles
@@ -11,6 +27,9 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 - *(ui)* Recompute derived state when returning from game view
 - *(ui)* Avoid duplicate library scan and stale ProgressScanDone race
+
+### 📚 Documentation
+- *(release)* Release v1.0.4
 
 ## [1.0.3] - 2026-06-05
 ### ⚙️ Miscellaneous Tasks
