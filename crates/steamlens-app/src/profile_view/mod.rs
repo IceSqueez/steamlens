@@ -552,13 +552,16 @@ fn handle_progress_result(
         .map(|g| g.change_number)
         .unwrap_or(0);
 
-    let entry = crate::game_cache_builder::build_cache_entry_from_scan(
+    let mut entry = crate::game_cache_builder::build_cache_entry_from_scan(
         &data,
         scan_app_id,
         game_name.as_deref(),
         change_number,
         &ctx.steam.app_state,
     );
+    if let Some(old) = ctx.game_cache.entries.get(&scan_app_id) {
+        crate::cache::store::merge_preserved_fields(&mut entry, old);
+    }
 
     if let Some(game) = state.games.iter_mut().find(|g| g.app_id == scan_app_id) {
         game.genre.clone_from(&entry.genre);
