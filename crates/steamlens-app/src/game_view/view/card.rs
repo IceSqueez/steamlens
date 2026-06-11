@@ -268,7 +268,7 @@ fn render_achievement_card(
                 ]
                 .on_link_click(iced::never)
                 .size(ACH_CARD_TITLE_TEXT_SIZE)
-                .wrapping(text::Wrapping::Word)
+                .wrapping(text::Wrapping::WordOrGlyph)
                 .line_height(text::LineHeight::Relative(1.2)),
             )
             .width(Length::Fill)
@@ -279,7 +279,7 @@ fn render_achievement_card(
                 text(display_name)
                     .size(ACH_CARD_TITLE_TEXT_SIZE)
                     .color(name_color)
-                    .wrapping(text::Wrapping::Word)
+                    .wrapping(text::Wrapping::WordOrGlyph)
                     .line_height(text::LineHeight::Relative(1.2)),
             )
             .width(Length::Fill)
@@ -291,7 +291,7 @@ fn render_achievement_card(
             text(display_name)
                 .size(ACH_CARD_TITLE_TEXT_SIZE)
                 .color(name_color)
-                .wrapping(text::Wrapping::Word)
+                .wrapping(text::Wrapping::WordOrGlyph)
                 .line_height(text::LineHeight::Relative(1.2)),
         )
         .width(Length::Fill)
@@ -332,7 +332,7 @@ fn render_achievement_card(
                 ]
                 .on_link_click(iced::never)
                 .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
-                .wrapping(text::Wrapping::Word),
+                .wrapping(text::Wrapping::WordOrGlyph),
             )
             .width(Length::Fill)
             .height(Length::Fixed(30.0))
@@ -342,7 +342,7 @@ fn render_achievement_card(
                 text(description)
                     .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                     .color(desc_color)
-                    .wrapping(text::Wrapping::Word),
+                    .wrapping(text::Wrapping::WordOrGlyph),
             )
             .width(Length::Fill)
             .height(Length::Fixed(30.0))
@@ -353,7 +353,7 @@ fn render_achievement_card(
             text(description)
                 .size(ACH_CARD_DESCRIPTION_TEXT_SIZE)
                 .color(desc_color)
-                .wrapping(text::Wrapping::Word),
+                .wrapping(text::Wrapping::WordOrGlyph),
         )
         .width(Length::Fill)
         .height(Length::Fixed(30.0))
