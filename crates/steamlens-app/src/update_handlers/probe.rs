@@ -70,7 +70,7 @@ pub(crate) fn handle_probe_result(
                 });
             }
 
-            Task::batch(vec![
+            let mut tasks = vec![
                 boot::spawn_steam_state_refresh(
                     app.context.user.steam_root.clone(),
                     app.context.user.account_id,
@@ -82,7 +82,74 @@ pub(crate) fn handle_probe_result(
                     profile.game_summaries,
                     app.context.no_ach_cache.clone(),
                 ),
-            ])
+            ];
+            if let crate::Screen::GameView(state) = &mut app.screen
+                && state.cache_only
+            {
+                let app_id = state.app_id;
+                state.cache_only = false;
+                state.phase = crate::game_view::GameViewPhase::Connecting;
+                state.achievements.clear();
+                state.stats.clear();
+                state.icon_handles.clear();
+                state.reveal_queue.clear();
+                tracing::info!(
+                    app_id,
+                    "probe success while in GameView: re-connecting worker for current game"
+                );
+                app.context
+                    .capsules
+                    .unavailable
+                    .retain(|(id, _)| *id != app_id);
+                app.context
+                    .capsules
+                    .handles
+                    .retain(|(id, _), _| *id != app_id);
+                tasks.push(crate::worker_drain::disconnect_worker(app));
+                let worker = crate::steam_worker::SteamWorker::spawn();
+                tasks.push(worker.dispatch(
+                    crate::steam_worker::SteamRequest::ConnectWithApp(app_id),
+                    Message::DiscardReply,
+                ));
+                app.context.worker.current = Some(worker);
+                let portrait_assets = app
+                    .context
+                    .steam
+                    .library_assets
+                    .get(&app_id)
+                    .cloned()
+                    .unwrap_or_default();
+                tasks.push(iced::Task::perform(
+                    crate::capsule_cache::fetch_capsule(
+                        app_id,
+                        crate::capsule_cache::CapsuleSize::Portrait,
+                        portrait_assets,
+                    ),
+                    move |result| match result {
+                        Ok((size, pixels)) => {
+                            let handle = iced::widget::image::Handle::from_rgba(
+                                pixels.width,
+                                pixels.height,
+                                pixels.rgba,
+                            );
+                            Message::GameView(crate::game_view::GameViewMessage::CapsuleLoaded {
+                                app_id,
+                                size,
+                                handle,
+                                width: pixels.width,
+                                height: pixels.height,
+                            })
+                        }
+                        Err((size, _)) => {
+                            Message::GameView(crate::game_view::GameViewMessage::CapsuleFailed {
+                                app_id,
+                                size,
+                            })
+                        }
+                    },
+                ));
+            }
+            Task::batch(tasks)
         }
         Err(ProbeFailure::NotLoggedIn) => {
             app.context.connectivity.steam_running = Some(true);
@@ -171,21 +238,33 @@ pub(crate) fn handle_probe_library_ready(
     tracing::info!("packageinfo: {pkginfo_count} games after type-filter");
     let no_ach = &app.context.no_ach_cache;
     let cache_entries = no_ach.entries.len();
+    let game_view_app_id = match &app.screen {
+        Screen::GameView(s) => Some(s.app_id),
+        _ => None,
+    };
     let filtered: Vec<_> = game_summaries
         .into_iter()
         .filter(|g| !no_ach.is_known_empty(g.app_id, g.change_number))
         .collect();
+    let library_scan_summaries: Vec<_> = filtered
+        .iter()
+        .filter(|g| game_view_app_id.is_none_or(|id| g.app_id != id))
+        .cloned()
+        .collect();
     let total = filtered.len();
     let dropped = pkginfo_count.saturating_sub(total);
     tracing::info!(
-        "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan"
+        "no_ach: cache has {cache_entries} entries; filtered {dropped}/{pkginfo_count} pkginfo games; {total} remain for scan (game_view_excluded={})",
+        game_view_app_id.is_some()
     );
 
     let steam_root = app.context.user.steam_root.clone();
     app.boot.probe_classified = true;
 
+    let current_pv =
+        crate::routing::current_profile_view_state(&app.screen, &app.preserved_profile_state);
     if app.boot.library_cache_resolved
-        && let Screen::ProfileView(pv) = &app.screen
+        && let Some(pv) = current_pv
     {
         let probe_ids: HashSet<u32> = filtered.iter().map(|g| g.app_id).collect();
         let current_ids: HashSet<u32> = pv.games.iter().map(|g| g.app_id).collect();
@@ -194,7 +273,7 @@ pub(crate) fn handle_probe_library_ready(
                 "probe: library matches libcache ({} games); skipping ScanComplete, classifying with fresh probe data",
                 probe_ids.len()
             );
-            return cache::commands::classify_games(filtered, steam_root, account_id);
+            return cache::commands::classify_games(library_scan_summaries, steam_root, account_id);
         }
         tracing::info!(
             "probe: library diverges from libcache (libcache={}, probe={}); firing ScanComplete + classify with probe data (libcache discarded — pipe is authoritative)",
@@ -203,7 +282,8 @@ pub(crate) fn handle_probe_library_ready(
         );
     }
 
-    let classify_task = cache::commands::classify_games(filtered.clone(), steam_root, account_id);
+    let classify_task =
+        cache::commands::classify_games(library_scan_summaries, steam_root, account_id);
     Task::batch([
         classify_task,
         Task::done(Message::ProfileView(ProfileViewMessage::ScanComplete(
