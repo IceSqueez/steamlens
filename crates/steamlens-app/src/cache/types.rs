@@ -2,32 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view::types::RarityTier;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
-
-pub const SUMMARY_SCHEMA_VERSION: u32 = 7;
+pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameCacheEntry {
     pub schema_version: u32,
     pub app_id: u32,
     pub name: String,
+    pub cached_change_number: u32,
     pub steam_last_played: u64,
     pub cached_at: u64,
     pub achievements: Vec<CachedAchievement>,
     pub stats: Vec<CachedStat>,
-    pub progress: CachedProgress,
-    pub tier_breakdown: Vec<(RarityTier, u32)>,
-    pub genre: Option<String>,
-    pub playtime_minutes: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameSummaryCache {
-    pub schema_version: u32,
-    pub app_id: u32,
-    pub name: String,
-    pub cached_change_number: u32,
-    pub cached_at: u64,
     pub progress: CachedProgress,
     pub tier_breakdown: Vec<(RarityTier, u32)>,
     pub genre: Option<String>,

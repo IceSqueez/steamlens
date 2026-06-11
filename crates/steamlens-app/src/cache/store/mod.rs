@@ -1,11 +1,8 @@
 mod game_cache;
-mod game_summary;
 mod primitives;
 
-pub(crate) use game_cache::merge_preserved_fields;
 pub use game_cache::{delete_game_cache_dir, load_game_cache, write_game_cache};
-pub(crate) use game_summary::load_game_summary_from_path;
-pub use game_summary::write_game_summary;
+pub(crate) use game_cache::{load_game_cache_from_path, merge_preserved_fields};
 pub use primitives::{CacheIoError, atomic_write};
 
 #[cfg(test)]
@@ -13,7 +10,7 @@ mod tests {
     use super::*;
     use crate::cache::types::{
         CURRENT_SCHEMA_VERSION, CachedAchievement, CachedProgress, CachedStat, CachedStatValue,
-        GameCacheEntry, GameSummaryCache, SUMMARY_SCHEMA_VERSION,
+        GameCacheEntry,
     };
     use std::path::Path;
     use std::sync::Arc;
@@ -26,6 +23,7 @@ mod tests {
             schema_version: CURRENT_SCHEMA_VERSION,
             app_id,
             name: name.to_owned(),
+            cached_change_number: 0,
             steam_last_played: 1_777_926_953,
             cached_at: 1_746_360_000,
             achievements: vec![
@@ -266,63 +264,6 @@ mod tests {
         assert!(result.is_none(), "corrupted JSON must return None");
     }
 
-    #[tokio::test]
-    async fn game_summary_round_trip() {
-        let summary = GameSummaryCache {
-            schema_version: SUMMARY_SCHEMA_VERSION,
-            app_id: 105600,
-            name: "Terraria".to_owned(),
-            cached_change_number: 42,
-            cached_at: 1_746_360_000,
-            progress: CachedProgress {
-                earned: 18,
-                total: 88,
-            },
-            tier_breakdown: Vec::new(),
-            genre: Some("Action".to_owned()),
-            playtime_minutes: None,
-        };
-
-        let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");
-        let restored: GameSummaryCache = serde_json::from_slice(&bytes).expect("deserialize");
-
-        assert_eq!(restored.app_id, summary.app_id);
-        assert_eq!(restored.cached_change_number, 42);
-        assert_eq!(restored.progress.earned, 18);
-        assert_eq!(restored.progress.total, 88);
-        assert_eq!(restored.genre.as_deref(), Some("Action"));
-        assert_eq!(restored.schema_version, SUMMARY_SCHEMA_VERSION);
-    }
-
-    #[tokio::test]
-    async fn write_and_load_game_summary_round_trip() {
-        let dir = tempfile::TempDir::new().expect("tempdir");
-        let path = dir.path().join("summary.json");
-
-        let summary = GameSummaryCache {
-            schema_version: SUMMARY_SCHEMA_VERSION,
-            app_id: 200,
-            name: "Half-Life 2".to_owned(),
-            cached_change_number: 7,
-            cached_at: 1_746_000_000,
-            progress: CachedProgress {
-                earned: 10,
-                total: 33,
-            },
-            tier_breakdown: Vec::new(),
-            genre: None,
-            playtime_minutes: None,
-        };
-
-        let bytes = serde_json::to_vec_pretty(&summary).expect("serialize");
-        atomic_write(&path, &bytes).await.expect("write");
-
-        let read_back = std::fs::read(&path).expect("read");
-        let restored: GameSummaryCache = serde_json::from_slice(&read_back).expect("deserialize");
-        assert_eq!(restored.cached_change_number, 7);
-        assert_eq!(restored.progress.total, 33);
-    }
-
     fn empty_ach(api: &str) -> CachedAchievement {
         CachedAchievement {
             api_name: api.to_owned(),
@@ -356,6 +297,7 @@ mod tests {
             schema_version: CURRENT_SCHEMA_VERSION,
             app_id: 1,
             name: "X".to_owned(),
+            cached_change_number: 0,
             steam_last_played: 0,
             cached_at: 0,
             achievements,
@@ -463,6 +405,7 @@ mod tests {
             schema_version: CURRENT_SCHEMA_VERSION,
             app_id: 91340,
             name: "Race Test".to_owned(),
+            cached_change_number: 0,
             steam_last_played: 0,
             cached_at: 0,
             achievements: vec![CachedAchievement {

@@ -146,16 +146,12 @@ pub(crate) fn handle_profile_view(app: &mut App, message: ProfileViewMessage) ->
         }
         ProfileEvent::DrainedProgress {
             cache_entries,
-            summary_entries,
             no_ach_entries,
         } => {
             let mut tasks: Vec<Task<Message>> = vec![extra];
             let account_id = app.context.user.account_id;
             for entry in cache_entries {
                 tasks.push(cache::commands::write_game_cache(account_id, entry));
-            }
-            for summary in summary_entries {
-                tasks.push(cache::commands::write_game_summary(account_id, summary));
             }
             if !no_ach_entries.is_empty() {
                 for (app_id, change_number) in no_ach_entries {

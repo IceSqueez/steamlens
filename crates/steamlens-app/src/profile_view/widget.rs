@@ -386,6 +386,7 @@ mod tests {
             schema_version: crate::cache::CURRENT_SCHEMA_VERSION,
             app_id,
             name: format!("Game {app_id}"),
+            cached_change_number: 0,
             steam_last_played: last_played,
             cached_at: 0,
             achievements: vec![],

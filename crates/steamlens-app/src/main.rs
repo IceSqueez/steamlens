@@ -1026,6 +1026,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
+            0,
             &HashMap::new(),
         );
         assert_eq!(entry.progress.earned, 2);
@@ -1045,6 +1046,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
+            0,
             &HashMap::new(),
         );
         assert_eq!(entry.name, "FallbackName");
@@ -1066,6 +1068,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
+            0,
             &HashMap::new(),
         );
         assert!(
@@ -1085,6 +1088,7 @@ mod tests {
             &scanned,
             game.app_id,
             game.name.as_deref(),
+            0,
             &HashMap::new(),
         );
         assert!(
@@ -1725,6 +1729,7 @@ mod tests {
                 schema_version: cache::CURRENT_SCHEMA_VERSION,
                 app_id,
                 name: "Team Fortress 2".to_owned(),
+                cached_change_number: 0,
                 steam_last_played: 0,
                 cached_at: 1_000,
                 achievements: vec![],
@@ -1857,6 +1862,7 @@ mod tests {
                     schema_version: CURRENT_SCHEMA_VERSION,
                     app_id,
                     name: format!("Game {app_id}"),
+                    cached_change_number: 0,
                     steam_last_played: 0,
                     cached_at: 1_000,
                     achievements: vec![],

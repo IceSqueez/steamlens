@@ -58,10 +58,6 @@ pub fn user_game_dir(account_id: u32, app_id: u32) -> PathBuf {
     user_dir(account_id).join("games").join(app_id.to_string())
 }
 
-pub fn user_game_summary_path(account_id: u32, app_id: u32) -> PathBuf {
-    user_game_dir(account_id, app_id).join("summary.json")
-}
-
 pub fn user_game_cache_path(account_id: u32, app_id: u32) -> PathBuf {
     user_game_dir(account_id, app_id).join("cache.json")
 }

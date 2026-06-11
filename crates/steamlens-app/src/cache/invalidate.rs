@@ -4,7 +4,7 @@ use std::path::Path;
 use steamlens_core::GameSummary;
 
 use crate::cache::CacheHit;
-use crate::cache::store::load_game_summary_from_path;
+use crate::cache::store::load_game_cache_from_path;
 
 const LAST_PLAYED_RACE_GRACE_SECS: u64 = 30;
 
@@ -51,25 +51,21 @@ pub(crate) async fn classify_games_with_root(
 
     let cached_app_ids = scan_cached_app_ids(cache_root).await;
 
-    let mut load_set: tokio::task::JoinSet<(usize, Option<crate::cache::types::GameSummaryCache>)> =
+    let mut load_set: tokio::task::JoinSet<(usize, Option<crate::cache::types::GameCacheEntry>)> =
         tokio::task::JoinSet::new();
     for (idx, game) in game_summaries.iter().enumerate() {
         if !cached_app_ids.contains(&game.app_id) {
             continue;
         }
-        let path = cache_root
-            .join(game.app_id.to_string())
-            .join("summary.json");
-        load_set.spawn(async move { (idx, load_game_summary_from_path(&path).await) });
+        let path = cache_root.join(game.app_id.to_string()).join("cache.json");
+        load_set.spawn(async move { (idx, load_game_cache_from_path(&path).await) });
     }
 
-    let mut loaded: std::collections::HashMap<
-        usize,
-        Option<crate::cache::types::GameSummaryCache>,
-    > = std::collections::HashMap::with_capacity(load_set.len());
+    let mut loaded: std::collections::HashMap<usize, Option<crate::cache::types::GameCacheEntry>> =
+        std::collections::HashMap::with_capacity(load_set.len());
     while let Some(res) = load_set.join_next().await {
-        if let Ok((idx, summary)) = res {
-            loaded.insert(idx, summary);
+        if let Ok((idx, entry)) = res {
+            loaded.insert(idx, entry);
         }
     }
 
@@ -82,7 +78,7 @@ pub(crate) async fn classify_games_with_root(
             continue;
         }
 
-        let Some(Some(summary)) = loaded.remove(&idx) else {
+        let Some(Some(entry)) = loaded.remove(&idx) else {
             tracing::info!(
                 "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::SchemaVersion
@@ -92,7 +88,7 @@ pub(crate) async fn classify_games_with_root(
             continue;
         };
 
-        if summary.cached_change_number != game.change_number {
+        if entry.cached_change_number != game.change_number {
             tracing::info!(
                 "invalidate app_id={app_id} reason={:?}",
                 InvalidationReason::ChangeNumber
@@ -103,23 +99,19 @@ pub(crate) async fn classify_games_with_root(
         }
 
         if let Some(last_played) = game.last_played
-            && (last_played as u64) > summary.cached_at + LAST_PLAYED_RACE_GRACE_SECS
+            && (last_played as u64) > entry.cached_at + LAST_PLAYED_RACE_GRACE_SECS
         {
             tracing::warn!(
                 "invalidate app_id={app_id} reason={:?} last_played={last_played} cached_at={} grace={LAST_PLAYED_RACE_GRACE_SECS}s",
                 InvalidationReason::LastPlayed,
-                summary.cached_at
+                entry.cached_at
             );
             result.dirty.push(app_id);
             result.invalidation_count += 1;
             continue;
         }
 
-        let entry_compat = synthesize_compat_entry(summary);
-        result.hits.push(CacheHit {
-            app_id,
-            entry: entry_compat,
-        });
+        result.hits.push(CacheHit { app_id, entry });
     }
 
     if no_cache_count > 0 {
@@ -143,29 +135,11 @@ enum InvalidationReason {
     LastPlayed,
 }
 
-fn synthesize_compat_entry(
-    summary: crate::cache::types::GameSummaryCache,
-) -> crate::cache::types::GameCacheEntry {
-    crate::cache::types::GameCacheEntry {
-        schema_version: crate::cache::types::CURRENT_SCHEMA_VERSION,
-        app_id: summary.app_id,
-        name: summary.name,
-        steam_last_played: 0,
-        cached_at: summary.cached_at,
-        achievements: Vec::new(),
-        stats: Vec::new(),
-        progress: summary.progress,
-        tier_breakdown: summary.tier_breakdown,
-        genre: summary.genre,
-        playtime_minutes: summary.playtime_minutes,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cache::store::atomic_write;
-    use crate::cache::types::{CachedProgress, GameSummaryCache, SUMMARY_SCHEMA_VERSION};
+    use crate::cache::types::{CURRENT_SCHEMA_VERSION, CachedProgress, GameCacheEntry};
 
     fn make_summary_input(app_id: u32, last_played: Option<u32>) -> GameSummary {
         GameSummary {
@@ -175,13 +149,16 @@ mod tests {
         }
     }
 
-    fn make_summary(app_id: u32, cached_at: u64, change_number: u32) -> GameSummaryCache {
-        GameSummaryCache {
-            schema_version: SUMMARY_SCHEMA_VERSION,
+    fn make_cache_entry(app_id: u32, cached_at: u64, change_number: u32) -> GameCacheEntry {
+        GameCacheEntry {
+            schema_version: CURRENT_SCHEMA_VERSION,
             app_id,
             name: format!("Game {app_id}"),
             cached_change_number: change_number,
+            steam_last_played: 0,
             cached_at,
+            achievements: Vec::new(),
+            stats: Vec::new(),
             progress: CachedProgress {
                 earned: 1,
                 total: 10,
@@ -192,9 +169,9 @@ mod tests {
         }
     }
 
-    async fn write_summary(cache_root: &Path, app_id: u32, summary: &GameSummaryCache) {
-        let path = cache_root.join(app_id.to_string()).join("summary.json");
-        let bytes = serde_json::to_vec_pretty(summary).unwrap();
+    async fn write_cache_entry(cache_root: &Path, app_id: u32, entry: &GameCacheEntry) {
+        let path = cache_root.join(app_id.to_string()).join("cache.json");
+        let bytes = serde_json::to_vec_pretty(entry).unwrap();
         atomic_write(&path, &bytes).await.unwrap();
     }
 
@@ -227,8 +204,8 @@ mod tests {
         let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary_input(2, None);
 
-        let summary = make_summary(2, 999_999_999, 0);
-        write_summary(cache_dir.path(), 2, &summary).await;
+        let entry = make_cache_entry(2, 999_999_999, 0);
+        write_cache_entry(cache_dir.path(), 2, &entry).await;
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert_eq!(result.hits.len(), 1, "should be a cache hit");
@@ -243,8 +220,8 @@ mod tests {
         let cached_at: u64 = 500;
         let game = make_summary_input(4, Some(1000));
 
-        let summary = make_summary(4, cached_at, 0);
-        write_summary(cache_dir.path(), 4, &summary).await;
+        let entry = make_cache_entry(4, cached_at, 0);
+        write_cache_entry(cache_dir.path(), 4, &entry).await;
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(result.hits.is_empty());
@@ -257,8 +234,8 @@ mod tests {
         let cache_dir = tempfile::TempDir::new().expect("tempdir");
         let game = make_summary_input(5, Some(100));
 
-        let summary = make_summary(5, 999_999_999, 0);
-        write_summary(cache_dir.path(), 5, &summary).await;
+        let entry = make_cache_entry(5, 999_999_999, 0);
+        write_cache_entry(cache_dir.path(), 5, &entry).await;
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert_eq!(
@@ -278,7 +255,7 @@ mod tests {
 
         let subdir = cache_dir.path().join("6");
         std::fs::create_dir_all(&subdir).unwrap();
-        let bad_cache = subdir.join("summary.json");
+        let bad_cache = subdir.join("cache.json");
         let bad_json = r#"{"schema_version":99,"app_id":6,"name":"Game 6","cached_change_number":0,"cached_at":0,"progress":{"earned":0,"total":0},"tier_breakdown":[],"genre":null}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
@@ -299,7 +276,7 @@ mod tests {
 
         let subdir = cache_dir.path().join("7");
         std::fs::create_dir_all(&subdir).unwrap();
-        let bad_cache = subdir.join("summary.json");
+        let bad_cache = subdir.join("cache.json");
         let bad_json = r#"{"schema_version":0,"app_id":7,"name":"Game 7","cached_change_number":0,"cached_at":0,"progress":{"earned":0,"total":0},"tier_breakdown":[],"genre":null}"#;
         std::fs::write(&bad_cache, bad_json).unwrap();
 
@@ -322,8 +299,8 @@ mod tests {
         let mut game = make_summary_input(8, None);
         game.change_number = 42;
 
-        let summary = make_summary(8, 999_999_999, 7);
-        write_summary(cache_dir.path(), 8, &summary).await;
+        let entry = make_cache_entry(8, 999_999_999, 7);
+        write_cache_entry(cache_dir.path(), 8, &entry).await;
 
         let result = classify_games_with_root(&[game], cache_dir.path()).await;
         assert!(

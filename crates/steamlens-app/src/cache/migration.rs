@@ -64,13 +64,6 @@ async fn migrate_at_root(
                 let src = legacy_games_dir.join(name.as_ref());
                 let dst = user_games_dir.join(app_id.to_string()).join("cache.json");
                 files_moved += move_if_pending(&src, &dst).await;
-                continue;
-            }
-
-            if let Ok(app_id) = name.parse::<u32>() {
-                let src = legacy_games_dir.join(name.as_ref()).join("summary.json");
-                let dst = user_games_dir.join(app_id.to_string()).join("summary.json");
-                files_moved += move_if_pending(&src, &dst).await;
             }
         }
     }
@@ -143,11 +136,6 @@ async fn has_any_legacy_game_data(games_dir: &Path) -> bool {
         {
             return true;
         }
-        if name.parse::<u32>().is_ok()
-            && games_dir.join(name.as_ref()).join("summary.json").exists()
-        {
-            return true;
-        }
     }
     false
 }
@@ -172,17 +160,13 @@ mod tests {
 
         write_file(&cache.join("profile.json"), b"profile");
         write_file(&cache.join("library.json"), b"library");
-        write_file(&cache.join("games/570/summary.json"), b"summary");
         write_file(&cache.join("games/570/icons/foo.png"), b"icon");
 
         let outcome = migrate_at_root(TEST_STEAMID3, &cache).await.unwrap();
 
         match outcome {
             MigrationOutcome::Migrated { files_moved } => {
-                assert_eq!(
-                    files_moved, 3,
-                    "must move 3 files (profile, library, summary)"
-                );
+                assert_eq!(files_moved, 2, "must move 2 files (profile, library)");
             }
             other => panic!("expected Migrated, got {other:?}"),
         }
@@ -190,10 +174,6 @@ mod tests {
         let user_root = cache.join("users").join(TEST_STEAMID3.to_string());
         assert!(user_root.join("profile.json").exists(), "profile moved");
         assert!(user_root.join("library.json").exists(), "library moved");
-        assert!(
-            user_root.join("games/570/summary.json").exists(),
-            "summary moved"
-        );
 
         assert!(
             cache.join("games/570/icons/foo.png").exists(),
@@ -206,10 +186,6 @@ mod tests {
         assert!(
             !cache.join("library.json").exists(),
             "legacy library must be gone"
-        );
-        assert!(
-            !cache.join("games/570/summary.json").exists(),
-            "legacy summary must be gone"
         );
     }
 

@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use iced::Task;
 
-use crate::cache::types::GameSummaryCache;
 use crate::cache::{self, CacheEvent, CachedLibrary, GameCacheEntry, NoAchievementsCache};
 use steamlens_core::GameSummary;
 
@@ -47,18 +46,6 @@ pub fn write_game_cache(account_id: u32, entry: GameCacheEntry) -> Task<crate::M
     Task::perform(
         async move {
             cache::write_game_cache(account_id, &entry)
-                .await
-                .map_err(|e| e.to_string())
-        },
-        move |result| crate::Message::Cache(CacheEvent::GameWritten { app_id, result }),
-    )
-}
-
-pub fn write_game_summary(account_id: u32, entry: GameSummaryCache) -> Task<crate::Message> {
-    let app_id = entry.app_id;
-    Task::perform(
-        async move {
-            cache::store::write_game_summary(account_id, &entry)
                 .await
                 .map_err(|e| e.to_string())
         },

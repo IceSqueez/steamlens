@@ -183,23 +183,13 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         .get(&app_id)
         .and_then(|s| s.playtime_minutes);
 
-    let summary = cache::types::GameSummaryCache {
-        schema_version: cache::types::SUMMARY_SCHEMA_VERSION,
-        app_id,
-        name,
-        cached_change_number: change_number,
-        cached_at: now_secs,
-        progress: cache::types::CachedProgress { earned, total },
-        tier_breakdown,
-        genre,
-        playtime_minutes,
-    };
+    let new_progress = cache::types::CachedProgress { earned, total };
 
     if let Some(existing) = app.context.game_cache.entries.get(&app_id)
-        && existing.progress.earned == summary.progress.earned
-        && existing.progress.total == summary.progress.total
-        && existing.tier_breakdown == summary.tier_breakdown
-        && existing.playtime_minutes == summary.playtime_minutes
+        && existing.progress.earned == new_progress.earned
+        && existing.progress.total == new_progress.total
+        && existing.tier_breakdown == tier_breakdown
+        && existing.playtime_minutes == playtime_minutes
     {
         return Task::none();
     }
@@ -211,6 +201,10 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         app_id,
         &app.context.steam.app_state,
     );
+    full_entry.cached_change_number = change_number;
+    full_entry.cached_at = now_secs;
+    full_entry.name = name.clone();
+    full_entry.genre = genre.clone();
     if let Some(existing) = app.context.game_cache.entries.get(&app_id) {
         cache::store::merge_preserved_fields(&mut full_entry, existing);
     }
@@ -227,9 +221,9 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
         .iter_mut()
         .find(|e| e.app_id == app_id)
     {
-        entry.change_number = summary.cached_change_number;
-        entry.name = Some(summary.name.clone());
-        entry.genre = summary.genre.clone();
+        entry.change_number = change_number;
+        entry.name = Some(name.clone());
+        entry.genre = genre.clone();
         entry.progress = Some(crate::progress_scan::ProgressData { earned, total });
     }
     profile_view_state.recompute_derived(&app.context.game_cache.entries, &pinned);
@@ -263,18 +257,9 @@ pub(crate) fn handle_persist_game_summary(app: &mut App, app_id: u32) -> Task<Me
     );
 
     let account_id = app.context.user.account_id;
-    let summary_task = Task::perform(
-        async move { cache::store::write_game_summary(account_id, &summary).await },
-        move |result| {
-            Message::Cache(cache::CacheEvent::GameWritten {
-                app_id,
-                result: result.map_err(|e| e.to_string()),
-            })
-        },
-    );
     let game_task = cache::commands::write_game_cache(account_id, full_entry);
 
-    Task::batch([summary_task, game_task, icons_task])
+    Task::batch([game_task, icons_task])
 }
 
 pub(crate) fn handle_invalidate_game_cache(app: &mut App, app_id: u32) -> Task<Message> {

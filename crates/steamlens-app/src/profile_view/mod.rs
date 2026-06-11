@@ -521,7 +521,6 @@ fn handle_progress_result(
             Task::none(),
             ProfileEvent::DrainedProgress {
                 cache_entries: Vec::new(),
-                summary_entries: Vec::new(),
                 no_ach_entries,
             },
         );
@@ -546,11 +545,18 @@ fn handle_progress_result(
         .iter()
         .find(|g| g.app_id == scan_app_id)
         .and_then(|g| g.name.as_deref().map(str::to_owned));
+    let change_number = state
+        .games
+        .iter()
+        .find(|g| g.app_id == scan_app_id)
+        .map(|g| g.change_number)
+        .unwrap_or(0);
 
     let entry = crate::game_cache_builder::build_cache_entry_from_scan(
         &data,
         scan_app_id,
         game_name.as_deref(),
+        change_number,
         &ctx.steam.app_state,
     );
 
@@ -558,31 +564,12 @@ fn handle_progress_result(
         game.genre.clone_from(&entry.genre);
     }
 
-    let change_number = state
-        .games
-        .iter()
-        .find(|g| g.app_id == scan_app_id)
-        .map(|g| g.change_number)
-        .unwrap_or(0);
-    let summary = crate::cache::types::GameSummaryCache {
-        schema_version: crate::cache::types::SUMMARY_SCHEMA_VERSION,
-        app_id: scan_app_id,
-        name: entry.name.clone(),
-        cached_change_number: change_number,
-        cached_at: entry.cached_at,
-        progress: entry.progress,
-        tier_breakdown: entry.tier_breakdown.clone(),
-        genre: entry.genre.clone(),
-        playtime_minutes: entry.playtime_minutes,
-    };
-
     ctx.game_cache.entries.insert(scan_app_id, entry.clone());
 
     (
         progress_task,
         ProfileEvent::DrainedProgress {
             cache_entries: vec![entry],
-            summary_entries: vec![summary],
             no_ach_entries: Vec::new(),
         },
     )

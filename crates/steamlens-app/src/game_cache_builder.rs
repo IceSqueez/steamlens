@@ -124,6 +124,7 @@ pub(crate) fn build_cache_entry_from_scan(
     scanned: &progress_scan::ScannedGameData,
     app_id: u32,
     entry_name: Option<&str>,
+    change_number: u32,
     steam_state: &HashMap<u32, steamlens_core::SteamAppState>,
 ) -> GameCacheEntry {
     use cache::types::{CachedAchievement, CachedProgress, CachedStat};
@@ -214,6 +215,7 @@ pub(crate) fn build_cache_entry_from_scan(
         schema_version: cache::CURRENT_SCHEMA_VERSION,
         app_id,
         name,
+        cached_change_number: change_number,
         steam_last_played,
         cached_at,
         achievements,
@@ -290,6 +292,7 @@ pub(crate) fn build_game_view_cache_entry(
         schema_version: cache::CURRENT_SCHEMA_VERSION,
         app_id,
         name: state.game_name.clone(),
+        cached_change_number: 0,
         steam_last_played,
         cached_at,
         achievements,

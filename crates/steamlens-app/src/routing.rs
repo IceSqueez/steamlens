@@ -94,11 +94,19 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
         ));
     }
 
+    let cached_full = app
+        .context
+        .game_cache
+        .entries
+        .get(&app_id)
+        .map(|e| !e.achievements.is_empty())
+        .unwrap_or(false);
+
     if let Some(cached) = app.context.game_cache.entries.get(&app_id) {
         state.expected_total = cached.progress.total;
         state.genre = cached.genre.clone();
         state.playtime_minutes = cached.playtime_minutes;
-        if steam_off && !cached.achievements.is_empty() {
+        if steam_off && cached_full {
             tasks.push(crate::game_cache_builder::spawn_seed_task(
                 app_id,
                 cached.clone(),
@@ -115,7 +123,7 @@ pub(crate) fn open_game_view(app: &mut App, app_id: u32) -> Task<Message> {
     }
 
     if steam_off {
-        if state.achievements.is_empty() && !app.context.game_cache.entries.contains_key(&app_id) {
+        if state.achievements.is_empty() && !cached_full {
             let account_id = app.context.user.account_id;
             tasks.push(Task::perform(
                 cache::store::load_game_cache(account_id, app_id),
