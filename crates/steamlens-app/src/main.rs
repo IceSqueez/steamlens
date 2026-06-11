@@ -411,7 +411,7 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let animation_sub = if update_handlers::needs_animation_frame(app) {
-        iced::window::frames().map(Message::AnimationFrame)
+        iced::time::every(Duration::from_millis(33)).map(Message::AnimationFrame)
     } else {
         Subscription::none()
     };
@@ -1130,62 +1130,6 @@ mod tests {
         } else {
             panic!("expected ProfileView screen");
         }
-    }
-
-    #[test]
-    fn loader_phase_failed_when_some_games_have_no_progress_and_failed() {
-        use crate::profile_view::types::{CapsuleAsset, GameEntry, LoaderPhase, ProfileViewState};
-        use crate::progress_scan::ProgressData;
-
-        let make_entry = |app_id: u32, with_progress: bool| GameEntry {
-            app_id,
-            change_number: 0,
-            last_played: None,
-            name: Some(format!("Game {app_id}")),
-            capsule: CapsuleAsset::Unavailable,
-            progress: if with_progress {
-                Some(ProgressData {
-                    earned: 1,
-                    total: 1,
-                })
-            } else {
-                None
-            },
-            genre: None,
-        };
-
-        let mut state = ProfileViewState::new();
-        state.games.push(make_entry(1, true));
-        state.games.push(make_entry(2, true));
-        state.games.push(make_entry(3, false));
-        state.failed_app_ids.insert(3);
-
-        assert_eq!(
-            state.loader_phase(Some(true)),
-            LoaderPhase::Failed {
-                failed: 1,
-                total: 3
-            },
-            "all games accounted for (2 progress + 1 failed) → Failed phase"
-        );
-    }
-
-    #[test]
-    fn loader_phase_steam_off_when_no_games_and_steam_off() {
-        use crate::profile_view::types::{LoaderPhase, ProfileViewState};
-        let state = ProfileViewState::new();
-        assert_eq!(state.loader_phase(Some(false)), LoaderPhase::SteamOff);
-    }
-
-    #[test]
-    fn loader_phase_initial_when_no_games_and_steam_unknown() {
-        use crate::profile_view::types::{LoaderPhase, ProfileViewState};
-        let state = ProfileViewState::new();
-        assert_eq!(
-            state.loader_phase(None),
-            LoaderPhase::Initial,
-            "steam_running=None during boot probe → Initial not SteamOff"
-        );
     }
 
     #[tokio::test]

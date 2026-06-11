@@ -8,8 +8,6 @@ pub use entries::{CapsuleAsset, GameEntry, StoredCapsule, TopEntry};
 pub use filters::{GameStatusFilter, LibrarySort};
 pub use messages::{ProfileEvent, ProfileViewMessage};
 pub(crate) use sort::sort_games_in_place;
-#[cfg(test)]
-pub use state::LoaderPhase;
 pub use state::{ProfileViewPhase, ProfileViewState, SharedProgressRx};
 
 #[cfg(test)]
@@ -39,14 +37,11 @@ mod tests {
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
-            spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: Arc::new(Mutex::new(None)),
             scan_generation: 0,
             failed_app_ids: HashSet::new(),
             library_name_map: HashMap::new(),
-            loader_pulse_phase: 0.0,
-            loader_hiding_since: None,
             hovered_card: None,
             hovered_bar_slice: None,
             hovered_card_tier: None,
@@ -251,59 +246,6 @@ mod tests {
             .collect();
         assert!(names.contains(&"Terraria"));
         assert!(names.contains(&"terra Battle"));
-    }
-
-    #[test]
-    fn loader_phase_in_progress_when_partial_progress() {
-        let mut state = make_state_with_games(vec![
-            GameEntry {
-                app_id: 1,
-                change_number: 0,
-                last_played: None,
-                name: Some("A".to_owned()),
-                capsule: CapsuleAsset::Unavailable,
-                progress: Some(crate::progress_scan::ProgressData {
-                    earned: 5,
-                    total: 10,
-                }),
-                genre: None,
-            },
-            GameEntry {
-                app_id: 2,
-                change_number: 0,
-                last_played: None,
-                name: Some("B".to_owned()),
-                capsule: CapsuleAsset::Unavailable,
-                progress: None,
-                genre: None,
-            },
-        ]);
-        state.phase = ProfileViewPhase::Loaded;
-        assert_eq!(
-            state.loader_phase(None),
-            LoaderPhase::InProgress {
-                loaded: 1,
-                total: 2
-            }
-        );
-    }
-
-    #[test]
-    fn loader_phase_finished_when_all_have_progress() {
-        let mut state = make_state_with_games(vec![GameEntry {
-            app_id: 1,
-            change_number: 0,
-            last_played: None,
-            name: Some("A".to_owned()),
-            capsule: CapsuleAsset::Unavailable,
-            progress: Some(crate::progress_scan::ProgressData {
-                earned: 5,
-                total: 10,
-            }),
-            genre: None,
-        }]);
-        state.phase = ProfileViewPhase::Loaded;
-        assert_eq!(state.loader_phase(None), LoaderPhase::Finished);
     }
 
     #[test]

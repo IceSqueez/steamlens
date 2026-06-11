@@ -89,7 +89,6 @@ pub fn handle_steam_reply(
                 .collect();
             state.stats = stats.into_iter().map(StatRow::from).collect();
             state.phase = GameViewPhase::Ready;
-            state.fade_in = 0.0;
 
             state.reveal_queue = state
                 .achievements

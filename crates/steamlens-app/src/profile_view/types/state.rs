@@ -23,6 +23,8 @@ pub struct DerivedProfileView {
     pub summary: WidgetSummary,
     pub top6: Vec<TopEntry>,
     pub scanned_progress_count: usize,
+    pub hydrated_count: usize,
+    pub loaded_capsules_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,14 +39,11 @@ pub struct ProfileViewState {
     pub search: String,
     pub sort: LibrarySort,
     pub capsule_size: CapsuleSize,
-    pub spinner_angle: f32,
     pub progress_scanner: Option<crate::progress_scan::ProgressScanner>,
     pub progress_rx: SharedProgressRx,
     pub scan_generation: u64,
     pub failed_app_ids: HashSet<u32>,
     pub library_name_map: HashMap<u32, String>,
-    pub loader_pulse_phase: f32,
-    pub loader_hiding_since: Option<Instant>,
     pub hovered_card: Option<u32>,
     pub hovered_bar_slice: Option<RarityTier>,
     pub hovered_card_tier: Option<(u32, RarityTier)>,
@@ -78,14 +77,11 @@ impl ProfileViewState {
             search: String::new(),
             sort: LibrarySort::LastPlayed,
             capsule_size: CapsuleSize::default(),
-            spinner_angle: 0.0,
             progress_scanner: None,
             progress_rx: Arc::new(Mutex::new(None)),
             scan_generation: 0,
             failed_app_ids: HashSet::new(),
             library_name_map: HashMap::new(),
-            loader_pulse_phase: 0.0,
-            loader_hiding_since: None,
             hovered_card: None,
             hovered_bar_slice: None,
             hovered_card_tier: None,
@@ -129,9 +125,17 @@ impl ProfileViewState {
         let summary = compute_profile_summary(cached_entries);
         let top6 = top6_closest_to_complete(&self.games, cached_entries);
         let mut scanned_progress_count = 0;
+        let mut hydrated_count = 0;
+        let mut loaded_capsules_count = 0;
         for g in &self.games {
             if g.progress.is_some() {
                 scanned_progress_count += 1;
+            }
+            if g.is_hydrated() {
+                hydrated_count += 1;
+            }
+            if !matches!(g.capsule, CapsuleAsset::Pending) {
+                loaded_capsules_count += 1;
             }
         }
         self.derived = DerivedProfileView {
@@ -139,6 +143,8 @@ impl ProfileViewState {
             summary,
             top6,
             scanned_progress_count,
+            hydrated_count,
+            loaded_capsules_count,
         };
     }
 
@@ -170,63 +176,8 @@ impl ProfileViewState {
         self.available_genres = set.into_iter().collect();
     }
 
-    pub fn loader_phase(&self, steam_running: Option<bool>) -> LoaderPhase {
-        if self.games.is_empty() {
-            if steam_running == Some(false) {
-                return LoaderPhase::SteamOff;
-            }
-            return LoaderPhase::Initial;
-        }
-        let total = self.games.len();
-        let with_progress = self.games.iter().filter(|g| g.progress.is_some()).count();
-        let failed = self.failed_app_ids.len();
-        let pending = total.saturating_sub(with_progress).saturating_sub(failed);
-        if pending > 0 {
-            LoaderPhase::InProgress {
-                loaded: with_progress,
-                total,
-            }
-        } else if failed > 0 {
-            LoaderPhase::Failed { failed, total }
-        } else {
-            LoaderPhase::Finished
-        }
-    }
-
-    pub fn loader_needs_pulse_subscription(&self, steam_running: Option<bool>) -> bool {
-        match self.loader_phase(steam_running) {
-            LoaderPhase::Initial | LoaderPhase::InProgress { .. } => true,
-            LoaderPhase::Failed { .. } | LoaderPhase::SteamOff => false,
-            LoaderPhase::Finished => self
-                .loader_hiding_since
-                .map(|t| t.elapsed().as_millis() < 300)
-                .unwrap_or(true),
-        }
-    }
-
-    pub fn tick_animations(&mut self, delta_secs: f32, steam_running: Option<bool>) {
-        const SPINNER_DEG_PER_SEC: f32 = 75.0;
-        const LOADER_PULSE_PER_SEC: f32 = 0.57;
-
-        if self.is_streaming() {
-            self.spinner_angle = (self.spinner_angle + SPINNER_DEG_PER_SEC * delta_secs) % 360.0;
-        }
-
-        if self.loader_needs_pulse_subscription(steam_running) {
-            self.loader_pulse_phase =
-                (self.loader_pulse_phase + LOADER_PULSE_PER_SEC * delta_secs).rem_euclid(1.0);
-            if let LoaderPhase::Finished = self.loader_phase(steam_running) {
-                if self.loader_hiding_since.is_none() {
-                    self.loader_hiding_since = Some(Instant::now());
-                }
-            } else {
-                self.loader_hiding_since = None;
-            }
-        }
-    }
-
-    pub fn has_active_animations(&self, steam_running: Option<bool>) -> bool {
-        self.is_streaming() || self.loader_needs_pulse_subscription(steam_running)
+    pub fn has_active_animations(&self) -> bool {
+        self.is_streaming()
     }
 }
 
@@ -301,13 +252,4 @@ fn compute_visible_indices(
     });
 
     indices
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LoaderPhase {
-    Initial,
-    InProgress { loaded: usize, total: usize },
-    Finished,
-    Failed { failed: usize, total: usize },
-    SteamOff,
 }

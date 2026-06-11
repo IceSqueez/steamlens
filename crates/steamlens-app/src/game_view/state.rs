@@ -63,7 +63,6 @@ pub struct GameViewState {
     pub show_apply_modal: bool,
 
     pub spinner_angle: f32,
-    pub fade_in: f32,
     pub rare_glow_phase: f32,
     pub reveal_accumulator: f32,
 
@@ -110,7 +109,6 @@ impl GameViewState {
             apply_confirm_input: String::new(),
             show_apply_modal: false,
             spinner_angle: 0.0,
-            fade_in: 0.0,
             rare_glow_phase: 0.0,
             reveal_accumulator: 0.0,
             error_message: String::new(),
@@ -195,7 +193,6 @@ impl GameViewState {
 
     pub fn tick_animations(&mut self, delta_secs: f32) {
         const SPINNER_DEG_PER_SEC: f32 = 180.0;
-        const FADE_PER_SEC: f32 = 2.4;
         const CARD_OPACITY_PER_SEC: f32 = 6.0;
         const GLOW_RAD_PER_SEC: f32 = 3.0;
         const REVEAL_INTERVAL_SECS: f32 = 0.005;
@@ -204,12 +201,8 @@ impl GameViewState {
             self.phase,
             GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
         );
-        let needs_spinner_or_fade = busy || self.phase == GameViewPhase::Ready;
-        if needs_spinner_or_fade {
+        if busy {
             self.spinner_angle = (self.spinner_angle + SPINNER_DEG_PER_SEC * delta_secs) % 360.0;
-            if self.phase == GameViewPhase::Ready && self.fade_in < 1.0 {
-                self.fade_in = (self.fade_in + FADE_PER_SEC * delta_secs).min(1.0);
-            }
         }
 
         if self.has_fading_cards() {
@@ -252,8 +245,7 @@ impl GameViewState {
         matches!(
             self.phase,
             GameViewPhase::Connecting | GameViewPhase::WaitingStats | GameViewPhase::Saving
-        ) || (self.phase == GameViewPhase::Ready && self.fade_in < 1.0)
-            || self.has_pending_reveals()
+        ) || self.has_pending_reveals()
             || self.has_fading_cards()
             || self.derived.has_legendary_visible
     }

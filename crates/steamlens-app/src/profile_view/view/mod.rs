@@ -88,13 +88,9 @@ fn profile_status_bar(
 
     let total = state.games.len();
     let failed = state.failed_app_ids.len();
-    let hydrated = state.games.iter().filter(|g| g.is_hydrated()).count();
+    let hydrated = state.derived.hydrated_count;
     let scanned_progress = state.derived.scanned_progress_count;
-    let loaded_capsules = state
-        .games
-        .iter()
-        .filter(|g| !matches!(g.capsule, super::types::CapsuleAsset::Pending))
-        .count();
+    let loaded_capsules = state.derived.loaded_capsules_count;
 
     derive_status_bar(
         StatusContext {
