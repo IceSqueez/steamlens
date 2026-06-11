@@ -214,5 +214,25 @@ pub(crate) fn handle_app_assets_loaded(
         "app_assets: loaded library_assets_full hashes from appinfo.vdf"
     );
     app.context.steam.library_assets = assets;
-    Task::none()
+
+    let pv = crate::routing::current_profile_view_state(&app.screen, &app.preserved_profile_state);
+    let Some(pv) = pv else {
+        return Task::none();
+    };
+    let pending_ids: Vec<u32> = pv
+        .games
+        .iter()
+        .filter(|g| matches!(g.capsule, crate::profile_view::types::CapsuleAsset::Pending))
+        .map(|g| g.app_id)
+        .collect();
+    if pending_ids.is_empty() {
+        return Task::none();
+    }
+    tracing::info!(
+        count = pending_ids.len(),
+        "app_assets: re-spawning capsule fetch for pending games after assets ready"
+    );
+    let size = pv.capsule_size;
+    crate::profile_view::spawn_capsule_queue(pending_ids, size, &app.context.steam.library_assets)
+        .map(Message::ProfileView)
 }

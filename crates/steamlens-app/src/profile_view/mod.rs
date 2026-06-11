@@ -580,6 +580,13 @@ pub(crate) fn spawn_capsule_queue(
     size: CapsuleSize,
     app_assets: &HashMap<u32, steamlens_core::AppLibraryAssets>,
 ) -> Task<ProfileViewMessage> {
+    if app_assets.is_empty() {
+        tracing::debug!(
+            count = app_ids.len(),
+            "capsule queue: library_assets not yet loaded, deferring fetch"
+        );
+        return Task::none();
+    }
     let tasks: Vec<Task<ProfileViewMessage>> = app_ids
         .into_iter()
         .map(|app_id| {
