@@ -92,6 +92,15 @@ impl From<StatData> for StatRow {
     }
 }
 
+impl StatRow {
+    pub fn set_value(&mut self, new_value: StatValue) {
+        self.data.value = new_value;
+        self.edit_text = new_value.to_edit_string();
+        self.is_dirty = new_value != self.data.original_value;
+        self.edit_error = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -30,6 +30,20 @@ impl StatValue {
             StatValue::Float(v) => format!("{v:.2}"),
         }
     }
+
+    pub fn coerce_from_u64(self, value: u64) -> StatValue {
+        match self {
+            StatValue::Int(_) => StatValue::Int(value as i32),
+            StatValue::Float(_) => StatValue::Float(value as f32),
+        }
+    }
+
+    pub fn coerce_from_i64(self, value: i64) -> StatValue {
+        match self {
+            StatValue::Int(_) => StatValue::Int(value as i32),
+            StatValue::Float(_) => StatValue::Float(value as f32),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

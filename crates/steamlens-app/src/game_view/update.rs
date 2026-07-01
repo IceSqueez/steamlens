@@ -4,8 +4,23 @@ use iced::Task;
 
 use super::messages::{GameViewEvent, GameViewMessage};
 use super::state::{GameViewPhase, GameViewState, compute_tier_breakdown};
-use super::types::{AchievementRow, BulkOp, StatRow, StatValue, build_apply_payload};
-use crate::steam_worker::{SteamReply, SteamRequest};
+use super::types::{AchievementRow, BulkOp, StatRow, build_apply_payload};
+use crate::steam_worker::{SteamReply, SteamRequest, SteamWorker};
+
+fn dispatch_game_request(
+    worker: &SteamWorker,
+    ctx: &crate::app_context::AppContext,
+    request: SteamRequest,
+) -> Result<Task<GameViewMessage>, crate::worker_subprocess::ConnectivityError> {
+    let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
+    let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
+    worker.dispatch_checked(
+        request,
+        steam_running,
+        user_logged_in,
+        GameViewMessage::DiscardReply,
+    )
+}
 
 fn surface_connectivity_error(
     ctx: &mut crate::app_context::AppContext,
@@ -239,14 +254,7 @@ pub fn update(
                 "game_view: dispatching RetryGlobalPercentages"
             );
             if let Some(worker) = worker {
-                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
-                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match worker.dispatch_checked(
-                    SteamRequest::RequestGlobalPercentages,
-                    steam_running,
-                    user_logged_in,
-                    GameViewMessage::DiscardReply,
-                ) {
+                match dispatch_game_request(worker, ctx, SteamRequest::RequestGlobalPercentages) {
                     Ok(t) => (t, GameViewEvent::None),
                     Err(e) => {
                         surface_connectivity_error(ctx, e);
@@ -340,42 +348,24 @@ pub fn update(
                 let Some(max) = stat.data.max_value else {
                     continue;
                 };
-                let new_value = match stat.data.value {
-                    StatValue::Int(_) => StatValue::Int(max as i32),
-                    StatValue::Float(_) => StatValue::Float(max as f32),
-                };
-                stat.data.value = new_value;
-                stat.edit_text = new_value.to_edit_string();
-                stat.is_dirty = new_value != stat.data.original_value;
-                stat.edit_error = None;
+                let new_value = stat.data.value.coerce_from_u64(max);
+                stat.set_value(new_value);
             }
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatsResetAll => {
             for stat in &mut state.stats {
                 let default = stat.data.default_value.unwrap_or(0);
-                let new_value = match stat.data.value {
-                    StatValue::Int(_) => StatValue::Int(default as i32),
-                    StatValue::Float(_) => StatValue::Float(default as f32),
-                };
-                stat.data.value = new_value;
-                stat.edit_text = new_value.to_edit_string();
-                stat.is_dirty = new_value != stat.data.original_value;
-                stat.edit_error = None;
+                let new_value = stat.data.value.coerce_from_i64(default);
+                stat.set_value(new_value);
             }
             (Task::none(), GameViewEvent::None)
         }
         GameViewMessage::StatsResetSingle(id) => {
             if let Some(stat) = state.stats.iter_mut().find(|s| s.data.id == id) {
                 let default = stat.data.default_value.unwrap_or(0);
-                let new_value = match stat.data.value {
-                    StatValue::Int(_) => StatValue::Int(default as i32),
-                    StatValue::Float(_) => StatValue::Float(default as f32),
-                };
-                stat.data.value = new_value;
-                stat.edit_text = new_value.to_edit_string();
-                stat.is_dirty = new_value != stat.data.original_value;
-                stat.edit_error = None;
+                let new_value = stat.data.value.coerce_from_i64(default);
+                stat.set_value(new_value);
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -383,14 +373,8 @@ pub fn update(
             if let Some(stat) = state.stats.iter_mut().find(|s| s.data.id == id)
                 && let Some(max) = stat.data.max_value
             {
-                let new_value = match stat.data.value {
-                    StatValue::Int(_) => StatValue::Int(max as i32),
-                    StatValue::Float(_) => StatValue::Float(max as f32),
-                };
-                stat.data.value = new_value;
-                stat.edit_text = new_value.to_edit_string();
-                stat.is_dirty = new_value != stat.data.original_value;
-                stat.edit_error = None;
+                let new_value = stat.data.value.coerce_from_u64(max);
+                stat.set_value(new_value);
             }
             (Task::none(), GameViewEvent::None)
         }
@@ -429,30 +413,16 @@ pub fn update(
             state.recompute_derived();
             let mut tasks: Vec<Task<GameViewMessage>> = Vec::new();
             if let Some(worker) = worker {
-                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
-                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match worker.dispatch_checked(
+                for request in [
                     SteamRequest::RequestUserStats,
-                    steam_running,
-                    user_logged_in,
-                    GameViewMessage::DiscardReply,
-                ) {
-                    Ok(t) => tasks.push(t),
-                    Err(e) => {
-                        surface_connectivity_error(ctx, e);
-                        return (Task::none(), GameViewEvent::None);
-                    }
-                }
-                match worker.dispatch_checked(
                     SteamRequest::RequestGlobalPercentages,
-                    steam_running,
-                    user_logged_in,
-                    GameViewMessage::DiscardReply,
-                ) {
-                    Ok(t) => tasks.push(t),
-                    Err(e) => {
-                        surface_connectivity_error(ctx, e);
-                        return (Task::none(), GameViewEvent::None);
+                ] {
+                    match dispatch_game_request(worker, ctx, request) {
+                        Ok(t) => tasks.push(t),
+                        Err(e) => {
+                            surface_connectivity_error(ctx, e);
+                            return (Task::none(), GameViewEvent::None);
+                        }
                     }
                 }
             }
@@ -487,19 +457,13 @@ pub fn update(
             let payload = build_apply_payload(&state.achievements, &state.stats);
             state.phase = GameViewPhase::Saving;
             if let Some(worker) = worker {
-                let steam_running = ctx.connectivity.steam_running.unwrap_or(false);
-                let user_logged_in = ctx.connectivity.user_logged_in.unwrap_or(false);
-                match worker.dispatch_checked(
-                    SteamRequest::ApplyChanges {
-                        achievements_to_set: payload.achievements_to_set,
-                        achievements_to_clear: payload.achievements_to_clear,
-                        stats_int: payload.stats_int,
-                        stats_float: payload.stats_float,
-                    },
-                    steam_running,
-                    user_logged_in,
-                    GameViewMessage::DiscardReply,
-                ) {
+                let request = SteamRequest::ApplyChanges {
+                    achievements_to_set: payload.achievements_to_set,
+                    achievements_to_clear: payload.achievements_to_clear,
+                    stats_int: payload.stats_int,
+                    stats_float: payload.stats_float,
+                };
+                match dispatch_game_request(worker, ctx, request) {
                     Ok(t) => return (t, GameViewEvent::None),
                     Err(e) => {
                         surface_connectivity_error(ctx, e);
