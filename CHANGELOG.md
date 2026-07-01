@@ -1,7 +1,33 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-07-01
+### ⚡ Performance
+- *(ui)* Virtualize card grid to render only visible rows
+
+### 🐛 Bug Fixes
+- *(ui)* Reset invalidated games' progress at classify so scan bar isn't stuck
+- *(vdf)* Guard recursive parsers against stack overflow on deep nesting
+
+### 📚 Documentation
+- *(core)* Document shared vtable-call safety invariant in UserStats
+
+### 🚜 Refactor
+- *(ui)* Single-source library streaming counters to prevent desync
+- *(vdf)* Unify appinfo blob scanners behind a shared key reader
+- *(ui)* Encapsulate boot readiness in BootStage::is_ready
+- *(ui)* Dedup game_view stat writes and worker dispatch
+- *(core)* Guard Steam connection cleanup with RAII on partial init
+- *(vdf)* Derive localconfig last-played from full state parse
+- *(ui)* Single-source recompute debounce in timeouts
+- *(ui)* Recover poisoned progress-rx lock instead of panicking
+- *(ui)* Name UI timing intervals in timeouts
+- *(core)* Name Steam string-return buffer sizes
+
 ## [1.0.5] - 2026-06-11
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### ⚡ Performance
 - *(ui)* Remove dead animation state and throttle frame ticks to 30fps
 
@@ -12,6 +38,9 @@ All notable changes to this project will be documented in this file.
 - *(cache)* Merge preserved fields into in-memory entry on progress scan
 - *(ui)* Wrap long achievement names per-glyph to prevent overflow
 - *(ui)* Reconnect refreshes both game_view and library without worker conflict
+
+### 📚 Documentation
+- *(release)* Release v1.0.5
 
 ### 🚜 Refactor
 - *(cache)* Drop summary.json
