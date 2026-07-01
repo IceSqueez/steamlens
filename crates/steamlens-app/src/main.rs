@@ -144,6 +144,15 @@ struct BootStage {
     probe_classified: bool,
 }
 
+impl BootStage {
+    fn is_ready(&self) -> bool {
+        self.splash_min_elapsed
+            && self.library_cache_resolved
+            && self.cache_classified
+            && self.probe_done
+    }
+}
+
 #[derive(Default)]
 struct Modals {
     about_open: bool,
@@ -350,10 +359,7 @@ fn view(app: &App) -> Element<'_, Message> {
 
     let with_toasts = messaging::wrap_with_toasts(shell, &app.context.messaging);
 
-    let ready = app.boot.splash_min_elapsed
-        && app.boot.library_cache_resolved
-        && app.boot.cache_classified
-        && app.boot.probe_done;
+    let ready = app.boot.is_ready();
     let base = if ready {
         with_toasts
     } else {
@@ -712,10 +718,7 @@ mod tests {
     }
 
     fn splash_visible(app: &App) -> bool {
-        !(app.boot.splash_min_elapsed
-            && app.boot.library_cache_resolved
-            && app.boot.cache_classified
-            && app.boot.probe_done)
+        !app.boot.is_ready()
     }
 
     #[test]
