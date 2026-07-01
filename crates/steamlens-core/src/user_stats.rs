@@ -12,6 +12,19 @@ pub struct UserStats<'a> {
     _not_send: PhantomData<*const ()>,
 }
 
+// SAFETY: every vtable call in this impl relies on the following invariants,
+// upheld by the type rather than re-derived per call site:
+// - `self.raw` points at a live `ISteamUserStats013` interface kept alive for
+//   the duration of `'a` by the client borrow encoded in `_client:
+//   PhantomData<&'a c_void>`; the interface and its underlying Steam pipe are
+//   valid for the lifetime of every call made through `&self`.
+// - `UserStats` is `!Send` (via `_not_send: PhantomData<*const ()>`), so every
+//   call below executes on the thread that owns the Steam pipe, matching
+//   Steam's single-threaded-per-pipe access requirement.
+// - `opaque::vtable::<ISteamUserStats013>(self.raw)` reinterprets the first
+//   field of the interface as a vtable pointer whose method order matches the
+//   `ISteamUserStats013` layout exactly; any mismatch in that order is
+//   undefined behavior at the call site.
 impl<'a> UserStats<'a> {
     pub(crate) fn from_raw(raw: RawInterface) -> Self {
         Self {
@@ -165,7 +178,7 @@ impl<'a> UserStats<'a> {
     }
 
     pub fn store_stats(&self) -> Result<(), SteamError> {
-        // SAFETY: see impl-level note.
+        // SAFETY: upholds the shared vtable-call invariant documented above the impl.
         let ok = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).store_stats)(self.raw)
@@ -180,7 +193,7 @@ impl<'a> UserStats<'a> {
     }
 
     pub fn num_achievements(&self) -> u32 {
-        // SAFETY: see impl-level note.
+        // SAFETY: upholds the shared vtable-call invariant documented above the impl.
         unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_num_achievements)(self.raw)
@@ -188,7 +201,7 @@ impl<'a> UserStats<'a> {
     }
 
     pub fn achievement_name(&self, index: u32) -> Result<String, SteamError> {
-        // SAFETY: see impl-level note.
+        // SAFETY: upholds the shared vtable-call invariant documented above the impl.
         let ptr = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).get_achievement_name)(self.raw, index)
@@ -207,7 +220,7 @@ impl<'a> UserStats<'a> {
     }
 
     pub fn request_user_stats(&self, steam_id: u64) -> Result<(), SteamError> {
-        // SAFETY: see impl-level note.
+        // SAFETY: upholds the shared vtable-call invariant documented above the impl.
         let handle = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).request_user_stats)(self.raw, steam_id)
@@ -243,7 +256,7 @@ impl<'a> UserStats<'a> {
     }
 
     pub fn request_global_achievement_percentages(&self) -> Result<u64, SteamError> {
-        // SAFETY: see impl-level note.
+        // SAFETY: upholds the shared vtable-call invariant documented above the impl.
         let handle = unsafe {
             let vtbl = opaque::vtable::<ISteamUserStats013>(self.raw);
             ((*vtbl).request_global_achievement_percentages)(self.raw)
