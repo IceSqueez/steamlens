@@ -455,7 +455,7 @@ fn subscription(app: &App) -> Subscription<Message> {
                         64,
                         move |mut output: iced_mpsc::Sender<Message>| async move {
                             let Some(mut rx) =
-                                rx_holder.lock().expect("progress_rx poisoned").take()
+                                rx_holder.lock().unwrap_or_else(|e| e.into_inner()).take()
                             else {
                                 return;
                             };

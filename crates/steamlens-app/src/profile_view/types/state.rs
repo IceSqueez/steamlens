@@ -100,13 +100,13 @@ impl ProfileViewState {
     pub fn start_scan(&mut self, app_ids: Vec<u32>) {
         let (scanner, rx) = crate::progress_scan::ProgressScanner::spawn(app_ids);
         self.scan_generation = self.scan_generation.wrapping_add(1);
-        *self.progress_rx.lock().expect("progress_rx poisoned") = Some(rx);
+        *self.progress_rx.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
         self.progress_scanner = Some(scanner);
     }
 
     pub fn stop_scan(&mut self) {
         self.progress_scanner = None;
-        *self.progress_rx.lock().expect("progress_rx poisoned") = None;
+        *self.progress_rx.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     pub fn recompute_derived(
