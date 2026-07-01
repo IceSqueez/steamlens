@@ -23,17 +23,43 @@ pub(crate) fn handle_cache_classified(app: &mut App, result: ClassifyResult) -> 
         invalidation_count,
     } = result;
 
+    let hits_count = hits.len();
     app.context.game_cache.pending_hits.extend(hits);
 
     let steam_off = app.context.connectivity.steam_running == Some(false);
+    let pinned = app.context.settings.library.pinned.clone();
 
     let profile_view_state =
         routing::current_profile_view_state_mut(&mut app.screen, &mut app.preserved_profile_state);
 
     if !dirty.is_empty() && !steam_off {
-        profile_view_state.scan_target_count = dirty.len();
+        let progress_before = profile_view_state
+            .games
+            .iter()
+            .filter(|g| g.progress.is_some())
+            .count();
+        for app_id in &dirty {
+            if let Some(game) = profile_view_state
+                .games
+                .iter_mut()
+                .find(|g| g.app_id == *app_id)
+            {
+                game.progress = None;
+            }
+        }
+        let dirty_count = dirty.len();
+        profile_view_state.scan_target_count = dirty_count;
         profile_view_state.scan_started_at = Some(Instant::now());
         profile_view_state.start_scan(dirty);
+        profile_view_state.recompute_derived(&app.context.game_cache.entries, &pinned);
+        tracing::info!(
+            hits = hits_count,
+            dirty = dirty_count,
+            progress_before,
+            scanned_after = profile_view_state.derived.scanned_progress_count,
+            games = profile_view_state.games.len(),
+            "cache_classified: cleared dirty progress before scan"
+        );
     } else {
         profile_view_state.last_scan_completed_at = Some(Instant::now());
     }
