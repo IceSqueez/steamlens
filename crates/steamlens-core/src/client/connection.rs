@@ -29,6 +29,34 @@ pub(super) struct SteamConnection {
     pub(super) _not_send: PhantomData<*const ()>,
 }
 
+fn release_handles(steam_client: RawInterface, pipe: HSteamPipe, user: HSteamUser) {
+    // SAFETY: `steam_client`/`pipe`/`user` were minted together by this
+    // `steam_client` on the `!Send` owner thread; released in reverse-init
+    // order (`user` before `pipe`); both release calls are guarded against
+    // the not-yet-acquired sentinel value `0`.
+    unsafe {
+        let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
+        if user != 0 {
+            ((*vtbl).release_user)(steam_client, pipe, user);
+        }
+        if pipe != 0 {
+            ((*vtbl).release_steam_pipe)(steam_client, pipe);
+        }
+    }
+}
+
+struct PartialConnection {
+    steam_client: RawInterface,
+    pipe: HSteamPipe,
+    user: HSteamUser,
+}
+
+impl Drop for PartialConnection {
+    fn drop(&mut self) {
+        release_handles(self.steam_client, self.pipe, self.user);
+    }
+}
+
 impl SteamConnection {
     pub(super) fn establish(app_id: u32) -> Result<Self, SteamError> {
         if app_id != 0 {
@@ -64,6 +92,12 @@ impl SteamConnection {
             return Err(SteamError::SteamNotRunning);
         }
 
+        let mut guard = PartialConnection {
+            steam_client,
+            pipe,
+            user: 0,
+        };
+
         // SAFETY: `pipe` is the freshly-vended live handle.
         tracing::trace!("establish: connect_to_global_user pre");
         let user = unsafe {
@@ -72,14 +106,9 @@ impl SteamConnection {
         };
         tracing::trace!(user, "establish: connect_to_global_user post");
         if user == 0 {
-            // SAFETY: release the pipe before bailing; otherwise IPC state
-            // leaks in the steamclient process.
-            unsafe {
-                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-                ((*vtbl).release_steam_pipe)(steam_client, pipe);
-            }
             return Err(SteamError::SteamNotRunning);
         }
+        guard.user = user;
 
         let user_023_version = CString::new(STEAM_USER_023_VERSION).map_err(|_| {
             SteamError::InvalidInterfaceVersion {
@@ -102,12 +131,6 @@ impl SteamConnection {
             "establish: get_isteam_user post"
         );
         if steam_user.is_null() {
-            // SAFETY: release in reverse-init order.
-            unsafe {
-                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-                ((*vtbl).release_user)(steam_client, pipe, user);
-                ((*vtbl).release_steam_pipe)(steam_client, pipe);
-            }
             return Err(SteamError::InterfaceUnavailable {
                 version: STEAM_USER_023_VERSION.to_owned(),
             });
@@ -122,11 +145,6 @@ impl SteamConnection {
         };
         tracing::trace!(logged_on, "establish: b_logged_on post");
         if !logged_on {
-            unsafe {
-                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-                ((*vtbl).release_user)(steam_client, pipe, user);
-                ((*vtbl).release_steam_pipe)(steam_client, pipe);
-            }
             return Err(SteamError::NotLoggedIn);
         }
 
@@ -168,12 +186,6 @@ impl SteamConnection {
             "establish: get_isteam_user_stats post"
         );
         if steam_user_stats.is_null() {
-            // SAFETY: release in reverse-init order.
-            unsafe {
-                let vtbl = opaque::vtable::<ISteamClient018>(steam_client);
-                ((*vtbl).release_user)(steam_client, pipe, user);
-                ((*vtbl).release_steam_pipe)(steam_client, pipe);
-            }
             return Err(SteamError::InterfaceUnavailable {
                 version: STEAM_USER_STATS_VERSION.to_owned(),
             });
@@ -260,6 +272,8 @@ impl SteamConnection {
             "establish: get_isteam_friends post"
         );
 
+        std::mem::forget(guard);
+
         Ok(SteamConnection {
             steam_client,
             steam_user,
@@ -279,18 +293,10 @@ impl SteamConnection {
 
 impl Drop for SteamConnection {
     fn drop(&mut self) {
-        // SAFETY: handles were minted by this `steam_client` in `establish` on
-        // the `!Send` owner thread; sub-interface pointers are owned by
+        // SAFETY: sub-interface pointers (`steam_user`, `steam_user_stats`,
+        // `steam_apps*`, `steam_utils`, `steam_friends`) are owned by
         // `steamclient` and released transitively when `user` and `pipe`
         // close — no per-interface release API exists on `ISteamClient018`.
-        unsafe {
-            let vtbl = opaque::vtable::<ISteamClient018>(self.steam_client);
-            if self.user != 0 {
-                ((*vtbl).release_user)(self.steam_client, self.pipe, self.user);
-            }
-            if self.pipe != 0 {
-                ((*vtbl).release_steam_pipe)(self.steam_client, self.pipe);
-            }
-        }
+        release_handles(self.steam_client, self.pipe, self.user);
     }
 }
