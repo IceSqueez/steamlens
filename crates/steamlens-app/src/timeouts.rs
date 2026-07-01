@@ -13,3 +13,4 @@ pub const CHILD_KILL: Duration = Duration::from_secs(2);
 pub const CHILD_DRAIN: Duration = Duration::from_secs(3);
 pub const STDERR_DRAIN: Duration = Duration::from_secs(1);
 pub const POLL_INTERVAL: Duration = Duration::from_millis(50);
+pub const RECOMPUTE_DEBOUNCE: Duration = Duration::from_millis(250);

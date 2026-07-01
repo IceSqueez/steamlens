@@ -424,13 +424,12 @@ pub fn update(
             let games_before = state.games.len();
             let outcome = handle_progress_result(state, ctx, *result);
             let games_shrunk = state.games.len() != games_before;
-            const RECOMPUTE_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
             let now = Instant::now();
             let due = games_shrunk
                 || ctx
                     .game_cache
                     .last_recompute_at
-                    .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
+                    .is_none_or(|t| now.duration_since(t) >= crate::timeouts::RECOMPUTE_DEBOUNCE);
             if due {
                 state.rebuild_available_genres();
                 state.recompute_derived(&ctx.game_cache.entries, &ctx.settings.library.pinned);

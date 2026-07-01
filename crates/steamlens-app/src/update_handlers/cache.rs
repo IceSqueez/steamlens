@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use iced::Task;
 
@@ -109,14 +109,13 @@ pub(crate) fn handle_drain_hit_queue(app: &mut App) -> Task<Message> {
         touched = true;
     }
     if touched {
-        const RECOMPUTE_DEBOUNCE: Duration = Duration::from_millis(250);
         let now = Instant::now();
         let queue_empty = app.context.game_cache.pending_hits.is_empty();
         let due = app
             .context
             .game_cache
             .last_recompute_at
-            .is_none_or(|t| now.duration_since(t) >= RECOMPUTE_DEBOUNCE);
+            .is_none_or(|t| now.duration_since(t) >= crate::timeouts::RECOMPUTE_DEBOUNCE);
         if queue_empty || due {
             let pinned = app.context.settings.library.pinned.clone();
             let profile_view_state = routing::current_profile_view_state_mut(
