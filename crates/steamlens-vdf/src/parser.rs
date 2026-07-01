@@ -75,6 +75,9 @@ pub enum VdfError {
         offset: usize,
         source: std::string::FromUtf8Error,
     },
+
+    #[error("maximum nesting depth exceeded at byte offset {offset}")]
+    MaxDepthExceeded { offset: usize },
 }
 
 const TAG_SECTION: u8 = 0x00;
@@ -86,6 +89,8 @@ const TAG_WSTRING: u8 = 0x05;
 const TAG_COLOR: u8 = 0x06;
 const TAG_UINT64: u8 = 0x07;
 const TAG_SECTION_END: u8 = 0x08;
+
+pub(crate) const MAX_SECTION_DEPTH: usize = 128;
 
 pub(crate) struct Cursor<'a> {
     data: &'a [u8],
@@ -144,6 +149,14 @@ impl<'a> Cursor<'a> {
     }
 
     pub(crate) fn read_section(&mut self) -> Result<Value, VdfError> {
+        self.read_section_at_depth(1)
+    }
+
+    fn read_section_at_depth(&mut self, depth: usize) -> Result<Value, VdfError> {
+        if depth > MAX_SECTION_DEPTH {
+            return Err(VdfError::MaxDepthExceeded { offset: self.pos });
+        }
+
         let mut children = Vec::new();
 
         loop {
@@ -157,7 +170,7 @@ impl<'a> Cursor<'a> {
             let key = self.read_null_terminated()?;
 
             let value = match tag {
-                TAG_SECTION => self.read_section()?,
+                TAG_SECTION => self.read_section_at_depth(depth + 1)?,
                 TAG_STRING => Value::String(self.read_null_terminated()?),
                 TAG_INT32 => Value::Int32(i32::from_le_bytes(self.read_array()?)),
                 TAG_FLOAT32 => Value::Float32(f32::from_le_bytes(self.read_array()?)),

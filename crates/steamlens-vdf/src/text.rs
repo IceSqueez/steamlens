@@ -13,6 +13,9 @@ pub enum TextVdfError {
 
     #[error("invalid UTF-8 in input")]
     InvalidUtf8,
+
+    #[error("maximum nesting depth exceeded at line {line}")]
+    MaxDepthExceeded { line: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,9 +55,11 @@ impl TextValue {
     }
 }
 
+const MAX_NESTING_DEPTH: usize = 128;
+
 pub fn parse(input: &str) -> Result<TextValue, TextVdfError> {
     let mut parser = Parser::new(input);
-    let pairs = parser.read_pairs(false)?;
+    let pairs = parser.read_pairs(false, 1)?;
     Ok(TextValue::Block(pairs))
 }
 
@@ -162,7 +167,12 @@ impl<'a> Parser<'a> {
     fn read_pairs(
         &mut self,
         inside_block: bool,
+        depth: usize,
     ) -> Result<Vec<(std::string::String, TextValue)>, TextVdfError> {
+        if depth > MAX_NESTING_DEPTH {
+            return Err(TextVdfError::MaxDepthExceeded { line: self.line });
+        }
+
         let mut pairs = Vec::new();
 
         loop {
@@ -194,7 +204,7 @@ impl<'a> Parser<'a> {
                         None => return Err(TextVdfError::Truncated),
                         Some('{') => {
                             self.advance(1);
-                            let children = self.read_pairs(true)?;
+                            let children = self.read_pairs(true, depth + 1)?;
                             pairs.push((key, TextValue::Block(children)));
                         }
                         Some('"') => {
@@ -383,5 +393,16 @@ mod tests {
         let input = r#""k" "v""#;
         let doc = parse(input).unwrap();
         assert!(std::ptr::eq(doc.path(&[]).unwrap(), &doc));
+    }
+
+    #[test]
+    fn parse_exceeds_max_nesting_depth_returns_typed_error() {
+        let depth = MAX_NESTING_DEPTH + 5;
+        let mut input = String::new();
+        for i in 0..depth {
+            input.push_str(&format!("\"level{i}\" {{"));
+        }
+        let result = parse(&input);
+        assert!(matches!(result, Err(TextVdfError::MaxDepthExceeded { .. })));
     }
 }

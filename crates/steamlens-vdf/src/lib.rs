@@ -307,4 +307,36 @@ mod tests {
         let result = parse(&bytes).unwrap();
         assert_eq!(result.get("x").and_then(|v| v.as_u64()), Some(val));
     }
+
+    fn unclosed_nested_sections(depth: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for _ in 0..depth {
+            bytes.push(0x00);
+            bytes.extend_from_slice(b"a\x00");
+        }
+        bytes
+    }
+
+    #[test]
+    fn parse_exceeds_max_section_depth_returns_typed_error() {
+        let bytes = unclosed_nested_sections(parser::MAX_SECTION_DEPTH + 5);
+        let err = parse(&bytes).unwrap_err();
+        assert!(matches!(err, VdfError::MaxDepthExceeded { .. }));
+    }
+
+    #[test]
+    fn parse_within_max_section_depth_succeeds() {
+        let depth = 10;
+        let mut bytes = string_entry("leaf", "value");
+        for i in (0..depth).rev() {
+            bytes = section_entry(&format!("level{i}"), &bytes);
+        }
+        bytes.push(0x08);
+        let result = parse(&bytes).unwrap();
+        let mut current = &result;
+        for i in 0..depth {
+            current = current.get(&format!("level{i}")).unwrap();
+        }
+        assert_eq!(current.get("leaf").and_then(|v| v.as_str()), Some("value"));
+    }
 }
