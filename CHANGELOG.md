@@ -1,7 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2026-07-01
+### 🛠️ Build
+- *(audit)* Grant issues:write for advisory tracking issues
+- *(deps)* Update dependencies to patch RUSTSEC advisories
+
 ## [1.0.6] - 2026-07-01
+### ⚙️ Miscellaneous Tasks
+- Release
+
 ### ⚡ Performance
 - *(ui)* Virtualize card grid to render only visible rows
 
@@ -11,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 - *(core)* Document shared vtable-call safety invariant in UserStats
+- *(release)* Release v1.0.6
 
 ### 🚜 Refactor
 - *(ui)* Single-source library streaming counters to prevent desync
