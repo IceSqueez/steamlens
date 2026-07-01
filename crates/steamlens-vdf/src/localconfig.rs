@@ -58,41 +58,10 @@ pub fn parse_localconfig_states(content: &str) -> HashMap<u32, AppLocalState> {
 }
 
 pub fn parse_localconfig_last_played(content: &str) -> HashMap<u32, u32> {
-    let root = match parse_text(content) {
-        Ok(v) => v,
-        Err(_) => return HashMap::new(),
-    };
-
-    let apps = root.path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]);
-
-    let Some(apps_section) = apps else {
-        return HashMap::new();
-    };
-
-    let Some(entries) = apps_section.as_block() else {
-        return HashMap::new();
-    };
-
-    let mut map = HashMap::new();
-
-    for (key, entry) in entries {
-        let app_id: u32 = match key.parse() {
-            Ok(id) => id,
-            Err(_) => continue,
-        };
-
-        let last_played = entry
-            .get("LastPlayed")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse::<u32>().ok())
-            .filter(|&ts| ts != 0);
-
-        if let Some(ts) = last_played {
-            map.insert(app_id, ts);
-        }
-    }
-
-    map
+    parse_localconfig_states(content)
+        .into_iter()
+        .filter_map(|(app_id, state)| state.last_played.map(|ts| (app_id, ts)))
+        .collect()
 }
 
 #[cfg(test)]
