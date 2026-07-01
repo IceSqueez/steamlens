@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use iced::Task;
 use iced::keyboard;
@@ -151,7 +151,7 @@ pub(crate) fn handle_settings_flush_tick(app: &mut App) -> Task<Message> {
     let Some(since) = app.context.settings_dirty_since else {
         return Task::none();
     };
-    if since.elapsed() < Duration::from_millis(200) {
+    if since.elapsed() < crate::timeouts::SETTINGS_FLUSH {
         return Task::none();
     }
     app.context.settings_dirty_since = None;

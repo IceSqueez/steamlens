@@ -233,7 +233,7 @@ pub fn update(
             let generation = state.search_debounce_generation;
             let task = Task::perform(
                 async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    tokio::time::sleep(crate::timeouts::SEARCH_DEBOUNCE).await;
                     generation
                 },
                 ProfileViewMessage::SearchDebounceElapsed,

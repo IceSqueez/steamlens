@@ -14,3 +14,7 @@ pub const CHILD_DRAIN: Duration = Duration::from_secs(3);
 pub const STDERR_DRAIN: Duration = Duration::from_secs(1);
 pub const POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub const RECOMPUTE_DEBOUNCE: Duration = Duration::from_millis(250);
+pub const FRAME_TICK: Duration = Duration::from_millis(33);
+pub const SETTINGS_FLUSH: Duration = Duration::from_millis(200);
+pub const TOAST_TICK: Duration = Duration::from_millis(500);
+pub const SEARCH_DEBOUNCE: Duration = Duration::from_millis(150);

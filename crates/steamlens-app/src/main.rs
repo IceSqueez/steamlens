@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::process::{self, Command};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Instant, SystemTime};
 
 use iced::futures::SinkExt;
 use iced::futures::channel::mpsc as iced_mpsc;
@@ -417,26 +417,26 @@ fn subscription(app: &App) -> Subscription<Message> {
     };
 
     let animation_sub = if update_handlers::needs_animation_frame(app) {
-        iced::time::every(Duration::from_millis(33)).map(Message::AnimationFrame)
+        iced::time::every(timeouts::FRAME_TICK).map(Message::AnimationFrame)
     } else {
         Subscription::none()
     };
 
     let settings_flush_sub = if app.context.settings_dirty_since.is_some() {
-        iced::time::every(Duration::from_millis(200)).map(|_| Message::SettingsFlushTick)
+        iced::time::every(timeouts::SETTINGS_FLUSH).map(|_| Message::SettingsFlushTick)
     } else {
         Subscription::none()
     };
 
     let toast_sub = if app.context.messaging.has_active_toasts() {
-        iced::time::every(Duration::from_millis(500))
+        iced::time::every(timeouts::TOAST_TICK)
             .map(|_| Message::Messaging(messaging::MessagingEvent::ToastTick))
     } else {
         Subscription::none()
     };
 
     let hit_drain_sub = if !app.context.game_cache.pending_hits.is_empty() {
-        iced::time::every(Duration::from_millis(33)).map(|_| Message::DrainHitQueue)
+        iced::time::every(timeouts::FRAME_TICK).map(|_| Message::DrainHitQueue)
     } else {
         Subscription::none()
     };
