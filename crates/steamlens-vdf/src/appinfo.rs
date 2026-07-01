@@ -33,8 +33,12 @@ pub fn parse_appinfo_assets(bytes: &[u8]) -> Result<HashMap<u32, AppLibraryAsset
     let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
 
     match magic {
-        MAGIC_CSTRING_V1 | MAGIC_CSTRING_V2 => parse_cstring_kv_assets(bytes, 8, magic),
-        MAGIC_STRING_TABLE => parse_string_table_kv_assets(bytes),
+        MAGIC_CSTRING_V1 | MAGIC_CSTRING_V2 => parse_cstring_records(bytes, 8, magic, |blob| {
+            scan_common_assets(blob, &KeyReader::Cstring)
+        }),
+        MAGIC_STRING_TABLE => parse_indexed_records(bytes, |blob, strings| {
+            scan_common_assets(blob, &KeyReader::Indexed(strings))
+        }),
         other => Err(AppInfoError::UnsupportedMagic { magic: other }),
     }
 }
@@ -69,17 +73,22 @@ pub fn parse_appinfo_flags(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppIn
     let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
 
     match magic {
-        MAGIC_CSTRING_V1 | MAGIC_CSTRING_V2 => parse_cstring_kv(bytes, 8, magic),
-        MAGIC_STRING_TABLE => parse_string_table_kv(bytes),
+        MAGIC_CSTRING_V1 | MAGIC_CSTRING_V2 => parse_cstring_records(bytes, 8, magic, |blob| {
+            scan_common_flags(blob, &KeyReader::Cstring)
+        }),
+        MAGIC_STRING_TABLE => parse_indexed_records(bytes, |blob, strings| {
+            scan_common_flags(blob, &KeyReader::Indexed(strings))
+        }),
         other => Err(AppInfoError::UnsupportedMagic { magic: other }),
     }
 }
 
-fn parse_cstring_kv(
+fn parse_cstring_records<T>(
     bytes: &[u8],
     header_len: usize,
     magic: u32,
-) -> Result<HashMap<u32, AppFlags>, AppInfoError> {
+    scan: impl Fn(&[u8]) -> Result<Option<T>, AppInfoError>,
+) -> Result<HashMap<u32, T>, AppInfoError> {
     let fixed_header = if magic >= MAGIC_CSTRING_V2 {
         RECORD_FIXED_HEADER_LEN
     } else {
@@ -116,18 +125,15 @@ fn parse_cstring_kv(
         let body_end = body_start.saturating_add(size);
         if body_end > bytes.len() {
             return Err(AppInfoError::Truncated {
-                context: "app record header (v1/v2)",
+                context: "app record body",
             });
         }
 
-        if size < fixed_header {
-            pos = body_end;
-            continue;
-        }
-
-        let blob = &bytes[body_start + fixed_header..body_end];
-        if let Some(flags) = scan_cstring_blob(blob)? {
-            map.insert(app_id, flags);
+        if size >= fixed_header {
+            let blob = &bytes[body_start + fixed_header..body_end];
+            if let Some(value) = scan(blob)? {
+                map.insert(app_id, value);
+            }
         }
 
         pos = body_end;
@@ -136,13 +142,10 @@ fn parse_cstring_kv(
     Ok(map)
 }
 
-fn parse_string_table_kv(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppInfoError> {
-    if bytes.len() < 16 {
-        return Err(AppInfoError::Truncated {
-            context: "string-table file header",
-        });
-    }
-
+fn parse_indexed_records<T>(
+    bytes: &[u8],
+    scan: impl Fn(&[u8], &[String]) -> Result<Option<T>, AppInfoError>,
+) -> Result<HashMap<u32, T>, AppInfoError> {
     let st_offset = i64::from_le_bytes([
         bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
     ]);
@@ -160,7 +163,7 @@ fn parse_string_table_kv(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppInfo
     loop {
         if pos + 4 > bytes.len() {
             return Err(AppInfoError::Truncated {
-                context: "app record app_id (string-table)",
+                context: "app record app_id",
             });
         }
         let app_id =
@@ -173,7 +176,7 @@ fn parse_string_table_kv(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppInfo
 
         if pos + 4 > bytes.len() {
             return Err(AppInfoError::Truncated {
-                context: "app record size (string-table)",
+                context: "app record size",
             });
         }
         let size = u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
@@ -184,142 +187,14 @@ fn parse_string_table_kv(bytes: &[u8]) -> Result<HashMap<u32, AppFlags>, AppInfo
         let body_end = body_start.saturating_add(size);
         if body_end > bytes.len() {
             return Err(AppInfoError::Truncated {
-                context: "app record body (string-table)",
-            });
-        }
-
-        if size < RECORD_FIXED_HEADER_LEN {
-            pos = body_end;
-            continue;
-        }
-
-        let blob = &bytes[body_start + RECORD_FIXED_HEADER_LEN..body_end];
-        if let Some(flags) = scan_indexed_blob(blob, &strings)? {
-            map.insert(app_id, flags);
-        }
-
-        pos = body_end;
-    }
-
-    Ok(map)
-}
-
-fn parse_cstring_kv_assets(
-    bytes: &[u8],
-    header_len: usize,
-    magic: u32,
-) -> Result<HashMap<u32, AppLibraryAssets>, AppInfoError> {
-    let fixed_header = if magic >= MAGIC_CSTRING_V2 {
-        RECORD_FIXED_HEADER_LEN
-    } else {
-        RECORD_FIXED_HEADER_LEN - 20
-    };
-
-    let mut map = HashMap::new();
-    let mut pos = header_len;
-
-    loop {
-        if pos + 4 > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record app_id (assets cstring)",
-            });
-        }
-        let app_id =
-            u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]);
-        pos += 4;
-
-        if app_id == 0 {
-            break;
-        }
-
-        if pos + 4 > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record size (assets cstring)",
-            });
-        }
-        let size = u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-            as usize;
-        pos += 4;
-
-        let body_start = pos;
-        let body_end = body_start.saturating_add(size);
-        if body_end > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record body (assets cstring)",
-            });
-        }
-
-        if size >= fixed_header {
-            let blob = &bytes[body_start + fixed_header..body_end];
-            if let Some(assets) = scan_cstring_blob_assets(blob)? {
-                map.insert(app_id, assets);
-            }
-        }
-
-        pos = body_end;
-    }
-
-    Ok(map)
-}
-
-fn parse_string_table_kv_assets(
-    bytes: &[u8],
-) -> Result<HashMap<u32, AppLibraryAssets>, AppInfoError> {
-    if bytes.len() < 16 {
-        return Err(AppInfoError::Truncated {
-            context: "string-table file header (assets)",
-        });
-    }
-
-    let st_offset = i64::from_le_bytes([
-        bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
-    ]);
-
-    if st_offset < 0 || st_offset as usize >= bytes.len() {
-        return Err(AppInfoError::Truncated {
-            context: "string table offset out of range (assets)",
-        });
-    }
-
-    let strings = read_string_table(bytes, st_offset as usize)?;
-    let mut map = HashMap::new();
-    let mut pos = 16usize;
-
-    loop {
-        if pos + 4 > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record app_id (assets string-table)",
-            });
-        }
-        let app_id =
-            u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]);
-        pos += 4;
-
-        if app_id == 0 {
-            break;
-        }
-
-        if pos + 4 > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record size (assets string-table)",
-            });
-        }
-        let size = u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-            as usize;
-        pos += 4;
-
-        let body_start = pos;
-        let body_end = body_start.saturating_add(size);
-        if body_end > bytes.len() {
-            return Err(AppInfoError::Truncated {
-                context: "app record body (assets string-table)",
+                context: "app record body",
             });
         }
 
         if size >= RECORD_FIXED_HEADER_LEN {
             let blob = &bytes[body_start + RECORD_FIXED_HEADER_LEN..body_end];
-            if let Some(assets) = scan_indexed_blob_assets(blob, &strings)? {
-                map.insert(app_id, assets);
+            if let Some(value) = scan(blob, &strings)? {
+                map.insert(app_id, value);
             }
         }
 
@@ -394,153 +269,37 @@ fn emit_assets(
     }
 }
 
-fn scan_cstring_blob_assets(blob: &[u8]) -> Result<Option<AppLibraryAssets>, AppInfoError> {
-    let mut i = 0usize;
-    let mut depth: i32 = 0;
-    let mut in_common = false;
-    let mut common_depth: i32 = -1;
-    let mut in_laf = false;
-    let mut laf_depth: i32 = -1;
-    let mut in_slot = false;
-    let mut slot_depth: i32 = -1;
-    let mut current_slot: u8 = 0;
-    let mut in_image = false;
-    let mut image_depth: i32 = -1;
-    let mut in_header_image = false;
-    let mut header_image_depth: i32 = -1;
-    let mut header_image_value: Option<ImageAsset> = None;
-    let mut assets = AppLibraryAssets::default();
-    let mut found_laf = false;
-
-    const SLOT_COVER: u8 = 1;
-    const SLOT_BACKGROUND: u8 = 2;
-    const SLOT_LOGO: u8 = 3;
-    const SLOT_WIDE_COVER: u8 = 4;
-
-    while i < blob.len() {
-        let tag = blob[i];
-        i += 1;
-
-        if tag == 0x08 {
-            if in_image && depth == image_depth {
-                in_image = false;
-                image_depth = -1;
-            } else if in_slot && depth == slot_depth {
-                in_slot = false;
-                slot_depth = -1;
-                current_slot = 0;
-            } else if in_laf && depth == laf_depth {
-                in_laf = false;
-                laf_depth = -1;
-            } else if in_header_image && depth == header_image_depth {
-                in_header_image = false;
-                header_image_depth = -1;
-            } else if in_common && depth == common_depth {
-                return Ok(emit_assets(assets, found_laf, header_image_value));
-            }
-            depth -= 1;
-            if depth < 0 {
-                return Ok(emit_assets(assets, found_laf, header_image_value));
-            }
-            continue;
-        }
-
-        let key_bytes = read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-            context: "cstring key in assets blob",
-        })?;
-
-        match tag {
-            0x00 => {
-                depth += 1;
-                if !in_common && key_bytes.eq_ignore_ascii_case(b"common") {
-                    in_common = true;
-                    common_depth = depth;
-                } else if in_common && !in_laf && !in_header_image && depth == common_depth + 1 {
-                    if key_bytes.eq_ignore_ascii_case(b"library_assets_full") {
-                        in_laf = true;
-                        laf_depth = depth;
-                        found_laf = true;
-                    } else if key_bytes.eq_ignore_ascii_case(b"header_image") {
-                        in_header_image = true;
-                        header_image_depth = depth;
-                    }
-                } else if in_laf && !in_slot && depth == laf_depth + 1 {
-                    current_slot = if key_bytes.eq_ignore_ascii_case(b"library_capsule") {
-                        SLOT_COVER
-                    } else if key_bytes.eq_ignore_ascii_case(b"library_hero") {
-                        SLOT_BACKGROUND
-                    } else if key_bytes.eq_ignore_ascii_case(b"library_logo") {
-                        SLOT_LOGO
-                    } else if key_bytes.eq_ignore_ascii_case(b"library_header") {
-                        SLOT_WIDE_COVER
-                    } else {
-                        0
-                    };
-                    if current_slot != 0 {
-                        in_slot = true;
-                        slot_depth = depth;
-                    }
-                } else if in_slot
-                    && !in_image
-                    && depth == slot_depth + 1
-                    && key_bytes.eq_ignore_ascii_case(b"image")
-                {
-                    in_image = true;
-                    image_depth = depth;
-                }
-            }
-            0x01 => {
-                let val_bytes =
-                    read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-                        context: "cstring value in assets blob",
-                    })?;
-                if in_image && depth == image_depth && key_bytes.eq_ignore_ascii_case(b"english") {
-                    let slot_ref = match current_slot {
-                        SLOT_COVER => Some(&mut assets.cover),
-                        SLOT_BACKGROUND => Some(&mut assets.background),
-                        SLOT_LOGO => Some(&mut assets.logo),
-                        SLOT_WIDE_COVER => Some(&mut assets.wide_cover),
-                        _ => None,
-                    };
-                    if let Some(dest) = slot_ref
-                        && dest.is_none()
-                    {
-                        *dest = parse_asset_value(val_bytes);
-                    }
-                } else if in_header_image
-                    && depth == header_image_depth
-                    && key_bytes.eq_ignore_ascii_case(b"english")
-                    && header_image_value.is_none()
-                {
-                    header_image_value = parse_asset_value(val_bytes);
-                }
-            }
-            0x02 | 0x03 | 0x04 | 0x06 => {
-                if i + 4 > blob.len() {
-                    return Err(AppInfoError::Truncated {
-                        context: "4-byte value in assets blob",
-                    });
-                }
-                i += 4;
-            }
-            0x07 | 0x09 | 0x0a => {
-                if i + 8 > blob.len() {
-                    return Err(AppInfoError::Truncated {
-                        context: "8-byte value in assets blob",
-                    });
-                }
-                i += 8;
-            }
-            _ => return Ok(emit_assets(assets, found_laf, header_image_value)),
-        }
-    }
-
-    Ok(emit_assets(assets, found_laf, header_image_value))
+enum KeyReader<'a> {
+    Cstring,
+    Indexed(&'a [String]),
 }
 
-fn scan_indexed_blob_assets(
+fn read_key(blob: &[u8], pos: &mut usize, reader: &KeyReader) -> Result<String, AppInfoError> {
+    match reader {
+        KeyReader::Cstring => {
+            let bytes = read_cstring_bytes(blob, pos).ok_or(AppInfoError::Truncated {
+                context: "cstring key",
+            })?;
+            Ok(String::from_utf8_lossy(bytes).into_owned())
+        }
+        KeyReader::Indexed(strings) => {
+            if *pos + 4 > blob.len() {
+                return Err(AppInfoError::Truncated {
+                    context: "key index",
+                });
+            }
+            let idx =
+                u32::from_le_bytes([blob[*pos], blob[*pos + 1], blob[*pos + 2], blob[*pos + 3]])
+                    as usize;
+            *pos += 4;
+            Ok(strings.get(idx).cloned().unwrap_or_default())
+        }
+    }
+}
+
+fn scan_common_assets(
     blob: &[u8],
-    strings: &[String],
+    reader: &KeyReader,
 ) -> Result<Option<AppLibraryAssets>, AppInfoError> {
     let mut i = 0usize;
     let mut depth: i32 = 0;
@@ -592,14 +351,7 @@ fn scan_indexed_blob_assets(
             continue;
         }
 
-        if i + 4 > blob.len() {
-            return Err(AppInfoError::Truncated {
-                context: "key index in assets indexed blob",
-            });
-        }
-        let key_idx = u32::from_le_bytes([blob[i], blob[i + 1], blob[i + 2], blob[i + 3]]) as usize;
-        i += 4;
-        let key = strings.get(key_idx).map(String::as_str).unwrap_or("");
+        let key = read_key(blob, &mut i, reader)?;
 
         match tag {
             0x00 => {
@@ -644,7 +396,7 @@ fn scan_indexed_blob_assets(
             0x01 => {
                 let val_bytes =
                     read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-                        context: "cstring value in assets indexed blob",
+                        context: "cstring value (assets)",
                     })?;
                 if in_image && depth == image_depth && key.eq_ignore_ascii_case("english") {
                     let slot_ref = match current_slot {
@@ -670,7 +422,7 @@ fn scan_indexed_blob_assets(
             0x02 | 0x03 | 0x04 | 0x06 => {
                 if i + 4 > blob.len() {
                     return Err(AppInfoError::Truncated {
-                        context: "4-byte value in assets indexed blob",
+                        context: "4-byte value (assets)",
                     });
                 }
                 i += 4;
@@ -678,7 +430,7 @@ fn scan_indexed_blob_assets(
             0x07 | 0x09 | 0x0a => {
                 if i + 8 > blob.len() {
                     return Err(AppInfoError::Truncated {
-                        context: "8-byte value in assets indexed blob",
+                        context: "8-byte value (assets)",
                     });
                 }
                 i += 8;
@@ -690,7 +442,7 @@ fn scan_indexed_blob_assets(
     Ok(emit_assets(assets, found_laf, header_image_value))
 }
 
-fn scan_cstring_blob(blob: &[u8]) -> Result<Option<AppFlags>, AppInfoError> {
+fn scan_common_flags(blob: &[u8], reader: &KeyReader) -> Result<Option<AppFlags>, AppInfoError> {
     let mut i = 0usize;
     let mut depth: i32 = 0;
     let mut in_common = false;
@@ -713,109 +465,7 @@ fn scan_cstring_blob(blob: &[u8]) -> Result<Option<AppFlags>, AppInfoError> {
             continue;
         }
 
-        let key_bytes = read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-            context: "cstring key in blob",
-        })?;
-
-        match tag {
-            0x00 => {
-                depth += 1;
-                if !in_common && key_bytes.eq_ignore_ascii_case(b"common") {
-                    in_common = true;
-                    common_depth = depth;
-                    found_common = true;
-                } else if in_common && depth == common_depth + 1 {
-                    if key_bytes.eq_ignore_ascii_case(b"library_assets") {
-                        flags.has_library_assets = true;
-                    } else if key_bytes.eq_ignore_ascii_case(b"header_image") {
-                        flags.has_header_image = true;
-                    }
-                }
-            }
-            0x01 => {
-                let val_bytes =
-                    read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-                        context: "cstring value in blob",
-                    })?;
-                if in_common && depth == common_depth {
-                    if (key_bytes.eq_ignore_ascii_case(b"visibility")
-                        || key_bytes.eq_ignore_ascii_case(b"section_type"))
-                        && !val_bytes.is_empty()
-                    {
-                        flags.visibility =
-                            Some(String::from_utf8_lossy(val_bytes).to_ascii_lowercase());
-                    } else if key_bytes.eq_ignore_ascii_case(b"store_asset_mtime") {
-                        flags.has_store_asset_mtime = true;
-                    }
-                }
-            }
-            0x02 | 0x03 | 0x04 | 0x06 => {
-                if in_common
-                    && depth == common_depth
-                    && key_bytes.eq_ignore_ascii_case(b"store_asset_mtime")
-                {
-                    flags.has_store_asset_mtime = true;
-                }
-                if i + 4 > blob.len() {
-                    return Err(AppInfoError::Truncated {
-                        context: "4-byte value in blob",
-                    });
-                }
-                i += 4;
-            }
-            0x07 | 0x09 | 0x0a => {
-                if in_common
-                    && depth == common_depth
-                    && key_bytes.eq_ignore_ascii_case(b"store_asset_mtime")
-                {
-                    flags.has_store_asset_mtime = true;
-                }
-                if i + 8 > blob.len() {
-                    return Err(AppInfoError::Truncated {
-                        context: "8-byte value in blob",
-                    });
-                }
-                i += 8;
-            }
-            _ => return Ok(if found_common { Some(flags) } else { None }),
-        }
-    }
-
-    Ok(if found_common { Some(flags) } else { None })
-}
-
-fn scan_indexed_blob(blob: &[u8], strings: &[String]) -> Result<Option<AppFlags>, AppInfoError> {
-    let mut i = 0usize;
-    let mut depth: i32 = 0;
-    let mut in_common = false;
-    let mut common_depth: i32 = -1;
-    let mut flags = AppFlags::default();
-    let mut found_common = false;
-
-    while i < blob.len() {
-        let tag = blob[i];
-        i += 1;
-
-        if tag == 0x08 {
-            if in_common && depth == common_depth {
-                return Ok(if found_common { Some(flags) } else { None });
-            }
-            depth -= 1;
-            if depth < 0 {
-                return Ok(if found_common { Some(flags) } else { None });
-            }
-            continue;
-        }
-
-        if i + 4 > blob.len() {
-            return Err(AppInfoError::Truncated {
-                context: "key index in indexed blob",
-            });
-        }
-        let key_idx = u32::from_le_bytes([blob[i], blob[i + 1], blob[i + 2], blob[i + 3]]) as usize;
-        i += 4;
-
-        let key = strings.get(key_idx).map(String::as_str).unwrap_or("");
+        let key = read_key(blob, &mut i, reader)?;
 
         match tag {
             0x00 => {
@@ -835,7 +485,7 @@ fn scan_indexed_blob(blob: &[u8], strings: &[String]) -> Result<Option<AppFlags>
             0x01 => {
                 let val_bytes =
                     read_cstring_bytes(blob, &mut i).ok_or(AppInfoError::Truncated {
-                        context: "cstring value in indexed blob",
+                        context: "cstring value",
                     })?;
                 if in_common && depth == common_depth {
                     if (key.eq_ignore_ascii_case("visibility")
@@ -858,7 +508,7 @@ fn scan_indexed_blob(blob: &[u8], strings: &[String]) -> Result<Option<AppFlags>
                 }
                 if i + 4 > blob.len() {
                     return Err(AppInfoError::Truncated {
-                        context: "4-byte value in indexed blob",
+                        context: "4-byte value",
                     });
                 }
                 i += 4;
@@ -872,7 +522,7 @@ fn scan_indexed_blob(blob: &[u8], strings: &[String]) -> Result<Option<AppFlags>
                 }
                 if i + 8 > blob.len() {
                     return Err(AppInfoError::Truncated {
-                        context: "8-byte value in indexed blob",
+                        context: "8-byte value",
                     });
                 }
                 i += 8;
