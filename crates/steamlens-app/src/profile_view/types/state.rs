@@ -124,20 +124,8 @@ impl ProfileViewState {
         );
         let summary = compute_profile_summary(cached_entries);
         let top6 = top6_closest_to_complete(&self.games, cached_entries);
-        let mut scanned_progress_count = 0;
-        let mut hydrated_count = 0;
-        let mut loaded_capsules_count = 0;
-        for g in &self.games {
-            if g.progress.is_some() {
-                scanned_progress_count += 1;
-            }
-            if g.is_hydrated() {
-                hydrated_count += 1;
-            }
-            if !matches!(g.capsule, CapsuleAsset::Pending) {
-                loaded_capsules_count += 1;
-            }
-        }
+        let (scanned_progress_count, hydrated_count, loaded_capsules_count) =
+            count_stream_progress(&self.games);
         self.derived = DerivedProfileView {
             visible_indices,
             summary,
@@ -146,6 +134,13 @@ impl ProfileViewState {
             hydrated_count,
             loaded_capsules_count,
         };
+    }
+
+    pub fn recount_stream_progress(&mut self) {
+        let (scanned, hydrated, loaded) = count_stream_progress(&self.games);
+        self.derived.scanned_progress_count = scanned;
+        self.derived.hydrated_count = hydrated;
+        self.derived.loaded_capsules_count = loaded;
     }
 
     pub fn is_streaming(&self) -> bool {
@@ -179,6 +174,28 @@ impl ProfileViewState {
     pub fn has_active_animations(&self) -> bool {
         self.is_streaming()
     }
+}
+
+fn count_stream_progress(games: &[GameEntry]) -> (usize, usize, usize) {
+    let mut scanned_progress_count = 0;
+    let mut hydrated_count = 0;
+    let mut loaded_capsules_count = 0;
+    for g in games {
+        if g.progress.is_some() {
+            scanned_progress_count += 1;
+        }
+        if g.is_hydrated() {
+            hydrated_count += 1;
+        }
+        if !matches!(g.capsule, CapsuleAsset::Pending) {
+            loaded_capsules_count += 1;
+        }
+    }
+    (
+        scanned_progress_count,
+        hydrated_count,
+        loaded_capsules_count,
+    )
 }
 
 fn compute_visible_indices(

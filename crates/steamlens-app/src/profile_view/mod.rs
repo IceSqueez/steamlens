@@ -305,19 +305,12 @@ pub fn update(
                 return (Task::none(), ProfileEvent::None);
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
-                let was_pending = matches!(entry.capsule, CapsuleAsset::Pending);
-                let was_hydrated = entry.is_hydrated();
                 entry.capsule = CapsuleAsset::Loaded {
                     handle,
                     width,
                     height,
                 };
-                if was_pending {
-                    state.derived.loaded_capsules_count += 1;
-                }
-                if !was_hydrated && entry.is_hydrated() {
-                    state.derived.hydrated_count += 1;
-                }
+                state.recount_stream_progress();
             }
             (Task::none(), ProfileEvent::None)
         }
@@ -328,15 +321,8 @@ pub fn update(
                 return (Task::none(), ProfileEvent::None);
             }
             if let Some(entry) = state.games.iter_mut().find(|g| g.app_id == app_id) {
-                let was_pending = matches!(entry.capsule, CapsuleAsset::Pending);
-                let was_hydrated = entry.is_hydrated();
                 entry.capsule = CapsuleAsset::Unavailable;
-                if was_pending {
-                    state.derived.loaded_capsules_count += 1;
-                }
-                if !was_hydrated && entry.is_hydrated() {
-                    state.derived.hydrated_count += 1;
-                }
+                state.recount_stream_progress();
             }
             (Task::none(), ProfileEvent::None)
         }
