@@ -50,7 +50,8 @@ impl Apps {
         if app_id == 0 || self.steam_apps.is_null() {
             return None;
         }
-        let mut buf = [0u8; 1024];
+        const APP_DATA_BUFFER_LEN: usize = 1024;
+        let mut buf = [0u8; APP_DATA_BUFFER_LEN];
         // SAFETY: live `ISteamApps001`; `key` is a static NUL-terminated CStr;
         // Steam writes into the stack `buf` and we copy out before any further
         // Steam call.

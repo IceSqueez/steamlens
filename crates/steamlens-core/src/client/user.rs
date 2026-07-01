@@ -35,7 +35,8 @@ impl User {
     }
 
     pub(super) fn user_data_folder(&self) -> Result<PathBuf, SteamError> {
-        let mut buf = [0u8; 1024];
+        const USER_DATA_FOLDER_BUFFER_LEN: usize = 1024;
+        let mut buf = [0u8; USER_DATA_FOLDER_BUFFER_LEN];
 
         // SAFETY: live `SteamUser023`; slot 6 = `GetUserDataFolder`; Steam
         // writes at most `buf.len()` bytes into the stack buffer.
