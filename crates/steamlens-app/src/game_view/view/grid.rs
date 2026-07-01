@@ -113,6 +113,7 @@ pub(super) fn achievement_list(
         cards,
         GridLayout {
             card_w: ACH_CARD_WIDTH,
+            card_h: ACH_CARD_HEIGHT,
             min_gap: ACH_MIN_GAP,
             row_spacing: ACH_CARD_GAP,
             padding_top: 8.0,
@@ -170,6 +171,7 @@ pub(super) fn build_skeleton_ach_grid(
         placeholders,
         GridLayout {
             card_w: ACH_CARD_WIDTH,
+            card_h: ACH_CARD_HEIGHT,
             min_gap: ACH_MIN_GAP,
             row_spacing: ACH_CARD_GAP,
             padding_top: 8.0,

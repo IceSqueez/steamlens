@@ -17,7 +17,7 @@ use crate::ui::grid::{GridLayout, responsive_card_grid};
 use crate::ui::theme::{AppTheme, palette, theme_from_iced};
 
 use card::build_card;
-use dims::{CARD_GAP, MIN_GAP, card_width};
+use dims::{CARD_GAP, MIN_GAP, capsule_dims, card_width, total_card_height};
 
 static PROFILE_GRID_SCROLL_ID: LazyLock<iced::widget::Id> =
     LazyLock::new(|| iced::widget::Id::new("profile-grid"));
@@ -150,6 +150,8 @@ fn build_grid<'a>(
 ) -> Element<'a, ProfileViewMessage> {
     let capsule_size = state.capsule_size;
     let card_w = card_width(capsule_size);
+    let (_capsule_w, capsule_h) = capsule_dims(capsule_size);
+    let card_h = total_card_height(capsule_h);
     let hovered_card = state.hovered_card;
     let hovered_card_tier = state.hovered_card_tier;
     let pinned_set: std::collections::HashSet<u32> = pinned.iter().copied().collect();
@@ -158,6 +160,7 @@ fn build_grid<'a>(
         visible,
         GridLayout {
             card_w,
+            card_h,
             min_gap: MIN_GAP,
             row_spacing: CARD_GAP,
             padding_top: 8.0,
