@@ -1,7 +1,21 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.8] - 2026-07-16
+### 🐛 Bug Fixes
+- *(core)* Distinguish a declined user session from a dead Steam client
+
+### 🛠️ Build
+- *(deps)* Update Cargo.lock to patch RUSTSEC-2026-0204
+- *(deps)* Mark unfixable quick-xml advisories in audit config
+
 ## [1.0.7] - 2026-07-01
+### ⚙️ Miscellaneous Tasks
+- Release
+
+### 📚 Documentation
+- *(release)* Release v1.0.7
+
 ### 🛠️ Build
 - *(audit)* Grant issues:write for advisory tracking issues
 - *(deps)* Update dependencies to patch RUSTSEC advisories
