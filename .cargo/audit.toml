@@ -5,4 +5,13 @@ ignore = [
   # Cannot be removed without dropping image support; awaiting upstream migration.
   # Track: https://github.com/image-rs/image/issues
   "RUSTSEC-2024-0436",
+
+  # quick-xml 0.39.4 — DoS on untrusted XML (quadratic attribute check / unbounded
+  # namespace allocation). Patched in 0.41.0, but pinned to ^0.39 by
+  # wayland-scanner → smithay-client-toolkit → winit → iced; not upgradeable until
+  # that stack bumps it. Not reachable here: quick-xml only parses trusted,
+  # build-time Wayland protocol XML — no attacker-controlled input path exists.
+  # Track: https://github.com/rust-windowing/winit/issues
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
