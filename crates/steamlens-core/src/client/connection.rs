@@ -106,7 +106,7 @@ impl SteamConnection {
         };
         tracing::trace!(user, "establish: connect_to_global_user post");
         if user == 0 {
-            return Err(SteamError::SteamNotRunning);
+            return Err(SteamError::GlobalUserUnavailable { app_id });
         }
         guard.user = user;
 

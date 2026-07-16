@@ -14,6 +14,7 @@ pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 pub enum WorkerErrorStage {
     Connect,
     NotLoggedIn,
+    GlobalUserUnavailable,
     RequestUserStats,
     UserStatsReceived,
     PollCallbacks,
@@ -30,6 +31,7 @@ impl WorkerErrorStage {
         match self {
             Self::Connect => "connect",
             Self::NotLoggedIn => "not_logged_in",
+            Self::GlobalUserUnavailable => "global_user_unavailable",
             Self::RequestUserStats => "request_user_stats",
             Self::UserStatsReceived => "user_stats_received",
             Self::PollCallbacks => "poll_callbacks",
@@ -225,6 +227,7 @@ mod tests {
         vec![
             WorkerErrorStage::Connect,
             WorkerErrorStage::NotLoggedIn,
+            WorkerErrorStage::GlobalUserUnavailable,
             WorkerErrorStage::RequestUserStats,
             WorkerErrorStage::UserStatsReceived,
             WorkerErrorStage::PollCallbacks,

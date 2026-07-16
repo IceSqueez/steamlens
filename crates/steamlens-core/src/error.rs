@@ -14,6 +14,9 @@ pub enum SteamError {
     #[error("Steam is running but no user is signed in")]
     NotLoggedIn,
 
+    #[error("Steam declined a user session for app {app_id} (ConnectToGlobalUser returned 0)")]
+    GlobalUserUnavailable { app_id: u32 },
+
     #[error(
         "Could not locate steamclient.so. Searched: {}",
         format_paths(.searched)
@@ -92,4 +95,29 @@ fn format_paths(paths: &[PathBuf]) -> String {
         .map(|p| p.display().to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_user_unavailable_is_not_mistaken_for_a_dead_steam_client() {
+        let message = SteamError::GlobalUserUnavailable { app_id: 3_527_290 }
+            .to_string()
+            .to_lowercase();
+
+        assert!(
+            !message.contains("steam client is not running"),
+            "downstream classifies this substring as a dead Steam client: {message:?}"
+        );
+        assert!(
+            !message.contains("steam is not running"),
+            "downstream classifies this substring as a dead Steam client: {message:?}"
+        );
+        assert!(
+            message.contains("3527290"),
+            "message must name the app that was declined: {message:?}"
+        );
+    }
 }

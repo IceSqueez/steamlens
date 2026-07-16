@@ -24,7 +24,8 @@ pub(super) fn error_reply(stage: WorkerErrorStage, message: String) -> SteamRepl
         WorkerErrorStage::Connect | WorkerErrorStage::NotLoggedIn => {
             SteamReply::ConnectFailed(message)
         }
-        WorkerErrorStage::RequestUserStats
+        WorkerErrorStage::GlobalUserUnavailable
+        | WorkerErrorStage::RequestUserStats
         | WorkerErrorStage::UserStatsReceived
         | WorkerErrorStage::PollCallbacks => SteamReply::LoadFailed(message),
         WorkerErrorStage::StoreStats | WorkerErrorStage::UserStatsStored => {

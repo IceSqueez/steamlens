@@ -51,3 +51,36 @@ pub(crate) fn mark_steam_offline_and_warn(app: &mut App) {
     }
     surface_steam_unavailable(&mut app.context, SteamUnavailable::NotRunning);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::looks_like_steam_died;
+    use crate::worker_subprocess::WorkerProtocolError;
+    use steamlens_core::SteamError;
+    use steamlens_core::ipc::WorkerErrorStage;
+
+    #[test]
+    fn global_user_unavailable_is_not_treated_as_dead_steam() {
+        let message = SteamError::GlobalUserUnavailable { app_id: 3527290 }.to_string();
+        let reason = WorkerProtocolError::WorkerError {
+            stage: WorkerErrorStage::GlobalUserUnavailable,
+            message,
+        }
+        .to_string();
+        assert!(
+            !looks_like_steam_died(&reason),
+            "a single game that Steam declines a session for must not flip global connectivity: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn genuine_dead_steam_reasons_still_classify() {
+        assert!(looks_like_steam_died(
+            "Steam client is not running. Please start Steam and try again."
+        ));
+        assert!(looks_like_steam_died(
+            "worker error: Connect: could not locate steamclient.so"
+        ));
+        assert!(looks_like_steam_died("worker killed by signal 9 (SIGKILL)"));
+    }
+}

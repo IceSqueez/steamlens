@@ -125,6 +125,7 @@ pub async fn probe_steam(timeout: Duration) -> Result<ProbedProfile, ProbeError>
         WorkerResponse::Error { stage, message } => match stage {
             WorkerErrorStage::Connect => Err(ProbeError::SteamNotRunning),
             WorkerErrorStage::NotLoggedIn => Err(ProbeError::NotLoggedIn),
+            WorkerErrorStage::GlobalUserUnavailable => Err(ProbeError::Worker(message)),
             _ => Err(ProbeError::Worker(message)),
         },
         other => Err(ProbeError::Worker(format!(

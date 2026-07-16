@@ -56,6 +56,15 @@ async fn probe_main() -> i32 {
             .await;
             return 1;
         }
+        Err(e @ steamlens_core::SteamError::GlobalUserUnavailable { .. }) => {
+            tracing::warn!("probe: {}", error_chain(&e));
+            let _ = write_response(&WorkerResponse::Error {
+                stage: WorkerErrorStage::GlobalUserUnavailable,
+                message: error_chain(&e),
+            })
+            .await;
+            return 1;
+        }
         Err(e) => {
             tracing::error!("probe: connect failed: {}", error_chain(&e));
             let _ = write_response(&WorkerResponse::Error {
@@ -131,6 +140,15 @@ async fn worker_main(app_id: u32) -> i32 {
     tracing::debug!("connect…");
     let client = match steamlens_core::connect(app_id) {
         Ok(client) => client,
+        Err(e @ steamlens_core::SteamError::GlobalUserUnavailable { .. }) => {
+            tracing::warn!("{} (after {:?})", error_chain(&e), start_time.elapsed());
+            let _ = write_response(&WorkerResponse::Error {
+                stage: WorkerErrorStage::GlobalUserUnavailable,
+                message: error_chain(&e),
+            })
+            .await;
+            return 1;
+        }
         Err(e) => {
             tracing::error!(
                 "connect failed in {:?}: {}",
