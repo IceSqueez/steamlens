@@ -11,7 +11,7 @@ repository = "https://github.com/IceSqueez/steamlens"
 
 [workspace.dependencies]
 iced = { version = "0.14", features = ["tokio", "image", "svg", "lazy"] }
-tokio = { version = "1.52", features = [
+tokio = { version = "1.53", features = [
   "rt-multi-thread",
   "macros",
   "time",
