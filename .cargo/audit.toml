@@ -14,4 +14,19 @@ ignore = [
   # Track: https://github.com/rust-windowing/winit/issues
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
+
+  # ttf-parser 0.25.1 / rustybuzz 0.20.1 — unmaintained (authors moved to
+  # skrifa/harfrust). Pinned by the iced 0.14 stack (cosmic-text, resvg, winit);
+  # not replaceable until iced migrates its text pipeline upstream.
+  # Track: https://github.com/iced-rs/iced/issues
+  "RUSTSEC-2026-0192",
+  "RUSTSEC-2026-0206",
+
+  # lru 0.16.4 — use-after-free in LruCache::pop() if a key's Drop panics under
+  # catch_unwind. Fixed only in 0.18.2, but cryoglyph 0.1.0 (latest) pins ^0.16
+  # and no 0.16.x backport exists. Not reachable here: cryoglyph's cache keys are
+  # plain glyph-hash data with no panicking Drop, and no catch_unwind wraps cache
+  # operations.
+  # Track: https://github.com/iced-rs/cryoglyph
+  "RUSTSEC-2026-0253",
 ]
